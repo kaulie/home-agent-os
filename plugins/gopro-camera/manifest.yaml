@@ -1,0 +1,19 @@
+id: gopro-camera
+service_id: gopro.camera
+group: camera
+version: "0.6.0"
+display_name: GoPro Camera
+description: 相机拍照 / 录像
+
+capabilities:
+  - capability_id: camera.capture
+    description: 拍摄照片
+  - capability_id: take_video
+    description: 开始录像
+
+# Local debug actions (not advertised on wire):
+# status, stop_recording, latest_photo, upload_photo, download_latest_from_server
+
+entry:
+  python: driver.py
+  ios: ios/GoProPluginEntry.swift

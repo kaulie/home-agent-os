@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">客厅中控 v2</string>
+    <string name="service_channel_name">Edge Agent</string>
+    <string name="service_notification_title">客厅 Edge 运行中</string>
+    <string name="service_notification_text">后台心跳中 · 停止请打开 App</string>
+    <string name="auto_start_on_boot">开机自启并后台持续运行</string>
+    <string name="clear_local_edge_id">清除本地 edgeId</string>
+    <string name="heartbeat_stats_placeholder">Heartbeat：0 次 · 最近成功：—</string>
+    <string name="heartbeat_stats_format">Heartbeat：%1$d 次 · 最近成功：%2$s</string>
+</resources>

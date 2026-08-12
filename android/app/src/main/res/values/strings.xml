@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">客厅中控</string>
+    <string name="service_channel_name">指令轮询</string>
+    <string name="service_notification_title">客厅中控运行中</string>
+    <string name="service_notification_text">正在每 10 秒拉取远端指令</string>
+    <string name="supported_commands">• play_song：按 app 字段只走对应 App（netease / spotify，互不 fallback）\n• 播控：launch / play / pause / next / previous / stop</string>
+    <string name="a11y_service_description">客厅中控用无障碍能力操作网易云 TV：搜索歌名并点击播放。仅在你手动开启后生效。</string>
+    <string name="tv_input_hint">TV 自带键盘多为英文；可用下方快捷按钮，或从电脑 enqueue 下发歌名</string>
+    <string name="connect_willen_bluetooth">连接 WILLEN 蓝牙音箱</string>
+</resources>

@@ -1,0 +1,14 @@
+id: chromecast-display
+service_id: chromecast.display
+group: display
+version: "0.2.0"
+display_name: Chromecast Cast
+description: iPhone Cast Sender — 自定义 Receiver F7649303 + urn:x-cast:local.image 发送 photo_url
+
+capabilities:
+  - capability_id: display.photo
+    description: 给定 photo_url，经 Google Cast API 投到 Chromecast
+
+entry:
+  ios: ios/ChromecastPluginEntry.swift
+  android: android/ChromecastDisplaySkill.kt

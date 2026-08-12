@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+data/edge_id.json
+*.egg-info/
+dist/
+build/
+.DS_Store

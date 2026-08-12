@@ -1,0 +1,22 @@
+id: netease-music
+service_id: netease.music
+group: music
+version: "0.3.0"
+display_name: 网易云音乐
+description: 按歌曲 / 专辑 / 歌手播放网易云
+
+capabilities:
+  - capability_id: music.play
+    description: 按歌曲 / 专辑 / 歌手播放网易云
+  - capability_id: music.pause
+    description: 暂停播放
+  - capability_id: music.stop
+    description: 停止播放
+  - capability_id: music.next
+    description: 下一首
+  - capability_id: music.previous
+    description: 上一首
+
+entry:
+  android: android/NetEaseMusicSkill.kt
+  ios: ios/NetEasePluginEntry.swift
