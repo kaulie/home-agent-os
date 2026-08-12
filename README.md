@@ -1,156 +1,100 @@
-# 客厅设备中控器
+# Home Agent OS
 
-部署在 **Chromecast with Google TV**（Android TV）上的常驻中控：每 **10 秒**轮询远端 HTTP API，拿到指令后控制本机已安装的 **Spotify** / **网易云音乐** 播放。
+面向家庭场景的 Agent 运行时：在 **异构设备与能力** 之上，把一次家务任务贯通 **感知 → 理解 → 规划 → 执行**。
+
+远程仓库：[`kaulie/home-agent-os`](https://github.com/kaulie/home-agent-os)。
+
+## 定位
+
+家庭不是单一 App、单一协议的闭环，而是一堆互不相同的端：手机、电视 / Chromecast、相机、Mac、扬声器……各自 OS、网络与能力都不一样。Home Agent OS 要解决的是这类 **复杂异构场景** 里的端到端闭环：
+
+1. **异构场景** — 多设备、多能力、多网络形态并存；Edge 按真实能力注册，Brain 按在线能力选人。
+2. **四层贯通** — 不只「下发一条指令」，而是覆盖感知、理解、规划、执行。
+3. **统一协议** — Edge 上报 `services[] → capabilities[]`；Brain 下发带 `assigned_edge_id` 的 `execution_plan`。
+
+| 层面 | 在家里意味着什么 | 本仓库落点 |
+|------|------------------|------------|
+| **感知** Sense | 拍照、语音、设备状态、环境信号 | GoPro / 语音入口 / Edge 心跳与能力登记 |
+| **理解** Understand | 把自然语言 / 事件变成可执行意图 | Brain `POST /api/v1/intent` |
+| **规划** Plan | 拆成 capability 步骤、选 Edge、定时机 | `execution_plan` + 能力路由 + `execution_timing` |
+| **执行** Act | 在具体设备上调用 Skill / Plugin | Chromecast / iPhone / Android / Mac Edge |
 
 ## 架构
 
 ```text
-你的手机 / 脚本 / 自动化
-        │  POST 入队指令
-        ▼
-  远端 API 服务器 (FastAPI)
-        │  GET 待执行队列
-        ▼
- Chromecast TV 上的「客厅中控」App
-        │  打开 App + 下发媒体键
-        ▼
-   Spotify / 网易云音乐
+                    ┌──────────────────────────────────────┐
+                    │              家庭异构场景              │
+                    │  相机 · 手机 · TV/Cast · Mac · 音箱…  │
+                    └──────────────────┬───────────────────┘
+                                       │
+          感知 ────────────────────────┼──────────────────────── 执行
+          (Sense)                      │                      (Act)
+                                       ▼
+                         ┌─────────────────────────┐
+                         │   Brain · 理解 + 规划    │
+                         │  intent → plan → 路由    │
+                         └────────────┬────────────┘
+                                      │ execution_plan
+                                      │ assigned_edge_id
+              ┌───────────────┬───────┴───────┬───────────────┐
+              ▼               ▼               ▼               ▼
+         Chromecast        iPhone        Android 手机         Mac
+          music.*       camera.*          wifi.*         display.photo
+                       display.photo                    notify.speak
 ```
 
-## 目录
+**Brain** 负责理解与规划（意图、plan、按能力选一个 Edge、时间同步）。  
+**Edge** 负责感知接入与本地执行（注册能力、拉 intents、Scheduler → Runtime → Skill）。  
+**Plugin** 是跨端复用的能力实现（相机、投屏、音乐等）。
+
+## 仓库结构
 
 | 路径 | 说明 |
 |------|------|
-| `server/` | 指令队列 / Brain API（Python Flask 等） |
-| `android/` | Chromecast TV 客户端（Kotlin Android TV）；`android/app-v2` 为 Edge Agent Demo（`living-room-chromecast`） |
-| `ios/` | iPhone Edge Agent Demo（`living-room-iphone` + GoPro Skill），见 [`ios/README.md`](ios/README.md) |
-| `mac/` | Mac Edge Runtime（注册 / 心跳 / 拉 intent / Cast 投屏），见 [`mac/README.md`](mac/README.md) |
-| `plugins/` | 跨端 Skill / SDK（GoPro、runtime-agent-sdk 等） |
+| [`server/`](server/) | Brain：意图、能力路由、心跳、`execution_timing` |
+| [`android/app-v2/`](android/app-v2/) | Chromecast / Android TV Edge |
+| [`android/living-room-android/`](android/living-room-android/) | Android 手机 Edge（意图入口 / 调试 Wi‑Fi） |
+| [`ios/LivingRoomEdge/`](ios/README.md) | iPhone Edge（GoPro、Cast Sender） |
+| [`mac/`](mac/README.md) | Mac Edge（Cast 转发、TTS、内网 ping） |
+| [`plugins/`](plugins/) | 跨端 Skill：`gopro-camera`、`chromecast-display`、`netease-music`、`runtime-agent-sdk` |
 
-## 1. 启动远端 API
+## 能力一览（当前主路径）
 
-在能被 Chromecast 访问到的机器上（同一局域网），**无需安装第三方依赖**（Python 3.10+）：
+| Edge | 典型 service | capability |
+|------|--------------|------------|
+| Chromecast (`app-v2`) | `netease.music` | `music.play` 等 |
+| iPhone | `gopro.camera` | `camera.capture`、`take_video` |
+| iPhone | `chromecast.display` | `display.photo`（Cast → 电视） |
+| Mac | `chromecast.display` | `display.photo`（转发本机 Cast HTTP） |
+| Mac | `local.notify` | `notify.speak` |
+| Android 手机 | `network.wifi` | `network.wifi.join` / `leave`（调试） |
 
-```bash
-cd server
-python3 main.py
-```
+示例闭环：`camera.capture`（感知）→ Brain 规划 → `display.photo` / `notify.speak`（执行）。
 
-健康检查：`http://<电脑局域网IP>:8000/health`
+## Demo 演示
 
-### 下发指令
-
-```bash
-# 仅歌名
-./enqueue.sh play_song netease '披荆斩棘'
-
-# 歌名 + 歌手（歌手可选）
-./enqueue.sh play_song netease '晴天 周杰伦'
-
-# 播放 / 暂停 / 下一首 …
-./enqueue.sh play spotify
-./enqueue.sh next netease
-./enqueue.sh pause spotify
-
-# 打开 App，并可带深链
-./enqueue.sh launch spotify
-./enqueue.sh launch spotify 'spotify:track:3n3AvegLEkuQnqzMxVKLhG'
-```
-
-或直接调用：
+## 快速开始
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/devices/living-room/commands \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"play_song","app":"netease","song":"披荆斩棘"}'
+# Brain
+cd server && python3 brain_app.py
 
-curl -X POST http://127.0.0.1:8000/api/v1/devices/living-room/commands \
-  -H 'Content-Type: application/json' \
-  -d '{"action":"play_song","app":"netease","song":"晴天 周杰伦"}'
+# Mac Edge（其它端见各自 README）
+cd mac && PYTHONPATH=src python -m mac_edge
 ```
 
-### API 约定
-
-**拉取待执行指令**
-
-`GET /api/v1/devices/{device_id}/commands`
-
-```json
-{
-  "commands": [
-    {
-      "id": "cmd-1-ab12cd34",
-      "action": "play",
-      "app": "spotify",
-      "uri": null,
-      "created_at": 1710000000.0
-    }
-  ]
-}
+```text
+POST /api/v1/intent
+GET  /api/v1/devices/living-room/intents?edge_id=<本节点>
 ```
 
-**确认执行结果（客户端执行后调用，指令才会出队）**
+## 文档索引
 
-`POST /api/v1/devices/{device_id}/commands/{command_id}/ack`
-
-```json
-{ "status": "ok", "message": "play/spotify" }
-```
-
-**支持的 `action`**：`play_song` | `launch` | `play` | `pause` | `play_pause` | `next` | `previous` | `stop`
-
-**支持的 `app`**：`netease` | `spotify`
-
-`play_song`：传 `song`（**歌名必填**）。需要时可写成 **`歌名 歌手`**（空格分隔歌手，可选）。
-
-- **顺序**：由 `app` 决定，仅执行对应 App（`netease` 或 `spotify`），**互不 fallback**
-- **都失败**：只打日志「播放不成功」，无内置拉流
-
-可选 `uri`：深链（如 `spotify:track:...` 或网易云歌曲链接）。有 `uri` 时会优先用它打开对应 App。
-
-Spotify API 申请（免费）：[developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) 创建应用，把 Client ID / Secret 填到中控页。
-
-默认 `device_id` 为 `living-room`，需与 TV 端配置一致。
-
-## 2. 安装 TV 客户端
-
-本机需安装 [Android Studio](https://developer.android.com/studio)（含 Android SDK / JDK 17）。
-
-1. 用 Android Studio 打开 `android/` 目录，等待 Gradle Sync。
-2. Chromecast TV 开启「开发者选项 → USB 调试 / 网络调试」，用 `adb connect <TV的IP>:5555` 连接。
-3. 运行 `app` 模块安装到 TV。
-4. 在中控界面填写：
-   - **设备 ID**：`living-room`
-   - **服务器 Base URL**：`http://<电脑局域网IP>:8000`
-5. 点「保存配置」→「启动轮询」（打开 App 也会自动启动服务）。
-
-开机后会通过 `BOOT_COMPLETED` 自动拉起轮询前台服务。
-
-默认轮询间隔在 [`android/app/build.gradle.kts`](android/app/build.gradle.kts) 的 `POLL_INTERVAL_MS = 10000`。
-
-## 3. 播放控制原理
-
-1. 按包名拉起目标 App（必要时打开 `uri`）：
-   - Spotify：`com.spotify.tv.android` → `com.spotify.music`
-   - 网易云：`com.netease.cloudmusic.tv` → `com.netease.cloudmusic`
-2. 短暂等待 App 取得媒体会话后，通过 `AudioManager.dispatchMediaKeyEvent` 发送播放/暂停/上一首/下一首等媒体键。
-
-> 前提：TV 上已安装对应 App，且目标 App 实现了标准 MediaSession（Spotify / 网易云一般支持）。深链能否打开指定歌曲取决于该 TV 版 App 是否处理该 scheme。
-
-## 4. 快速自测
-
-```bash
-# 终端 A：起服务
-cd server && python3 main.py
-
-# 终端 B：入队
-./enqueue.sh play spotify
-
-# TV 上中控约 10 秒内应显示最近指令 OK play/spotify，并开始/恢复播放
-```
-
-## 后续可扩展
-
-- 把轮询换成 WebSocket / MQTT，降低延迟
-- 增加按键模拟、打开任意包名、Home Assistant 对接
-- 用 sideload 工具（如 `adb`）做无 Android Studio 的日常更新
+| 文档 | 内容 |
+|------|------|
+| [`server/README.md`](server/README.md) | 协议、路由 |
+| [`ios/README.md`](ios/README.md) | iPhone Edge |
+| [`mac/README.md`](mac/README.md) | Mac Edge |
+| [`android/app-v2/README.md`](android/app-v2/README.md) | Chromecast Edge |
+| [`android/living-room-android/README.md`](android/living-room-android/README.md) | 手机 Edge |
+| [`plugins/*/capability.md`](plugins/) | 插件 wire schema |
