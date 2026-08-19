@@ -118,6 +118,30 @@ enum IntentPlanStepRunStatus: Equatable {
     }
 }
 
+/// One `step_log` event from intent_detail / peek.
+struct IntentStepEvent: Equatable, Identifiable {
+    var id: String { identityKey }
+    let step: Int
+    let status: Int?
+    let msg: String
+    let at: Date?
+
+    var identityKey: String {
+        let ts = at.map { String(Int($0.timeIntervalSince1970 * 1000)) } ?? ""
+        return "\(step)|\(status.map(String.init) ?? "")|\(ts)|\(msg)"
+    }
+
+    var statusLabel: String {
+        switch status {
+        case 0: return "等待"
+        case 1: return "执行中"
+        case 2: return "完成"
+        case 3: return "失败"
+        default: return status.map { "status=\($0)" } ?? "记录"
+        }
+    }
+}
+
 /// One capability row from `execution_plan` (shown line-by-line in the UI).
 struct IntentPlanStepItem: Equatable, Identifiable {
     var id: String { "\(step)-\(capability)-\(index)" }
@@ -134,6 +158,10 @@ struct IntentPlanStepItem: Equatable, Identifiable {
     var runDetail: String
     var startedAt: Date?
     var finishedAt: Date?
+    var assignedEdge: String
+    var events: [IntentStepEvent]
+    /// Raw `execution_plan[].status` 0/1/2/3 when known.
+    var wireStatusCode: Int?
 
     init(
         index: Int,
@@ -145,7 +173,10 @@ struct IntentPlanStepItem: Equatable, Identifiable {
         runStatus: IntentPlanStepRunStatus = .waiting,
         runDetail: String = "",
         startedAt: Date? = nil,
-        finishedAt: Date? = nil
+        finishedAt: Date? = nil,
+        assignedEdge: String = "",
+        events: [IntentStepEvent] = [],
+        wireStatusCode: Int? = nil
     ) {
         self.index = index
         self.step = step
@@ -157,6 +188,22 @@ struct IntentPlanStepItem: Equatable, Identifiable {
         self.runDetail = runDetail
         self.startedAt = startedAt
         self.finishedAt = finishedAt
+        self.assignedEdge = assignedEdge
+        self.events = events
+        self.wireStatusCode = wireStatusCode
+    }
+
+    var realizedOutputs: [String: String] {
+        Dictionary(uniqueKeysWithValues: outputs.filter { !Self.isSchemaPlaceholder($0.value) })
+    }
+
+    var schemaOutputs: [String: String] {
+        Dictionary(uniqueKeysWithValues: outputs.filter { Self.isSchemaPlaceholder($0.value) })
+    }
+
+    static func isSchemaPlaceholder(_ value: String) -> Bool {
+        let t = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.hasPrefix("(") && t.hasSuffix(")")
     }
 
     func durationSeconds(now: Date = Date()) -> TimeInterval? {
@@ -167,13 +214,100 @@ struct IntentPlanStepItem: Equatable, Identifiable {
     }
 }
 
+/// Brain `intent_detail.presentation`. Endpoint renders by `type`; do not flatten to a fake reply.
+struct IntentPresentation: Equatable {
+    enum Kind: String, Equatable {
+        case text
+        case image
+        case video
+        case html
+        case audio
+    }
+
+    let type: Kind
+    let channel: String
+    /// Endpoint participant_id that should render this payload (not Intent Source).
+    let endpoint: String
+    let text: String
+    let imageURL: URL?
+    let videoURL: URL?
+
+    var hasContent: Bool {
+        switch type {
+        case .image:
+            return imageURL != nil
+        case .video:
+            return videoURL != nil
+        case .audio:
+            return videoURL != nil || !text.isEmpty
+        case .text, .html:
+            return !text.isEmpty
+        }
+    }
+
+    var copyText: String {
+        if !text.isEmpty { return text }
+        if let imageURL { return imageURL.absoluteString }
+        if let videoURL { return videoURL.absoluteString }
+        return ""
+    }
+
+    static func parse(_ raw: Any?) -> IntentPresentation? {
+        guard let obj = raw as? [String: Any] else { return nil }
+        let typeRaw = (obj["type"] as? String ?? "text")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let type: Kind = {
+            switch typeRaw {
+            case "image": return .image
+            case "video": return .video
+            case "html": return .html
+            case "audio": return .audio
+            default: return .text
+            }
+        }()
+        let channel = (obj["channel"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let endpoint = (obj["endpoint"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = (obj["text"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let imageURL = urlValue(obj["image_url"] ?? obj["imageUrl"] ?? obj["photo_url"])
+        let videoURL = urlValue(obj["video_url"] ?? obj["videoUrl"])
+        let pres = IntentPresentation(
+            type: type,
+            channel: channel,
+            endpoint: endpoint,
+            text: text,
+            imageURL: imageURL,
+            videoURL: videoURL
+        )
+        return pres.hasContent ? pres : nil
+    }
+
+    private static func urlValue(_ raw: Any?) -> URL? {
+        guard let s = raw as? String else { return nil }
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, let url = URL(string: t), url.scheme != nil else { return nil }
+        return url
+    }
+}
+
 struct IntentJobSnapshot: Equatable {
     let jobId: String
+    /// Display phase (may lead the wire, but never invents terminal).
     let status: IntentPhase
+    /// Raw `intent_status` / `status` from Brain. Terminal only when this is succeeded/failed.
+    let wireStatus: IntentPhase
     let text: String
+    let source: String
+    /// Issuer Intent Source id (`jobs.edge_id`), not the Runtime `assigned_edge_id`.
+    let issuerId: String
+    let createdAt: Date?
     let edgeNodeId: String?
     let error: String?
     let reply: String?
+    let presentation: IntentPresentation?
     let steps: [IntentJobStep]
     let planSteps: [IntentPlanStepItem]
 
@@ -201,36 +335,54 @@ struct IntentJobSnapshot: Equatable {
             ?? "intent_received"
         let wireStatus = IntentPhase.fromWire(statusRaw) ?? .uploaded
         let text = stringValue(json["text"]) ?? ""
+        let sourceRaw = (stringValue(json["source"]) ?? "text")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let source = sourceRaw == "voice" ? "voice" : "text"
+        let issuerId = stringValue(json["edge_id"])
+            ?? stringValue(json["participant_id"])
+            ?? ""
+        let createdAt = dateFromTs(json["created_at"])
+            ?? dateFromTs(json["intent_base_time"] ?? json["base_time"])
         let edgeNodeId = stringValue(json["edge_node_id"])
-            ?? stringValue(json["edge_id"])
-        let error = stringValue(json["error"])
+            ?? stringValue(json["assigned_edge_id"])
+            ?? stringValue(json["scheduler_node"])
         let reply = stringValue(json["reply"])
+        let presentation = IntentPresentation.parse(json["presentation"])
         // Production shared bag is `ctx_param` only.
-        let context = parseStringMap(json["ctx_param"])
-        let planSteps = parsePlanSteps(json["execution_plan"], context: context)
-        // Cross-edge: Brain may keep intent_status at intent_dispatched while
-        // execution_plan[].status is already 1/2/3 — elevate logistics from plan.
+        var context = parseStringMap(json["ctx_param"])
+        if context.isEmpty {
+            context = parseStringMap(json["context"])
+        }
+        let stepOutputs = parseStepOutputsBag(json["step_outputs"])
+        let stepLog = parseStepLog(json["step_log"])
+        let planSteps = parsePlanSteps(
+            json["execution_plan"],
+            context: context,
+            stepOutputs: stepOutputs,
+            stepLog: stepLog
+        )
+        // Plan steps may lead dispatched → running. Job-level intent_status is
+        // the only terminal signal; all capability steps done ≠ intent succeeded
+        // (Brain may still be assembling presentation).
         let status = phaseFromPlanSteps(planSteps, fallback: wireStatus)
-        var steps: [IntentJobStep] = []
-        if let arr = json["steps"] as? [[String: Any]] {
+        let error = resolveError(
+            json: json,
+            status: status,
+            planSteps: planSteps
+        )
+        var steps: [IntentJobStep] = parseStatusLog(json["status_log"])
+        if steps.isEmpty, let arr = json["steps"] as? [[String: Any]] {
             for s in arr {
                 let raw = stringValue(s["intent_status"])
                     ?? stringValue(s["status"])
                     ?? ""
                 guard let phase = IntentPhase.fromWire(raw) else { continue }
-                let at: Date?
-                if let ts = s["at"] as? Double {
-                    at = Date(timeIntervalSince1970: ts)
-                } else if let ts = s["at"] as? Int {
-                    at = Date(timeIntervalSince1970: TimeInterval(ts))
-                } else {
-                    at = nil
-                }
                 steps.append(
                     IntentJobStep(
                         status: phase,
-                        at: at,
-                        detail: stringValue(s["detail"]) ?? ""
+                        at: dateFromTs(s["at"] ?? s["ts"]),
+                        detail: stringValue(s["detail"]) ?? stringValue(s["msg"]) ?? ""
                     )
                 )
             }
@@ -255,36 +407,38 @@ struct IntentJobSnapshot: Equatable {
         return IntentJobSnapshot(
             jobId: jobId,
             status: status,
+            wireStatus: wireStatus,
             text: text,
+            source: source,
+            issuerId: issuerId,
+            createdAt: createdAt,
             edgeNodeId: edgeNodeId,
             error: error,
             reply: reply,
+            presentation: presentation,
             steps: steps,
             planSteps: planSteps
         )
     }
 
     /// Map numeric plan step status → logistics phase when whole-job status lags.
+    /// Never invent succeeded/failed: Intent Source only treats the job as done
+    /// when Brain `intent_status` is succeeded or failed.
     static func phaseFromPlanSteps(
         _ planSteps: [IntentPlanStepItem],
         fallback: IntentPhase
     ) -> IntentPhase {
+        if fallback.isTerminal {
+            return fallback
+        }
         guard !planSteps.isEmpty else { return fallback }
-        if planSteps.contains(where: { $0.runStatus == .failed }) {
-            return .failed
+        let anyStarted = planSteps.contains {
+            $0.runStatus == .running
+                || $0.runStatus == .succeeded
+                || $0.runStatus == .failed
+                || $0.runStatus == .skipped
         }
-        if planSteps.contains(where: { $0.runStatus == .running }) {
-            return .running
-        }
-        let allDone = planSteps.allSatisfy {
-            $0.runStatus == .succeeded || $0.runStatus == .skipped
-        }
-        if allDone {
-            return .succeeded
-        }
-        if planSteps.contains(where: { $0.runStatus == .succeeded }),
-           fallback.rank < IntentPhase.running.rank
-        {
+        if anyStarted, fallback.rank < IntentPhase.running.rank {
             return .running
         }
         return fallback
@@ -295,17 +449,111 @@ struct IntentJobSnapshot: Equatable {
         var out: [String: String] = [:]
         for (k, v) in dict {
             let key = k.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !key.isEmpty, let s = stringValue(v), !s.isEmpty else { continue }
+            guard !key.isEmpty, let s = displayValue(v), !s.isEmpty else { continue }
             out[key] = s
         }
         return out
     }
 
+    private static func parseStepOutputsBag(_ raw: Any?) -> [String: [String: String]] {
+        guard let dict = raw as? [String: Any] else { return [:] }
+        var out: [String: [String: String]] = [:]
+        for (k, v) in dict {
+            let bag = parseStringMap(v)
+            guard !bag.isEmpty else { continue }
+            out[k.trimmingCharacters(in: .whitespacesAndNewlines)] = bag
+        }
+        return out
+    }
+
+    private static func parseStepLog(_ raw: Any?) -> [IntentStepEvent] {
+        guard let arr = raw as? [Any] else { return [] }
+        var events: [IntentStepEvent] = []
+        for item in arr {
+            guard let row = item as? [String: Any] else { continue }
+            let step: Int = {
+                if let n = row["step"] as? Int { return n }
+                if let n = row["step"] as? NSNumber { return n.intValue }
+                if let s = stringValue(row["step"]), let n = Int(s) { return n }
+                return 0
+            }()
+            guard step > 0 else { continue }
+            let status: Int? = {
+                let raw = row["status"] ?? row["step_status"]
+                if let i = raw as? Int { return i }
+                if let n = raw as? NSNumber { return n.intValue }
+                if let s = stringValue(raw), let i = Int(s) { return i }
+                return nil
+            }()
+            events.append(
+                IntentStepEvent(
+                    step: step,
+                    status: status,
+                    msg: displayValue(row["msg"])
+                        ?? displayValue(row["message"])
+                        ?? displayValue(row["detail"])
+                        ?? "",
+                    at: dateFromTs(row["ts"] ?? row["at"])
+                )
+            )
+        }
+        return events
+    }
+
+    private static func parseStatusLog(_ raw: Any?) -> [IntentJobStep] {
+        guard let arr = raw as? [[String: Any]], !arr.isEmpty else { return [] }
+        var steps: [IntentJobStep] = []
+        for s in arr {
+            let rawStatus = stringValue(s["status"]) ?? stringValue(s["intent_status"]) ?? ""
+            guard let phase = IntentPhase.fromWire(rawStatus) else { continue }
+            steps.append(
+                IntentJobStep(
+                    status: phase,
+                    at: dateFromTs(s["ts"] ?? s["at"]),
+                    detail: stringValue(s["msg"]) ?? stringValue(s["detail"]) ?? ""
+                )
+            )
+        }
+        return steps
+    }
+
+    private static func resolveError(
+        json: [String: Any],
+        status: IntentPhase,
+        planSteps: [IntentPlanStepItem]
+    ) -> String? {
+        let explicit = stringValue(json["error"])
+            ?? stringValue(json["fail_reason"])
+            ?? stringValue(json["failure_reason"])
+        if let explicit, !explicit.isEmpty { return explicit }
+        let failed = planSteps.filter { $0.runStatus == .failed }
+        if !failed.isEmpty {
+            return failed.map { item in
+                let detail = item.runDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+                if detail.isEmpty {
+                    return "step \(item.step) \(item.capability) 失败"
+                }
+                return "step \(item.step) \(item.capability)：\(detail)"
+            }.joined(separator: "\n")
+        }
+        if status == .failed {
+            if let msg = stringValue(json["msg"]) ?? stringValue(json["message"]),
+               !msg.isEmpty {
+                return msg
+            }
+            return "意图失败，服务端未返回失败原因"
+        }
+        return nil
+    }
+
     private static func parsePlanSteps(
         _ raw: Any?,
-        context: [String: String] = [:]
+        context: [String: String] = [:],
+        stepOutputs: [String: [String: String]] = [:],
+        stepLog: [IntentStepEvent] = []
     ) -> [IntentPlanStepItem] {
         guard let plan = raw as? [[String: Any]], !plan.isEmpty else { return [] }
+        let eventsByStep: [Int: [IntentStepEvent]] = Dictionary(grouping: stepLog, by: \.step)
         var items: [IntentPlanStepItem] = []
         for (idx, row) in plan.enumerated() {
             let capabilityRaw = stringValue(row["capability"]) ?? ""
@@ -317,6 +565,7 @@ struct IntentJobSnapshot: Equatable {
                 return idx + 1
             }()
             let runStatus = planStepRunStatus(from: row)
+            let wireCode = planStepStatusCode(from: row)
             let inputs = resolvePlaceholders(parseStepInputs(row), context: context)
             var outputs = parseStepOutputs(row)
             // Surface context keys declared by this step's output_constrict when realized.
@@ -328,16 +577,33 @@ struct IntentJobSnapshot: Equatable {
                     }
                 }
             }
+            if let bag = stepOutputs[String(stepNum)] ?? stepOutputs["\(stepNum)"] {
+                for (k, v) in bag where !v.isEmpty {
+                    if outputs[k] == nil || IntentPlanStepItem.isSchemaPlaceholder(outputs[k] ?? "") {
+                        outputs[k] = v
+                    }
+                }
+            }
+            let assignedEdge = stringValue(row["assigned_edge_id"]) ?? ""
+            let events = eventsByStep[stepNum] ?? []
+            let runDetail = resolveStepRunDetail(
+                row: row,
+                runStatus: runStatus,
+                events: events
+            )
             var parts: [String] = []
-            if let edge = stringValue(row["assigned_edge_id"]),
-               !edge.isEmpty {
-                parts.append("edge=\(edge)")
+            if !assignedEdge.isEmpty {
+                parts.append("edge=\(assignedEdge)")
+            }
+            if let timing = formatExecutionTiming(row["execution_timing"]) {
+                parts.append(timing)
             }
             if !inputs.isEmpty {
                 parts.append("in[\(inputs.keys.sorted().joined(separator: ","))]")
             }
-            if !outputs.isEmpty {
-                parts.append("out[\(outputs.keys.sorted().joined(separator: ","))]")
+            let realizedKeys = outputs.filter { !IntentPlanStepItem.isSchemaPlaceholder($0.value) }.keys.sorted()
+            if !realizedKeys.isEmpty {
+                parts.append("out[\(realizedKeys.joined(separator: ","))]")
             }
             items.append(
                 IntentPlanStepItem(
@@ -347,11 +613,56 @@ struct IntentJobSnapshot: Equatable {
                     summary: parts.joined(separator: " · "),
                     inputs: inputs,
                     outputs: outputs,
-                    runStatus: runStatus
+                    runStatus: runStatus,
+                    runDetail: runDetail,
+                    assignedEdge: assignedEdge,
+                    events: events,
+                    wireStatusCode: wireCode
                 )
             )
         }
         return items
+    }
+
+    private static func resolveStepRunDetail(
+        row: [String: Any],
+        runStatus: IntentPlanStepRunStatus,
+        events: [IntentStepEvent]
+    ) -> String {
+        if let msg = displayValue(row["msg"]) ?? displayValue(row["message"]) ?? displayValue(row["error"]),
+           !msg.isEmpty {
+            return msg
+        }
+        if let last = events.reversed().first(where: { !$0.msg.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            return last.msg
+        }
+        if runStatus == .failed {
+            return "失败（step_status=3），服务端未返回失败原因"
+        }
+        return ""
+    }
+
+    private static func formatExecutionTiming(_ raw: Any?) -> String? {
+        guard let timing = raw as? [String: Any] else { return nil }
+        let mode = (stringValue(timing["mode"]) ?? "").lowercased()
+        switch mode {
+        case "interval":
+            let interval = stringValue(timing["interval_sec"]) ?? stringValue(timing["interval"])
+            let count = stringValue(timing["count"])
+            var parts: [String] = ["interval"]
+            if let interval, !interval.isEmpty { parts.append("每\(interval)s") }
+            if let count, !count.isEmpty { parts.append("×\(count)") }
+            return parts.joined(separator: " ")
+        case "delay":
+            if let sec = stringValue(timing["delay_sec"]) ?? stringValue(timing["delay"]) {
+                return "delay \(sec)s"
+            }
+            return "delay"
+        case "immediate", "":
+            return nil
+        default:
+            return mode
+        }
     }
 
     /// `input_constrict` plus common top-level input fields on the step.
@@ -360,12 +671,12 @@ struct IntentJobSnapshot: Equatable {
         if let constrict = row["input_constrict"] as? [String: Any] {
             for (k, v) in constrict {
                 let key = k.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !key.isEmpty, let s = stringValue(v), !s.isEmpty else { continue }
+                guard !key.isEmpty, let s = displayValue(v), !s.isEmpty else { continue }
                 inputs[key] = s
             }
         }
         for key in ["photo_url", "song", "artist", "album"] {
-            if inputs[key] == nil, let v = stringValue(row[key]), !v.isEmpty {
+            if inputs[key] == nil, let v = displayValue(row[key]), !v.isEmpty {
                 inputs[key] = v
             }
         }
@@ -378,7 +689,7 @@ struct IntentJobSnapshot: Equatable {
         if let realized = row["outputs"] as? [String: Any] {
             for (k, v) in realized {
                 let key = k.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !key.isEmpty, let s = stringValue(v), !s.isEmpty else { continue }
+                guard !key.isEmpty, let s = displayValue(v), !s.isEmpty else { continue }
                 outputs[key] = s
             }
         }
@@ -401,7 +712,7 @@ struct IntentJobSnapshot: Equatable {
             }
         }
         // Top-level photo_url after bind is an output for camera.capture readers.
-        if outputs["photo_url"] == nil || outputs["photo_url"]?.hasPrefix("(") == true,
+        if outputs["photo_url"] == nil || IntentPlanStepItem.isSchemaPlaceholder(outputs["photo_url"] ?? ""),
            let v = stringValue(row["photo_url"]),
            v.lowercased().hasPrefix("http") {
             outputs["photo_url"] = v
@@ -435,15 +746,16 @@ struct IntentJobSnapshot: Equatable {
     }
 
     /// Brain `execution_plan[].status` / `step_status`: 0 waiting · 1 running · 2 ok · 3 fail.
-    private static func planStepRunStatus(from row: [String: Any]) -> IntentPlanStepRunStatus {
+    private static func planStepStatusCode(from row: [String: Any]) -> Int? {
         let raw = row["status"] ?? row["step_status"]
-        let code: Int? = {
-            if let i = raw as? Int { return i }
-            if let n = raw as? NSNumber { return n.intValue }
-            if let s = stringValue(raw), let i = Int(s) { return i }
-            return nil
-        }()
-        switch code {
+        if let i = raw as? Int { return i }
+        if let n = raw as? NSNumber { return n.intValue }
+        if let s = stringValue(raw), let i = Int(s) { return i }
+        return nil
+    }
+
+    private static func planStepRunStatus(from row: [String: Any]) -> IntentPlanStepRunStatus {
+        switch planStepStatusCode(from: row) {
         case 1: return .running
         case 2: return .succeeded
         case 3: return .failed
@@ -481,9 +793,14 @@ struct IntentJobSnapshot: Equatable {
             }()
             guard let prior else { return copy }
             copy.runStatus = preferredRunStatus(prior.runStatus, item.runStatus)
-            if !prior.runDetail.isEmpty { copy.runDetail = prior.runDetail }
+            if copy.runDetail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                copy.runDetail = prior.runDetail
+            }
             copy.inputs = mergeStringMap(prior: prior.inputs, incoming: item.inputs)
             copy.outputs = mergeStringMap(prior: prior.outputs, incoming: item.outputs)
+            copy.assignedEdge = item.assignedEdge.isEmpty ? prior.assignedEdge : item.assignedEdge
+            copy.events = mergeStepEvents(prior.events, item.events)
+            copy.wireStatusCode = item.wireStatusCode ?? prior.wireStatusCode
             copy.startedAt = prior.startedAt ?? item.startedAt
             if copy.runStatus.isTerminal {
                 copy.finishedAt = prior.finishedAt ?? item.finishedAt ?? Date()
@@ -492,6 +809,20 @@ struct IntentJobSnapshot: Equatable {
             }
             return copy
         }
+    }
+
+    private static func mergeStepEvents(
+        _ prior: [IntentStepEvent],
+        _ incoming: [IntentStepEvent]
+    ) -> [IntentStepEvent] {
+        var seen = Set<String>()
+        var out: [IntentStepEvent] = []
+        for event in prior + incoming {
+            if seen.contains(event.identityKey) { continue }
+            seen.insert(event.identityKey)
+            out.append(event)
+        }
+        return out.sorted { ($0.at ?? .distantPast) < ($1.at ?? .distantPast) }
     }
 
     /// Prefer concrete values over schema placeholders like `(string → context)`.
@@ -552,10 +883,51 @@ struct IntentJobSnapshot: Equatable {
 
     private static func stringValue(_ v: Any?) -> String? {
         switch v {
-        case let s as String: return s
-        case let n as NSNumber: return n.stringValue
-        default: return nil
+        case let s as String:
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : t
+        case let n as NSNumber:
+            if CFGetTypeID(n) == CFBooleanGetTypeID() {
+                return n.boolValue ? "true" : "false"
+            }
+            return n.stringValue
+        default:
+            return nil
         }
+    }
+
+    /// Nested JSON (dicts/arrays) as compact text for input/output display.
+    private static func displayValue(_ v: Any?) -> String? {
+        if let s = stringValue(v) { return s }
+        if v is NSNull || v == nil { return nil }
+        if let dict = v as? [String: Any],
+           JSONSerialization.isValidJSONObject(dict),
+           let data = try? JSONSerialization.data(withJSONObject: dict),
+           let s = String(data: data, encoding: .utf8) {
+            return s
+        }
+        if let arr = v as? [Any],
+           JSONSerialization.isValidJSONObject(arr),
+           let data = try? JSONSerialization.data(withJSONObject: arr),
+           let s = String(data: data, encoding: .utf8) {
+            return s
+        }
+        return nil
+    }
+
+    private static func dateFromTs(_ raw: Any?) -> Date? {
+        let n: Double? = {
+            if let d = raw as? Double { return d }
+            if let i = raw as? Int { return Double(i) }
+            if let num = raw as? NSNumber { return num.doubleValue }
+            if let s = raw as? String, let d = Double(s) { return d }
+            return nil
+        }()
+        guard let n, n > 0 else { return nil }
+        if n >= 1_000_000_000_000 {
+            return Date(timeIntervalSince1970: n / 1000.0)
+        }
+        return Date(timeIntervalSince1970: n)
     }
 
     private static func stripTimingSuffix(_ text: String) -> String {
@@ -574,11 +946,53 @@ struct IntentJourney: Equatable {
     var timedOut: Bool
     var edgeNodeId: String?
     var error: String?
+    var reply: String?
+    /// Brain-assembled user-facing result; Endpoint renders this, not step_outputs.
+    var presentation: IntentPresentation?
     /// Capability rows from execution_plan (one line per step in UI).
     var planSteps: [IntentPlanStepItem]
+    /// True before the first POST; all logistics steps stay pending.
+    var idle: Bool
 
     /// Wire status string for header (e.g. intent_parsed).
     var currentWireStatus: String { current.wireValue }
+
+    /// Empty logistics track shown on the home screen before an intent is sent.
+    static var idlePlaceholder: IntentJourney {
+        IntentJourney(
+            jobId: "",
+            text: "",
+            phases: blankPhases(),
+            current: .uploaded,
+            terminal: false,
+            timedOut: false,
+            edgeNodeId: nil,
+            error: nil,
+            reply: nil,
+            presentation: nil,
+            planSteps: [],
+            idle: true
+        )
+    }
+
+    static func hydrated(from snapshot: IntentJobSnapshot) -> IntentJourney {
+        let displayStatus = snapshot.wireStatus.isTerminal ? snapshot.wireStatus : snapshot.status
+        var journey = make(
+            jobId: snapshot.jobId,
+            text: snapshot.text,
+            status: displayStatus
+        )
+        journey.reply = snapshot.reply
+        journey.presentation = snapshot.presentation
+        journey.apply(
+            status: displayStatus,
+            steps: snapshot.steps,
+            edgeNodeId: snapshot.edgeNodeId,
+            error: snapshot.error
+        )
+        journey.planSteps = snapshot.planSteps
+        return journey
+    }
 
     static func make(jobId: String, text: String, status: IntentPhase) -> IntentJourney {
         var journey = IntentJourney(
@@ -590,7 +1004,10 @@ struct IntentJourney: Equatable {
             timedOut: false,
             edgeNodeId: nil,
             error: nil,
-            planSteps: []
+            reply: nil,
+            presentation: nil,
+            planSteps: [],
+            idle: false
         )
         journey.apply(status: status, steps: [], edgeNodeId: nil, error: nil)
         return journey
@@ -609,7 +1026,12 @@ struct IntentJourney: Equatable {
         terminal = status.isTerminal
         timedOut = false
         if let edgeNodeId { self.edgeNodeId = edgeNodeId }
-        if let error, !error.isEmpty { self.error = error }
+        if let error, !error.isEmpty {
+            let prior = (self.error ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if prior.isEmpty || error.count >= prior.count {
+                self.error = error
+            }
+        }
 
         let detailByPhase: [IntentPhase: String] = {
             var map: [IntentPhase: String] = [:]
@@ -767,10 +1189,8 @@ final class IntentJourneyStore: ObservableObject {
     @Published private(set) var polling: Bool = false
 
     private var pollTask: Task<Void, Never>?
-    /// Fast while steps are running/queued so Mac cast success shows up quickly on phone.
-    private let pollIntervalActiveNs: UInt64 = 1_000_000_000 // 1s
-    private let pollIntervalIdleNs: UInt64 = 5_000_000_000 // 5s
-    /// GoPro capture+upload+cast often exceeds 60s; keep polling while job is non-terminal.
+    /// Phone is an intent source only: poll Brain every 5s until terminal.
+    private let pollIntervalNs: UInt64 = 5_000_000_000
     private let timeoutSeconds: TimeInterval = 600
     /// Reset idle timeout whenever detail shows progress (running / new wire status).
     private var lastProgressAt: Date?
@@ -811,6 +1231,8 @@ final class IntentJourneyStore: ObservableObject {
             text: snapshot.text.isEmpty ? "" : snapshot.text,
             status: snapshot.status
         )
+        journey.reply = snapshot.reply
+        journey.presentation = snapshot.presentation
         journey.apply(
             status: snapshot.status,
             steps: snapshot.steps,
@@ -843,6 +1265,15 @@ final class IntentJourneyStore: ObservableObject {
             startFromPost(snapshot)
             return
         }
+        if !snapshot.text.isEmpty {
+            journey.text = snapshot.text
+        }
+        if let reply = snapshot.reply, !reply.isEmpty {
+            journey.reply = reply
+        }
+        if let pres = snapshot.presentation {
+            journey.presentation = pres
+        }
         if !snapshot.planSteps.isEmpty {
             journey.planSteps = IntentJobSnapshot.mergePlanStepProgress(
                 existing: journey.planSteps,
@@ -850,23 +1281,32 @@ final class IntentJourneyStore: ObservableObject {
             )
         }
         // Prefer elevated phase from plan step 0/1/2/3 over lagging intent_dispatched.
+        // Do not invent terminal from plan: Brain may still be running after the last capability.
         let elevated = IntentJobSnapshot.phaseFromPlanSteps(
             journey.planSteps,
-            fallback: snapshot.status
+            fallback: snapshot.wireStatus
         )
-        // Never let a lagging intent_detail / in-flight poll rewind a finished journey
-        // back to intent_received / intent_dispatched (looks like stuck on 上传).
-        if journey.terminal, !elevated.isTerminal {
+        // A locally invented succeeded/failed must yield if Brain still says running.
+        let wireStillOpen = !snapshot.wireStatus.isTerminal
+        if journey.terminal, wireStillOpen {
+            NSLog(
+                "[IntentJourneyStore] reopen invented terminal intent_id=%@ wire=%@",
+                snapshot.jobId,
+                snapshot.wireStatus.wireValue
+            )
+        } else if journey.terminal, !elevated.isTerminal {
             activeJourney = journey
             return
         }
-        if journey.current.rank > elevated.rank, !elevated.isTerminal {
-            let reopenForLaterStep = elevated == .running
-                && journey.current == .succeeded
-                && journey.planSteps.contains { !$0.runStatus.isTerminal }
-            if !reopenForLaterStep {
-                activeJourney = journey
-                return
+        if !wireStillOpen || !journey.terminal {
+            if journey.current.rank > elevated.rank, !elevated.isTerminal {
+                let reopenForLaterStep = elevated == .running
+                    && journey.current == .succeeded
+                    && journey.planSteps.contains { !$0.runStatus.isTerminal }
+                if !reopenForLaterStep {
+                    activeJourney = journey
+                    return
+                }
             }
         }
         if elevated != snapshot.status {
@@ -879,22 +1319,20 @@ final class IntentJourneyStore: ObservableObject {
         }
         journey.apply(
             status: elevated,
-            steps: snapshot.steps.map {
-                IntentJobStep(status: elevated, at: $0.at, detail: $0.detail)
-            },
+            steps: snapshot.steps,
             edgeNodeId: snapshot.edgeNodeId,
             error: snapshot.error
         )
         reconcilePlanSteps(on: &journey, intentStatus: elevated)
         activeJourney = journey
-        if elevated.isTerminal {
+        if elevated.isTerminal, snapshot.wireStatus.isTerminal {
             stopPolling()
         }
     }
 
     /// Brain reuses ids; these statuses indicate a brand-new intent lifecycle.
     private static func looksLikeNewIntentLifecycle(_ snapshot: IntentJobSnapshot) -> Bool {
-        switch snapshot.status {
+        switch snapshot.wireStatus {
         case .uploaded, .intentParsed:
             return true
         default:
@@ -907,125 +1345,6 @@ final class IntentJourneyStore: ObservableObject {
             return true
         }
         return false
-    }
-
-    /// Local Edge marks each capability as it runs (intent_status alone is whole-job).
-    func updatePlanStep(
-        intentId: String,
-        capability: String,
-        status: IntentPlanStepRunStatus,
-        detail: String? = nil,
-        outputs: [String: String]? = nil
-    ) {
-        let id = intentId.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cap = capability.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !id.isEmpty, !cap.isEmpty else { return }
-        let outputPatch = (outputs ?? [:]).filter { !$0.key.isEmpty && !$0.value.isEmpty }
-
-        if activeJourney == nil || activeJourney?.jobId != id {
-            var journey = IntentJourney.make(
-                jobId: id,
-                text: activeJourney?.text ?? "",
-                status: status == .failed ? .failed : (status == .running ? .running : .assigned)
-            )
-            let now = Date()
-            journey.planSteps = [
-                IntentPlanStepItem(
-                    index: 0,
-                    step: 1,
-                    capability: cap,
-                    summary: "",
-                    outputs: outputPatch,
-                    runStatus: status,
-                    runDetail: detail ?? "",
-                    startedAt: status == .waiting ? nil : now,
-                    finishedAt: status.isTerminal ? now : nil
-                ),
-            ]
-            lastProgressAt = Date()
-            activeJourney = journey
-            return
-        }
-
-        guard var journey = activeJourney else { return }
-
-        if let idx = Self.indexForPlanStepUpdate(
-            capability: cap,
-            status: status,
-            in: journey.planSteps
-        ) {
-            let current = journey.planSteps[idx].runStatus
-            // Stale wait_wifi / progress after the step already finished — do not
-            // spawn a second camera.capture row.
-            if current.isTerminal {
-                if status == .running || status == .queued { return }
-                if current == .succeeded, status == .failed { return }
-            }
-            let now = Date()
-            var row = journey.planSteps[idx]
-            if row.startedAt == nil, status == .running || status == .queued || status.isTerminal {
-                row.startedAt = now
-            }
-            if status.isTerminal, row.finishedAt == nil {
-                row.finishedAt = now
-            }
-            row.runStatus = status
-            if let detail, !detail.isEmpty {
-                row.runDetail = detail
-            }
-            if !outputPatch.isEmpty {
-                row.outputs = IntentJobSnapshot.mergeStringMap(prior: row.outputs, incoming: outputPatch)
-            }
-            journey.planSteps[idx] = row
-        } else if !journey.planSteps.contains(where: { $0.capability == cap }) {
-            // Only append when this capability is not already on the plan (e.g. synthetic).
-            let next = journey.planSteps.count
-            let now = Date()
-            journey.planSteps.append(
-                IntentPlanStepItem(
-                    index: next,
-                    step: next + 1,
-                    capability: cap,
-                    summary: "",
-                    outputs: outputPatch,
-                    runStatus: status,
-                    runDetail: detail ?? "",
-                    startedAt: (status == .waiting ? nil : now),
-                    finishedAt: (status.isTerminal ? now : nil)
-                )
-            )
-        } else {
-            // Same capability already present but no safe row to update — ignore.
-            return
-        }
-        lastProgressAt = Date()
-        activeJourney = journey
-    }
-
-    /// Pick the plan row to update; never returns a succeeded row for a new `.running` wave.
-    private static func indexForPlanStepUpdate(
-        capability: String,
-        status: IntentPlanStepRunStatus,
-        in steps: [IntentPlanStepItem]
-    ) -> Int? {
-        if status == .running || status == .queued {
-            return steps.firstIndex(where: {
-                $0.capability == capability && !$0.runStatus.isTerminal
-            })
-        }
-        if status.isTerminal {
-            if let i = steps.firstIndex(where: {
-                $0.capability == capability && ($0.runStatus == .running || $0.runStatus == .queued)
-            }) {
-                return i
-            }
-            return steps.firstIndex(where: {
-                $0.capability == capability && !$0.runStatus.isTerminal
-            })
-        }
-        return steps.firstIndex(where: {
-            $0.capability == capability && !$0.runStatus.isTerminal
-        })
     }
 
     private func reconcilePlanSteps(on journey: inout IntentJourney, intentStatus: IntentPhase) {
@@ -1070,52 +1389,9 @@ final class IntentJourneyStore: ObservableObject {
         }
     }
 
-    /// Advance logistics timeline from Edge step execution.
-    /// Needed when Brain keeps whole-job status at `intent_dispatched` and only
-    /// updates per-step status (cross-edge path).
-    func applyLocalPhase(
-        intentId: String,
-        phase: IntentPhase,
-        detail: String = "",
-        edgeNodeId: String? = nil,
-        error: String? = nil
-    ) {
-        NSLog(
-            "[IntentJourneyStore] applyLocalPhase intent_id=%@ phase=%@",
-            intentId,
-            phase.wireValue
-        )
-        let id = intentId.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !id.isEmpty else { return }
-
-        if activeJourney == nil || activeJourney?.jobId != id {
-            var journey = IntentJourney.make(jobId: id, text: activeJourney?.text ?? "", status: phase)
-            journey.apply(
-                status: phase,
-                steps: [IntentJobStep(status: phase, at: Date(), detail: detail)],
-                edgeNodeId: edgeNodeId,
-                error: error,
-                failedAt: phase == .failed ? .running : nil
-            )
-            activeJourney = journey
-            return
-        }
-
-        guard var journey = activeJourney else { return }
-        if !phase.isTerminal, phase.rank < journey.current.rank {
-            return
-        }
-        journey.apply(
-            status: phase,
-            steps: [IntentJobStep(status: phase, at: Date(), detail: detail)],
-            edgeNodeId: edgeNodeId,
-            error: error,
-            failedAt: phase == .failed ? (journey.current.isTerminal ? .succeeded : journey.current) : nil
-        )
+    func adopt(_ journey: IntentJourney) {
+        stopPolling()
         activeJourney = journey
-        if phase.isTerminal {
-            stopPolling()
-        }
     }
 
     func startPolling(
@@ -1131,19 +1407,13 @@ final class IntentJourneyStore: ObservableObject {
             if let self, !Task.isCancelled, let snap = await fetch(jobId) {
                 self.applyServerJob(snap)
                 self.lastProgressAt = Date()
-                if snap.status.isTerminal {
+                if snap.wireStatus.isTerminal {
                     self.stopPolling()
                     return
                 }
             }
             while !Task.isCancelled {
-                let busy = self?.activeJourney?.planSteps.contains {
-                    $0.runStatus == .running || $0.runStatus == .queued
-                } ?? false
-                let sleepNs = busy
-                    ? (self?.pollIntervalActiveNs ?? 1_000_000_000)
-                    : (self?.pollIntervalIdleNs ?? 5_000_000_000)
-                try? await Task.sleep(nanoseconds: sleepNs)
+                try? await Task.sleep(nanoseconds: self?.pollIntervalNs ?? 5_000_000_000)
                 guard let self, !Task.isCancelled else { return }
                 let idleAnchor = self.lastProgressAt ?? started
                 if Date().timeIntervalSince(idleAnchor) >= self.timeoutSeconds {
@@ -1156,23 +1426,23 @@ final class IntentJourneyStore: ObservableObject {
                     return
                 }
                 if let snap = await fetch(jobId) {
-                    // Fetch is not cancel-aware; skip stale apply after stopPolling/success.
+                    // Fetch is not cancel-aware; skip stale apply after stopPolling.
                     guard !Task.isCancelled else { return }
-                    if self.activeJourney?.terminal == true { return }
+                    if snap.wireStatus.isTerminal {
+                        self.applyServerJob(snap)
+                        self.stopPolling()
+                        return
+                    }
                     let before = self.activeJourney?.current
                     self.applyServerJob(snap)
                     let locallyRunning = self.activeJourney?.planSteps.contains {
                         $0.runStatus == .running || $0.runStatus == .queued
                     } ?? false
                     if self.activeJourney?.current != before
-                        || snap.status == .running
+                        || snap.wireStatus == .running
                         || locallyRunning
                     {
                         self.lastProgressAt = Date()
-                    }
-                    if self.activeJourney?.terminal == true || snap.status.isTerminal {
-                        self.stopPolling()
-                        return
                     }
                 }
             }

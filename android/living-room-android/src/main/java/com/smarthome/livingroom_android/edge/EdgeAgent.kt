@@ -266,6 +266,7 @@ class EdgeAgent(
             room = identity.room,
             services = registry.services(),
             appVersion = identity.appVersion,
+            location = identity.location,
         )
         postStatus("No cached edge_id — registering with Brain…")
         val response = brain.registerEdge(request)
@@ -309,6 +310,7 @@ class EdgeAgent(
             health = health,
             services = registry.services(),
             appVersion = identity.appVersion,
+            location = identity.location,
         )
     }
 

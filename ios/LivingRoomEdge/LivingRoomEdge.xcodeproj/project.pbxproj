@@ -7,462 +7,131 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		B2C3D4E5F60718293A4B5C6D /* ExecutionTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* ExecutionTiming.swift */; };
-		04044BBDBA324C319CEE3DD3 /* Skill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F0EC9835C94F16A5DDC64E /* Skill.swift */; };
-		051B5AD297FD42B0AB78AD75 /* IntentController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16A5EA03DB0440A4948CAC43 /* IntentController.swift */; };
-		0C75EA4CFE7746BFBE1C30AE /* Asset.swift in Sources */ = {isa = PBXBuildFile; fileRef = D405C2BB8F884E5EB587BBA4 /* Asset.swift */; };
-		0C82F2F699B740CFA5FF7C29 /* CapabilityDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53054BBBAD184E3F97D2ECA9 /* CapabilityDriver.swift */; };
-		0C835939585B460A9EF9BDAA /* RuntimeContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4652BE870EE47F4815EED28 /* RuntimeContext.swift */; };
-		133A94070DB94209A35A65AE /* LivingRoomEdgeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5256856E988A4A5D98EF85AC /* LivingRoomEdgeApp.swift */; };
-		1EB4DD3611A045968B7C2CD5 /* GoProHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = E13A135E18144B36B75EC387 /* GoProHTTP.swift */; };
-		22255CE19301423F9234DE13 /* GoProSkill.swift in Sources */ = {isa = PBXBuildFile; fileRef = E383680B964C4D4D9BD15760 /* GoProSkill.swift */; };
-		2231261D30264A1CBF2FF801 /* NetEaseDeepLinkLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4232A1FD441A4ECABAC507AD /* NetEaseDeepLinkLauncher.swift */; };
-		2594187DFFA54E7292CD90E9 /* PhotoAlbumSaver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 934C12A78CA147E1A6025A09 /* PhotoAlbumSaver.swift */; };
-		2B4FD7F8DF26455595E55F9E /* EdgeRuntimeContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6B5A17A3235425B93C0B6EF /* EdgeRuntimeContext.swift */; };
-		35E074F3C2BA4CF3941C0B38 /* NetEasePluginEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFE32BE4005D4D48AEF7D654 /* NetEasePluginEntry.swift */; };
-		40011AD6525646A488BA6514 /* HttpCommandSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1628419B524E4A4894EE8C8F /* HttpCommandSource.swift */; };
-		41A39C3172824FF3B3D7BA5E /* RuntimeAgentSDK.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0215D7991D8642BF98C38AF8 /* RuntimeAgentSDK.swift */; };
-		45DD78789C1444A5BCACD29E /* CameraCaptureCapabilityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7962CFF5DDFC44AA94DF5C00 /* CameraCaptureCapabilityPlugin.swift */; };
-		461A11884A5A46D0AA5495B1 /* ChromecastPluginEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D498EEDDFF4688B4A25701 /* ChromecastPluginEntry.swift */; };
-		4D9EA227DD63418387AF3A13 /* RuntimeHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9ACDCECEB0D4C00B9C505D8 /* RuntimeHTTP.swift */; };
-		50AF4C639BE44A11A64D331E /* MockBrainClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D37CF94A6E554B068519FBA8 /* MockBrainClient.swift */; };
-		5A3022258AB148BDB0919DFE /* AssetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B7EE59BAA49489580ACA3D0 /* AssetManager.swift */; };
-		5A45FFD250774B6BB984D8DA /* CommandSkill.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB6C437A1A24FA7B252A1DD /* CommandSkill.swift */; };
-		5E79E0ABE2734B29A44F7B5B /* TaskDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23F32954D3B44ED6A67CDDDD /* TaskDispatcher.swift */; };
-		646F7FCF89B74441B1E04469 /* CommandModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EB8578479354E7289EAB795 /* CommandModels.swift */; };
-		660D8872BFC6402DB08EBD38 /* GoProDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEC0237F0CCF4D61836FA32A /* GoProDriver.swift */; };
-		6914AA688A0442909427F1DB /* TaskScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3490A7EF175548F1B4BE8F9E /* TaskScheduler.swift */; };
-		6B5CB51F3C124D78862F467C /* DeviceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFD21090C9FC485EA45A347C /* DeviceController.swift */; };
-		6FEB6B9C73FB46AC9C2E6856 /* AssetHTTPTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE0F4FEF8FC64D3B88A68855 /* AssetHTTPTransport.swift */; };
-		70743F468F044C10B4A3BD10 /* NetEaseMusicCapabilityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 310A422ADE6A4C3B88E12072 /* NetEaseMusicCapabilityPlugin.swift */; };
-		7DF670DBE7044A93AD66487F /* LocalEdgeRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6C1FCB647D5425897DD2D3E /* LocalEdgeRuntime.swift */; };
-		85C9BAAD94FF46CD89EA1634 /* CapabilityPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBA04DA69A5D4869B9A56250 /* CapabilityPlugin.swift */; };
-		864328E9FF4F4C6F92B1B860 /* IntentJourney.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD606F52D2F44F4AB5044DE3 /* IntentJourney.swift */; };
-		89881903D11D4D31B19A8176 /* GoogleCast in Frameworks */ = {isa = PBXBuildFile; productRef = D697C921150340D4987B3A43 /* GoogleCast */; };
-		89ADE61D975C47C28ED36036 /* HttpEdgeReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A18897F8E004490F9C7DF032 /* HttpEdgeReporter.swift */; };
-		8C6E3B1648724BBCAD649085 /* SpeechRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89269C47FE0A48CEA27F7F33 /* SpeechRecognizer.swift */; };
-		994948B25E5E409DA7668711 /* NetEaseMusicSkill.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE6B150436B545528CD66184 /* NetEaseMusicSkill.swift */; };
-		9C8541522295402985A2FDE4 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = E63E4366EEF245ED94AE0706 /* Models.swift */; };
-		9F29DA8E16024522A9CCA31A /* BonjourCastDeviceProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C1066FFFDE4824BD96EBC4 /* BonjourCastDeviceProvider.swift */; };
-		A1C7B80A94C340768ACD6BB2 /* GoProPluginEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98F85F5DF9164FF6A9004287 /* GoProPluginEntry.swift */; };
-		AAEA6D8C5E094782ACC91527 /* CastSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADB72ECAEB940E584F3915B /* CastSessionController.swift */; };
-		AEEDEF5DC4234832A3CE9A3E /* SkillRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 983FCA55E03041D28E5CED23 /* SkillRegistry.swift */; };
-		B031405B456B40BD93EEB091 /* GoProStatusSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FA4ACB4B98B4D2F92AD7C7B /* GoProStatusSnapshot.swift */; };
-		B1334F1C4D224012BFF7BE1A /* Capabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9933A4EAE56945C7BDD6F2FC /* Capabilities.swift */; };
-		B17FE7764FFD4F0FA4DB2AB1 /* CommandDecomposer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8ADD9AFE2FB40F6AD1EBA9B /* CommandDecomposer.swift */; };
-		B7563F1B6F53431AB242FF5F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2335426B309348F9B5808B6E /* ContentView.swift */; };
-		C0C30A1859FA4A188EA5AF3C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08F6AAFC582D4A5F9FEFAC7E /* AppModel.swift */; };
-		C1C4414CCCFA40DEA4A1303C /* TimedHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29C3DCF8B87540AD84CE1193 /* TimedHTTP.swift */; };
-		C68180E29DAC4D85A58C0846 /* LivingRoomCapabilityPlugins.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFBB4ECAB5CE4544B0FEA0BF /* LivingRoomCapabilityPlugins.swift */; };
-		C80B5E3F2AE54AD9AAAD242D /* ChromecastCastSkill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17ECE20A4E4741B59FA74936 /* ChromecastCastSkill.swift */; };
-		C9D132739E874520A026210B /* EdgeIdStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12706566FB64A5987213653 /* EdgeIdStore.swift */; };
-		CA699157AA9845B08AA90147 /* ClickGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF78029A94F5453FBD591C61 /* ClickGuard.swift */; };
-		D1C179B7FD7349ED8397CF04 /* IntentSkill.swift in Sources */ = {isa = PBXBuildFile; fileRef = D95A12277F044F16BBE63DE3 /* IntentSkill.swift */; };
-		D99D17375BE44D948231FE94 /* EdgeAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB619B783D24696A6D3584C /* EdgeAgent.swift */; };
-		DF60C1D60C3C4C2BBDB8C2BB /* BrainClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4A61EB34BB444F0BA4E2450 /* BrainClient.swift */; };
-		DFB3975E06A44694A63D381F /* CapabilityRegisterController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1B3557E39374462AAF08E4D /* CapabilityRegisterController.swift */; };
-		E76063A9E3D04B1B9CFEB812 /* AssetType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A00CBDE19940D892BD3E1C /* AssetType.swift */; };
-		E7D8C3C6D7D54A5AA9D67E0C /* CommandController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B20A5B0E1514DD4941895EC /* CommandController.swift */; };
-		EA49B49362394864A6FEDC6B /* CommandHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515AEC07684C4FEF8F982079 /* CommandHandler.swift */; };
-		EEC2272A6F794A19992B24F9 /* NetEaseSearchClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8D8A79781AE462E814676E3 /* NetEaseSearchClient.swift */; };
-		F2536D89D29B4AED881DC40D /* PhotoAsset.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50025A476FBC4C918D74D28D /* PhotoAsset.swift */; };
-		F7A27B9539974C05AE38A85B /* PlanExecutor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59468A00348B4506A7479290 /* PlanExecutor.swift */; };
-		FADBCC7BA38B45B394671213 /* ParamResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25E94F161580408AB244BBCD /* ParamResolver.swift */; };
-		FC1105F4EF1D4F3096BFC2D3 /* IntentLogisticsTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F8044AF8EF489D973CC19A /* IntentLogisticsTimelineView.swift */; };
-		FCE9DD0890DE4F728CDBA56C /* GoProController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EADEAF6E7E843DCA129ABE8 /* GoProController.swift */; };
+		05A3297CBBF1465D84B6FE2B /* ParticipantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C69A7B485C14499287382155 /* ParticipantStore.swift */; };
+		1490298B9CB74DB899EBED39 /* IntentLogisticsTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E4C91DAA1084955956A2652 /* IntentLogisticsTimelineView.swift */; };
+		2723642D03774B7AA31D5FF8 /* IntentProgressOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C9F1936EC664C378C668A97 /* IntentProgressOverlay.swift */; };
+		41D8F27F0EE04E53BDAAE5D4 /* SpeechRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AA7F37EA1F547D081B1F800 /* SpeechRecognizer.swift */; };
+		6149FD8C5CEF46EB8D64F2FA /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CF0F383B2994E5E81137A06 /* ContentView.swift */; };
+		6D3C96E75AF94C668E5DE022 /* IntentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6FCE976FDA420B953112E8 /* IntentClient.swift */; };
+		7FD00F00BE3F422D8EAAEA51 /* TimedHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 185503B5EDD94F3D9BCFC835 /* TimedHTTP.swift */; };
+		8A333A3FF3FD446991692A32 /* ClickGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABDFCFF70E834B06B5DB4F6E /* ClickGuard.swift */; };
+		C91AF6C2BF1D49049DD0A84C /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD563F669775457C9B5885A6 /* AppModel.swift */; };
+		DBAB255651034C9F93A1727A /* IntentJourney.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59D0C361D9A046B3BD7F1B3E /* IntentJourney.swift */; };
+		FAB1336923EE4D728A2B2810 /* LivingRoomEdgeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99F2B99A96E54ABAAF7A01D2 /* LivingRoomEdgeApp.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		A1B2C3D4E5F60718293A4B5C /* ExecutionTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExecutionTiming.swift; sourceTree = "<group>"; };
-		0215D7991D8642BF98C38AF8 /* RuntimeAgentSDK.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RuntimeAgentSDK.swift; path = "../../plugins/runtime-agent-sdk/ios/RuntimeAgentSDK.swift"; sourceTree = SOURCE_ROOT; };
-		08F6AAFC582D4A5F9FEFAC7E /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
-		0B7EE59BAA49489580ACA3D0 /* AssetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetManager.swift; path = "../../plugins/runtime-agent-sdk/ios/AssetManager/AssetManager.swift"; sourceTree = SOURCE_ROOT; };
-		1628419B524E4A4894EE8C8F /* HttpCommandSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HttpCommandSource.swift; sourceTree = "<group>"; };
-		16A5EA03DB0440A4948CAC43 /* IntentController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentController.swift; sourceTree = "<group>"; };
-		17A00CBDE19940D892BD3E1C /* AssetType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetType.swift; path = "../../plugins/runtime-agent-sdk/ios/Asset/AssetType.swift"; sourceTree = SOURCE_ROOT; };
-		17ECE20A4E4741B59FA74936 /* ChromecastCastSkill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChromecastCastSkill.swift; path = "../../plugins/chromecast-display/ios/ChromecastCastSkill.swift"; sourceTree = SOURCE_ROOT; };
-		1AB619B783D24696A6D3584C /* EdgeAgent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeAgent.swift; sourceTree = "<group>"; };
-		2335426B309348F9B5808B6E /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		23F32954D3B44ED6A67CDDDD /* TaskDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskDispatcher.swift; sourceTree = "<group>"; };
-		25E94F161580408AB244BBCD /* ParamResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParamResolver.swift; sourceTree = "<group>"; };
-		29C3DCF8B87540AD84CE1193 /* TimedHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimedHTTP.swift; sourceTree = "<group>"; };
-		310A422ADE6A4C3B88E12072 /* NetEaseMusicCapabilityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NetEaseMusicCapabilityPlugin.swift; path = "../../plugins/netease-music/ios/NetEaseMusicCapabilityPlugin.swift"; sourceTree = SOURCE_ROOT; };
-		3490A7EF175548F1B4BE8F9E /* TaskScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskScheduler.swift; sourceTree = "<group>"; };
-		4232A1FD441A4ECABAC507AD /* NetEaseDeepLinkLauncher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NetEaseDeepLinkLauncher.swift; path = "../../plugins/netease-music/ios/NetEaseDeepLinkLauncher.swift"; sourceTree = SOURCE_ROOT; };
-		4EB8578479354E7289EAB795 /* CommandModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandModels.swift; sourceTree = "<group>"; };
-		50025A476FBC4C918D74D28D /* PhotoAsset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = PhotoAsset.swift; path = "../../plugins/runtime-agent-sdk/ios/Asset/PhotoAsset.swift"; sourceTree = SOURCE_ROOT; };
-		515AEC07684C4FEF8F982079 /* CommandHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandHandler.swift; sourceTree = "<group>"; };
-		5256856E988A4A5D98EF85AC /* LivingRoomEdgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivingRoomEdgeApp.swift; sourceTree = "<group>"; };
-		53054BBBAD184E3F97D2ECA9 /* CapabilityDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityDriver.swift; sourceTree = "<group>"; };
-		56F0EC9835C94F16A5DDC64E /* Skill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Skill.swift; sourceTree = "<group>"; };
-		59468A00348B4506A7479290 /* PlanExecutor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanExecutor.swift; sourceTree = "<group>"; };
-		6B20A5B0E1514DD4941895EC /* CommandController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandController.swift; sourceTree = "<group>"; };
-		6EADEAF6E7E843DCA129ABE8 /* GoProController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GoProController.swift; path = "../../plugins/gopro-camera/ios/GoProController.swift"; sourceTree = SOURCE_ROOT; };
-		72E4361D8F244A87AAFDC0F4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		7962CFF5DDFC44AA94DF5C00 /* CameraCaptureCapabilityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CameraCaptureCapabilityPlugin.swift; path = "../../plugins/gopro-camera/ios/CameraCaptureCapabilityPlugin.swift"; sourceTree = SOURCE_ROOT; };
-		89269C47FE0A48CEA27F7F33 /* SpeechRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognizer.swift; sourceTree = "<group>"; };
-		8FA4ACB4B98B4D2F92AD7C7B /* GoProStatusSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GoProStatusSnapshot.swift; path = "../../plugins/gopro-camera/ios/GoProStatusSnapshot.swift"; sourceTree = SOURCE_ROOT; };
-		91C1066FFFDE4824BD96EBC4 /* BonjourCastDeviceProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BonjourCastDeviceProvider.swift; path = "../../plugins/chromecast-display/ios/BonjourCastDeviceProvider.swift"; sourceTree = SOURCE_ROOT; };
-		934C12A78CA147E1A6025A09 /* PhotoAlbumSaver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoAlbumSaver.swift; sourceTree = "<group>"; };
-		983FCA55E03041D28E5CED23 /* SkillRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillRegistry.swift; sourceTree = "<group>"; };
-		98F85F5DF9164FF6A9004287 /* GoProPluginEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GoProPluginEntry.swift; path = "../../plugins/gopro-camera/ios/GoProPluginEntry.swift"; sourceTree = SOURCE_ROOT; };
-		9933A4EAE56945C7BDD6F2FC /* Capabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Capabilities.swift; sourceTree = "<group>"; };
-		A18897F8E004490F9C7DF032 /* HttpEdgeReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HttpEdgeReporter.swift; sourceTree = "<group>"; };
-		AADB72ECAEB940E584F3915B /* CastSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CastSessionController.swift; path = "../../plugins/chromecast-display/ios/CastSessionController.swift"; sourceTree = SOURCE_ROOT; };
-		AE0F4FEF8FC64D3B88A68855 /* AssetHTTPTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AssetHTTPTransport.swift; path = "../../plugins/runtime-agent-sdk/ios/AssetManager/AssetHTTPTransport.swift"; sourceTree = SOURCE_ROOT; };
-		AF78029A94F5453FBD591C61 /* ClickGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickGuard.swift; sourceTree = "<group>"; };
-		AFBB4ECAB5CE4544B0FEA0BF /* LivingRoomCapabilityPlugins.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivingRoomCapabilityPlugins.swift; sourceTree = "<group>"; };
-		B6F8044AF8EF489D973CC19A /* IntentLogisticsTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentLogisticsTimelineView.swift; sourceTree = "<group>"; };
-		B8ADD9AFE2FB40F6AD1EBA9B /* CommandDecomposer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandDecomposer.swift; sourceTree = "<group>"; };
-		BCB6C437A1A24FA7B252A1DD /* CommandSkill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandSkill.swift; sourceTree = "<group>"; };
-		BEC0237F0CCF4D61836FA32A /* GoProDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GoProDriver.swift; path = "../../plugins/gopro-camera/ios/GoProDriver.swift"; sourceTree = SOURCE_ROOT; };
-		C4A61EB34BB444F0BA4E2450 /* BrainClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainClient.swift; sourceTree = "<group>"; };
-		CD606F52D2F44F4AB5044DE3 /* IntentJourney.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentJourney.swift; sourceTree = "<group>"; };
-		CE6B150436B545528CD66184 /* NetEaseMusicSkill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NetEaseMusicSkill.swift; path = "../../plugins/netease-music/ios/NetEaseMusicSkill.swift"; sourceTree = SOURCE_ROOT; };
-		D12706566FB64A5987213653 /* EdgeIdStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EdgeIdStore.swift; sourceTree = "<group>"; };
-		D1B3557E39374462AAF08E4D /* CapabilityRegisterController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityRegisterController.swift; sourceTree = "<group>"; };
-		D1F1F0C045B7423EA8343146 /* LivingRoomEdge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LivingRoomEdge.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		D37CF94A6E554B068519FBA8 /* MockBrainClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockBrainClient.swift; sourceTree = "<group>"; };
-		D405C2BB8F884E5EB587BBA4 /* Asset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Asset.swift; path = "../../plugins/runtime-agent-sdk/ios/Asset/Asset.swift"; sourceTree = SOURCE_ROOT; };
-		D4652BE870EE47F4815EED28 /* RuntimeContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeContext.swift; sourceTree = "<group>"; };
-		D6B5A17A3235425B93C0B6EF /* EdgeRuntimeContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = EdgeRuntimeContext.swift; path = "../../plugins/runtime-agent-sdk/ios/EdgeRuntimeContext.swift"; sourceTree = SOURCE_ROOT; };
-		D6C1FCB647D5425897DD2D3E /* LocalEdgeRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalEdgeRuntime.swift; sourceTree = "<group>"; };
-		D95A12277F044F16BBE63DE3 /* IntentSkill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentSkill.swift; sourceTree = "<group>"; };
-		E13A135E18144B36B75EC387 /* GoProHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GoProHTTP.swift; path = "../../plugins/gopro-camera/ios/GoProHTTP.swift"; sourceTree = SOURCE_ROOT; };
-		E383680B964C4D4D9BD15760 /* GoProSkill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GoProSkill.swift; path = "../../plugins/gopro-camera/ios/GoProSkill.swift"; sourceTree = SOURCE_ROOT; };
-		E63E4366EEF245ED94AE0706 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		E8D8A79781AE462E814676E3 /* NetEaseSearchClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NetEaseSearchClient.swift; path = "../../plugins/netease-music/ios/NetEaseSearchClient.swift"; sourceTree = SOURCE_ROOT; };
-		E9ACDCECEB0D4C00B9C505D8 /* RuntimeHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RuntimeHTTP.swift; path = "../../plugins/runtime-agent-sdk/ios/RuntimeHTTP.swift"; sourceTree = SOURCE_ROOT; };
-		EBA04DA69A5D4869B9A56250 /* CapabilityPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilityPlugin.swift; sourceTree = "<group>"; };
-		EFD21090C9FC485EA45A347C /* DeviceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceController.swift; sourceTree = "<group>"; };
-		EFE32BE4005D4D48AEF7D654 /* NetEasePluginEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NetEasePluginEntry.swift; path = "../../plugins/netease-music/ios/NetEasePluginEntry.swift"; sourceTree = SOURCE_ROOT; };
-		F2D498EEDDFF4688B4A25701 /* ChromecastPluginEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChromecastPluginEntry.swift; path = "../../plugins/chromecast-display/ios/ChromecastPluginEntry.swift"; sourceTree = SOURCE_ROOT; };
+		0C9F1936EC664C378C668A97 /* IntentProgressOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentProgressOverlay.swift; sourceTree = "<group>"; };
+		185503B5EDD94F3D9BCFC835 /* TimedHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimedHTTP.swift; sourceTree = "<group>"; };
+		3CF0F383B2994E5E81137A06 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		3E4C91DAA1084955956A2652 /* IntentLogisticsTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentLogisticsTimelineView.swift; sourceTree = "<group>"; };
+		59D0C361D9A046B3BD7F1B3E /* IntentJourney.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentJourney.swift; sourceTree = "<group>"; };
+		6AA7F37EA1F547D081B1F800 /* SpeechRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognizer.swift; sourceTree = "<group>"; };
+		6B49FCA47B68460FB13B8C61 /* LivingRoomEdge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LivingRoomEdge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		99F2B99A96E54ABAAF7A01D2 /* LivingRoomEdgeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivingRoomEdgeApp.swift; sourceTree = "<group>"; };
+		ABDFCFF70E834B06B5DB4F6E /* ClickGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClickGuard.swift; sourceTree = "<group>"; };
+		AD563F669775457C9B5885A6 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		C69A7B485C14499287382155 /* ParticipantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticipantStore.swift; sourceTree = "<group>"; };
+		D9DBCBF1E3E348F2808CBD5A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		FA6FCE976FDA420B953112E8 /* IntentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		AD59DB235F644D9EB34A633E /* Frameworks */ = {
+		23B2EE92818E4151BDA9AF91 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				89881903D11D4D31B19A8176 /* GoogleCast in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		0701BFAAE8684C2780D652FF /* Plugins */ = {
+		015F1003890D4360874296FB /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				AFBB4ECAB5CE4544B0FEA0BF /* LivingRoomCapabilityPlugins.swift */,
-			);
-			path = Plugins;
-			sourceTree = "<group>";
-		};
-		0796DDDCFAAA4D8F94B76183 /* Scheduler */ = {
-			isa = PBXGroup;
-			children = (
-				3490A7EF175548F1B4BE8F9E /* TaskScheduler.swift */,
-			);
-			path = Scheduler;
-			sourceTree = "<group>";
-		};
-		18F4148AEA6D435C809168F5 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				D1F1F0C045B7423EA8343146 /* LivingRoomEdge.app */,
+				6B49FCA47B68460FB13B8C61 /* LivingRoomEdge.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		249737D0A28C4F3FB3CED65B /* chromecast-display */ = {
+		05DDCACA547E4E3B9EC9C674 /* Brain */ = {
 			isa = PBXGroup;
 			children = (
-				91C1066FFFDE4824BD96EBC4 /* BonjourCastDeviceProvider.swift */,
-				AADB72ECAEB940E584F3915B /* CastSessionController.swift */,
-				17ECE20A4E4741B59FA74936 /* ChromecastCastSkill.swift */,
-				F2D498EEDDFF4688B4A25701 /* ChromecastPluginEntry.swift */,
-			);
-			name = "chromecast-display";
-			sourceTree = "<group>";
-		};
-		3453620FD37A4F188283DB96 /* Command */ = {
-			isa = PBXGroup;
-			children = (
-				6B20A5B0E1514DD4941895EC /* CommandController.swift */,
-			);
-			path = Command;
-			sourceTree = "<group>";
-		};
-		373F723F635A4A838A4F7A73 /* runtime-agent-sdk */ = {
-			isa = PBXGroup;
-			children = (
-				B84AC5FBB2034DB3BE8C289A /* Asset */,
-				917CE47F78F54E3EBD042162 /* AssetManager */,
-				D6B5A17A3235425B93C0B6EF /* EdgeRuntimeContext.swift */,
-				0215D7991D8642BF98C38AF8 /* RuntimeAgentSDK.swift */,
-				E9ACDCECEB0D4C00B9C505D8 /* RuntimeHTTP.swift */,
-			);
-			name = "runtime-agent-sdk";
-			sourceTree = "<group>";
-		};
-		3A2936FB00AD4C00B256C95F = {
-			isa = PBXGroup;
-			children = (
-				B1223D07560D4F3CB67B6DD7 /* LivingRoomEdge */,
-				18F4148AEA6D435C809168F5 /* Products */,
-			);
-			sourceTree = "<group>";
-		};
-		3A8AFFCB91E54CF4A377F3B1 /* App */ = {
-			isa = PBXGroup;
-			children = (
-				08F6AAFC582D4A5F9FEFAC7E /* AppModel.swift */,
-				AF78029A94F5453FBD591C61 /* ClickGuard.swift */,
-				2335426B309348F9B5808B6E /* ContentView.swift */,
-				5256856E988A4A5D98EF85AC /* LivingRoomEdgeApp.swift */,
-				934C12A78CA147E1A6025A09 /* PhotoAlbumSaver.swift */,
-			);
-			path = App;
-			sourceTree = "<group>";
-		};
-		474F57203DDA45E585E31C08 /* gopro-camera */ = {
-			isa = PBXGroup;
-			children = (
-				7962CFF5DDFC44AA94DF5C00 /* CameraCaptureCapabilityPlugin.swift */,
-				6EADEAF6E7E843DCA129ABE8 /* GoProController.swift */,
-				BEC0237F0CCF4D61836FA32A /* GoProDriver.swift */,
-				E13A135E18144B36B75EC387 /* GoProHTTP.swift */,
-				98F85F5DF9164FF6A9004287 /* GoProPluginEntry.swift */,
-				E383680B964C4D4D9BD15760 /* GoProSkill.swift */,
-				8FA4ACB4B98B4D2F92AD7C7B /* GoProStatusSnapshot.swift */,
-			);
-			name = "gopro-camera";
-			sourceTree = "<group>";
-		};
-		524A622E7A7C4168B986F31E /* Net */ = {
-			isa = PBXGroup;
-			children = (
-				29C3DCF8B87540AD84CE1193 /* TimedHTTP.swift */,
-			);
-			path = Net;
-			sourceTree = "<group>";
-		};
-		61BED3A370024B5F906EF816 /* Dispatcher */ = {
-			isa = PBXGroup;
-			children = (
-				23F32954D3B44ED6A67CDDDD /* TaskDispatcher.swift */,
-			);
-			path = Dispatcher;
-			sourceTree = "<group>";
-		};
-		73B522A108074EAEB05C4B22 /* Skill */ = {
-			isa = PBXGroup;
-			children = (
-				C808CC565584455082C8DA9D /* Command */,
-				D9BEE594C4724F96ACF6884A /* Intent */,
-				56F0EC9835C94F16A5DDC64E /* Skill.swift */,
-			);
-			path = Skill;
-			sourceTree = "<group>";
-		};
-		7CD05841475C4CC28E4C44B3 /* Speech */ = {
-			isa = PBXGroup;
-			children = (
-				89269C47FE0A48CEA27F7F33 /* SpeechRecognizer.swift */,
-			);
-			path = Speech;
-			sourceTree = "<group>";
-		};
-		86997E7D0A324278BADD750C /* Intent */ = {
-			isa = PBXGroup;
-			children = (
-				16A5EA03DB0440A4948CAC43 /* IntentController.swift */,
-			);
-			path = Intent;
-			sourceTree = "<group>";
-		};
-		917CE47F78F54E3EBD042162 /* AssetManager */ = {
-			isa = PBXGroup;
-			children = (
-				AE0F4FEF8FC64D3B88A68855 /* AssetHTTPTransport.swift */,
-				0B7EE59BAA49489580ACA3D0 /* AssetManager.swift */,
-			);
-			name = AssetManager;
-			sourceTree = "<group>";
-		};
-		9EB6A51171404372AFCB7F55 /* Runtime */ = {
-			isa = PBXGroup;
-			children = (
-				D6C1FCB647D5425897DD2D3E /* LocalEdgeRuntime.swift */,
-				25E94F161580408AB244BBCD /* ParamResolver.swift */,
-				D4652BE870EE47F4815EED28 /* RuntimeContext.swift */,
-			);
-			path = Runtime;
-			sourceTree = "<group>";
-		};
-		9F604B7DF5A945D08BDCBF61 /* Brain */ = {
-			isa = PBXGroup;
-			children = (
-				C4A61EB34BB444F0BA4E2450 /* BrainClient.swift */,
-				D12706566FB64A5987213653 /* EdgeIdStore.swift */,
-				A18897F8E004490F9C7DF032 /* HttpEdgeReporter.swift */,
-				D37CF94A6E554B068519FBA8 /* MockBrainClient.swift */,
-				E63E4366EEF245ED94AE0706 /* Models.swift */,
+				FA6FCE976FDA420B953112E8 /* IntentClient.swift */,
+				C69A7B485C14499287382155 /* ParticipantStore.swift */,
 			);
 			path = Brain;
 			sourceTree = "<group>";
 		};
-		A0460C4BAD5545EFAC77F582 /* Intent */ = {
+		20C42906E2D04E87A4325866 /* LivingRoomEdge */ = {
 			isa = PBXGroup;
 			children = (
-				CD606F52D2F44F4AB5044DE3 /* IntentJourney.swift */,
-				B6F8044AF8EF489D973CC19A /* IntentLogisticsTimelineView.swift */,
-			);
-			path = Intent;
-			sourceTree = "<group>";
-		};
-		AA0F712AD7034195A21224C3 /* Command */ = {
-			isa = PBXGroup;
-			children = (
-				61BED3A370024B5F906EF816 /* Dispatcher */,
-				9EB6A51171404372AFCB7F55 /* Runtime */,
-				0796DDDCFAAA4D8F94B76183 /* Scheduler */,
-				B8ADD9AFE2FB40F6AD1EBA9B /* CommandDecomposer.swift */,
-				515AEC07684C4FEF8F982079 /* CommandHandler.swift */,
-				4EB8578479354E7289EAB795 /* CommandModels.swift */,
-				A1B2C3D4E5F60718293A4B5C /* ExecutionTiming.swift */,
-				1628419B524E4A4894EE8C8F /* HttpCommandSource.swift */,
-			);
-			path = Command;
-			sourceTree = "<group>";
-		};
-		B1223D07560D4F3CB67B6DD7 /* LivingRoomEdge */ = {
-			isa = PBXGroup;
-			children = (
-				3A8AFFCB91E54CF4A377F3B1 /* App */,
-				9F604B7DF5A945D08BDCBF61 /* Brain */,
-				BD1C202CDD38418B9F4E1FE5 /* Capability */,
-				AA0F712AD7034195A21224C3 /* Command */,
-				C73E061B6208455999C967D9 /* Controller */,
-				E164C9CD9DEB446D8A48818C /* Driver */,
-				B6C5F10B74254A4D9371411A /* Edge */,
-				A0460C4BAD5545EFAC77F582 /* Intent */,
-				524A622E7A7C4168B986F31E /* Net */,
-				D806E63DA17543ED8AC89A78 /* Plugins */,
-				73B522A108074EAEB05C4B22 /* Skill */,
-				7CD05841475C4CC28E4C44B3 /* Speech */,
-				72E4361D8F244A87AAFDC0F4 /* Info.plist */,
+				55B5CFF4744B4D57A0EAF833 /* App */,
+				05DDCACA547E4E3B9EC9C674 /* Brain */,
+				B2575CA7E34C4382A614EEEA /* Intent */,
+				ACD0578BE49F4CDBBDD9C90A /* Net */,
+				8A4B72725FC14CB382481067 /* Speech */,
+				D9DBCBF1E3E348F2808CBD5A /* Info.plist */,
 			);
 			path = LivingRoomEdge;
 			sourceTree = "<group>";
 		};
-		B6C5F10B74254A4D9371411A /* Edge */ = {
+		55B5CFF4744B4D57A0EAF833 /* App */ = {
 			isa = PBXGroup;
 			children = (
-				1AB619B783D24696A6D3584C /* EdgeAgent.swift */,
-				59468A00348B4506A7479290 /* PlanExecutor.swift */,
-				983FCA55E03041D28E5CED23 /* SkillRegistry.swift */,
+				AD563F669775457C9B5885A6 /* AppModel.swift */,
+				ABDFCFF70E834B06B5DB4F6E /* ClickGuard.swift */,
+				3CF0F383B2994E5E81137A06 /* ContentView.swift */,
+				0C9F1936EC664C378C668A97 /* IntentProgressOverlay.swift */,
+				99F2B99A96E54ABAAF7A01D2 /* LivingRoomEdgeApp.swift */,
 			);
-			path = Edge;
+			path = App;
 			sourceTree = "<group>";
 		};
-		B84AC5FBB2034DB3BE8C289A /* Asset */ = {
+		8A4B72725FC14CB382481067 /* Speech */ = {
 			isa = PBXGroup;
 			children = (
-				D405C2BB8F884E5EB587BBA4 /* Asset.swift */,
-				17A00CBDE19940D892BD3E1C /* AssetType.swift */,
-				50025A476FBC4C918D74D28D /* PhotoAsset.swift */,
+				6AA7F37EA1F547D081B1F800 /* SpeechRecognizer.swift */,
 			);
-			name = Asset;
+			path = Speech;
 			sourceTree = "<group>";
 		};
-		BD1C202CDD38418B9F4E1FE5 /* Capability */ = {
+		ACD0578BE49F4CDBBDD9C90A /* Net */ = {
 			isa = PBXGroup;
 			children = (
-				0701BFAAE8684C2780D652FF /* Plugins */,
-				9933A4EAE56945C7BDD6F2FC /* Capabilities.swift */,
-				EBA04DA69A5D4869B9A56250 /* CapabilityPlugin.swift */,
+				185503B5EDD94F3D9BCFC835 /* TimedHTTP.swift */,
 			);
-			path = Capability;
+			path = Net;
 			sourceTree = "<group>";
 		};
-		C73E061B6208455999C967D9 /* Controller */ = {
+		B2575CA7E34C4382A614EEEA /* Intent */ = {
 			isa = PBXGroup;
 			children = (
-				D6C88FC8B86B4E6683CC966F /* Capability */,
-				3453620FD37A4F188283DB96 /* Command */,
-				86997E7D0A324278BADD750C /* Intent */,
-				EFD21090C9FC485EA45A347C /* DeviceController.swift */,
-			);
-			path = Controller;
-			sourceTree = "<group>";
-		};
-		C808CC565584455082C8DA9D /* Command */ = {
-			isa = PBXGroup;
-			children = (
-				BCB6C437A1A24FA7B252A1DD /* CommandSkill.swift */,
-			);
-			path = Command;
-			sourceTree = "<group>";
-		};
-		D5A093C01915452FB805611B /* netease-music */ = {
-			isa = PBXGroup;
-			children = (
-				4232A1FD441A4ECABAC507AD /* NetEaseDeepLinkLauncher.swift */,
-				310A422ADE6A4C3B88E12072 /* NetEaseMusicCapabilityPlugin.swift */,
-				CE6B150436B545528CD66184 /* NetEaseMusicSkill.swift */,
-				EFE32BE4005D4D48AEF7D654 /* NetEasePluginEntry.swift */,
-				E8D8A79781AE462E814676E3 /* NetEaseSearchClient.swift */,
-			);
-			name = "netease-music";
-			sourceTree = "<group>";
-		};
-		D6C88FC8B86B4E6683CC966F /* Capability */ = {
-			isa = PBXGroup;
-			children = (
-				D1B3557E39374462AAF08E4D /* CapabilityRegisterController.swift */,
-			);
-			path = Capability;
-			sourceTree = "<group>";
-		};
-		D806E63DA17543ED8AC89A78 /* Plugins */ = {
-			isa = PBXGroup;
-			children = (
-				249737D0A28C4F3FB3CED65B /* chromecast-display */,
-				474F57203DDA45E585E31C08 /* gopro-camera */,
-				D5A093C01915452FB805611B /* netease-music */,
-				373F723F635A4A838A4F7A73 /* runtime-agent-sdk */,
-			);
-			name = Plugins;
-			sourceTree = "<group>";
-		};
-		D9BEE594C4724F96ACF6884A /* Intent */ = {
-			isa = PBXGroup;
-			children = (
-				D95A12277F044F16BBE63DE3 /* IntentSkill.swift */,
+				59D0C361D9A046B3BD7F1B3E /* IntentJourney.swift */,
+				3E4C91DAA1084955956A2652 /* IntentLogisticsTimelineView.swift */,
 			);
 			path = Intent;
 			sourceTree = "<group>";
 		};
-		E164C9CD9DEB446D8A48818C /* Driver */ = {
+		D94517C8DD1348DDAEFDDB15 = {
 			isa = PBXGroup;
 			children = (
-				53054BBBAD184E3F97D2ECA9 /* CapabilityDriver.swift */,
+				20C42906E2D04E87A4325866 /* LivingRoomEdge */,
+				015F1003890D4360874296FB /* Products */,
 			);
-			path = Driver;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		3854FAA4C4C64B9188A526E3 /* LivingRoomEdge */ = {
+		6D0ADAF360474F0F947E7C6A /* LivingRoomEdge */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 6DC505A299A745B6BC3C6FDB /* Build configuration list for PBXNativeTarget "LivingRoomEdge" */;
+			buildConfigurationList = BD6456B3848D4A32A8F7E4C3 /* Build configuration list for PBXNativeTarget "LivingRoomEdge" */;
 			buildPhases = (
-				7E5D58D337DF4DF2BF098548 /* Sources */,
-				AD59DB235F644D9EB34A633E /* Frameworks */,
-				9C55014930AD488085936619 /* Resources */,
+				0CF447F31BD84A609DE5F567 /* Sources */,
+				23B2EE92818E4151BDA9AF91 /* Frameworks */,
+				8F10BEF4ECD34C5689994A82 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -470,23 +139,22 @@
 			);
 			name = LivingRoomEdge;
 			packageProductDependencies = (
-				D697C921150340D4987B3A43 /* GoogleCast */,
 			);
 			productName = LivingRoomEdge;
-			productReference = D1F1F0C045B7423EA8343146 /* LivingRoomEdge.app */;
+			productReference = 6B49FCA47B68460FB13B8C61 /* LivingRoomEdge.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		26DD020CB4F94F97B28C0D3C /* Project object */ = {
+		67E5D51CC3E04777A76E34D7 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1500;
 				LastUpgradeCheck = 1500;
 			};
-			buildConfigurationList = 2FA5512A7F97492FACBC381E /* Build configuration list for PBXProject "LivingRoomEdge" */;
+			buildConfigurationList = 8E4FFCF99920445A95E73F1F /* Build configuration list for PBXProject "LivingRoomEdge" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -494,21 +162,20 @@
 				en,
 				Base,
 			);
-			mainGroup = 3A2936FB00AD4C00B256C95F;
+			mainGroup = D94517C8DD1348DDAEFDDB15;
 			packageReferences = (
-				B65FD00B1060442DB0E5FF27 /* XCRemoteSwiftPackageReference "google-cast-sdk" */,
 			);
-			productRefGroup = 18F4148AEA6D435C809168F5 /* Products */;
+			productRefGroup = 015F1003890D4360874296FB /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				3854FAA4C4C64B9188A526E3 /* LivingRoomEdge */,
+				6D0ADAF360474F0F947E7C6A /* LivingRoomEdge */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		9C55014930AD488085936619 /* Resources */ = {
+		8F10BEF4ECD34C5689994A82 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -518,84 +185,33 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		7E5D58D337DF4DF2BF098548 /* Sources */ = {
+		0CF447F31BD84A609DE5F567 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C0C30A1859FA4A188EA5AF3C /* AppModel.swift in Sources */,
-				CA699157AA9845B08AA90147 /* ClickGuard.swift in Sources */,
-				B7563F1B6F53431AB242FF5F /* ContentView.swift in Sources */,
-				133A94070DB94209A35A65AE /* LivingRoomEdgeApp.swift in Sources */,
-				2594187DFFA54E7292CD90E9 /* PhotoAlbumSaver.swift in Sources */,
-				DF60C1D60C3C4C2BBDB8C2BB /* BrainClient.swift in Sources */,
-				C9D132739E874520A026210B /* EdgeIdStore.swift in Sources */,
-				89ADE61D975C47C28ED36036 /* HttpEdgeReporter.swift in Sources */,
-				50AF4C639BE44A11A64D331E /* MockBrainClient.swift in Sources */,
-				9C8541522295402985A2FDE4 /* Models.swift in Sources */,
-				B1334F1C4D224012BFF7BE1A /* Capabilities.swift in Sources */,
-				85C9BAAD94FF46CD89EA1634 /* CapabilityPlugin.swift in Sources */,
-				C68180E29DAC4D85A58C0846 /* LivingRoomCapabilityPlugins.swift in Sources */,
-				B17FE7764FFD4F0FA4DB2AB1 /* CommandDecomposer.swift in Sources */,
-				EA49B49362394864A6FEDC6B /* CommandHandler.swift in Sources */,
-				646F7FCF89B74441B1E04469 /* CommandModels.swift in Sources */,
-				5E79E0ABE2734B29A44F7B5B /* TaskDispatcher.swift in Sources */,
-				40011AD6525646A488BA6514 /* HttpCommandSource.swift in Sources */,
-				7DF670DBE7044A93AD66487F /* LocalEdgeRuntime.swift in Sources */,
-				FADBCC7BA38B45B394671213 /* ParamResolver.swift in Sources */,
-				0C835939585B460A9EF9BDAA /* RuntimeContext.swift in Sources */,
-				6914AA688A0442909427F1DB /* TaskScheduler.swift in Sources */,
-				B2C3D4E5F60718293A4B5C6D /* ExecutionTiming.swift in Sources */,
-				DFB3975E06A44694A63D381F /* CapabilityRegisterController.swift in Sources */,
-				E7D8C3C6D7D54A5AA9D67E0C /* CommandController.swift in Sources */,
-				6B5CB51F3C124D78862F467C /* DeviceController.swift in Sources */,
-				051B5AD297FD42B0AB78AD75 /* IntentController.swift in Sources */,
-				0C82F2F699B740CFA5FF7C29 /* CapabilityDriver.swift in Sources */,
-				D99D17375BE44D948231FE94 /* EdgeAgent.swift in Sources */,
-				F7A27B9539974C05AE38A85B /* PlanExecutor.swift in Sources */,
-				AEEDEF5DC4234832A3CE9A3E /* SkillRegistry.swift in Sources */,
-				864328E9FF4F4C6F92B1B860 /* IntentJourney.swift in Sources */,
-				FC1105F4EF1D4F3096BFC2D3 /* IntentLogisticsTimelineView.swift in Sources */,
-				C1C4414CCCFA40DEA4A1303C /* TimedHTTP.swift in Sources */,
-				5A45FFD250774B6BB984D8DA /* CommandSkill.swift in Sources */,
-				D1C179B7FD7349ED8397CF04 /* IntentSkill.swift in Sources */,
-				04044BBDBA324C319CEE3DD3 /* Skill.swift in Sources */,
-				8C6E3B1648724BBCAD649085 /* SpeechRecognizer.swift in Sources */,
-				45DD78789C1444A5BCACD29E /* CameraCaptureCapabilityPlugin.swift in Sources */,
-				FCE9DD0890DE4F728CDBA56C /* GoProController.swift in Sources */,
-				660D8872BFC6402DB08EBD38 /* GoProDriver.swift in Sources */,
-				1EB4DD3611A045968B7C2CD5 /* GoProHTTP.swift in Sources */,
-				A1C7B80A94C340768ACD6BB2 /* GoProPluginEntry.swift in Sources */,
-				22255CE19301423F9234DE13 /* GoProSkill.swift in Sources */,
-				B031405B456B40BD93EEB091 /* GoProStatusSnapshot.swift in Sources */,
-				2231261D30264A1CBF2FF801 /* NetEaseDeepLinkLauncher.swift in Sources */,
-				70743F468F044C10B4A3BD10 /* NetEaseMusicCapabilityPlugin.swift in Sources */,
-				994948B25E5E409DA7668711 /* NetEaseMusicSkill.swift in Sources */,
-				35E074F3C2BA4CF3941C0B38 /* NetEasePluginEntry.swift in Sources */,
-				EEC2272A6F794A19992B24F9 /* NetEaseSearchClient.swift in Sources */,
-				9F29DA8E16024522A9CCA31A /* BonjourCastDeviceProvider.swift in Sources */,
-				AAEA6D8C5E094782ACC91527 /* CastSessionController.swift in Sources */,
-				C80B5E3F2AE54AD9AAAD242D /* ChromecastCastSkill.swift in Sources */,
-				461A11884A5A46D0AA5495B1 /* ChromecastPluginEntry.swift in Sources */,
-				0C75EA4CFE7746BFBE1C30AE /* Asset.swift in Sources */,
-				E76063A9E3D04B1B9CFEB812 /* AssetType.swift in Sources */,
-				F2536D89D29B4AED881DC40D /* PhotoAsset.swift in Sources */,
-				6FEB6B9C73FB46AC9C2E6856 /* AssetHTTPTransport.swift in Sources */,
-				5A3022258AB148BDB0919DFE /* AssetManager.swift in Sources */,
-				2B4FD7F8DF26455595E55F9E /* EdgeRuntimeContext.swift in Sources */,
-				41A39C3172824FF3B3D7BA5E /* RuntimeAgentSDK.swift in Sources */,
-				4D9EA227DD63418387AF3A13 /* RuntimeHTTP.swift in Sources */,
+				C91AF6C2BF1D49049DD0A84C /* AppModel.swift in Sources */,
+				8A333A3FF3FD446991692A32 /* ClickGuard.swift in Sources */,
+				6149FD8C5CEF46EB8D64F2FA /* ContentView.swift in Sources */,
+				2723642D03774B7AA31D5FF8 /* IntentProgressOverlay.swift in Sources */,
+				FAB1336923EE4D728A2B2810 /* LivingRoomEdgeApp.swift in Sources */,
+				6D3C96E75AF94C668E5DE022 /* IntentClient.swift in Sources */,
+				05A3297CBBF1465D84B6FE2B /* ParticipantStore.swift in Sources */,
+				DBAB255651034C9F93A1727A /* IntentJourney.swift in Sources */,
+				1490298B9CB74DB899EBED39 /* IntentLogisticsTimelineView.swift in Sources */,
+				7FD00F00BE3F422D8EAAEA51 /* TimedHTTP.swift in Sources */,
+				41D8F27F0EE04E53BDAAE5D4 /* SpeechRecognizer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		46B477EE67204457B1C17D78 /* Debug */ = {
+		0ED4A28BD07E40F6A75856FE /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = LivingRoomEdge/LivingRoomEdge.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = JD4B775BJ5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -604,11 +220,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-ObjC",
-				);
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.livingroom.edge.iphone;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -618,7 +230,7 @@
 			};
 			name = Debug;
 		};
-		63A5F360944444D2A4B81CD5 /* Debug */ = {
+		833C4D06F2B845F1B0558049 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -637,7 +249,7 @@
 			};
 			name = Debug;
 		};
-		F3A62705874742408EEE21C6 /* Release */ = {
+		A58CA89BDA614667B8B958DD /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -651,12 +263,12 @@
 			};
 			name = Release;
 		};
-		FC7B31AD9D594F2BBA0AF653 /* Release */ = {
+		EFBA096E1B3746F7A34364F1 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = LivingRoomEdge/LivingRoomEdge.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = JD4B775BJ5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -665,11 +277,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-ObjC",
-				);
+				MARKETING_VERSION = 0.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.livingroom.edge.iphone;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -682,44 +290,25 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		2FA5512A7F97492FACBC381E /* Build configuration list for PBXProject "LivingRoomEdge" */ = {
+		8E4FFCF99920445A95E73F1F /* Build configuration list for PBXProject "LivingRoomEdge" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				63A5F360944444D2A4B81CD5 /* Debug */,
-				F3A62705874742408EEE21C6 /* Release */,
+				833C4D06F2B845F1B0558049 /* Debug */,
+				A58CA89BDA614667B8B958DD /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		6DC505A299A745B6BC3C6FDB /* Build configuration list for PBXNativeTarget "LivingRoomEdge" */ = {
+		BD6456B3848D4A32A8F7E4C3 /* Build configuration list for PBXNativeTarget "LivingRoomEdge" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				46B477EE67204457B1C17D78 /* Debug */,
-				FC7B31AD9D594F2BBA0AF653 /* Release */,
+				0ED4A28BD07E40F6A75856FE /* Debug */,
+				EFBA096E1B3746F7A34364F1 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		B65FD00B1060442DB0E5FF27 /* XCRemoteSwiftPackageReference "google-cast-sdk" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/SRGSSR/google-cast-sdk";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 4.8.4;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		D697C921150340D4987B3A43 /* GoogleCast */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = B65FD00B1060442DB0E5FF27 /* XCRemoteSwiftPackageReference "google-cast-sdk" */;
-			productName = GoogleCast;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = 26DD020CB4F94F97B28C0D3C /* Project object */;
+	rootObject = 67E5D51CC3E04777A76E34D7 /* Project object */;
 }

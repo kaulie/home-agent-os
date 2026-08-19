@@ -2,10 +2,5 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Hotspot Configuration 仅付费 Apple Developer Program 可在 Xcode 里添加。
-	     Personal Team 搜不到该 Capability；强行写入 entitlement 会导致签名失败。
-	     请用「设置 → Wi‑Fi」手动加入 GoPro 热点。 -->
-	<!-- com.apple.developer.networking.multicast：Cast SDK 4.6+ 用 Bonjour，不需要此受限 entitlement。
-	     Apple 也不会仅为 Cast 发放；Personal Team 写入会导致签名失败。 -->
 </dict>
 </plist>

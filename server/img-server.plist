@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.kaulie.img-server</string>
+	<key>WorkingDirectory</key>
+	<string>/Users/kaulie/devspace/img-server</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/bin/python3</string>
+		<string>/Users/kaulie/devspace/img-server/photo_upload_server.py</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PHOTO_UPLOAD_HOST</key>
+		<string>0.0.0.0</string>
+		<key>PHOTO_UPLOAD_PORT</key>
+		<string>8080</string>
+		<key>PHOTO_PUBLIC_BASE</key>
+		<string>http://192.168.3.65:8080</string>
+		<key>PHOTO_UPLOAD_DIR</key>
+		<string>/Users/kaulie/devspace/img-server/img</string>
+		<key>PYTHONUNBUFFERED</key>
+		<string>1</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/Users/kaulie/devspace/img-server/logs/img-server.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/kaulie/devspace/img-server/logs/img-server.err.log</string>
+</dict>
+</plist>

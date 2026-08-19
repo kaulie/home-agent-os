@@ -24,7 +24,7 @@ class MarshallSpeakerSkill : Skill {
         capabilities = listOf(
             CapabilityDescriptor(
                 capabilityId = Capabilities.BLUETOOTH_CONNECT,
-                description = "连接 Marshall 蓝牙音箱",
+                description = "能：连接已配对的 Marshall WILLEN 蓝牙音箱。不能：放歌（用 music.play）；TTS；开灯；当音源。",
                 inputSchema = mapOf(
                     "device_name" to SchemaField(
                         type = "string",
@@ -35,7 +35,7 @@ class MarshallSpeakerSkill : Skill {
             ),
             CapabilityDescriptor(
                 capabilityId = Capabilities.BLUETOOTH_DISCONNECT,
-                description = "断开 Marshall 蓝牙音箱",
+                description = "能：断开 Marshall WILLEN 蓝牙音箱。不能：放歌、TTS、开灯。",
                 inputSchema = mapOf(
                     "device_name" to SchemaField(
                         type = "string",

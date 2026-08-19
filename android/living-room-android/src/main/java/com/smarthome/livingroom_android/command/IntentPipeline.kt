@@ -289,6 +289,7 @@ class IntentStepExecutor(
                 stepStatus = final,
                 edgeNodeId = eid,
                 outputs = stepOutputs.takeIf { it.isNotEmpty() },
+                msg = if (ok) null else (failDetail ?: "step $stepNum failed"),
             )
             if (ok && stepOutputs.isNotEmpty()) {
                 // Cross-edge: also publish on intent so pull exposes ctx_param promptly.
@@ -508,8 +509,7 @@ class IntentStepExecutor(
                 dict.remove("delaySec")
                 val et = dict.optJSONObject("execution_timing")
                 if (et != null) {
-                    et.remove("delay_sec")
-                    et.remove("delaySec")
+                    ExecutionTimingGate.normalizeExecutionTimingObject(et)
                 }
                 if (!dict.has("status") && dict.has("step_status")) {
                     dict.put("status", dict.opt("step_status"))

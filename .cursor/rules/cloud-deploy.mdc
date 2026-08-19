@@ -1,0 +1,20 @@
+---
+description: After a Brain version passes local tests, deploy to cloud-server via rsync.
+alwaysApply: true
+---
+
+# 云服务器部署（Brain）
+
+`/root/chat-gateway` **就是本仓库的根目录**（本地项目根 ↔ `/root/chat-gateway`）。rsync **保持相对路径**，不要把 `server/` 摊平到云根上。
+
+本地测过的 Brain 版本可以同步到云。**只在测过后部署**，不要半成品上云。
+
+- SSH：`ssh cloud-server`（公钥，无密码）。
+- **唯一可写范围**：`/root/chat-gateway` 整棵项目树。禁止改该目录以外的文件（含 `/etc/systemd`）。
+- 同步：本地 `server/home_brain.py`、`server/prompts/` → `/root/chat-gateway/server/...`；仓库根 `home_brain.py` 入口 → `/root/chat-gateway/home_brain.py`。**不要** rsync `db.py`、`sql/`、`data/`（schema / 迁移归 `@dba`）。排除 `.venv`、`__pycache__`、`llm_logs/`、`.env`、`gopropics/`、`agent_access.log`、测试库。
+- 不要动云上已有运行时数据：`.env`、`gopropics/`、`data/`、`llm_logs/`、`agent_access.log`。
+- 重启：`ssh cloud-server 'systemctl restart doubao_skill'`。
+- 密钥：云上 `/root/chat-gateway/.env`（`ARK_API_KEY=`），**不要**写入仓库或 `agent_access.log`。
+- 操作结束后追加一行到 `/root/chat-gateway/agent_access.log`（UTC+8 时间、做了什么、重启/健康检查结果）。
+
+照片目录沿用云上项目根 `gopropics/`。systemd 不可改：`WorkingDirectory=/root/chat-gateway`，`ExecStart=/usr/bin/python3 home_brain.py`（根入口转发到 `server/home_brain.py`）。

@@ -27,6 +27,8 @@ class CompositeBrainClient(
                     room = request.room,
                     services = request.services,
                     appVersion = request.appVersion,
+                    roles = request.roles,
+                    location = request.location,
                 ),
             )
             return response

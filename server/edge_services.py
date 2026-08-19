@@ -13,6 +13,11 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
     "music.play": {
         "group": "music",
         "service_id": "netease.music",
+        "description": (
+            "能：按 song / album / artist 在网易云播放。用户要放歌、播放某某的歌时用本能力。"
+            "不能：用 query.content 或 notify.speak 顶替；无本能力时 plan=[]；"
+            "不投屏、不 TTS 念歌词当播放、不开灯。song/artist/album 至少填一个。"
+        ),
         "input_schema": {
             "song": {"type": "string", "required": False, "description": "歌曲"},
             "artist": {"type": "string", "required": False, "description": "歌手"},
@@ -20,50 +25,149 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         },
         "output_schema": {},
     },
-    "music.pause": {"group": "music", "service_id": "netease.music"},
-    "music.stop": {"group": "music", "service_id": "netease.music"},
-    "music.next": {"group": "music", "service_id": "netease.music"},
-    "music.previous": {"group": "music", "service_id": "netease.music"},
+    "music.pause": {
+        "group": "music",
+        "service_id": "netease.music",
+        "description": (
+            "能：暂停当前网易云播放。不能：开始播放（用 music.play）；搜歌；TTS；投屏。"
+        ),
+    },
+    "music.stop": {
+        "group": "music",
+        "service_id": "netease.music",
+        "description": (
+            "能：停止当前网易云播放。不能：开始播放（用 music.play）；搜歌；TTS；投屏。"
+        ),
+    },
+    "music.next": {
+        "group": "music",
+        "service_id": "netease.music",
+        "description": (
+            "能：网易云切到下一首。不能：指定歌名播放（用 music.play）；TTS；投屏。"
+        ),
+    },
+    "music.previous": {
+        "group": "music",
+        "service_id": "netease.music",
+        "description": (
+            "能：网易云切到上一首。不能：指定歌名播放（用 music.play）；TTS；投屏。"
+        ),
+    },
     "camera.capture": {
         "group": "camera",
         "service_id": "gopro.camera",
-        "input_schema": {},
-        "output_schema": {
-            "photo_local_path": {
+        "description": (
+            "能：用 GoPro 拍一张照片并上传，产出 capture_ref（AssetRef）。"
+            "用户要拍照/拍一张时用本能力。"
+            "不能：分析照片、投电视、TTS、开灯、放歌、无图硬答已经看了；产出 photo_url。"
+        ),
+        "input_schema": {
+            "upload_dest": {
                 "type": "string",
                 "required": False,
-                "description": "本地照片路径",
+                "description": (
+                    "默认不要填（Edge 用 lan → http://192.168.3.65:8080）。"
+                    "投屏/电视/display.photo 必须 lan，禁止 cloud。"
+                    "仅当用户明确要求公网/远程查看时才填 cloud。"
+                    "未填时读 MAC_EDGE_PHOTO_UPLOAD_DEST，再默认 lan。"
+                    "别名 local/home → lan"
+                ),
             },
-            "photo_url": {
+        },
+        "output_schema": {
+            "capture_ref": {
                 "type": "string",
                 "required": True,
-                "description": "服务器图片下载地址",
-            },
-            "saved_as": {
-                "type": "string",
-                "required": False,
-                "description": "服务器侧文件名",
+                "description": (
+                    "AssetRef JSON {asset_id, type, mime_type?}。"
+                    "禁止 photo_url / path / 永久 URL。"
+                ),
             },
         },
     },
-    "take_video": {"group": "camera", "service_id": "gopro.camera"},
+    "take_video": {
+        "group": "camera",
+        "service_id": "gopro.camera",
+        "description": (
+            "能：开始 GoPro 录像。不能：当拍照（拍照用 camera.capture）；分析画面；投屏。"
+        ),
+    },
     "display.photo": {
         "group": "display",
         "service_id": "chromecast.display",
+        "description": (
+            "能：把本步已给出的 image_ref（AssetRef）投到 Chromecast 显示一张图。"
+            "仅用户明确要投电视时用。"
+            "不能：拍照、自己捡图、收 photo_url/path、当默认用户交付、TTS、问答。"
+        ),
         "input_schema": {
-            "photo_url": {
+            "image_ref": {
                 "type": "string",
                 "required": True,
-                "description": "服务器图片下载地址（iPhone Cast Sender → Chromecast）",
+                "description": (
+                    "AssetRef JSON {asset_id, type, mime_type?}。"
+                    "禁止 photo_url / path / 永久 URL。常为 $capture_ref。"
+                ),
             },
         },
         "output_schema": {},
     },
-    "bluetooth.connect": {"group": "speaker", "service_id": "marshall.willen"},
-    "bluetooth.disconnect": {"group": "speaker", "service_id": "marshall.willen"},
+    "display.slideshow": {
+        "group": "display",
+        "service_id": "chromecast.display",
+        "description": (
+            "能：把本步必填 image_refs（AssetRef JSON 数组）轮播投到电视。不要拆成多个 display.photo。"
+            "不能：从前序自己拼列表、空数组、photo_url、拍照、TTS。"
+        ),
+        "input_schema": {
+            "image_refs": {
+                "type": "string",
+                "required": True,
+                "description": (
+                    "必填 AssetRef JSON 数组，至少一张。"
+                    '例 [{"asset_id":"asset_…","type":"image"}]。'
+                    "禁止 photo_urls / path / 永久 URL。不传则能力无效。"
+                    "轮播用本能力，不要拆成多个 display.photo。"
+                ),
+            },
+            "interval_sec": {
+                "type": "number",
+                "required": False,
+                "description": "每张停留秒数，默认 5",
+            },
+            "order": {
+                "type": "string",
+                "required": False,
+                "description": (
+                    "默认 array_asc：array_asc / array_desc / "
+                    "alphabet_asc / alphabet_desc / random"
+                ),
+            },
+        },
+        "output_schema": {},
+    },
+    "bluetooth.connect": {
+        "group": "speaker",
+        "service_id": "marshall.willen",
+        "description": (
+            "能：连接已配对的 Marshall WILLEN 蓝牙音箱。"
+            "不能：放歌（用 music.play）；TTS；开灯；当音源。"
+        ),
+    },
+    "bluetooth.disconnect": {
+        "group": "speaker",
+        "service_id": "marshall.willen",
+        "description": (
+            "能：断开 Marshall WILLEN 蓝牙音箱。不能：放歌、TTS、开灯。"
+        ),
+    },
     "notify.speak": {
         "group": "notify",
         "service_id": "local.notify",
+        "description": (
+            "能：把本步 text 用本机 TTS 念出来。只用于纯提醒或定时播报。"
+            "不能：开灯（light.set）；报时（clock.now）；问答；拍照；投屏；放歌；缺能力时顶替。"
+        ),
         "input_schema": {
             "text": {
                 "type": "string",
@@ -83,9 +187,189 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         },
         "output_schema": {},
     },
+    "vision.perceive": {
+        "group": "vision",
+        "service_id": "local.vision",
+        "description": (
+            "能：给定本步 image_ref（AssetRef），产出 summary/people/spatial/actions/posture/lighting。"
+            "看客厅有几个人、场景适不适合看书用本能力。"
+            "不能：无图；收 photo_url；指向问答（vision.ask）；拍照；投屏；TTS；文字百科。"
+        ),
+        "input_schema": {
+            "image_ref": {
+                "type": "string",
+                "required": True,
+                "description": (
+                    "AssetRef JSON {asset_id, type, mime_type?}。"
+                    "禁止 photo_url / path。常为 $capture_ref。"
+                ),
+            },
+            "prompt": {
+                "type": "string",
+                "required": False,
+                "description": "可选额外分析提示",
+            },
+        },
+            "output_schema": {
+                "summary": {
+                    "type": "string",
+                    "required": True,
+                    "description": "一句话画面摘要",
+                },
+                "people": {
+                    "type": "string",
+                    "required": False,
+                    "description": "人物列表 JSON（含 id/description/count/position）",
+                },
+                "spatial": {
+                    "type": "string",
+                    "required": False,
+                    "description": "空间布局描述",
+                },
+                "actions": {
+                    "type": "string",
+                    "required": False,
+                    "description": "主要动作",
+                },
+                "posture": {
+                    "type": "string",
+                    "required": False,
+                    "description": "体态/姿势",
+                },
+                "lighting": {
+                    "type": "string",
+                    "required": False,
+                    "description": "光线 JSON（whole + region）",
+                },
+            },
+    },
+    "vision.ask": {
+        "group": "vision",
+        "service_id": "local.vision",
+        "description": (
+            "能：给定本步 image_ref（AssetRef）+ query，只根据图中可见内容产出 answer_text。"
+            "不能：无图问答（query.content）；收 photo_url；场景结构字段（vision.perceive）；拍照；生图；TTS。"
+        ),
+        "input_schema": {
+            "image_ref": {
+                "type": "string",
+                "required": True,
+                "description": (
+                    "AssetRef JSON {asset_id, type, mime_type?}。"
+                    "禁止 photo_url / path。常为 $capture_ref。"
+                ),
+            },
+            "query": {
+                "type": "string",
+                "required": True,
+                "description": "用户原话，如「这个字读啥」",
+            },
+        },
+        "output_schema": {
+            "answer_text": {
+                "type": "string",
+                "required": True,
+                "description": "针对图+问句的中文回答；不确定时直说我不知道",
+            },
+        },
+    },
+    "query.content": {
+        "group": "query",
+        "service_id": "local.query",
+        "description": (
+            "能：根据本步 query 文字问答，产出 answer_text；"
+            "本能力自带文生图：用户要图、要投屏/电视展示，或画面/示意/步骤/笔顺比纯文字更清楚时，"
+            "按 query 生成图片并在成功时产出 image_ref。简单口头事实问答默认只出文字、不生图。"
+            "不能：报时（clock.now）；看已有图（vision.ask/perceive）；拍照；自己投电视；TTS；开灯；放歌；产出 photo_url。"
+        ),
+        "input_schema": {
+            "query": {
+                "type": "string",
+                "required": True,
+                "description": "一句话 / prompt",
+            },
+            "upload_dest": {
+                "type": "string",
+                "required": False,
+                "description": "生图上传目标 lan（默认）| cloud",
+            },
+        },
+        "output_schema": {
+            "answer_text": {
+                "type": "string",
+                "required": True,
+                "description": "文字答案；不确定时直说我不知道",
+            },
+            "image_ref": {
+                "type": "string",
+                "required": False,
+                "description": (
+                    "仅生图成功时的 AssetRef JSON {asset_id, type, mime_type?}。"
+                    "禁止 photo_url / path / 永久 URL。"
+                ),
+            },
+            "citations": {
+                "type": "string",
+                "required": False,
+                "description": "来源 JSON 数组；拒答时为 []",
+            },
+        },
+    },
+    "clock.now": {
+        "group": "clock",
+        "service_id": "local.clock",
+        "description": (
+            "能：读本机墙上时钟，产出 now_iso 与 time_text。问几点必须用本能力。"
+            "不能：LLM 编时刻；用 query.content 或 notify.speak 顶替；TTS；看图；开灯。"
+        ),
+        "input_schema": {
+            "timezone": {
+                "type": "string",
+                "required": False,
+                "description": "IANA 时区，如 Asia/Shanghai；缺省为本机本地时区",
+            },
+        },
+        "output_schema": {
+            "now_iso": {
+                "type": "string",
+                "required": True,
+                "description": "ISO-8601 时刻，含 UTC 偏移",
+            },
+            "time_text": {
+                "type": "string",
+                "required": True,
+                "description": "人类可读时刻，含时区",
+            },
+        },
+    },
+    "light.set": {
+        "group": "light",
+        "service_id": "livingroom.ceiling_light",
+        "description": (
+            "能：开关客厅大路灯。必填 state=on|off。内部自己唤醒小书再发开灯/关灯。"
+            "不能：拆成 notify.speak；调亮度；控制窗帘或其他灯；听「在呢」；报时；问答。"
+        ),
+        "input_schema": {
+            "state": {
+                "type": "string",
+                "required": True,
+                "description": (
+                    "客厅大路灯：on 开 / off 关（兼容 开、关、开灯、关灯）。"
+                    "禁止拆成 notify.speak。缺 state 则本能力无效。"
+                ),
+            },
+        },
+        "output_schema": {
+            "state": {
+                "type": "string",
+                "required": True,
+                "description": "规范化后的 on 或 off",
+            },
+        },
+    },
 }
 
-# Old / rejected capability ids (Edge will skip/fail; planner must not emit these).
+# Old / rejected capability ids (planner and enqueue must not emit these).
 LEGACY_CAPABILITIES = frozenset(
     {
         "music.playback",
@@ -94,6 +378,8 @@ LEGACY_CAPABILITIES = frozenset(
         "bluetooth.a2dp",
         "gopro.capture",
         "gopro.shutter",
+        "endpoint.feedback",
+        "endpoint.present",
     }
 )
 
@@ -380,6 +666,110 @@ def resolve_edge_for_plan(
     }
 
 
+def plan_assigned_edge_ids(plan: Any) -> list[str]:
+    """Distinct non-empty per-step assigned_edge_id values, in first-seen order."""
+    if not isinstance(plan, list):
+        return []
+    seen: list[str] = []
+    for step in plan:
+        if not isinstance(step, dict):
+            continue
+        eid = str(
+            step.get("assigned_edge_id") or step.get("assignedEdgeId") or ""
+        ).strip()
+        if eid and eid not in seen:
+            seen.append(eid)
+    return seen
+
+
+def assign_steps_to_edges(
+    plan: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    *,
+    preferred_edge_id: str | None = None,
+    room: str | None = None,
+) -> tuple[list[dict[str, Any]], str, str | None]:
+    """Assign each step to an online edge that covers that step's capability."""
+    if not plan:
+        raise ValueError("execution_plan has no steps")
+    assigned_steps: list[dict[str, Any]] = []
+    reasons: list[str] = []
+    scheduler_node: str | None = None
+    for step in plan:
+        if not isinstance(step, dict):
+            continue
+        step_copy = dict(step)
+        existing = str(step_copy.get("assigned_edge_id") or "").strip()
+        routed = resolve_edge_for_plan(
+            [step_copy],
+            edges,
+            preferred_edge_id=existing or preferred_edge_id,
+            room=room,
+            online_only=True,
+        )
+        if not routed.get("ok") or not routed.get("edge_id"):
+            cap = str(step_copy.get("capability") or "?")
+            raise ValueError(
+                str(routed.get("reason") or f"no online edge for step capability {cap}")
+            )
+        eid = str(routed["edge_id"]).strip()
+        step_copy["assigned_edge_id"] = eid
+        step_copy.pop("assignedEdgeId", None)
+        assigned_steps.append(step_copy)
+        reasons.append(
+            f"step{step_copy.get('step')}:{step_copy.get('capability')}→{eid}"
+        )
+        if step_copy.get("execution_timing") and not scheduler_node:
+            scheduler_node = eid
+    if not scheduler_node and assigned_steps:
+        scheduler_node = str(assigned_steps[0].get("assigned_edge_id") or "").strip() or None
+    top = scheduler_node or (
+        str(assigned_steps[0].get("assigned_edge_id") or "") if assigned_steps else ""
+    )
+    return assigned_steps, top, scheduler_node
+
+
+def resolve_tts_edge_id(edges: list[dict[str, Any]]) -> str | None:
+    """Pick the designated Edge for voice TTS delivery (notify.speak)."""
+    import os
+
+    explicit = os.environ.get("PRESENTATION_TTS_EDGE_ID", "").strip()
+    online = [
+        e
+        for e in edges
+        if str(e.get("online_status") or e.get("onlineStatus") or "").lower() == "online"
+        and e.get("schedule_eligible") is not False
+    ]
+
+    def has_speak(edge: dict[str, Any]) -> bool:
+        return "notify.speak" in edge_capability_ids(edge)
+
+    if explicit:
+        for edge in online:
+            if str(edge.get("edge_id") or edge.get("edgeId") or "").strip() == explicit:
+                return explicit if has_speak(edge) else None
+        return None
+
+    laptop_candidates: list[dict[str, Any]] = []
+    for edge in online:
+        if not has_speak(edge):
+            continue
+        hint = str(
+            edge.get("role")
+            or edge.get("client_hint")
+            or edge.get("clientHint")
+            or ""
+        ).lower()
+        if "laptop" in hint or hint == "living-room-mac":
+            laptop_candidates.append(edge)
+    if laptop_candidates:
+        return str(laptop_candidates[0].get("edge_id") or "").strip() or None
+    for edge in online:
+        if has_speak(edge):
+            return str(edge.get("edge_id") or "").strip() or None
+    return None
+
+
 def normalize_execution_plan(plan: Any) -> tuple[list[dict[str, Any]] | None, str | None]:
     """
     Normalize execution_plan steps.
@@ -458,7 +848,16 @@ def plan_music_play(*, song: str, artist: str | None = None, step: int = 1) -> l
 
 
 def plan_camera_capture(*, step: int = 1) -> list[dict[str, Any]]:
-    return [{"capability": "camera.capture", "step": step}]
+    return [
+        {
+            "capability": "camera.capture",
+            "step": step,
+            "input_constrict": {},
+            "output_constrict": {
+                "photo_url": {"type": "string", "data_dest": "context"}
+            },
+        }
+    ]
 
 
 def plan_take_video(*, step: int = 1) -> list[dict[str, Any]]:
@@ -480,3 +879,106 @@ def plan_notify_speak(
     if lang and str(lang).strip():
         item["input_constrict"]["lang"] = str(lang).strip()
     return [item]
+
+
+def plan_vision_perceive(
+    *,
+    photo_url: str = "$photo_url",
+    prompt: str | None = None,
+    step: int = 1,
+) -> list[dict[str, Any]]:
+    """photo_url in → flat summary/people/… out (helper for tests/docs only).
+
+    Brain does not rewrite vision output_constrict — planner/Edge own the keys.
+    """
+    flat = {
+        k: {"type": "string", "data_dest": "context"}
+        for k in (
+            "summary",
+            "people",
+            "spatial",
+            "actions",
+            "posture",
+            "lighting",
+        )
+    }
+    item: dict[str, Any] = {
+        "capability": "vision.perceive",
+        "step": step,
+        "input_constrict": {"photo_url": (photo_url or "").strip() or "$photo_url"},
+        "output_constrict": flat,
+    }
+    if prompt and str(prompt).strip():
+        item["input_constrict"]["prompt"] = str(prompt).strip()
+    return [item]
+
+
+def plan_vision_ask(
+    *,
+    photo_url: str = "$photo_url",
+    query: str,
+    step: int = 1,
+) -> list[dict[str, Any]]:
+    """photo_url + query in → answer_text (helper for tests/docs only)."""
+    return [
+        {
+            "capability": "vision.ask",
+            "step": step,
+            "input_constrict": {
+                "photo_url": (photo_url or "").strip() or "$photo_url",
+                "query": (query or "").strip(),
+            },
+            "output_constrict": {
+                "answer_text": {"type": "string", "data_dest": "context"},
+            },
+        }
+    ]
+
+
+def plan_query_content(
+    *,
+    query: str,
+    step: int = 1,
+) -> list[dict[str, Any]]:
+    """query in → answer_text / optional photo_url / citations (helper for tests/docs)."""
+    return [
+        {
+            "capability": "query.content",
+            "step": step,
+            "input_constrict": {"query": (query or "").strip()},
+            "output_constrict": {
+                "answer_text": {"type": "string", "data_dest": "context"},
+                "photo_url": {"type": "string", "data_dest": "context"},
+                "citations": {"type": "string", "data_dest": "context"},
+            },
+        }
+    ]
+
+
+def plan_clock_now(*, step: int = 1) -> list[dict[str, Any]]:
+    return [
+        {
+            "capability": "clock.now",
+            "step": step,
+            "input_constrict": {},
+            "output_constrict": {
+                "now_iso": {"type": "string", "data_dest": "context"},
+                "time_text": {"type": "string", "data_dest": "context"},
+            },
+        }
+    ]
+
+
+def plan_display_photo(*, photo_url: str = "$photo_url", step: int = 1) -> list[dict[str, Any]]:
+    return [
+        {
+            "capability": "display.photo",
+            "step": step,
+            "input_constrict": {"photo_url": (photo_url or "").strip() or "$photo_url"},
+        }
+    ]
+
+
+def plan_music_control(*, capability: str, step: int = 1) -> list[dict[str, Any]]:
+    cap = (capability or "").strip()
+    return [{"capability": cap, "step": step}]

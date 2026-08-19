@@ -1,4 +1,8 @@
-"""Mac local TTS: notify.speak via Microsoft edge-tts (male neural), say fallback."""
+"""Mac local TTS: notify.speak via macOS say (primary), pyttsx3 fallback.
+
+edge-tts is disabled by default (network flaky / high latency for timed reminds).
+Set MAC_EDGE_TTS_BACKEND=edge to force edge-tts first (not recommended).
+"""
 
 from __future__ import annotations
 
@@ -17,17 +21,21 @@ SAY_BIN = "/usr/bin/say"
 AFPLAY_BIN = "/usr/bin/afplay"
 DEFAULT_TIMEOUT_SEC = 120
 
-# Microsoft Edge neural voices (edge-tts). Prefer male for zh/en.
 _EDGE_VOICE_ZH_MALE = "zh-CN-YunxiNeural"
 _EDGE_VOICE_EN_MALE = "en-US-GuyNeural"
 
-# macOS say fallbacks (female system voices are fine as last resort).
 _ZH_SAY_VOICES = ("Ting-Ting", "Tingting", "Mei-Jia", "Sin-ji", "Sinji", "Yu-shu", "Lilian")
 _EN_SAY_VOICES = ("Alex", "Samantha", "Victoria")
 
 
 class NotifySpeakError(Exception):
     pass
+
+
+def _tts_backend() -> str:
+    """say | edge — default say for punctual local reminds."""
+    raw = (os.environ.get("MAC_EDGE_TTS_BACKEND") or "say").strip().lower()
+    return raw if raw in ("say", "edge") else "say"
 
 
 def _edge_voice_for_lang(lang: str | None, override: str | None = None) -> str:
@@ -60,45 +68,28 @@ def _edge_tts_speak(text: str, *, voice: str, timeout_sec: float) -> None:
 
     log.info("notify.speak via edge-tts voice=%s text=%r", voice, text[:80])
     tmp: Path | None = None
-    last_err: Exception | None = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as fh:
             tmp = Path(fh.name)
-        # edge-tts occasionally returns empty audio; retry a couple times.
-        for attempt in range(1, 4):
-            try:
-                asyncio.run(asyncio.wait_for(_synthesize(tmp), timeout=timeout_sec))
-                if tmp.stat().st_size < 64:
-                    raise NotifySpeakError("edge-tts returned empty audio")
-                last_err = None
-                break
-            except Exception as e:
-                last_err = e
-                log.warning("edge-tts attempt %s failed: %s", attempt, e)
-                try:
-                    tmp.write_bytes(b"")
-                except OSError:
-                    pass
-        if last_err is not None:
-            if isinstance(last_err, TimeoutError):
-                raise NotifySpeakError(f"edge-tts timed out after {timeout_sec}s") from last_err
-            raise NotifySpeakError(f"edge-tts failed: {last_err}") from last_err
-
-        try:
-            proc = subprocess.run(
-                [afplay, str(tmp)],
-                capture_output=True,
-                text=True,
-                timeout=timeout_sec,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as e:
-            raise NotifySpeakError(f"afplay timed out after {timeout_sec}s") from e
-        except OSError as e:
-            raise NotifySpeakError(f"afplay failed to start: {e}") from e
+        asyncio.run(asyncio.wait_for(_synthesize(tmp), timeout=min(timeout_sec, 12.0)))
+        if tmp.stat().st_size < 64:
+            raise NotifySpeakError("edge-tts returned empty audio")
+        proc = subprocess.run(
+            [afplay, str(tmp)],
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+            check=False,
+        )
         if proc.returncode != 0:
             err = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
             raise NotifySpeakError(f"afplay failed: {err}")
+    except TimeoutError as e:
+        raise NotifySpeakError("edge-tts timed out") from e
+    except NotifySpeakError:
+        raise
+    except Exception as e:
+        raise NotifySpeakError(f"edge-tts failed: {e}") from e
     finally:
         if tmp is not None:
             try:
@@ -210,21 +201,25 @@ def speak(
     voice: str | None = None,
     timeout_sec: float = DEFAULT_TIMEOUT_SEC,
 ) -> str:
-    """Speak text on the default audio device. Prefer edge-tts male neural voice."""
+    """Speak text. Default: local macOS say (low latency)."""
     body = (text or "").strip()
     if not body:
         raise NotifySpeakError("missing text")
 
-    edge_voice = _edge_voice_for_lang(lang, voice)
+    lang_s = (lang or "zh_CN").strip() or "zh_CN"
+    backend = _tts_backend()
     errors: list[str] = []
-    try:
-        _edge_tts_speak(body, voice=edge_voice, timeout_sec=timeout_sec)
-        return f"spoke via edge-tts voice={edge_voice}"
-    except NotifySpeakError as e:
-        errors.append(str(e))
-        log.warning("edge-tts path failed: %s — trying macOS say", e)
 
-    say_voice = _pick_say_voice(lang)
+    if backend == "edge":
+        edge_voice = _edge_voice_for_lang(lang_s, voice)
+        try:
+            _edge_tts_speak(body, voice=edge_voice, timeout_sec=timeout_sec)
+            return f"spoke via edge-tts voice={edge_voice}"
+        except NotifySpeakError as e:
+            errors.append(str(e))
+            log.warning("edge-tts path failed: %s — trying macOS say", e)
+
+    say_voice = voice if (voice and backend == "say") else _pick_say_voice(lang_s)
     try:
         _say(body, voice=say_voice, timeout_sec=timeout_sec)
         return f"spoke via say voice={say_voice or 'default'}"
@@ -245,3 +240,20 @@ def speak_from_params(params: dict[str, Any], *, timeout_sec: float = DEFAULT_TI
     lang = str(params.get("lang") or "zh_CN").strip() or "zh_CN"
     voice = str(params.get("voice") or "").strip() or None
     return speak(text, lang=lang, voice=voice, timeout_sec=timeout_sec)
+
+
+def prefetch_speak(
+    text: str,
+    *,
+    lang: str | None = "zh_CN",
+    voice: str | None = None,
+    timeout_sec: float = DEFAULT_TIMEOUT_SEC,
+) -> None:
+    """No-op for say backend (local, no network synth to prefetch)."""
+    _ = (text, lang, voice, timeout_sec)
+    return
+
+
+def prefetch_from_params(params: dict[str, Any]) -> None:
+    _ = params
+    return

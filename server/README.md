@@ -1,6 +1,16 @@
-# Server stubs — Edge wire protocol (`services[]`)
+# Brain — `home_brain.py`
 
-本目录 Flask stub 已按最新 Edge 协议对齐。生产 Brain 部署时对照下列改动点落地。
+本目录 **唯一** Brain 进程是 [`home_brain.py`](home_brain.py)（火山生产文件落地后继续改这一份）。[`brain_app.py`](brain_app.py) 只转调同一 `app`。不要再开并行 stub。
+
+```bash
+export ARK_API_KEY=...
+cd server && python home_brain.py
+# 等价：python brain_app.py
+```
+
+`:9527`。`POST /api/v1/intent` 立刻返回 `intent_received`，后台 `llm_worker` 调方舟，写入 `execution_plan` 后升到 `intent_parsed`（空 plan 或规划失败为 `failed`，`msg`/`error` 必填）。规划 prompt：[`prompts/task_planner_system_prompt.md.en`](prompts/task_planner_system_prompt.md.en)。选边：心跳 last-writer-wins（`capability_id → edge_id`），每步 `assigned_edge_id`。密钥只读 `ARK_API_KEY`，不要写进代码。
+
+权威状态在 SQLite，对照 [`docs/db-schema.md`](../docs/db-schema.md)：`jobs`（物流）、`participants`（注册+心跳）、`intent_reviews`（按次追加，含 `session_id`）。重启后续同一 `intent_id` / `participant_id`（同 `client_hint` 不重签）；`intent_received` 未规划单会重新入队。库文件默认 `server/data/brain.sqlite3`（`BRAIN_DB_PATH`）。日志写到 `server/llm_logs/brain.log`（按天切割，`BRAIN_LOG_DIR` 可改路径），不打控制台。**Brain 进程不建库、不迁移**；空库由 `@dba` 执行 `python db.py init`。备份：`python db.py backup /path/to/brain.sqlite3.bak`。Mac Edge 的 `local_ledger.json` / `edge_id.json` 仍是 JSON。
 
 ## 契约摘要
 
@@ -16,103 +26,61 @@ services[]
 
 | Edge | service_id | group | capability_id |
 |------|------------|-------|---------------|
-| Chromecast | `netease.music` | `music` | `music.play` … |
-| iPhone | `gopro.camera` | `camera` | `camera.capture`, `take_video` |
-| iPhone | `chromecast.display` | `display` | `display.photo`（Cast Sender） |
-| Mac | `local.notify` | `notify` | `notify.speak`（本机 TTS / `say`） |
+| Chromecast / Mac | `chromecast.display` | `display` | `display.photo` / `display.slideshow` |
+| Mac home-server | `gopro.camera` | `camera` | `camera.capture`（`MAC_EDGE_GOPRO_SSID` 时广告；无感切 Wi‑Fi） |
+| Mac laptop | `local.notify` | `notify` | `notify.speak`（本机 TTS / `say`） |
+| Mac laptop | `local.vision` | `vision` | `vision.perceive`（场景结构）；`vision.ask`（图+问句 → `answer_text`） |
+| Mac laptop | `local.query` | `query` | `query.content`（Edge 本地问答；不知道就说不知道；与 vision 零代码依赖） |
+
+iPhone 是 **Intent Source**：只发自然语言、只轮询 `intent_detail`，**不注册 Edge**、不广告 `gopro.camera` / Cast。
 
 `music.play` 参数：`song` / `artist` / `album`（均可选，至少填一个）。  
 勿再使用 `author`、`singer_name`、`song_name`。  
-`camera.capture` 输出：`photo_url`（必填）、`photo_local_path`、`saved_as`。流水线：快门 → 下最新图 → 上传 → **iPhone Cast 到 Chromecast**。  
-`photo_url` 形如 `http://115.190.153.53:8080/{saved_as}`。  
-`display.photo` 参数：`photo_url`（必填）；由 **iPhone** 经 Google Cast API 投到电视（需与 Chromecast 同局域网）。  
-`notify.speak` 参数：`text`（必填）、`lang`（可选，如 `zh_CN`）；仅 Mac Edge；定时提醒用 step 上 `execution_timing`。
+`camera.capture` 输出：`photo_url`（必填）、`photo_local_path`、`saved_as`。默认 `upload_dest=lan`；投屏/电视禁止 `cloud`。  
+`photo_url` 形如 `http://192.168.3.65:8080/{saved_as}`。  
+`display.photo` 参数：`photo_url`（必填，须 LAN，Chromecast 在家里 Wi‑Fi 拉取）。  
+`display.slideshow` 参数：`photo_urls`（必填 JSON 数组）、`interval_sec`（默认 5）、`order`（`array_asc` 默认 / `array_desc` / `alphabet_asc` / `alphabet_desc` / `random`）。轮播用本能力，不要拆成多个 `display.photo`。不传 `photo_urls` 则失败。  
+`notify.speak` 参数：`text`（必填）、`lang`（可选，如 `zh_CN`）；仅 Mac Edge；定时提醒用 step 上 `execution_timing`。`text` 支持内嵌 `$photo_url`；视觉结果用 `$summary`（也兼容旧写法 `$perception_json.summary`）。  
+`vision.perceive`：**输入** `photo_url`（必填）；**平铺输出** `summary` / `people` / `spatial` / `actions` / `posture` / `lighting`（复杂字段为 JSON 字符串）。Brain 按 step 的 `output_constrict` 把对应键写入 `ctx_param`，无视觉专用纠偏；由 **Mac Edge 本地**调视觉模型。  
+`vision.ask`：**输入** `photo_url` + `query`（均必填）；**输出** `answer_text`。只根据图中可见内容回答「这个字读啥」这类指向问题；看不清就说不知道。与 `vision.perceive` 独立 schema，不产出场景字段。下游 `notify.speak`（`$answer_text`）。  
+`query.content`：**输入** `query`（必填）；**平铺输出** `answer_text`（必填）、`photo_url`（可选）、`citations`（JSON 字符串）。不知道就直说不知道；科普/健康/医药等专业域须引用来源，禁止编造。独立 LLM/生图栈，**不依赖** `vision.perceive`。下游可用 `notify.speak`（`$answer_text`）或 `display.photo`（`$photo_url`）。
 
-旧 id（`music.playback` / `take_photo` 等）入队会被 stub **拒绝**；Edge 侧也会 skip/fail。
+旧 id（`music.playback` / `take_photo` 等）Edge 侧 skip/fail。
 
 ## 执行时机 `execution_timing` + `base_time`
 
 - Intent 根字段 `base_time`：入库 Unix **毫秒**时间戳。
-- Step 字段 `execution_timing`：`immediate` | `delay`(`exec_time`) | `interval`(`interval_sec`+`first_exec_time`) | `cron`。
+- Step 字段 `execution_timing`：`immediate` | `delay`(`exec_time`) | `interval`(`interval_sec`+`first_exec_time`) | `cron`(`cron_expr`+`timezone`+`first_exec_time`)。
 - **禁止**下发 `delay_sec`；相对延迟只在 Brain 语义阶段换算成绝对 `exec_time`。
 - Heartbeat 带 `client_time_ms`；响应回 `brain_time_ms`。偏差 **>5 分钟** → `schedule_eligible=false`，路由跳过该节点（Brain 可改派 `assigned`）。
 - 补做窗口（未开始执行）：单次 ≤15min；周期 ≤ `min(间隔/2, 15min)`。Edge 用同步后的 Brain 时间判定。
 
-## 能力路由（单节点）
+## 能力路由（按步选边）
 
-大脑根据心跳里的 capability registry，为整份 `execution_plan` 选定 **一个** `assigned_edge_id`（不做跨 Edge 拆分）：
+心跳里每个 `capability_id` last-writer-wins 记到 `capability_edge_mapping`。规划落地时每步写 `assigned_edge_id`（不同步可以不同边）。时钟偏差 ≥5 分钟的心跳 HTTP 400，不入库。
 
-1. 收集 plan 内全部 `capability`。
-2. 在线 Edge 中筛选 **同时具备全部 capability** 的节点。
-3. 偏好：`preferred_edge_id` → 同 `room` → `edge_id` 字典序。
-4. 无候选 → 入队失败（HTTP 400 / intent reply 带 error）。
-
-拉取：
-
-- `GET /api/v1/devices/living-room/intents` **必须**带 `?edge_id=<本节点>`，否则返回 `{ "intents": [] }`。
-- 每个 intent 含 `assigned_edge_id`；Edge 再比对本地 id，不一致则不执行。
+拉取：`GET /api/v1/devices/living-room/intents` **必须**带 `?edge_id=`，否则 `{ "intents": [] }`。当前实现按 `intent_status` 过滤后返回最近 N 条（`last`，最大 10），**不按** `assigned_edge_id` 再滤。
 
 ## 文件对照
 
 | 文件 | 职责 |
 |------|------|
-| [`edge_services.py`](edge_services.py) | normalize / validate / capability 索引 / `resolve_edge_for_plan` / execution_plan |
-| [`edge_heartbeat_flask.py`](edge_heartbeat_flask.py) | register / heartbeat / `GET /edges` / `GET /capabilities` |
-| [`device_commands_flask.py`](device_commands_flask.py) | intents 队列；路由写 `assigned_edge_id`；强制 `edge_id` 拉取 |
-| [`intent_dispatch_flask.py`](intent_dispatch_flask.py) | 文本意图 → plan → 路由入队 |
-| [`brain_app.py`](brain_app.py) | **推荐入口**：同进程挂载 heartbeat + intents + intent |
-| [`edge_report_flask.py`](edge_report_flask.py) | 调试 `POST .../capabilities`（body=`services`） |
+| [`home_brain.py`](home_brain.py) | **唯一 Brain**：intent / 规划 / 心跳 / 照片 / services |
+| [`brain_app.py`](brain_app.py) | 转调 `home_brain.app` |
+| [`db.py`](db.py) | SQLite：jobs / participants / 序号 |
+| [`prompts/task_planner_system_prompt.md.en`](prompts/task_planner_system_prompt.md.en) | 方舟规划 prompt |
 
-```bash
-# 统一 Brain（同进程，路由可读心跳）
-cd server && python brain_app.py
-```
-
-## 生产必改
-
-1. **Register / Heartbeat**：解析并持久化 `services`；丢弃顶层 `skills`/`capabilities`；`GET edges` 主字段为 `services`。
-2. **能力索引**：从 `services[*].capabilities[*]` 建索引（`GET /api/v1/capabilities?group=music`）。
-3. **execution_plan**：用 `camera.capture` / `music.play` / `notify.speak` + 对应入参；勿再下发 `music.playback` 或 `skill+action`。
-4. **Planner**：按 registry 选单节点；整份 plan 绑一个 `assigned_edge_id`。
-5. **拉取**：Edge 必须传 `edge_id`，并校验响应里的 `assigned_edge_id`。
+心跳偏差 **>5 分钟** → HTTP 400。Intent 根字段 `intent_base_time` 为 Unix **毫秒**。
 
 ## 验收
 
 ```bash
-# 启动统一 app 后：先 register + heartbeat 带 services，再：
-
-# 能力索引
-curl -s 'http://127.0.0.1:9527/api/v1/capabilities?capability=camera.capture'
-curl -s 'http://127.0.0.1:9527/api/v1/capabilities?capability=notify.speak'
-
-# 入队拍照（需在线节点具备 camera.capture）
-curl -s -X POST http://127.0.0.1:9527/api/v1/devices/living-room/intents \
+# 注册 + 心跳 + 发意图 + 查详情
+curl -s -X POST http://127.0.0.1:9527/api/v1/edge-register
+curl -s 'http://127.0.0.1:9527/api/v1/services'
+curl -s -X POST http://127.0.0.1:9527/api/v1/intent \
   -H 'Content-Type: application/json' \
-  -d '{"execution_plan":[{"capability":"camera.capture","step":1}]}'
-
-# 入队语音提醒（需 Mac 在线且具备 notify.speak）
-curl -s -X POST http://127.0.0.1:9527/api/v1/devices/living-room/intents \
-  -H 'Content-Type: application/json' \
-  -d '{"execution_plan":[{"capability":"notify.speak","step":1,"input_constrict":{"text":"该吃饭了","lang":"zh_CN"}}]}'
-
-# 入队投屏（需 iPhone 在线且具备 display.photo；与 Chromecast 同 Wi‑Fi）
-curl -s -X POST http://127.0.0.1:9527/api/v1/devices/living-room/intents \
-  -H 'Content-Type: application/json' \
-  -d '{"execution_plan":[{"capability":"display.photo","step":1,"photo_url":"http://115.190.153.53:8080/EXAMPLE.jpg"}]}'
-
-# 不带 edge_id → 空
-curl -s 'http://127.0.0.1:9527/api/v1/devices/living-room/intents?intent_status=intent_parsed'
-
-# 带本节点 edge_id → 仅 assigned 匹配的项
-curl -s 'http://127.0.0.1:9527/api/v1/devices/living-room/intents?edge_id=YOUR_EDGE_ID&intent_status=intent_parsed&peek=1'
-
-# 入队放歌
-curl -s -X POST http://127.0.0.1:9527/api/v1/devices/living-room/intents \
-  -H 'Content-Type: application/json' \
-  -d '{"execution_plan":[{"capability":"music.play","step":1,"song":"十年","artist":"陈奕迅"}]}'
-
-# 旧 id 应 400
-curl -s -X POST http://127.0.0.1:9527/api/v1/devices/living-room/intents \
-  -H 'Content-Type: application/json' \
-  -d '{"execution_plan":[{"capability":"music.playback","step":1}]}'
+  -d '{"text":"现在几点了","source":"text"}'
+curl -s 'http://127.0.0.1:9527/api/v1/intent_detail?intent_id=1'
+curl -s 'http://127.0.0.1:9527/api/v1/devices/living-room/intents?edge_id=YOUR_EDGE_ID&intent_status=intent_parsed&last=5'
 ```

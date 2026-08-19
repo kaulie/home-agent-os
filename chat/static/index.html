@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Chatbox</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #111318;
+      --panel: #1b1e27;
+      --line: #2c3140;
+      --text: #e8eaef;
+      --muted: #9aa3b5;
+      --accent: #6ea8fe;
+      --user: #3dd68c;
+      --chip: #262b38;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font: 14px/1.45 ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    .app { display: grid; grid-template-columns: 248px 1fr; height: 100%; }
+    aside { border-right: 1px solid var(--line); background: var(--panel); padding: 16px 12px; overflow: auto; }
+    h1 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+    .hint { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+    .agent { display: grid; grid-template-columns: 32px 1fr; gap: 8px; align-items: center; padding: 8px; border-radius: 8px; margin-bottom: 6px; background: var(--chip); }
+    .agent .meta { min-width: 0; }
+    .agent .name { font-weight: 600; display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+    .agent .seen { color: var(--muted); font-size: 11px; }
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+      flex: 0 0 auto; color: #fff;
+    }
+    .avatar svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .avatar.lg { width: 36px; height: 36px; }
+    .avatar.lg svg { width: 20px; height: 20px; }
+    .avatar.sm { width: 18px; height: 18px; }
+    .avatar.sm svg { width: 11px; height: 11px; }
+    .avatar.boss { background: #2f9e6a; }
+    .avatar.coordinator { background: #6b7cff; }
+    .avatar.brain {
+      background: radial-gradient(circle at 32% 28%, #ff8ae0 0%, #d61f8a 55%, #9b0870 100%);
+      box-shadow: 0 0 0 2px #ffc7ee;
+    }
+    .avatar.brain svg { width: 22px; height: 22px; stroke-width: 2.2; }
+    .avatar.quality {
+      background: #0f766e;
+      box-shadow: 0 0 0 2px #99f6e4;
+    }
+    .avatar.runtime { background: #3d8bfd; }
+    .avatar.intent { background: #00b4d8; }
+    .avatar.capability { background: #f4a261; }
+    .avatar.dba { background: #c9a227; }
+    .avatar.all { background: #5c6578; }
+    .badge { background: #c45c5c; color: #fff; border-radius: 999px; padding: 0 6px; font-size: 11px; font-weight: 700; }
+    .badge.off { background: transparent; color: var(--muted); font-weight: 500; }
+    main { display: flex; flex-direction: column; min-width: 0; }
+    #log { flex: 1; overflow: auto; padding: 16px; }
+    .msg { display: grid; grid-template-columns: 36px 1fr; gap: 10px; align-items: start; margin: 0 0 14px; max-width: 760px; padding: 8px 10px; border-radius: 8px; }
+    .msg .bubble { min-width: 0; }
+    .msg.incoming-unread { background: #1f2a22; box-shadow: inset 3px 0 0 var(--user); }
+    .msg.stale-unacked {
+      background: #3a2418;
+      box-shadow: inset 3px 0 0 #e08a3c;
+    }
+    .msg .meta { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+    .msg .from { color: var(--accent); font-weight: 600; }
+    .msg.boss .from { color: var(--user); }
+    .msg .body { white-space: pre-wrap; word-break: break-word; }
+    .msg .aud, .msg .reads { color: var(--muted); font-size: 11px; margin-top: 4px; }
+    .msg.recalled .body { color: var(--muted); font-style: italic; }
+    .msg button.recall {
+      margin-top: 6px; border: 1px solid var(--line); background: transparent;
+      color: var(--muted); border-radius: 6px; padding: 2px 8px; cursor: pointer; font-size: 12px;
+    }
+    .msg button.recall:hover { color: var(--text); border-color: var(--accent); }
+    .composer { border-top: 1px solid var(--line); padding: 12px 16px 16px; background: var(--panel); }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .chips button {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid var(--line); background: var(--chip); color: var(--text);
+      border-radius: 999px; padding: 4px 10px; cursor: pointer; font-size: 12px;
+    }
+    .chips button:hover { border-color: var(--accent); }
+    textarea {
+      width: 100%; min-height: 72px; resize: vertical; border-radius: 8px;
+      border: 1px solid var(--line); background: var(--bg); color: var(--text);
+      padding: 10px; font: inherit;
+    }
+    .row { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 12px; }
+    .row span { color: var(--muted); font-size: 12px; }
+    button.send {
+      background: var(--accent); color: #111; border: 0; border-radius: 8px;
+      padding: 8px 16px; font-weight: 700; cursor: pointer;
+    }
+    .empty { color: var(--muted); padding: 24px 0; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <h1>Agent Chatbox <span id="bossUnread" class="badge off"></span></h1>
+      <p class="hint">未 @ 任何人时，agent 不处理。超过 1 小时仍未读的消息会标成橙色底。页面每 5 秒刷新。</p>
+      <div id="agents"></div>
+    </aside>
+    <main>
+      <div id="log"><div class="empty">还没有消息。</div></div>
+      <div class="composer">
+        <div class="chips" id="chips"></div>
+        <textarea id="body" placeholder="给 agent 派活请 @brain / @all … 不 @ 则只给你自己看。"></textarea>
+        <div class="row">
+          <span>Enter 发送，Shift+Enter 换行</span>
+          <button class="send" id="send" type="button">发送</button>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script>
+    const HANDLES = ["coordinator","brain","runtime","intent","capability","quality","dba"];
+    const NAMES = {
+      boss: "boss",
+      owner: "boss",
+      user: "boss",
+      coordinator: "system coordinator agent",
+      brain: "brain agent",
+      runtime: "runtime dev agent",
+      intent: "Intent dev agent",
+      capability: "capability dev agent",
+      quality: "quality agent",
+      dba: "dba agent",
+    };
+    const logEl = document.getElementById("log");
+    const agentsEl = document.getElementById("agents");
+    const chipsEl = document.getElementById("chips");
+    const bodyEl = document.getElementById("body");
+    let lastId = 0;
+
+    const ICONS = {
+      boss: '<path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z"/>',
+      coordinator: '<circle cx="12" cy="12" r="2.2"/><circle cx="12" cy="5" r="1.6"/><circle cx="6.2" cy="16.2" r="1.6"/><circle cx="17.8" cy="16.2" r="1.6"/><path d="M12 9.8V6.6M10.2 13.4 7.4 15.3M13.8 13.4l2.8 1.9"/>',
+      brain: '<path fill="currentColor" stroke="none" d="M8.2 6.1A3.7 3.7 0 0 1 12 3.8a3.7 3.7 0 0 1 3.8 2.3 3.4 3.4 0 0 1 3.1 3.4c0 .7-.2 1.3-.6 1.9A3.3 3.3 0 0 1 19.4 14c0 1.9-1.6 3.4-3.5 3.4h-.7v2.4c0 .8-.7 1.5-1.5 1.5H10.3c-.8 0-1.5-.7-1.5-1.5V17.4h-.7C6.2 17.4 4.6 15.9 4.6 14c0-.9.4-1.7 1-2.3-.4-.6-.6-1.2-.6-1.9A3.4 3.4 0 0 1 8.2 6.1z"/><path d="M12 6.4v11.2M8.7 10.1c1.4.7 2.5.5 3.3-.2M8.8 13c1.3.5 2.3.4 3.2-.1M15.3 10.1c-1.4.7-2.5.5-3.3-.2M15.2 13c-1.3.5-2.3.4-3.2-.1"/>',
+      quality: '<circle cx="10.2" cy="10.2" r="5.6"/><path d="m14.4 14.4 5 5"/><path d="M8 10.2h4.4M10.2 8v4.4"/>',
+      runtime: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M4.8 6.5l1.6 1.6M17.6 15.9l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.8 17.5l1.6-1.6M17.6 8.1l1.6-1.6"/>',
+      intent: '<path d="M5 6.5h10a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H10l-4 3v-3H5a2 2 0 0 1-2-2v-5a3 3 0 0 1 2-3z"/>',
+      capability: '<path d="M9 4h3.2a2 2 0 0 1 2 2v2.2H18a2 2 0 0 1 2 2V14h-2.2v2.2a2 2 0 0 1-2 2H12V16h-2.2a2 2 0 0 1-2-2V10H4V7.8a2 2 0 0 1 2-2H9z"/>',
+      dba: '<ellipse cx="12" cy="6.5" rx="7" ry="2.4"/><path d="M5 6.5v11c0 1.3 3.1 2.4 7 2.4s7-1.1 7-2.4v-11"/><path d="M5 12c0 1.3 3.1 2.4 7 2.4s7-1.1 7-2.4"/>',
+      all: '<circle cx="12" cy="12" r="8"/><path d="M12 5v14M5 12h14M7.2 7.2l9.6 9.6M16.8 7.2 7.2 16.8"/>',
+    };
+
+    function canonHandle(handle) {
+      if (handle === "user" || handle === "owner") return "boss";
+      return handle;
+    }
+
+    function avatar(handle, size) {
+      const key = ICONS[canonHandle(handle)] ? canonHandle(handle) : "all";
+      const cls = "avatar " + key + (size ? " " + size : "");
+      return `<span class="${cls}" title="@${esc(key)}"><svg viewBox="0 0 24 24">${ICONS[key]}</svg></span>`;
+    }
+
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+    }
+
+    function audienceLabel(aud) {
+      if (!aud || aud.length === 0) return "仅页面（agent 不处理）";
+      if (aud.indexOf("all") >= 0) return "@all";
+      return aud.map(h => "@" + h).join(" ");
+    }
+
+    function isStaleUnacked(m) {
+      if (m.recalled) return false;
+      if (!(m.unread || []).length) return false;
+      return (Date.now() / 1000 - (m.created_at || 0)) >= 3600;
+    }
+
+    function receiptLine(m) {
+      const unread = (m.unread || []).map(h => "@" + h);
+      const read = Object.keys(m.read || {}).map(h => "@" + h);
+      const parts = [];
+      if (isStaleUnacked(m)) parts.push('<span class="unread">超过1小时未ack</span>');
+      if (unread.length) parts.push('<span class="unread">未读 ' + esc(unread.join(" ")) + "</span>");
+      if (read.length) parts.push("已读 " + esc(read.join(" ")));
+      if (!parts.length) return "已读";
+      return parts.join(" · ");
+    }
+
+    function renderAgents(agents) {
+      agentsEl.innerHTML = (agents || []).map(a => {
+        const n = a.unread || 0;
+        const badge = n ? `<span class="badge">${n}</span>` : `<span class="badge off">已读</span>`;
+        const seen = a.last_seen_at ? ("上次 pull " + a.last_seen_at) : "尚未 pull";
+        return `<div class="agent">${avatar(a.handle)}<div class="meta"><div class="name"><span>@${esc(a.handle)}</span>${badge}</div><div class="seen">${esc(seen)}</div></div></div>`;
+      }).join("");
+    }
+
+    function canRecall(m) {
+      if (m.recalled) return false;
+      const from = canonHandle(m.from);
+      if (from !== "boss") return false;
+      const seen = Object.keys(m.read || {}).filter(h => h !== from);
+      if (seen.length) return false;
+      return (Date.now() / 1000 - (m.created_at || 0)) < 60;
+    }
+
+    function paintMsg(div, m) {
+      const from = canonHandle(m.from);
+      const mine = from === "boss";
+      const bossUnread = (m.unread || []).indexOf("boss") >= 0 || (m.unread || []).indexOf("owner") >= 0;
+      div.className = "msg"
+        + (mine ? " boss" : "")
+        + (!mine && bossUnread ? " incoming-unread" : "")
+        + (isStaleUnacked(m) ? " stale-unacked" : "")
+        + (m.recalled ? " recalled" : "");
+      div.dataset.id = String(m.id);
+      const name = NAMES[from] || from;
+      if (m.recalled) {
+        div.innerHTML = `${avatar(from, "lg")}<div class="bubble"><div class="meta"><span class="from">@${esc(from)}</span> ${esc(name)} · ${esc(m.ts)}</div>
+          <div class="body">已撤回</div></div>`;
+        return;
+      }
+      const recallBtn = canRecall(m) ? `<button class="recall" type="button" data-id="${m.id}">撤回</button>` : "";
+      div.innerHTML = `${avatar(from, "lg")}<div class="bubble"><div class="meta"><span class="from">@${esc(from)}</span> ${esc(name)} · ${esc(m.ts)}</div>
+        <div class="body">${esc(m.body)}</div>
+        <div class="aud">${esc(audienceLabel(m.audience))}</div>
+        <div class="reads">${receiptLine(m)}</div>
+        ${recallBtn}</div>`;
+    }
+
+    function upsertMsg(m) {
+      const empty = logEl.querySelector(".empty");
+      if (empty) empty.remove();
+      let div = logEl.querySelector('.msg[data-id="' + m.id + '"]');
+      const isNew = !div;
+      if (!div) {
+        div = document.createElement("div");
+        logEl.appendChild(div);
+      }
+      paintMsg(div, m);
+      if (isNew) logEl.scrollTop = logEl.scrollHeight;
+      if (m.id > lastId) lastId = m.id;
+    }
+
+    async function markBossRead(ids) {
+      if (!ids.length) return;
+      await fetch("/api/v1/mark_read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from: "boss", ids }),
+      });
+    }
+
+    async function poll() {
+      const res = await fetch("/api/v1/messages?since_id=0");
+      const data = await res.json();
+      const pending = [];
+      (data.messages || []).forEach(m => {
+        upsertMsg(m);
+        if (!m.recalled && ((m.unread || []).indexOf("boss") >= 0 || (m.unread || []).indexOf("owner") >= 0)) pending.push(m.id);
+      });
+      renderAgents(data.agents || []);
+      const n = data.boss_unread || data.owner_unread || 0;
+      const badge = document.getElementById("bossUnread");
+      badge.textContent = n ? ("未读 " + n) : "";
+      badge.className = n ? "badge" : "badge off";
+      if (pending.length) {
+        await markBossRead(pending);
+      }
+    }
+
+    async function send() {
+      const body = bodyEl.value;
+      if (!body.trim()) return;
+      const res = await fetch("/api/v1/push_msg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from: "boss", body }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "发送失败");
+        return;
+      }
+      bodyEl.value = "";
+      if (data.message) upsertMsg(data.message);
+    }
+
+    async function recall(id) {
+      const res = await fetch("/api/v1/recall_msg", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from: "boss", id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "撤回失败");
+        return;
+      }
+      if (data.message) upsertMsg(data.message);
+    }
+
+    chipsEl.innerHTML = ["all"].concat(HANDLES).map(h => `<button type="button" data-h="${h}">${avatar(h, "sm")}@${h}</button>`).join("");
+    chipsEl.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button");
+      if (!btn) return;
+      const token = "@" + btn.getAttribute("data-h") + " ";
+      const start = bodyEl.selectionStart || 0;
+      bodyEl.value = bodyEl.value.slice(0, start) + token + bodyEl.value.slice(start);
+      bodyEl.focus();
+      const pos = start + token.length;
+      bodyEl.setSelectionRange(pos, pos);
+    });
+    logEl.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button.recall");
+      if (!btn) return;
+      recall(Number(btn.getAttribute("data-id")));
+    });
+    document.getElementById("send").addEventListener("click", send);
+    bodyEl.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && !ev.shiftKey) {
+        ev.preventDefault();
+        send();
+      }
+    });
+    poll();
+    setInterval(poll, 5000);
+  </script>
+</body>
+</html>

@@ -4,6 +4,14 @@
   POST /api/v1/photos/upload
   GET  /api/v1/photos/download_latest
   GET  /api/v1/photos/<saved_as>
+  GET  /{saved_as}   (inline static, Cast-style)
+
+Env:
+  PHOTO_UPLOAD_HOST   default 0.0.0.0
+  PHOTO_UPLOAD_PORT   default 9527 (LAN deploy: 8080)
+  PHOTO_UPLOAD_DIR    default <this file>/uploads/gopro
+  PHOTO_PUBLIC_BASE   default http://115.190.153.53:8080
+                      (LAN: http://192.168.3.65:8080)
 
 Run:
   python3 photo_upload_server.py
@@ -13,6 +21,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import re
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,9 +31,24 @@ from urllib.parse import unquote, urlparse
 HOST = "0.0.0.0"
 PORT = 9527
 UPLOAD_DIR = Path(__file__).resolve().parent / "uploads" / "gopro"
+PUBLIC_BASE = "http://115.190.153.53:8080"
 UPLOAD_PATH = "/api/v1/photos/upload"
 DOWNLOAD_LATEST_PATH = "/api/v1/photos/download_latest"
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif"}
+
+
+def _load_env() -> None:
+    global HOST, PORT, UPLOAD_DIR, PUBLIC_BASE
+    HOST = (os.environ.get("PHOTO_UPLOAD_HOST") or HOST).strip() or HOST
+    raw_port = (os.environ.get("PHOTO_UPLOAD_PORT") or "").strip()
+    if raw_port:
+        PORT = int(raw_port)
+    raw_dir = (os.environ.get("PHOTO_UPLOAD_DIR") or "").strip()
+    if raw_dir:
+        UPLOAD_DIR = Path(raw_dir).expanduser()
+    raw_base = (os.environ.get("PHOTO_PUBLIC_BASE") or "").strip().rstrip("/")
+    if raw_base:
+        PUBLIC_BASE = raw_base
 
 
 def _json(handler: BaseHTTPRequestHandler, status: int, payload: dict) -> None:
@@ -101,12 +125,16 @@ def _safe_upload_file(saved_as: str) -> Path | None:
     return candidate
 
 
-def _public_photo_url(handler: BaseHTTPRequestHandler, saved_as: str) -> str:
-    # Production static host (nginx): http://115.190.153.53:8080/{saved_as}
-    return f"http://115.190.153.53:8080/{Path(saved_as).name}"
+def _public_photo_url(saved_as: str) -> str:
+    return f"{PUBLIC_BASE.rstrip('/')}/{Path(saved_as).name}"
 
 
-def _send_file(handler: BaseHTTPRequestHandler, path: Path) -> None:
+def _send_file(
+    handler: BaseHTTPRequestHandler,
+    path: Path,
+    *,
+    as_attachment: bool,
+) -> None:
     data = path.read_bytes()
     mime, _ = mimetypes.guess_type(path.name)
     if not mime:
@@ -114,10 +142,11 @@ def _send_file(handler: BaseHTTPRequestHandler, path: Path) -> None:
     handler.send_response(200)
     handler.send_header("Content-Type", mime)
     handler.send_header("Content-Length", str(len(data)))
-    handler.send_header(
-        "Content-Disposition",
-        f'attachment; filename="{path.name}"',
-    )
+    if as_attachment:
+        handler.send_header(
+            "Content-Disposition",
+            f'attachment; filename="{path.name}"',
+        )
     handler.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
     handler.send_header("Pragma", "no-cache")
     handler.send_header("Access-Control-Allow-Origin", "*")
@@ -147,6 +176,8 @@ class Handler(BaseHTTPRequestHandler):
                     "upload": UPLOAD_PATH,
                     "download_latest": DOWNLOAD_LATEST_PATH,
                     "download_by_name": "/api/v1/photos/<saved_as>",
+                    "static": "/{saved_as}",
+                    "public_base": PUBLIC_BASE,
                 },
             )
             return
@@ -155,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
             if latest is None:
                 _json(self, 404, {"ok": False, "error": "no photos on server"})
                 return
-            _send_file(self, latest)
+            _send_file(self, latest, as_attachment=True)
             return
         prefix = "/api/v1/photos/"
         if path.startswith(prefix) and path not in (
@@ -167,8 +198,14 @@ class Handler(BaseHTTPRequestHandler):
             if file_path is None:
                 _json(self, 404, {"ok": False, "error": "photo not found"})
                 return
-            _send_file(self, file_path)
+            _send_file(self, file_path, as_attachment=True)
             return
+        # Cast-style static: GET /{saved_as}
+        if path != "/" and "/" not in path.lstrip("/"):
+            file_path = _safe_upload_file(path.lstrip("/"))
+            if file_path is not None:
+                _send_file(self, file_path, as_attachment=False)
+                return
         _json(self, 404, {"ok": False, "error": "not found"})
 
     def do_POST(self) -> None:
@@ -213,17 +250,20 @@ class Handler(BaseHTTPRequestHandler):
                 "saved_as": saved_as,
                 "bytes": len(data),
                 "path": str(dest),
-                "url": _public_photo_url(self, saved_as),
+                "url": _public_photo_url(saved_as),
             },
         )
 
 
 def main() -> None:
+    _load_env()
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"photo upload listening on http://{HOST}:{PORT}{UPLOAD_PATH}")
     print(f"download latest GET http://{HOST}:{PORT}{DOWNLOAD_LATEST_PATH}")
     print(f"download by name GET http://{HOST}:{PORT}/api/v1/photos/<saved_as>")
+    print(f"static GET http://{HOST}:{PORT}/{{saved_as}}")
+    print(f"public_base={PUBLIC_BASE}")
     print(f"files -> {UPLOAD_DIR}")
     server.serve_forever()
 

@@ -1,0 +1,14 @@
+---
+description: Capabilities are independent; they must not read predecessor steps
+alwaysApply: true
+---
+
+# Capability 独立：不依附前序
+
+每个 capability **只看本步入参**。不知道、也不去读前序 step、`step_outputs`、或其它节点。
+
+- **Runtime**（executor 前序门、`$var` hydrate）才知道步骤依赖。
+- Plugin 收到的是已经 resolve 过的 params。
+- 必填入参缺失 → 该能力无效并失败；**禁止**用「从上一步收集」来补。
+- 例：`display.slideshow` 必须有 `photo_urls`，不得从前序 `camera.capture` 拼列表。
+- 例：`clock.now` 只读本机钟；`query.content` 不读钟、不编时刻。

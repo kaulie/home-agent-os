@@ -25,6 +25,29 @@ def _clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, value))
 
 
+def _load_dotenv(root: Path) -> None:
+    """Load KEY=VALUE from project `.env` if present. Existing env wins."""
+    path = root / ".env"
+    if not path.is_file():
+        return
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        os.environ[key] = value
+
+
 @dataclass(frozen=True)
 class Identity:
     client_hint: str = "living-room-mac"
@@ -61,6 +84,7 @@ class Config:
     intent_status: str = ""
     http_timeout_sec: float = 20.0
     display_http_timeout_sec: float = 60.0
+    query_http_timeout_sec: float = 90.0
     intranet_ping: IntranetPingSettings = field(default_factory=IntranetPingSettings)
 
     @property
@@ -117,6 +141,7 @@ def _load_intranet_ping(root: Path) -> IntranetPingSettings:
 
 def load_config() -> Config:
     root = _project_root()
+    _load_dotenv(root)
     data_dir = Path(
         os.environ.get("MAC_EDGE_DATA_DIR", str(root / "data"))
     ).expanduser()
@@ -145,6 +170,7 @@ def load_config() -> Config:
 
     # Optional pin; default empty so dispatched intents stay visible for step 2.
     intent_status = os.environ.get("MAC_EDGE_INTENT_STATUS", "").strip()
+    query_timeout = float(os.environ.get("MAC_EDGE_QUERY_TIMEOUT_SEC", "90"))
 
     return Config(
         brain_base_url=base,
@@ -153,5 +179,6 @@ def load_config() -> Config:
         data_dir=data_dir,
         cast_display_url=cast_display_url.rstrip("/"),
         intent_status=intent_status,
+        query_http_timeout_sec=max(30.0, query_timeout),
         intranet_ping=_load_intranet_ping(root),
     )

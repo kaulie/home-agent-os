@@ -1,15 +1,18 @@
 id: gopro-camera
 service_id: gopro.camera
 group: camera
-version: "0.6.0"
+version: "0.7.0"
 display_name: GoPro Camera
 description: 相机拍照 / 录像
 
 capabilities:
   - capability_id: camera.capture
-    description: 拍摄照片
+    description: >
+      能：用 GoPro 拍一张照片并上传，产出 capture_ref（AssetRef）。用户要拍照时用本能力。
+      不能：分析照片、投电视、TTS、开灯、无图硬答已经看了；产出 photo_url。
   - capability_id: take_video
-    description: 开始录像
+    description: >
+      能：开始 GoPro 录像。不能：当拍照（用 camera.capture）；分析画面；投屏。
 
 # Local debug actions (not advertised on wire):
 # status, stop_recording, latest_photo, upload_photo, download_latest_from_server

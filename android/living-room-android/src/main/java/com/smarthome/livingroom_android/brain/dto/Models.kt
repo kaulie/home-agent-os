@@ -103,6 +103,13 @@ data class EdgeHealthSnapshot(
     val details: Map<String, String> = emptyMap(),
 )
 
+/** Participant Model roles (docs/participant-model.md). */
+object ParticipantWire {
+    const val ROLE_RUNTIME = "runtime"
+
+    fun runtimeRoles(): List<String> = listOf(ROLE_RUNTIME)
+}
+
 /** Static identity before Brain assigns edgeId. */
 data class EdgeIdentity(
     val clientHint: String,
@@ -110,7 +117,10 @@ data class EdgeIdentity(
     val deviceType: EdgeDeviceType,
     val room: String = "living-room",
     val appVersion: String? = null,
-)
+) {
+    val location: String
+        get() = room
+}
 
 /** First-contact register (no trusted edge_id yet). */
 data class EdgeRegisterRequest(
@@ -121,6 +131,8 @@ data class EdgeRegisterRequest(
     val services: List<ServiceDescriptor>,
     val appVersion: String? = null,
     val reportedAtSec: Double = System.currentTimeMillis() / 1000.0,
+    val roles: List<String> = ParticipantWire.runtimeRoles(),
+    val location: String? = null,
 )
 
 data class EdgeRegisterResponse(
@@ -148,4 +160,6 @@ data class EdgeNodeInfo(
     val appVersion: String? = null,
     val reportedAtSec: Double = System.currentTimeMillis() / 1000.0,
     val clientTimeMs: Long = System.currentTimeMillis(),
+    val roles: List<String> = ParticipantWire.runtimeRoles(),
+    val location: String? = null,
 )

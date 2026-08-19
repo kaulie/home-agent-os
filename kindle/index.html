@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="30">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Home Agent Endpoint</title>
+  <style type="text/css">
+    body {
+      margin: 0;
+      padding: 16px;
+      background: #ffffff;
+      color: #000000;
+      font-family: Georgia, "Songti SC", serif;
+      font-size: 22px;
+      line-height: 1.45;
+    }
+    .block {
+      border: 2px solid #000000;
+      padding: 12px;
+      margin: 0 0 16px 0;
+    }
+    .block-label {
+      font-size: 16px;
+      margin: 0 0 10px 0;
+    }
+    .who .title {
+      font-size: 24px;
+      margin: 0 0 8px 0;
+    }
+    .who p {
+      font-size: 16px;
+      margin: 0 0 6px 0;
+      word-wrap: break-word;
+    }
+    .pane {
+      margin: 0 0 14px 0;
+      padding: 0 0 14px 0;
+      border-bottom: 1px solid #000000;
+    }
+    .pane-last {
+      margin: 0;
+      padding: 0;
+      border-bottom: none;
+    }
+    .kicker {
+      font-size: 16px;
+      line-height: 1.4;
+      margin: 0 0 10px 0;
+    }
+    .reply {
+      font-size: 28px;
+      line-height: 1.5;
+      margin: 0;
+    }
+    .empty {
+      font-size: 22px;
+      margin: 12px 0 0 0;
+    }
+    .pic {
+      display: none;
+      width: 100%;
+      height: auto;
+      border: 1px solid #000000;
+    }
+    .pic-fallback {
+      display: block;
+      padding: 36px 12px;
+      text-align: center;
+      font-size: 18px;
+      border: 1px solid #000000;
+    }
+    .refresh {
+      margin: 8px 0 0 0;
+      font-size: 16px;
+    }
+    a {
+      color: #000000;
+    }
+    body.ep-mac {
+      font-family: Helvetica, Arial, sans-serif;
+      font-size: 16px;
+    }
+    body.ep-mac .who .title {
+      font-size: 20px;
+    }
+    body.ep-mac .reply {
+      font-size: 20px;
+    }
+    body.ep-mac .block-label,
+    body.ep-mac .who p,
+    body.ep-mac .kicker {
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body class="ep-{{ENDPOINT_CLASS}}">
+  <div class="block who">
+    <p class="block-label">我是谁？</p>
+    <p id="pageTitle" class="title">Home Agent Endpoint</p>
+    <p>终端：<span id="endpointLabel">{{ENDPOINT}}</span></p>
+    <p>User-Agent：<span id="uaLabel">{{USER_AGENT}}</span></p>
+  </div>
+
+  <div class="block output">
+    <div class="pane">
+      <p class="block-label">文本</p>
+      <p id="kicker" class="kicker" style="display:none;"></p>
+      <p id="reply" class="reply" style="display:none;"></p>
+      <p id="empty" class="empty">还没有内容</p>
+    </div>
+    <div class="pane pane-last" id="picWrap">
+      <p class="block-label">图片</p>
+      <img id="pic" class="pic" alt="配图" src="" width="600" height="360">
+      <div id="picFallback" class="pic-fallback">暂无图片</div>
+    </div>
+  </div>
+
+  <p class="refresh">下次刷新 <span id="countdown">30</span> 秒 · <a id="refreshLink" href="./">刷新</a></p>
+
+  <script type="text/javascript">
+    (function () {
+      var TERMINAL_ID = "未知";
+      var emptyEl = document.getElementById("empty");
+      var kickerEl = document.getElementById("kicker");
+      var replyEl = document.getElementById("reply");
+      var pic = document.getElementById("pic");
+      var picFallback = document.getElementById("picFallback");
+      var refreshLink = document.getElementById("refreshLink");
+      var endpointLabel = document.getElementById("endpointLabel");
+      var uaLabel = document.getElementById("uaLabel");
+      var pageTitle = document.getElementById("pageTitle");
+      var countdownEl = document.getElementById("countdown");
+      var POLL_SEC = 30;
+      var remain = POLL_SEC;
+
+      refreshLink.href = location.pathname + location.search;
+
+      function disableMetaRefresh() {
+        var tags = document.getElementsByTagName("meta");
+        var i;
+        for (i = 0; i < tags.length; i++) {
+          var httpEq = tags[i].getAttribute("http-equiv");
+          if (httpEq && String(httpEq).toLowerCase() === "refresh") {
+            if (tags[i].parentNode) {
+              tags[i].parentNode.removeChild(tags[i]);
+            }
+            return;
+          }
+        }
+      }
+
+      function tickCountdown() {
+        if (countdownEl) {
+          countdownEl.innerHTML = String(remain);
+        }
+        if (remain <= 0) {
+          location.reload();
+          return;
+        }
+        remain -= 1;
+      }
+
+      disableMetaRefresh();
+      tickCountdown();
+      setInterval(tickCountdown, 1000);
+
+      function applyEndpoint(name) {
+        var raw = str(name);
+        var endpoint = raw ? raw : "未知";
+        TERMINAL_ID = endpoint;
+        endpointLabel.innerHTML = esc(endpoint);
+        pageTitle.innerHTML = "Home Agent Endpoint";
+        var cls = "unknown";
+        if (endpoint !== "未知") {
+          cls = endpoint.toLowerCase();
+        }
+        if (!/^[a-z0-9_-]+$/.test(cls)) {
+          cls = "unknown";
+        }
+        document.body.className = "ep-" + cls;
+        if (endpoint === "mac") {
+          emptyEl.innerHTML = "等待意图结果";
+        } else if (endpoint === "未知") {
+          emptyEl.innerHTML = "还没有内容";
+        } else {
+          emptyEl.innerHTML = "还没有内容";
+        }
+      }
+
+      function applyUserAgent(fromHeader) {
+        var ua = str(fromHeader);
+        if (!ua || ua.indexOf("{{") === 0) {
+          ua = str(navigator.userAgent);
+        }
+        if (!ua) {
+          ua = "未知";
+        }
+        uaLabel.innerHTML = esc(ua);
+      }
+
+      function showEmpty() {
+        emptyEl.style.display = "block";
+        kickerEl.style.display = "none";
+        replyEl.style.display = "none";
+        kickerEl.innerHTML = "";
+        replyEl.innerHTML = "";
+        pic.style.display = "none";
+        pic.removeAttribute("src");
+        picFallback.style.display = "block";
+        picFallback.innerHTML = "暂无图片";
+      }
+
+      function showText() {
+        emptyEl.style.display = "none";
+        kickerEl.style.display = "block";
+        replyEl.style.display = "block";
+      }
+
+      function esc(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function qs(name) {
+        var search = location.search || "";
+        if (search.charAt(0) === "?") {
+          search = search.substring(1);
+        }
+        var parts = search.split("&");
+        var i;
+        for (i = 0; i < parts.length; i++) {
+          var kv = parts[i].split("=");
+          if (decodeURIComponent(kv[0] || "") === name) {
+            return decodeURIComponent((kv[1] || "").replace(/\+/g, " "));
+          }
+        }
+        return "";
+      }
+
+      function str(v) {
+        if (v === null || v === undefined) {
+          return "";
+        }
+        return String(v).replace(/^\s+|\s+$/g, "");
+      }
+
+      function pickBag(obj, key) {
+        if (!obj || typeof obj !== "object") {
+          return "";
+        }
+        if (obj[key]) {
+          return str(obj[key]);
+        }
+        return "";
+      }
+
+      function firstStepValue(outputs, key) {
+        if (!outputs || typeof outputs !== "object") {
+          return "";
+        }
+        var names = [];
+        var k;
+        for (k in outputs) {
+          if (outputs.hasOwnProperty(k)) {
+            names.push(k);
+          }
+        }
+        names.sort();
+        var i;
+        for (i = 0; i < names.length; i++) {
+          var bag = outputs[names[i]];
+          var got = pickBag(bag, key);
+          if (got) {
+            return got;
+          }
+        }
+        return "";
+      }
+
+      function displayText(data) {
+        var ctx = data.ctx_param || data.context || {};
+        var fromCtx = pickBag(ctx, "answer_text");
+        if (fromCtx) {
+          return fromCtx;
+        }
+        var fromSteps = firstStepValue(data.step_outputs, "answer_text");
+        if (fromSteps) {
+          return fromSteps;
+        }
+        var reply = str(data.reply);
+        if (reply) {
+          return reply;
+        }
+        var err = str(data.error || data.msg);
+        if (err) {
+          return err;
+        }
+        return "";
+      }
+
+      function displayImage(data) {
+        var ctx = data.ctx_param || data.context || {};
+        var fromCtx = pickBag(ctx, "photo_url");
+        if (fromCtx) {
+          return fromCtx;
+        }
+        var fromOut = pickBag(data.outputs, "photo_url");
+        if (fromOut) {
+          return fromOut;
+        }
+        return firstStepValue(data.step_outputs, "photo_url");
+      }
+
+      function isTerminalStatus(data) {
+        var st = str(data.status || data.intent_status).toLowerCase();
+        return st === "succeeded" || st === "failed";
+      }
+
+      function targetValue(data) {
+        var keys = [
+          "display_target",
+          "output_target",
+          "display_terminal",
+          "output_terminal"
+        ];
+        var i;
+        for (i = 0; i < keys.length; i++) {
+          if (data[keys[i]] !== undefined && data[keys[i]] !== null && str(data[keys[i]]) !== "") {
+            return data[keys[i]];
+          }
+        }
+        var ctx = data.ctx_param || data.context || {};
+        for (i = 0; i < keys.length; i++) {
+          if (ctx[keys[i]] !== undefined && ctx[keys[i]] !== null && str(ctx[keys[i]]) !== "") {
+            return ctx[keys[i]];
+          }
+        }
+        return null;
+      }
+
+      function isForThisTerminal(data) {
+        var raw = targetValue(data);
+        if (raw === null) {
+          return true;
+        }
+        if (!TERMINAL_ID || TERMINAL_ID === "未知") {
+          return false;
+        }
+        var needle = TERMINAL_ID.toLowerCase();
+        if (raw && typeof raw.length === "number" && typeof raw !== "string") {
+          var i;
+          for (i = 0; i < raw.length; i++) {
+            if (str(raw[i]).toLowerCase().indexOf(needle) !== -1) {
+              return true;
+            }
+          }
+          return false;
+        }
+        var s = str(raw).toLowerCase();
+        return s.indexOf(needle) !== -1;
+      }
+
+      function formatWhen(data) {
+        var n = data.base_time;
+        if (n === undefined || n === null || n === "") {
+          return "";
+        }
+        var sec = parseInt(n, 10);
+        if (!sec) {
+          return "";
+        }
+        if (sec > 1000000000000) {
+          sec = Math.floor(sec / 1000);
+        }
+        var d = new Date(sec * 1000);
+        var hh = d.getHours();
+        var mm = d.getMinutes();
+        if (hh < 10) {
+          hh = "0" + hh;
+        }
+        if (mm < 10) {
+          mm = "0" + mm;
+        }
+        return hh + ":" + mm;
+      }
+
+      function paint(data) {
+        if (!data || data.ok === false) {
+          return;
+        }
+        if (!isForThisTerminal(data)) {
+          return;
+        }
+        if (!isTerminalStatus(data)) {
+          return;
+        }
+        var reply = displayText(data);
+        if (!reply) {
+          return;
+        }
+        var user = str(data.text);
+        var when = formatWhen(data);
+        var kicker = user;
+        if (user && when) {
+          kicker = user + " · " + when;
+        } else if (when) {
+          kicker = when;
+        }
+        kickerEl.innerHTML = esc(kicker);
+        replyEl.innerHTML = esc(reply);
+        showText();
+
+        var imageUrl = displayImage(data);
+        if (imageUrl) {
+          picFallback.style.display = "none";
+          pic.style.display = "block";
+          pic.src = imageUrl;
+        } else {
+          pic.style.display = "none";
+          pic.removeAttribute("src");
+          picFallback.style.display = "block";
+          picFallback.innerHTML = "暂无图片";
+        }
+      }
+
+      pic.onerror = function () {
+        pic.style.display = "none";
+        picFallback.style.display = "block";
+      };
+
+      function loadDetail(intentId) {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "/api/v1/intent_detail?intent_id=" + encodeURIComponent(intentId), true);
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState !== 4) {
+            return;
+          }
+          if (!xhr.responseText) {
+            return;
+          }
+          try {
+            paint(JSON.parse(xhr.responseText));
+          } catch (e) {}
+        };
+        xhr.send(null);
+      }
+
+      function start(intentId) {
+        if (!intentId) {
+          showEmpty();
+          return;
+        }
+        loadDetail(intentId);
+      }
+
+      var fromQuery = qs("intent_id");
+      applyEndpoint(qs("endpoint"));
+      applyUserAgent(uaLabel.innerHTML);
+      if (fromQuery) {
+        start(fromQuery);
+        return;
+      }
+      var cfg = new XMLHttpRequest();
+      cfg.open("GET", "config.json", true);
+      cfg.onreadystatechange = function () {
+        if (cfg.readyState !== 4) {
+          return;
+        }
+        var id = "";
+        try {
+          var parsed = JSON.parse(cfg.responseText || "{}");
+          id = str(parsed.intent_id);
+          if (!qs("endpoint") && parsed.terminal_id) {
+            applyEndpoint(parsed.terminal_id);
+          }
+        } catch (e) {}
+        start(id);
+      };
+      cfg.send(null);
+    })();
+  </script>
+</body>
+</html>

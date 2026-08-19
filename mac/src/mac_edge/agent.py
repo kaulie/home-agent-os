@@ -2,15 +2,28 @@ from __future__ import annotations
 
 import logging
 import signal
+import threading
 import time
 from typing import Any
 
+import httpx
+
 from mac_edge.brain_client import BrainClient, BrainError, format_intent_summary
 from mac_edge.config import Config
-from mac_edge.executor import handle_intent as executor_handle
+from mac_edge.delivery import run_pending_deliveries
+from mac_edge.executor import (
+    DEADLINE_SLEEP_MIN_SEC,
+    earliest_local_deadline_ms,
+    fail_empty_plan_intent,
+    handle_intent as executor_handle,
+    prefetch_upcoming_speaks,
+    sleep_sec_until_deadline,
+)
 from mac_edge.intranet_ping_monitor import IntranetPingMonitor
+from mac_edge.local_ledger import LocalLedger, bind as bind_ledger
 from mac_edge.scheduler import IntentScheduler
 from mac_edge.state import clear_edge_id, load_edge_id, save_edge_id
+from mac_edge.timing_beats import set_beat_listener
 
 log = logging.getLogger("mac_edge.agent")
 
@@ -20,16 +33,26 @@ _BRAIN_WARN_EVERY_SEC = 60.0
 _MAX_BACKOFF_SEC = 120.0
 # Idle "no intents" chatter — once per minute is enough.
 _EMPTY_INTENTS_LOG_EVERY_SEC = 60.0
+# Heartbeat must not hang the channel forever; keep it snappier than pull/execute.
+_HEARTBEAT_HTTP_TIMEOUT_SEC = 8.0
 
 
 class EdgeAgent:
-    """Background loop: register → heartbeat → pull → scheduler → executor."""
+    """Two Brain channels + highest-priority step execution.
+
+    Channels (separate threads, separate httpx clients):
+      1) heartbeat — keep-alive only; never blocks step timing
+      2) control   — pull intents / refresh detail / deadline sleep → enqueue
+      3) executor  — run steps (notify.speak etc.); highest work priority
+
+    Status RUNNING posts use a small background pool (see brain_client).
+    """
 
     def __init__(self, config: Config):
         self.config = config
         self._stop = False
+        self._edge_id_lock = threading.Lock()
         self._edge_id: str | None = load_edge_id(config.edge_id_path)
-        self._scheduler = IntentScheduler()
         self._brain_down = False
         self._brain_fail_streak = 0
         self._last_brain_warn_mono = 0.0
@@ -37,9 +60,25 @@ class EdgeAgent:
         self._last_empty_intents_mono = 0.0
         self._intranet_ping = IntranetPingMonitor(config.intranet_ping)
 
+        self._ledger = LocalLedger(config.data_dir / "local_ledger.json")
+        bind_ledger(self._ledger)
+        set_beat_listener(self._ledger.note_beat)
+
+        self._work_lock = threading.Lock()
+        self._pending_intents: dict[str, dict[str, Any]] = {}
+        self._executing_ids: set[str] = set()
+        self._work_wake = threading.Event()
+        self._worker_thread: threading.Thread | None = None
+        self._heartbeat_thread: threading.Thread | None = None
+        # Schedule hops (parsed → scheduled → dispatched) on the control
+        # thread so a long query.content cannot leave the next intent stuck
+        # at intent_parsed.
+        self._scheduler = IntentScheduler()
+
     def request_stop(self, *_args: Any) -> None:
         log.info("stop requested")
         self._stop = True
+        self._work_wake.set()
         self._intranet_ping.stop()
 
     def run(self) -> None:
@@ -48,113 +87,296 @@ class EdgeAgent:
 
         log.info(
             "Mac Edge starting brain=%s hint=%s interval=%ss data=%s "
-            "cached_edge_id=%s cast_display=%s intranet_ping=%s/%s",
+            "cached_edge_id=%s cast_display=%s intranet_ping=%s/%s "
+            "channels=heartbeat|control|executor deadline_sleep=cap10s/half-remaining",
             self.config.brain_base_url,
             self.config.identity.client_hint,
             self.config.interval_sec,
             self.config.data_dir,
-            self._edge_id or "(none)",
+            self._get_edge_id() or "(none)",
             self.config.cast_display_url,
             "on" if self.config.intranet_ping.enabled else "off",
             self.config.intranet_ping.mode,
         )
         self._intranet_ping.start()
+        self._ensure_channel_threads()
 
         try:
+            # Control channel: pull + deadline wake. Never does heartbeat here.
             with BrainClient(self.config) as brain:
                 while not self._stop:
+                    self._ensure_channel_threads()
                     tick_started = time.monotonic()
-                    sleep_for = max(0.5, float(self.config.interval_sec))
+                    sleep_for = max(DEADLINE_SLEEP_MIN_SEC, float(self.config.interval_sec))
+                    next_deadline: int | None = None
                     try:
-                        self._tick(brain)
+                        next_deadline = self._control_tick(brain)
                         if self._brain_down:
                             log.info(
-                                "brain reachable again (after %s failed tick(s))",
+                                "brain reachable again (after %s failed control tick(s))",
                                 self._brain_fail_streak,
                             )
                         self._brain_down = False
                         self._brain_fail_streak = 0
                         self._suppressed_brain_errors = 0
                         elapsed = time.monotonic() - tick_started
-                        sleep_for = max(0.5, self.config.interval_sec - elapsed)
+                        if next_deadline is not None:
+                            sleep_for = sleep_sec_until_deadline(
+                                next_deadline,
+                                default_interval_sec=self.config.interval_sec,
+                            )
+                        else:
+                            sleep_for = max(
+                                DEADLINE_SLEEP_MIN_SEC,
+                                self.config.interval_sec - elapsed,
+                            )
                     except BrainError as e:
                         if e.is_unauthorized:
-                            log.warning("unauthorized during tick — clearing edge_id")
-                            clear_edge_id(self.config.edge_id_path)
-                            self._edge_id = None
-                            sleep_for = max(0.5, float(self.config.interval_sec))
+                            log.warning("unauthorized during control — clearing edge_id")
+                            self._clear_edge_id()
+                            sleep_for = max(
+                                DEADLINE_SLEEP_MIN_SEC, float(self.config.interval_sec)
+                            )
                         else:
                             self._note_brain_problem(e)
-                            sleep_for = self._backoff_seconds()
+                            eid = self._get_edge_id()
+                            next_deadline = (
+                                self._dispatch_ledger(eid, brain=None) if eid else None
+                            )
+                            if next_deadline is not None:
+                                # Keep executing the local plan; do not 120s-backoff.
+                                sleep_for = sleep_sec_until_deadline(
+                                    next_deadline,
+                                    default_interval_sec=self.config.interval_sec,
+                                )
+                            else:
+                                sleep_for = self._backoff_seconds()
                     except Exception:
-                        log.exception("tick failed")
+                        log.exception("control tick failed")
                         elapsed = time.monotonic() - tick_started
-                        sleep_for = max(0.5, self.config.interval_sec - elapsed)
+                        sleep_for = max(
+                            DEADLINE_SLEEP_MIN_SEC, self.config.interval_sec - elapsed
+                        )
                     self._interruptible_sleep(sleep_for)
         finally:
+            self._stop = True
+            self._work_wake.set()
+            for t in (self._worker_thread, self._heartbeat_thread):
+                if t and t.is_alive():
+                    t.join(timeout=5.0)
             self._intranet_ping.stop()
+            set_beat_listener(None)
+            bind_ledger(None)
 
-        log.info("Mac Edge stopped edge_id=%s", self._edge_id or "(none)")
+        log.info("Mac Edge stopped edge_id=%s", self._get_edge_id() or "(none)")
 
-    def _tick(self, brain: BrainClient) -> None:
-        if not self._edge_id:
-            self._register(brain)
-            if not self._edge_id:
-                return
+    def _ensure_channel_threads(self) -> None:
+        """Restart heartbeat/executor if an uncaught exception killed the thread."""
+        for attr, target, name in (
+            ("_heartbeat_thread", self._heartbeat_loop, "mac-edge-heartbeat"),
+            ("_worker_thread", self._executor_loop, "mac-edge-executor"),
+        ):
+            t = getattr(self, attr, None)
+            if t is not None and t.is_alive():
+                continue
+            if t is not None:
+                log.warning("%s died — restarting", name)
+            started = threading.Thread(target=target, name=name, daemon=True)
+            setattr(self, attr, started)
+            started.start()
 
+    # --- identity ---
+
+    def _get_edge_id(self) -> str | None:
+        with self._edge_id_lock:
+            return self._edge_id
+
+    def _set_edge_id(self, edge_id: str) -> None:
+        with self._edge_id_lock:
+            self._edge_id = edge_id
+
+    def _clear_edge_id(self) -> None:
+        clear_edge_id(self.config.edge_id_path)
+        with self._edge_id_lock:
+            self._edge_id = None
+
+    # --- channel 1: heartbeat ---
+
+    def _heartbeat_loop(self) -> None:
+        """Dedicated keep-alive channel — isolated from pull/execute timing."""
+        timeout = min(float(self.config.http_timeout_sec), _HEARTBEAT_HTTP_TIMEOUT_SEC)
+        client = httpx.Client(timeout=timeout)
         try:
-            brain.heartbeat(self._edge_id)
-        except BrainError as e:
-            if e.is_unauthorized:
-                log.warning("heartbeat 401 — clearing edge_id and re-registering")
-                clear_edge_id(self.config.edge_id_path)
-                self._edge_id = None
-                self._register(brain)
-                if self._edge_id:
-                    brain.heartbeat(self._edge_id)
-                return
-            raise
+            with BrainClient(self.config, client=client) as brain:
+                while not self._stop:
+                    try:
+                        started = time.monotonic()
+                        eid = self._get_edge_id()
+                        if eid:
+                            try:
+                                brain.heartbeat(eid)
+                            except BrainError as e:
+                                if e.is_unauthorized:
+                                    log.warning(
+                                        "heartbeat 401 — clearing edge_id (control will re-register)"
+                                    )
+                                    self._clear_edge_id()
+                                else:
+                                    self._note_brain_problem(e)
+                            except Exception:
+                                log.exception("heartbeat failed")
+                        elapsed = time.monotonic() - started
+                        sleep_for = max(
+                            DEADLINE_SLEEP_MIN_SEC,
+                            float(self.config.interval_sec) - elapsed,
+                        )
+                        self._interruptible_sleep(sleep_for)
+                    except Exception:
+                        log.exception("heartbeat loop iteration failed — continue")
+                        self._interruptible_sleep(float(self.config.interval_sec))
+        finally:
+            client.close()
 
-        assert self._edge_id
+    # --- channel 2: control (pull / enqueue / deadlines) ---
+
+    def _control_tick(self, brain: BrainClient) -> int | None:
+        """Pull new intents from Brain, flush local state, enqueue from ledger."""
+        if not self._get_edge_id():
+            self._register(brain)
+            if not self._get_edge_id():
+                return None
+
+        eid = self._get_edge_id()
+        assert eid
         # Peek (not pop): step 2 on Mac must re-see the intent after iPhone finishes step 1.
-        intents = brain.pull_intents(self._edge_id, consume=False)
-        if not intents:
-            self._log_empty_intents()
-            return
-        log.info(
-            "intents: peeked %d (edge_id=%s) — scheduler then executor",
-            len(intents),
-            self._edge_id,
-        )
-        for intent in intents:
+        peeked = brain.pull_intents(eid, consume=False) or []
+        to_ingest: list[dict[str, Any]] = []
+        for intent in peeked:
+            if not isinstance(intent, dict):
+                continue
             iid = str(intent.get("id") or intent.get("intent_id") or "").strip()
-            # Refresh plan/outputs so predecessor step status and photo_url are current.
-            if iid:
+            # Fresh plan only for intents the ledger has not accepted yet.
+            if iid and self._ledger.get(iid) is None:
                 detail = brain.fetch_intent_detail(iid)
                 if isinstance(detail, dict) and detail:
                     intent = _merge_intent_detail(intent, detail)
-            log.info("  %s", format_intent_summary(intent))
+            if fail_empty_plan_intent(intent, edge_id=eid, brain=brain):
+                continue
+            to_ingest.append(intent)
+            if iid:
+                log.info("  %s", format_intent_summary(intent))
+
+        added = self._ledger.ingest_peek(to_ingest, eid)
+        if peeked:
+            log.info(
+                "intents: peeked %d added=%d (edge_id=%s) — enqueue from ledger",
+                len(peeked),
+                added,
+                eid,
+            )
+        flushed = self._ledger.flush_to_brain(brain, eid)
+        if flushed:
+            log.info("intents: flushed %d ledger record(s) to Brain", flushed)
+        self._scheduler.reconcile_peeked_terminal(peeked, edge_id=eid, brain=brain)
+        delivered = run_pending_deliveries(peeked, edge_id=eid, brain=brain)
+        if delivered:
+            log.info("delivery: handled %d pending row(s) (edge_id=%s)", delivered, eid)
+        return self._dispatch_ledger(eid, brain)
+
+    def _dispatch_ledger(
+        self,
+        edge_id: str | None,
+        brain: BrainClient | None = None,
+    ) -> int | None:
+        """Enqueue locally owned work. Brain emptiness does not drop these."""
+        eid = (edge_id or "").strip()
+        if not eid:
+            return None
+        intents = self._ledger.snapshot_open(eid)
+        if not intents:
+            self._log_empty_intents()
+            return None
+        log.info(
+            "intents: local ledger %d open (edge_id=%s) — enqueue executor",
+            len(intents),
+            eid,
+        )
+        for intent in intents:
+            if not isinstance(intent, dict):
+                continue
+            iid = str(intent.get("id") or intent.get("intent_id") or "").strip()
             try:
-                self._scheduler.handle(
-                    intent,
-                    edge_id=self._edge_id,
-                    brain=brain,
-                )
+                self._scheduler.handle(intent, edge_id=eid, brain=brain)
             except Exception:
-                log.exception("scheduler failed id=%s", intent.get("id"))
-            try:
-                executor_handle(
-                    intent,
-                    edge_id=self._edge_id,
-                    config=self.config,
-                    brain=brain,
-                )
-            except Exception:
-                log.exception("executor failed id=%s", intent.get("id"))
+                log.exception("scheduler failed id=%s", iid or "?")
+            if iid:
+                self._enqueue_intent(iid, intent)
+        prefetch_upcoming_speaks(intents, eid)
+        return earliest_local_deadline_ms(intents, eid)
+
+    def _enqueue_intent(self, intent_id: str, intent: dict[str, Any]) -> None:
+        with self._work_lock:
+            self._pending_intents[intent_id] = intent
+        self._work_wake.set()
+
+    # --- channel 3: executor (highest work priority) ---
+
+    def _executor_loop(self) -> None:
+        """Step execution channel — TTS/actions only block this thread."""
+        with BrainClient(self.config) as brain:
+            while not self._stop:
+                self._work_wake.wait(timeout=1.0)
+                self._work_wake.clear()
+                if self._stop:
+                    break
+                batch = self._take_pending()
+                if not batch:
+                    continue
+                eid = (self._get_edge_id() or "").strip()
+                if not eid:
+                    continue
+                for iid, intent in batch:
+                    if self._stop:
+                        break
+                    with self._work_lock:
+                        self._executing_ids.add(iid)
+                    try:
+                        try:
+                            self._scheduler.handle(intent, edge_id=eid, brain=brain)
+                        except Exception:
+                            log.exception("scheduler failed id=%s", iid)
+                        try:
+                            # Highest priority work: capability run (incl. notify.speak).
+                            executor_handle(
+                                intent,
+                                edge_id=eid,
+                                config=self.config,
+                                brain=brain,
+                            )
+                        except Exception:
+                            log.exception("executor failed id=%s", iid)
+                    finally:
+                        with self._work_lock:
+                            self._executing_ids.discard(iid)
+                            # A newer snapshot may have landed while we were speaking.
+                            if iid in self._pending_intents:
+                                self._work_wake.set()
+
+    def _take_pending(self) -> list[tuple[str, dict[str, Any]]]:
+        with self._work_lock:
+            ready: list[tuple[str, dict[str, Any]]] = []
+            keep: dict[str, dict[str, Any]] = {}
+            for iid, intent in self._pending_intents.items():
+                if iid in self._executing_ids:
+                    keep[iid] = intent
+                else:
+                    ready.append((iid, intent))
+            self._pending_intents = keep
+        return ready
 
     def _register(self, brain: BrainClient) -> None:
         result = brain.register()
-        self._edge_id = result.edge_id
+        self._set_edge_id(result.edge_id)
         save_edge_id(self.config.edge_id_path, result.edge_id)
 
     def _note_brain_problem(self, err: BaseException) -> None:
@@ -187,12 +409,15 @@ class EdgeAgent:
         if now - self._last_empty_intents_mono < _EMPTY_INTENTS_LOG_EVERY_SEC:
             return
         self._last_empty_intents_mono = now
-        log.info("intents: empty (edge_id=%s)", self._edge_id)
+        log.info("intents: empty (edge_id=%s)", self._get_edge_id())
 
     def _interruptible_sleep(self, seconds: float) -> None:
-        end = time.monotonic() + seconds
-        while not self._stop and time.monotonic() < end:
-            time.sleep(min(0.5, end - time.monotonic()))
+        end = time.monotonic() + max(0.0, float(seconds))
+        while not self._stop:
+            remain = end - time.monotonic()
+            if remain <= 0:
+                return
+            time.sleep(min(DEADLINE_SLEEP_MIN_SEC, remain))
 
 
 def _merge_intent_detail(
@@ -205,11 +430,18 @@ def _merge_intent_detail(
         "intent_status",
         "execution_plan",
         "ctx_param",
+        "context",
+        "outputs",
+        "step_outputs",
         "scheduler_node",
         "step_log",
     ):
-        if key in detail and detail[key] is not None:
-            merged[key] = detail[key]
+        if key not in detail or detail[key] is None:
+            continue
+        # Production intent_detail often omits step_outputs; keep peek's bag.
+        if key == "step_outputs" and not detail[key]:
+            continue
+        merged[key] = detail[key]
     if detail.get("id") is not None:
         merged["id"] = detail["id"]
     elif detail.get("intent_id") is not None:

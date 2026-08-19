@@ -19,12 +19,12 @@ final class ChromecastCastSkill: Skill {
             capabilities: [
                 CapabilityDescriptor(
                     capabilityId: Capabilities.displayPhoto,
-                    description: "将 photo_url 经 Cast 投到 Chromecast",
+                    description: "能：把本步 image_ref（AssetRef）经 Cast 投到 Chromecast。仅用户明确要投电视时用。不能：拍照、自己捡图、收 photo_url、TTS。",
                     inputSchema: [
-                        "photo_url": SchemaField(
+                        "image_ref": SchemaField(
                             type: "string",
                             required: true,
-                            description: "服务器图片下载地址（Chromecast 可访问）"
+                            description: "AssetRef JSON {asset_id, type}。禁止 photo_url。"
                         ),
                     ]
                 ),
@@ -42,7 +42,7 @@ final class ChromecastCastSkill: Skill {
             // CastSessionController is @MainActor; await hops here even from Task.detached.
             let result = await cast.castPhoto(urlString: url)
             if result.ok {
-                return .ok(result.message, outputs: ["photo_url": url])
+                return .ok(result.message)
             }
             return .error(result.message)
         default:

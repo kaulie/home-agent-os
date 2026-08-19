@@ -1,0 +1,10 @@
+---
+description: Vision/LLM outputs must be correct from the model; no parse兜底
+alwaysApply: true
+---
+
+# Vision / LLM 输出：禁止兜底
+
+- 对 `vision.perceive` 等大模型输出，**不要**用双重 JSON 拆包、截断补括号、把整段塞进 `summary` 再展开等后处理“救”结果。
+- 目标：模型 **原始返回** 即为正确 schema；不对就 **失败** 并改提示词 / 契约。
+- 允许的轻量规范化仅限：类型整形（如 people 补 `id`、lighting 字段名对齐），不得掩盖错误结构。

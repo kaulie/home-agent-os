@@ -25,12 +25,12 @@ class ChromecastDisplaySkill : Skill {
         capabilities = listOf(
             CapabilityDescriptor(
                 capabilityId = Capabilities.DISPLAY_PHOTO,
-                description = "给定 photo_url，全屏投射到本机屏幕",
+                description = "能：把本步已给出的 image_ref（AssetRef）全屏投到本机屏幕。不能：拍照、自己捡图、收 photo_url、TTS、问答。缺 image_ref 则失败。",
                 inputSchema = mapOf(
-                    "photo_url" to SchemaField(
+                    "image_ref" to SchemaField(
                         type = "string",
                         required = true,
-                        description = "服务器图片下载地址",
+                        description = "AssetRef JSON {asset_id, type}。禁止 photo_url。",
                     ),
                 ),
             ),

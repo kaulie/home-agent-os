@@ -20,28 +20,18 @@ final class GoProSkill: Skill {
             capabilities: [
                 CapabilityDescriptor(
                     capabilityId: Capabilities.cameraCapture,
-                    description: Capabilities.describe(Capabilities.cameraCapture),
+                    description: "能：用 GoPro 拍一张照片并上传，产出 capture_ref。用户要拍照时用本能力。不能：分析照片、投电视、TTS、无图硬答已经看了；产出 photo_url。",
                     outputSchema: [
-                        "photo_local_path": SchemaField(
-                            type: "string",
-                            required: false,
-                            description: "本地照片路径"
-                        ),
-                        "photo_url": SchemaField(
+                        "capture_ref": SchemaField(
                             type: "string",
                             required: true,
-                            description: "服务器图片下载地址"
-                        ),
-                        "saved_as": SchemaField(
-                            type: "string",
-                            required: false,
-                            description: "服务器侧文件名"
+                            description: "AssetRef JSON {asset_id, type, mime_type?}。禁止 photo_url。"
                         ),
                     ]
                 ),
                 CapabilityDescriptor(
                     capabilityId: Capabilities.takeVideo,
-                    description: Capabilities.describe(Capabilities.takeVideo)
+                    description: "能：开始 GoPro 录像。不能：当拍照（用 camera.capture）；分析画面；投屏。"
                 ),
             ]
         )

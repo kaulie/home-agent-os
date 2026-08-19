@@ -38,9 +38,10 @@
                                       │ assigned_edge_id
               ┌───────────────┬───────┴───────┬───────────────┐
               ▼               ▼               ▼               ▼
-         Chromecast        iPhone        Android 手机         Mac
-          music.*       camera.*          wifi.*         display.photo
-                       display.photo                    notify.speak
+         Chromecast         iPhone        Android 手机          Mac
+          music.*         意图入口          wifi.*        camera.capture
+                                                       display.photo
+                                                       notify.speak
 ```
 
 **Brain** 负责理解与规划（意图、plan、按能力选一个 Edge、时间同步）。  
@@ -54,7 +55,7 @@
 | [`server/`](server/) | Brain：意图、能力路由、心跳、`execution_timing` |
 | [`android/app-v2/`](android/app-v2/) | Chromecast / Android TV Edge |
 | [`android/living-room-android/`](android/living-room-android/) | Android 手机 Edge（意图入口 / 调试 Wi‑Fi） |
-| [`ios/LivingRoomEdge/`](ios/README.md) | iPhone Edge（GoPro、Cast Sender） |
+| [`ios/LivingRoomEdge/`](ios/README.md) | iPhone 意图窗口（发 intent、轮询进度） |
 | [`mac/`](mac/README.md) | Mac Edge（Cast 转发、TTS、内网 ping） |
 | [`plugins/`](plugins/) | 跨端 Skill：`gopro-camera`、`chromecast-display`、`netease-music`、`runtime-agent-sdk` |
 
@@ -63,8 +64,8 @@
 | Edge | 典型 service | capability |
 |------|--------------|------------|
 | Chromecast (`app-v2`) | `netease.music` | `music.play` 等 |
-| iPhone | `gopro.camera` | `camera.capture`、`take_video` |
-| iPhone | `chromecast.display` | `display.photo`（Cast → 电视） |
+| iPhone | （非 Edge） | 只 `POST /api/v1/intent`，每 5s 拉 `intent_detail` |
+| Mac home-server | `gopro.camera` | `camera.capture`（无感切 Wi‑Fi） |
 | Mac | `chromecast.display` | `display.photo`（转发本机 Cast HTTP） |
 | Mac | `local.notify` | `notify.speak` |
 | Android 手机 | `network.wifi` | `network.wifi.join` / `leave`（调试） |
@@ -77,7 +78,7 @@
 
 ```bash
 # Brain
-cd server && python3 brain_app.py
+cd server && python3 home_brain.py
 
 # Mac Edge（其它端见各自 README）
 cd mac && PYTHONPATH=src python -m mac_edge
@@ -93,7 +94,7 @@ GET  /api/v1/devices/living-room/intents?edge_id=<本节点>
 | 文档 | 内容 |
 |------|------|
 | [`server/README.md`](server/README.md) | 协议、路由 |
-| [`ios/README.md`](ios/README.md) | iPhone Edge |
+| [`ios/README.md`](ios/README.md) | iPhone 意图窗口 |
 | [`mac/README.md`](mac/README.md) | Mac Edge |
 | [`android/app-v2/README.md`](android/app-v2/README.md) | Chromecast Edge |
 | [`android/living-room-android/README.md`](android/living-room-android/README.md) | 手机 Edge |

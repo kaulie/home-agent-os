@@ -1,0 +1,16 @@
+id: livingroom-ceiling-light
+service_id: livingroom.ceiling_light
+group: light
+version: "0.1.0"
+display_name: 客厅大路灯
+description: 用本机 TTS 唤醒「小书」再开/关客厅大路灯；禁止 LLM
+
+capabilities:
+  - capability_id: light.set
+    description: >
+      能：开关客厅大路灯。必填 state=on|off。内部唤醒小书再发开灯/关灯。
+      不能：拆成 notify.speak；调亮度；控制窗帘或其他灯；听「在呢」。缺 state 则失败。
+
+entry:
+  mac: mac/src/mac_edge/plugins/livingroom_light.py
+config: []

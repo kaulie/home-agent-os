@@ -1,0 +1,20 @@
+id: vision-ask
+service_id: local.vision
+group: vision
+version: "0.1.0"
+display_name: Local Vision Ask
+description: Edge 本地看图问答；与 vision.perceive 独立 prompt/schema，不 import 该插件
+
+capabilities:
+  - capability_id: vision.ask
+    description: >
+      能：给定本步 image_ref（AssetRef）+ query，只根据图中可见内容产出 answer_text。
+      不能：无图问答；收 photo_url；场景结构字段（vision.perceive）；拍照；生图；TTS。
+
+entry:
+  mac: mac/src/mac_edge/plugins/vision_ask.py
+config:
+  - MAC_EDGE_VISION_PROVIDER  # ark|openai（与 perceive 同一视觉模型栈）
+  - MAC_EDGE_VISION_API_BASE
+  - MAC_EDGE_VISION_API_KEY   # or ARK_API_KEY
+  - MAC_EDGE_VISION_MODEL

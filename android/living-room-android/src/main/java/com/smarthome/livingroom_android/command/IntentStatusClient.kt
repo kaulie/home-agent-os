@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
  *   `{ intent_id, intent_status, edge_node_id, ts?, message?, outputs?, ctx_param? }`
  *
  * Step status: POST `/api/v1/intent/<id>/step/<n>/status`
- *   `{ step_status, edge_node_id, ts [, outputs] }`
+ *   `{ step_status, edge_node_id, ts [, outputs] [, msg] }`
  *
  * Requeue: POST `/api/v1/devices/living-room/intents`
  *   `{ id, intent_status, execution_plan, skip_routing, scheduler_node?, ctx_param? }`
@@ -65,6 +65,7 @@ class IntentStatusClient(
         edgeNodeId: String,
         outputs: Map<String, String>? = null,
         tsMs: Long = System.currentTimeMillis(),
+        msg: String? = null,
     ): Boolean = withContext(Dispatchers.IO) {
         val trimmedId = intentId.trim()
         val eid = edgeNodeId.trim()
@@ -76,6 +77,10 @@ class IntentStatusClient(
             put("ts", tsMs)
             // Skill outputs only — Brain registers into ctx_param via output_constrict.
             putStringMap("outputs", outputs)
+            val note = msg?.trim().orEmpty()
+            if (note.isNotEmpty()) {
+                put("msg", if (note.length <= 1000) note else note.take(999) + "…")
+            }
         }
         postJson(url, payload, "step-status")
     }

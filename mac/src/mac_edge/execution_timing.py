@@ -5,7 +5,7 @@ Wire rules (locked):
 - Never emit delay_sec on the wire.
 - delay: absolute exec_time only.
 - interval: interval_sec + first_exec_time; beats = first + n * interval.
-- cron: cron + timezone + first_exec_time; scheduler expands next fires.
+- cron: cron_expr + timezone + first_exec_time; scheduler expands next fires.
 - Miss window covers only "past planned start, not yet started".
 """
 
@@ -51,7 +51,7 @@ class ExecutionTiming:
     exec_time: int | None = None
     first_exec_time: int | None = None
     interval_sec: int | None = None
-    cron: str | None = None
+    cron_expr: str | None = None
     timezone: str | None = None
     end_time: int | None = None
     count: int | None = None
@@ -84,14 +84,15 @@ def parse_execution_timing(step: dict[str, Any] | None) -> ExecutionTiming:
         count = None
     if count is not None and count <= 0:
         count = None
+    cron_expr = str(raw.get("cron_expr") or raw.get("cron") or "").strip() or None
     return ExecutionTiming(
         mode=mode,
         exec_time=as_ms(raw.get("exec_time")),
         first_exec_time=as_ms(raw.get("first_exec_time")),
         interval_sec=interval_sec,
-        cron=str(raw.get("cron") or "").strip() or None,
+        cron_expr=cron_expr,
         timezone=str(raw.get("timezone") or "").strip() or None,
-        end_time=as_ms(raw.get("end_time")),
+        end_time=as_ms(raw.get("end_time")) or as_ms(raw.get("end_exec_time")),
         count=count,
     )
 
@@ -125,6 +126,21 @@ def normalize_execution_timing_dict(raw: Any) -> dict[str, Any] | None:
                 out.pop("interval_sec", None)
         except (TypeError, ValueError):
             out.pop("interval_sec", None)
+    # Wire field is cron_expr; accept legacy "cron" then rewrite.
+    legacy_cron = out.pop("cron", None)
+    if "cron_expr" not in out and legacy_cron is not None:
+        out["cron_expr"] = legacy_cron
+    if "cron_expr" in out:
+        expr = str(out.get("cron_expr") or "").strip()
+        if expr:
+            out["cron_expr"] = expr
+        else:
+            out.pop("cron_expr", None)
+    # Alias end_exec_time → end_time
+    if "end_time" not in out and "end_exec_time" in out:
+        out["end_time"] = out.pop("end_exec_time")
+    else:
+        out.pop("end_exec_time", None)
     if mode == MODE_IMMEDIATE and len(out) == 1:
         return out
     return out
@@ -149,7 +165,7 @@ def planned_start_ms(timing: ExecutionTiming, beat_index: int) -> int | None:
             return timing.first_exec_time
         t = timing.first_exec_time
         for _ in range(beat_index):
-            nxt = cron_next_after(timing.cron or "", t, timing.timezone)
+            nxt = cron_next_after(timing.cron_expr or "", t, timing.timezone)
             if nxt is None:
                 return None
             t = nxt
@@ -163,7 +179,7 @@ def next_planned_after(timing: ExecutionTiming, planned_start: int) -> int | Non
             return None
         return planned_start + timing.interval_sec * 1000
     if timing.mode == MODE_CRON:
-        return cron_next_after(timing.cron or "", planned_start, timing.timezone)
+        return cron_next_after(timing.cron_expr or "", planned_start, timing.timezone)
     return None
 
 
@@ -386,24 +402,33 @@ def delay_timing(base_time_ms: int, delay_ms: int) -> dict[str, Any]:
     }
 
 
-def interval_timing(base_time_ms: int, interval_sec: int, *, offset_ms: int = 0) -> dict[str, Any]:
-    return {
+def interval_timing(
+    base_time_ms: int,
+    interval_sec: int,
+    *,
+    offset_ms: int = 0,
+    end_time: int | None = None,
+) -> dict[str, Any]:
+    out: dict[str, Any] = {
         "mode": MODE_INTERVAL,
         "interval_sec": int(interval_sec),
         "first_exec_time": int(base_time_ms) + int(offset_ms),
     }
+    if end_time is not None:
+        out["end_time"] = int(end_time)
+    return out
 
 
 def cron_timing(
     first_exec_time_ms: int,
-    cron: str,
+    cron_expr: str,
     *,
     timezone_name: str = "Asia/Shanghai",
     end_time: int | None = None,
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "mode": MODE_CRON,
-        "cron": cron,
+        "cron_expr": cron_expr,
         "timezone": timezone_name,
         "first_exec_time": int(first_exec_time_ms),
     }
@@ -419,6 +444,10 @@ _DELAY_RE = re.compile(
 )
 _INTERVAL_RE = re.compile(
     r"每\s*(\d+)\s*(秒|分钟|分|小时|s|m|h|sec|min|hour)",
+    re.I,
+)
+_DURATION_RE = re.compile(
+    r"(?:做|持续|一共|总共|共)?\s*(\d+)\s*(秒|分钟|分|小时|s|m|h|sec|min|hour)",
     re.I,
 )
 _DAILY_RE = re.compile(r"每天\s*(\d{1,2})\s*[点:：](?:\s*(\d{1,2})\s*分?)?")
@@ -437,6 +466,31 @@ def _unit_to_ms(n: int, unit: str) -> int:
 
 def _unit_to_sec(n: int, unit: str) -> int:
     return max(1, _unit_to_ms(n, unit) // 1000)
+
+
+def _infer_duration_ms(text: str, interval_sec: int | None = None) -> int | None:
+    """Pick a duration distinct from the interval phrase when possible."""
+    matches = list(_DURATION_RE.finditer(text or ""))
+    if not matches:
+        return None
+    for m in matches:
+        n = int(m.group(1))
+        sec = _unit_to_sec(n, m.group(2))
+        # Skip the same span that is the "每 N 秒" interval.
+        if interval_sec is not None and sec == interval_sec:
+            # Prefer longer durations elsewhere in the sentence.
+            continue
+        return sec * 1000
+    # Fallback: if only one duration and it equals interval, no end_time.
+    if len(matches) == 1 and interval_sec is not None:
+        n = int(matches[0].group(1))
+        sec = _unit_to_sec(n, matches[0].group(2))
+        if sec == interval_sec:
+            return None
+    if matches:
+        n = int(matches[0].group(1))
+        return _unit_to_sec(n, matches[0].group(2)) * 1000
+    return None
 
 
 def infer_timing_from_text(text: str, base_time_ms: int) -> dict[str, Any] | None:
@@ -461,7 +515,13 @@ def infer_timing_from_text(text: str, base_time_ms: int) -> dict[str, Any] | Non
     if m_int:
         n = int(m_int.group(1))
         sec = _unit_to_sec(n, m_int.group(2))
-        return interval_timing(base_time_ms, sec)
+        # First beat shortly after base (e.g. +interval) unless text implies immediate.
+        first_offset = sec * 1000
+        duration_ms = _infer_duration_ms(t, interval_sec=sec)
+        end_time = None
+        if duration_ms is not None:
+            end_time = int(base_time_ms) + int(duration_ms)
+        return interval_timing(base_time_ms, sec, offset_ms=first_offset, end_time=end_time)
 
     m_delay = _DELAY_RE.search(t)
     if m_delay:

@@ -1,0 +1,19 @@
+---
+description: Agents coordinate via the local Agent Chatbox HTTP API; poll every 30 minutes
+alwaysApply: true
+---
+
+# Agent Chatbox
+
+Agent 之间 **不进对方会话**。协调只走本机 chat server，规范：[`docs/agent-coordination.md`](docs/agent-coordination.md)。
+
+- **每次 pull 之前，先完整读一遍** [`docs/agent-coordination.md`](docs/agent-coordination.md)，不要凭记忆。
+- 服务：`http://127.0.0.1:8787/`（`python3 chat/serve.py`）。库 `chat/data/agent_chat.sqlite3`，不是 Brain DB。
+- 接口：`POST /api/v1/push_msg` `{from, body}`；`GET /api/v1/pull_msg?handle=<自己>` 拿 `@all` 和 @自己的消息。用户未 @ 的页面笔记 **不要处理**。
+- 旧文件 [`docs/agent-mailbox.md`](docs/agent-mailbox.md) **已停用**，不要追加、不要加 `docs/agent-mailbox.lock`。
+- 全称必须等于 Cursor 标题：`system coordinator agent` `@coordinator`；`brain agent` `@brain`；`runtime dev agent` `@runtime`；`Intent dev agent` `@intent`；`capability dev agent` `@capability`；`quality agent` `@quality`；`dba agent` `@dba`。
+- **pull 仍每 30 分钟**。**禁止** `sleep 300` 五分钟空转。页面 5 秒刷新只给用户。到点若手头有活，先做完再 pull。
+- 读到别人 @自己 或 `@all`：同一轮先 `push_msg` 回复，再做事。
+- 用户对 `@coordinator` 说的非协调事项：不要自己做；`push_msg` `@` 到对应 handle（plugin→`@capability`；调度/hydrate/前序门/失败 msg→`@runtime`；发出窗口→`@intent`；黑盒 API→`@quality`；规划/选边/入队/Brain API→`@brain`）。
+- 预期外情况第一时间 `@coordinator`。修复须验收：完工后 `@quality` 打对外 API，写入 `tests/blackbox/`。
+- **日报：** 每天 23:00 前 `@coordinator` 交日报（完成｜阻塞｜明日｜待验收）。汇总 [`docs/daily-reports.md`](docs/daily-reports.md)。

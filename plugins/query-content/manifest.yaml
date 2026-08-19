@@ -1,0 +1,22 @@
+id: query-content
+service_id: local.query
+group: query
+version: "0.2.0"
+display_name: Local Query
+description: Edge 本地问答；独立 LLM/生图栈（与 vision-perceive 零代码依赖）
+
+capabilities:
+  - capability_id: query.content
+    description: >
+      能：根据本步 query 文字问答，产出 answer_text；自带文生图，要图/投屏/电视展示/示意时产出 image_ref。
+      简单事实默认不生图。不能：报时（clock.now）；看已有图；拍照；自己投电视；TTS；开灯；放歌。
+
+entry:
+  mac: mac/src/mac_edge/plugins/query_content.py
+  providers: mac/src/mac_edge/plugins/query_providers/
+config:
+  - MAC_EDGE_QUERY_PROVIDER  # ark|openai (default ark)
+  - MAC_EDGE_QUERY_API_BASE
+  - MAC_EDGE_QUERY_API_KEY   # or ARK_API_KEY
+  - MAC_EDGE_QUERY_MODEL
+  - MAC_EDGE_QUERY_IMAGE_MODEL

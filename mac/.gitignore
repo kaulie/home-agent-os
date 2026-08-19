@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 .env
 data/edge_id.json
+data/local_ledger.json
+data/local_ledger.tmp
 *.egg-info/
 dist/
 build/

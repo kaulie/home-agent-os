@@ -30,7 +30,7 @@ interface EdgeRuntime {
 
 /**
  * Local skill runtime. Whole-job / step_status are owned by IntentPipeline when
- * `step_status_api=1`.
+ * `step_status_api=1` (always set for server plan steps with execution_timing).
  */
 class LocalEdgeRuntime(
     private val appContext: Context,
@@ -59,6 +59,9 @@ class LocalEdgeRuntime(
 
     override suspend fun execute(task: Task, node: EdgeRuntimeNode): TaskExecutionResult {
         val jobId = IntentStatusClient.intentIdFromParams(task.params)
+        val capability = task.params["capability"]?.toString()?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: task.action
         val stepStatusOnly = task.params["step_status_api"]?.toString()?.trim() == "1"
 
         if (!task.skipReason.isNullOrBlank()) {
@@ -66,15 +69,18 @@ class LocalEdgeRuntime(
             report(task, StepStatus.SKIPPED, msg)
             return TaskExecutionResult(task.taskId, ok = false, message = msg, skipped = true)
         }
+
         val skillId = task.skillId
         if (skillId.isNullOrBlank()) {
             val msg = "no skill mapped"
             report(task, StepStatus.SKIPPED, msg)
             return TaskExecutionResult(task.taskId, ok = false, message = msg, skipped = true)
         }
+
         if (jobId != null && !stepStatusOnly) {
-            reportIntentJob(jobId, IntentStatusClient.RUNNING, node.nodeId, "executing $skillId / ${task.action}")
+            reportIntentJob(jobId, IntentStatusClient.RUNNING, node.nodeId, "executing $capability")
         }
+
         val skill = registry.get(skillId)
         val ctxKey = jobId ?: task.commandId
         val runtimeCtx = contexts.getOrPut(ctxKey) { RuntimeContext() }
@@ -88,16 +94,15 @@ class LocalEdgeRuntime(
                 stepId = task.taskId,
             )
             try {
-                skill.execute(task.action, runtimeCtx.resolveParams(task.params), ctx)
+                skill.execute(capability, runtimeCtx.resolveParams(task.params), ctx)
             } catch (t: Throwable) {
-                Log.e(TAG, "skill threw skillId=$skillId capability=${task.action}", t)
+                Log.e(TAG, "skill threw skillId=$skillId capability=$capability", t)
                 SkillResult.error(t.message ?: t.javaClass.simpleName)
             }
         }
         if (result.ok && result.outputs.isNotEmpty()) {
             runtimeCtx.publish(result.outputs)
         }
-        report(task, if (result.ok) StepStatus.OK else StepStatus.ERROR, result.message)
         if (jobId != null && !stepStatusOnly) {
             reportIntentJob(
                 jobId,
@@ -107,6 +112,7 @@ class LocalEdgeRuntime(
                 outputs = result.outputs.takeIf { it.isNotEmpty() },
             )
         }
+        report(task, if (result.ok) StepStatus.OK else StepStatus.ERROR, result.message)
         return TaskExecutionResult(
             task.taskId,
             ok = result.ok,
@@ -131,7 +137,7 @@ class LocalEdgeRuntime(
             outputs = outputs,
             ctxParam = outputs,
         )
-        if (!ok) Log.w(TAG, "intent status report failed intent_id=$jobId status=$status")
+        if (!ok) Log.w(TAG, "intent status failed intent_id=$jobId status=$status")
     }
 
     private suspend fun report(task: Task, status: StepStatus, message: String?) {

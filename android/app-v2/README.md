@@ -25,7 +25,7 @@ GET /devices/living-room/intents?intent_status=intent_parsed
         （不经 CommandHandler，不上报 intent_status）
 ```
 
-与 iOS LivingRoomEdge 共用 intents / `execution_plan` / `intent_status` 契约。**无本地 Mock Plan**；本地按钮与意图下发是两条独立路径。
+与 iOS 意图窗口共用 intents / `execution_plan` / `intent_status` 契约。**无本地 Mock Plan**；本地按钮与意图下发是两条独立路径。
 
 心跳 / 注册 body 仅含 `services[]`（不再发顶层 `skills` / 扁平 `capabilities`）。
 
@@ -50,7 +50,8 @@ com.smarthome.livingroom_v2
 - 响应：`{ "intents": [ { "id", "status", "execution_plan": [{ "capability", "step" }] } ] }`  
   → 展开为带 `intent_id` 的 `Command[]`（兼容旧 `{ "commands": [...] }`）
 - Agent 每个 tick：heartbeat → **拉服务器 intents** → CommandHandler（标准意图管线）  
-- Instant：立刻 dispatch；Cron/Event：可 `schedule`/`cancel`/`debugFire` 骨架，本阶段不解析 cron / 无事件总线  
+- Instant：立刻 dispatch；Cron/Event：可 `schedule`/`cancel`/`debugFire` 骨架  
+  **生产意图调度**走 `execution_plan[].execution_timing`（`immediate` / `delay` / `interval` / `cron`+`cron_expr`），由 `IntentPipeline` + `ExecutionTimingGate` 门控，不是旧 `ScheduleSpec.Cron` 骨架。
 - intent 状态上报：`POST /api/v1/intent/<id>/status`（`IntentStatusClient`，base=`DEFAULT_INTENT_URL`）  
   阶段：`hub_received` → `scheduled` → `assigned` → `running` → `succeeded`/`failed`  
   Chromecast 收到非本机安装 capability（如 `camera.*` / `display.photo`）会 skip 并上报 `failed`；已安装：`music.*`

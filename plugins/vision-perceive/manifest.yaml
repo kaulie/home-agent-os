@@ -1,0 +1,21 @@
+id: vision-perceive
+service_id: local.vision
+group: vision
+version: "0.3.0"
+display_name: Local Vision
+description: Edge 本地视觉感知；provider 可切换（默认火山方舟 Responses）
+
+capabilities:
+  - capability_id: vision.perceive
+    description: >
+      能：给定本步 image_ref（AssetRef），产出 summary/people 等场景结构。
+      不能：无图；收 photo_url；指向问答（vision.ask）；拍照；投屏；TTS。缺 image_ref 则失败。
+
+entry:
+  mac: mac/src/mac_edge/plugins/vision_perceive.py
+  providers: mac/src/mac_edge/plugins/vision_providers/
+config:
+  - MAC_EDGE_VISION_PROVIDER  # ark|openai (default ark)
+  - MAC_EDGE_VISION_API_BASE
+  - MAC_EDGE_VISION_API_KEY   # or ARK_API_KEY
+  - MAC_EDGE_VISION_MODEL

@@ -15,7 +15,7 @@ data class ExecutionTiming(
     val execTime: Long? = null,
     val firstExecTime: Long? = null,
     val intervalSec: Int? = null,
-    val cron: String? = null,
+    val cronExpr: String? = null,
     val timezone: String? = null,
     val endTime: Long? = null,
     val count: Int? = null,
@@ -83,16 +83,45 @@ object ExecutionTimingGate {
             is String -> countRaw.trim().toIntOrNull()?.takeIf { it > 0 }
             else -> null
         }
+        val cronExpr = raw.optString("cron_expr", "").trim().ifEmpty { null }
+            ?: raw.optString("cron", "").trim().ifEmpty { null }
+        val endTime = asMs(raw.opt("end_time")) ?: asMs(raw.opt("end_exec_time"))
         return ExecutionTiming(
             mode = mode,
             execTime = asMs(raw.opt("exec_time")),
             firstExecTime = asMs(raw.opt("first_exec_time")),
             intervalSec = intervalSec,
-            cron = raw.optString("cron", "").trim().ifEmpty { null },
+            cronExpr = cronExpr,
             timezone = raw.optString("timezone", "").trim().ifEmpty { null },
-            endTime = asMs(raw.opt("end_time")),
+            endTime = endTime,
             count = count,
         )
+    }
+
+    /**
+     * Rewrite an `execution_timing` object in-place to the current wire shape:
+     * `cron_expr` (not `cron`), `end_time` (not `end_exec_time`), no `delay_sec`.
+     */
+    fun normalizeExecutionTimingObject(raw: JSONObject?) {
+        if (raw == null) return
+        raw.remove("delay_sec")
+        raw.remove("delaySec")
+        val legacyCron = raw.optString("cron", "").trim()
+        val cronExpr = raw.optString("cron_expr", "").trim()
+        if (cronExpr.isEmpty() && legacyCron.isNotEmpty()) {
+            raw.put("cron_expr", legacyCron)
+        }
+        raw.remove("cron")
+        if (!raw.has("end_time") && raw.has("end_exec_time")) {
+            val ms = asMs(raw.opt("end_exec_time"))
+            if (ms != null) raw.put("end_time", ms) else raw.put("end_time", raw.get("end_exec_time"))
+        }
+        raw.remove("end_exec_time")
+        for (key in listOf("exec_time", "first_exec_time", "end_time")) {
+            if (!raw.has(key)) continue
+            val ms = asMs(raw.opt(key))
+            if (ms == null) raw.remove(key) else raw.put(key, ms)
+        }
     }
 
     fun plannedStartMs(timing: ExecutionTiming, beatIndex: Int): Long? {
@@ -110,7 +139,7 @@ object ExecutionTimingGate {
                 if (beatIndex == 0) return first
                 var t = first
                 repeat(beatIndex) {
-                    val nxt = cronNextAfter(timing.cron.orEmpty(), t, timing.timezone) ?: return null
+                    val nxt = cronNextAfter(timing.cronExpr.orEmpty(), t, timing.timezone) ?: return null
                     t = nxt
                 }
                 t
@@ -125,7 +154,7 @@ object ExecutionTimingGate {
                 val interval = timing.intervalSec ?: return null
                 plannedStart + interval.toLong() * 1000L
             }
-            MODE_CRON -> cronNextAfter(timing.cron.orEmpty(), plannedStart, timing.timezone)
+            MODE_CRON -> cronNextAfter(timing.cronExpr.orEmpty(), plannedStart, timing.timezone)
             else -> null
         }
 

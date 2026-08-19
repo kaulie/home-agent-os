@@ -1,0 +1,647 @@
+{
+  "when": "2026-08-18 22:17:44",
+  "cases": [
+    {
+      "id": "N1",
+      "text": "现在几点了",
+      "intent_id": 25,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "clock.now"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "clock.now",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {
+          "now_iso": "2026-08-18T21:44:01+08:00",
+          "time_text": "2026年8月18日 21:44:01（CST，UTC+08:00）"
+        }
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N2",
+      "text": "用语音告诉我现在几点了",
+      "intent_id": 26,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "clock.now",
+        "notify.speak"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "clock.now",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        },
+        {
+          "step": 2,
+          "cap": "notify.speak",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {
+          "now_iso": "2026-08-18T21:45:35+08:00",
+          "time_text": "2026年8月18日 21:45:35（CST，UTC+08:00）"
+        },
+        "2": {}
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N3",
+      "text": "用语音说：你好，这是TTS测试",
+      "intent_id": 27,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "notify.speak"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "notify.speak",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {}
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N4",
+      "text": "一加一等于几",
+      "intent_id": 28,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "query.content"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "query.content",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {
+          "answer_text": "一加一等于二。",
+          "citations": "[]"
+        }
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N5",
+      "text": "晋字一共几画",
+      "intent_id": 30,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "query.content"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "query.content",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {
+          "answer_text": "据汉典，「晋」字一共有10画，笔顺为横、竖、竖、点、撇、横、竖、横折、横、横。",
+          "citations": "[{\"name\": \"汉典\", \"url\": \"https://www.zdic.net/\"}]",
+          "photo_url": "http://192.168.3.65:8080/edaf1d00_20260818_215118_query.png",
+          "saved_as": "edaf1d00_20260818_215118_query.png"
+        }
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N6",
+      "text": "我家里那只猫叫什么名字",
+      "intent_id": 31,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "query.content"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "query.content",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {
+          "answer_text": "我不知道你家里那只猫叫什么名字，我没有你家猫咪命名的相关信息。",
+          "citations": "[]"
+        }
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N7",
+      "text": "客厅现在适合看书吗，用语音告诉我",
+      "intent_id": 32,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "camera.capture",
+        "vision.perceive",
+        "notify.speak"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn",
+        "edge-node-x0OjfixA"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "camera.capture",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-x0OjfixA",
+          "timing": "immediate"
+        },
+        {
+          "step": 2,
+          "cap": "vision.perceive",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        },
+        {
+          "step": 3,
+          "cap": "notify.speak",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {
+          "photo_local_path": "/Users/kaulie/devspace/home-agent-mac-edge-runtime/data/gopro/20260818_215502_GOPR1157.JPG",
+          "photo_url": "http://192.168.3.65:8080/249013ea_20260818_215502_GOPR1157.JPG",
+          "saved_as": "249013ea_20260818_215502_GOPR1157.JPG"
+        },
+        "2": {
+          "actions": "p1 坐在沙发边，手放在身前茶几旁；p2 低头操作桌上的笔记本电脑；电视处于播放状态。",
+          "lighting": "{\"whole\": \"天花板主吸顶灯与落地灯均点亮，整体光线柔和偏暖，无强光刺眼，室内照度均匀，无明显暗角。\", \"region\": [{\"person_id\": \"p1\", \"lighting\": \"受落地灯与天花板主灯共同照射，区域亮度充足\", \"summary\": \"光线柔和充足，无明显阴影\"}, {\"person_id\": \"p2\", \"lighting\": \"受天花板吊灯与桌面漫反射光照亮，背景窗户为夜间状态无自然光\", \"summary\": \"桌面区域光线充足，人物面部受光清晰\"}]}",
+          "people": "[{\"id\": \"p1\", \"description\": \"短发男童，穿浅灰色无袖上衣\", \"count\": 1, \"position\": \"左侧灰色沙发与白色小茶几之间\"}, {\"id\": \"p2\", \"description\": \"短发成年男性，穿浅棕色短袖\", \"count\": 1, \"position\": \"远端靠窗的餐桌后方\"}]",
+          "posture": "p1 坐姿，身体朝向茶几方向，低头；p2 坐姿，身体前倾面向桌面电脑。",
+          "spatial": "客餐厅连通，左侧设灰色布艺沙发、白色小茶几、落地灯与书架，右侧是挂有电视的墙面、电视柜与清洁电器，远端靠窗位置摆放餐桌椅，地板为木质，电视墙带有弧形造型。",
+          "summary": "客厅里一名孩童在沙发旁茶几边，一名男子在远端餐桌前，电视正播放小猪佩奇。"
+        },
+        "3": {}
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N8",
+      "text": "把客厅窗帘打开",
+      "intent_id": 33,
+      "http": 200,
+      "status": "failed",
+      "msg": "execution_plan 为空，无法调度",
+      "presentation": null,
+      "caps": [],
+      "edges": [],
+      "steps": [],
+      "outputs": null,
+      "get_intent": 200
+    },
+    {
+      "id": "N9",
+      "text": "拍张照",
+      "intent_id": 34,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "camera.capture"
+      ],
+      "edges": [
+        "edge-node-x0OjfixA"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "camera.capture",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-x0OjfixA",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {
+          "photo_local_path": "/Users/kaulie/devspace/home-agent-mac-edge-runtime/data/gopro/20260818_215717_GOPR1158.JPG",
+          "photo_url": "http://192.168.3.65:8080/2df0f9a2_20260818_215717_GOPR1158.JPG",
+          "saved_as": "2df0f9a2_20260818_215717_GOPR1158.JPG"
+        }
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N10",
+      "text": "拍张照投到电视上",
+      "intent_id": 36,
+      "http": 200,
+      "status": "failed",
+      "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/9ce2261d_20260818_220007_GOPR1160.JPG",
+      "presentation": null,
+      "caps": [
+        "camera.capture",
+        "display.photo"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn",
+        "edge-node-x0OjfixA"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "camera.capture",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-x0OjfixA",
+          "timing": "immediate"
+        },
+        {
+          "step": 2,
+          "cap": "display.photo",
+          "st": 3,
+          "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/9ce2261d_20260818_220007_GO",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {
+          "photo_local_path": "/Users/kaulie/devspace/home-agent-mac-edge-runtime/data/gopro/20260818_220007_GOPR1160.JPG",
+          "photo_url": "http://192.168.3.65:8080/9ce2261d_20260818_220007_GOPR1160.JPG",
+          "saved_as": "9ce2261d_20260818_220007_GOPR1160.JPG"
+        },
+        "2": {}
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N11",
+      "text": "拍张照看看客厅里有没有人，然后用语音告诉我",
+      "intent_id": 38,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "camera.capture",
+        "vision.ask",
+        "notify.speak"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn",
+        "edge-node-x0OjfixA"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "camera.capture",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-x0OjfixA",
+          "timing": "immediate"
+        },
+        {
+          "step": 2,
+          "cap": "vision.ask",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        },
+        {
+          "step": 3,
+          "cap": "notify.speak",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {
+          "photo_local_path": "/Users/kaulie/devspace/home-agent-mac-edge-runtime/data/gopro/20260818_220131_GOPR1162.JPG",
+          "photo_url": "http://192.168.3.65:8080/cc261533_20260818_220131_GOPR1162.JPG",
+          "saved_as": "cc261533_20260818_220131_GOPR1162.JPG"
+        },
+        "2": {
+          "answer_text": "有人。"
+        },
+        "3": {}
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N12",
+      "text": "画一张客厅台灯的示意图，投到电视上",
+      "intent_id": 39,
+      "http": 200,
+      "status": "failed",
+      "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/5268ac90_20260818_220514_query.png",
+      "presentation": null,
+      "caps": [
+        "query.content",
+        "display.photo"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "query.content",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        },
+        {
+          "step": 2,
+          "cap": "display.photo",
+          "st": 3,
+          "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/5268ac90_20260818_220514_qu",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {
+          "answer_text": "好的，将为你生成客厅台灯的示意图，呈现常规家用客厅台灯的外观结构。",
+          "citations": "[]",
+          "photo_url": "http://192.168.3.65:8080/5268ac90_20260818_220514_query.png",
+          "saved_as": "5268ac90_20260818_220514_query.png"
+        },
+        "2": {}
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N13",
+      "text": "播放陈奕迅的十年",
+      "intent_id": 40,
+      "http": 200,
+      "status": "failed",
+      "msg": "execution_plan 为空，无法调度",
+      "presentation": null,
+      "caps": [],
+      "edges": [],
+      "steps": [],
+      "outputs": null,
+      "get_intent": 200
+    },
+    {
+      "id": "N14",
+      "text": "投到电视上",
+      "intent_id": 41,
+      "http": 200,
+      "status": "failed",
+      "msg": "execution_plan 为空，无法调度",
+      "presentation": null,
+      "caps": [],
+      "edges": [],
+      "steps": [],
+      "outputs": null,
+      "get_intent": 200
+    },
+    {
+      "id": "N15",
+      "text": "把刚才拍的那些照片做成轮播投到电视",
+      "intent_id": 42,
+      "http": 200,
+      "status": "failed",
+      "msg": "execution_plan 为空，无法调度",
+      "presentation": null,
+      "caps": [],
+      "edges": [],
+      "steps": [],
+      "outputs": null,
+      "get_intent": 200
+    },
+    {
+      "id": "N16",
+      "text": "一分钟后用语音说：该喝水了",
+      "intent_id": 43,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "notify.speak"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "notify.speak",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "delay"
+        }
+      ],
+      "outputs": {
+        "1": {}
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N17",
+      "text": "用 take_photo 拍一张",
+      "intent_id": 45,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "camera.capture"
+      ],
+      "edges": [
+        "edge-node-x0OjfixA"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "camera.capture",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-x0OjfixA",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {
+          "photo_local_path": "/Users/kaulie/devspace/home-agent-mac-edge-runtime/data/gopro/20260818_220852_GOPR1164.JPG",
+          "photo_url": "http://192.168.3.65:8080/c6817a42_20260818_220852_GOPR1164.JPG",
+          "saved_as": "c6817a42_20260818_220852_GOPR1164.JPG"
+        }
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N18",
+      "text": "拍张照，但是不要拍照",
+      "intent_id": 47,
+      "http": 200,
+      "status": "running",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "notify.speak"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "notify.speak",
+          "st": 2,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {}
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N19",
+      "text": "地球到月球大约多远",
+      "intent_id": 49,
+      "http": 200,
+      "status": "running",
+      "msg": "ark responses.create failed: Request timed out., request_id: 20260818221444AnFQiHWqn85uAC2uKvkF",
+      "presentation": null,
+      "caps": [
+        "query.content"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "query.content",
+          "st": 3,
+          "msg": "ark responses.create failed: Request timed out., request_id: 20260818221444AnFQiHWqn85uAC2uKvkF",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": {
+        "1": {}
+      },
+      "get_intent": 200
+    },
+    {
+      "id": "N20",
+      "text": "今天天气适合散步吗",
+      "intent_id": 52,
+      "http": 200,
+      "status": "intent_dispatched",
+      "msg": null,
+      "presentation": null,
+      "caps": [
+        "query.content"
+      ],
+      "edges": [
+        "edge-node-9tkgMTtn"
+      ],
+      "steps": [
+        {
+          "step": 1,
+          "cap": "query.content",
+          "st": null,
+          "msg": "",
+          "edge": "edge-node-9tkgMTtn",
+          "timing": "immediate"
+        }
+      ],
+      "outputs": null,
+      "get_intent": 200
+    }
+  ]
+}

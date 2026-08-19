@@ -22,9 +22,9 @@ class ChromecastCastSkill(
             capabilities = listOf(
                 CapabilityDescriptor(
                     capabilityId = Capabilities.DISPLAY_PHOTO,
-                    description = "Start custom Cast receiver and send photo URL on urn:x-cast:local.image",
+                    description = "能：把本步已给出的 image_ref（AssetRef）投到 Chromecast。仅用户明确要投电视时用。不能：拍照、自己捡图、收 photo_url、TTS。缺 image_ref 则失败。",
                     inputSchema = mapOf(
-                        "photo_url" to SchemaField("string", required = true),
+                        "image_ref" to SchemaField("string", required = true),
                     ),
                 ),
             ),

@@ -3,10 +3,12 @@ import SwiftUI
 /// Vertical logistics-style timeline for intent execution status.
 struct IntentLogisticsTimelineView: View {
     let journey: IntentJourney
+    /// Drop the outer card chrome when hosted inside the progress overlay.
+    var embedded: Bool = false
 
     var body: some View {
         // Refresh active-step / total elapsed every 0.5s while non-terminal.
-        TimelineView(.periodic(from: .now, by: journey.terminal ? 3600 : 0.5)) { context in
+        TimelineView(.periodic(from: .now, by: (journey.idle || journey.terminal) ? 3600 : 0.5)) { context in
             content(now: context.date)
         }
     }
@@ -15,15 +17,18 @@ struct IntentLogisticsTimelineView: View {
     private func content(now: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("意图执行进度")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                if let total = journey.totalElapsedSeconds(now: now) {
+                if !embedded {
+                    Text("意图执行进度")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                }
+                if !journey.idle, let total = journey.totalElapsedSeconds(now: now) {
                     Text("总耗时 \(IntentJourney.formatDuration(total))")
                         .font(.caption2.monospaced())
                         .foregroundStyle(.secondary)
                 }
-                Text("id \(journey.jobId)")
+                if embedded { Spacer() }
+                Text(journey.idle ? "尚未发出" : "id \(journey.jobId)")
                     .font(.caption2.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -35,15 +40,19 @@ struct IntentLogisticsTimelineView: View {
                     .fill(bannerColor)
                     .frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(journey.current.label)
+                    Text(journey.idle ? "等待发出指令" : journey.current.label)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(bannerColor == .yellow ? .primary : bannerColor)
-                    Text(journey.currentWireStatus)
+                    Text(journey.idle ? "intent_status" : journey.currentWireStatus)
                         .font(.caption2.monospaced())
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                if journey.terminal {
+                if journey.idle {
+                    Text("待发出")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else if journey.terminal {
                     Text(journey.current == .failed ? "失败" : "完成")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(journey.current == .failed ? .red : .green)
@@ -66,6 +75,10 @@ struct IntentLogisticsTimelineView: View {
                 Text(journey.text)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            if journey.current == .failed {
+                failureBanner(for: journey)
             }
 
             VStack(alignment: .leading, spacing: 0) {
@@ -102,23 +115,55 @@ struct IntentLogisticsTimelineView: View {
                     .font(.caption2)
                     .foregroundStyle(.orange)
             }
-            if let err = journey.error, !err.isEmpty, journey.current == .failed {
-                Text(err)
-                    .font(.caption2)
-                    .foregroundStyle(.red)
-            }
         }
-        .padding(12)
+        .padding(embedded ? 0 : 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.tertiarySystemBackground))
+        .background(embedded ? Color.clear : Color(.tertiarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var bannerColor: Color {
+        if journey.idle { return Color(.systemGray3) }
         if journey.current == .failed { return .red }
         if journey.timedOut { return .orange }
         if journey.terminal { return .green }
         return .yellow
+    }
+
+    @ViewBuilder
+    private func failureBanner(for journey: IntentJourney) -> some View {
+        let reason = failureReason(for: journey)
+        VStack(alignment: .leading, spacing: 4) {
+            Text("失败原因")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.red)
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.red.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func failureReason(for journey: IntentJourney) -> String {
+        if let err = journey.error, !err.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return err
+        }
+        let failed = journey.planSteps.filter { $0.runStatus == .failed }
+        if !failed.isEmpty {
+            return failed.map { item in
+                let detail = item.runDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+                if detail.isEmpty {
+                    return "step \(item.step) \(item.capability) 失败"
+                }
+                return "step \(item.step) \(item.capability)：\(detail)"
+            }.joined(separator: "\n")
+        }
+        return "意图失败，服务端未返回失败原因"
     }
 
     private func planStepStatusLabel(for item: IntentPlanStepItem, in journey: IntentJourney) -> String {
@@ -151,12 +196,19 @@ struct IntentLogisticsTimelineView: View {
         case "执行中":
             return "进行中（暂无细分进度）…"
         case "排队":
+            if !item.assignedEdge.isEmpty {
+                return "等待 \(item.assignedEdge) 领取执行"
+            }
             if let edge = assignedEdgeHint(from: item.summary) {
                 return "等待 \(edge) 领取执行"
             }
             return "等待调度 / 其他节点领取"
         case "等待":
             return "尚未开始"
+        case "失败":
+            return "失败（step_status=3），服务端未返回失败原因"
+        case "完成":
+            return "已完成"
         default:
             return ""
         }
@@ -233,17 +285,24 @@ private struct IntentPlanStepRow: View {
                 Text(item.capability)
                     .font(.caption.monospaced().weight(.semibold))
                     .foregroundStyle(.primary)
-                if !item.summary.isEmpty {
-                    Text(item.summary)
+                if !item.assignedEdge.isEmpty {
+                    Text("节点 \(item.assignedEdge)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                if !extraSummary.isEmpty {
+                    Text(extraSummary)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !item.inputs.isEmpty {
-                    IntentPlanIOBlock(title: "input", entries: item.inputs)
+                    IntentPlanIOBlock(title: "入参", entries: item.inputs)
                 }
-                if !item.outputs.isEmpty {
-                    IntentPlanIOBlock(title: "output", entries: item.outputs)
+                if !item.realizedOutputs.isEmpty {
+                    IntentPlanIOBlock(title: "出参", entries: item.realizedOutputs)
+                } else if !item.schemaOutputs.isEmpty {
+                    IntentPlanIOBlock(title: "出参约定", entries: item.schemaOutputs)
                 }
                 if !activity.isEmpty {
                     Text(activity)
@@ -251,8 +310,38 @@ private struct IntentPlanStepRow: View {
                         .foregroundStyle(
                             item.runStatus == .failed ? .red.opacity(0.9) : Color.accentColor.opacity(0.95)
                         )
-                        .lineLimit(4)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                if !item.events.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("步骤记录")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(item.events) { event in
+                            HStack(alignment: .top, spacing: 4) {
+                                if let at = event.at {
+                                    Text(IntentPlanStepRow.timeFormatter.string(from: at))
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text(event.statusLabel)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(event.status == 3 ? .red : .secondary)
+                                if !event.msg.isEmpty {
+                                    Text(event.msg)
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(event.status == 3 ? .red : .primary)
+                                        .textSelection(.enabled)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.secondarySystemBackground).opacity(0.65))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -260,6 +349,11 @@ private struct IntentPlanStepRow: View {
                 Text(statusLabel)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(statusColor)
+                if let code = item.wireStatusCode {
+                    Text("status=\(code)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                }
                 if let dur = item.durationSeconds(now: now) {
                     Text(IntentJourney.formatDuration(dur))
                         .font(.caption2.monospaced())
@@ -273,6 +367,26 @@ private struct IntentPlanStepRow: View {
         .background(statusColor.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
+
+    private var extraSummary: String {
+        var summary = item.summary
+        if !item.assignedEdge.isEmpty {
+            let prefix = "edge=\(item.assignedEdge)"
+            if summary.hasPrefix(prefix) {
+                summary = String(summary.dropFirst(prefix.count))
+                if summary.hasPrefix(" · ") {
+                    summary = String(summary.dropFirst(3))
+                }
+            }
+        }
+        return summary.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
 }
 
 private struct IntentLogisticsStepRow: View {

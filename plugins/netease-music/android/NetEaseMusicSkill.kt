@@ -32,7 +32,7 @@ class NetEaseMusicSkill(
         capabilities = listOf(
             CapabilityDescriptor(
                 capabilityId = Capabilities.MUSIC_PLAY,
-                description = "按歌曲 / 专辑 / 歌手播放网易云",
+                description = "能：按 song / album / artist 在网易云播放。用户要放歌时用本能力。不能：用 query.content 或 notify.speak 顶替；无本能力时 plan=[]；不投屏、不 TTS 念歌词当播放。song/artist/album 至少填一个。",
                 inputSchema = mapOf(
                     "song" to SchemaField(
                         type = "string",
@@ -53,19 +53,19 @@ class NetEaseMusicSkill(
             ),
             CapabilityDescriptor(
                 capabilityId = Capabilities.MUSIC_PAUSE,
-                description = "暂停播放",
+                description = "能：暂停当前网易云播放。不能：开始播放（用 music.play）；搜歌；TTS；投屏。",
             ),
             CapabilityDescriptor(
                 capabilityId = Capabilities.MUSIC_STOP,
-                description = "停止播放",
+                description = "能：停止当前网易云播放。不能：开始播放（用 music.play）；搜歌；TTS；投屏。",
             ),
             CapabilityDescriptor(
                 capabilityId = Capabilities.MUSIC_NEXT,
-                description = "下一首",
+                description = "能：网易云切到下一首。不能：指定歌名播放（用 music.play）；TTS；投屏。",
             ),
             CapabilityDescriptor(
                 capabilityId = Capabilities.MUSIC_PREVIOUS,
-                description = "上一首",
+                description = "能：网易云切到上一首。不能：指定歌名播放（用 music.play）；TTS；投屏。",
             ),
         ),
     )

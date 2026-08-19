@@ -26,7 +26,7 @@ final class SpeechRecognizer: ObservableObject {
             }
         }
         guard speechOk else {
-            lastError = "未授权语音识别（设置 → 客厅 Edge iPhone → 语音识别）"
+            lastError = "未授权语音识别（设置 → home agent edge → 语音识别）"
             return false
         }
 
@@ -36,7 +36,7 @@ final class SpeechRecognizer: ObservableObject {
             }
         }
         guard micOk else {
-            lastError = "未授权麦克风（设置 → 客厅 Edge iPhone → 麦克风）"
+            lastError = "未授权麦克风（设置 → home agent edge → 麦克风）"
             return false
         }
         return true

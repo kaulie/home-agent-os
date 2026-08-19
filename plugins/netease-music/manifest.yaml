@@ -7,15 +7,21 @@ description: 按歌曲 / 专辑 / 歌手播放网易云
 
 capabilities:
   - capability_id: music.play
-    description: 按歌曲 / 专辑 / 歌手播放网易云
+    description: >
+      能：按 song / album / artist 在网易云播放。用户要放歌时用本能力。
+      不能：用 query.content 或 notify.speak 顶替；无本能力时 plan=[]。
   - capability_id: music.pause
-    description: 暂停播放
+    description: >
+      能：暂停当前网易云播放。不能：开始播放（music.play）；搜歌；TTS。
   - capability_id: music.stop
-    description: 停止播放
+    description: >
+      能：停止当前网易云播放。不能：开始播放（music.play）；搜歌；TTS。
   - capability_id: music.next
-    description: 下一首
+    description: >
+      能：网易云切到下一首。不能：指定歌名播放（music.play）；TTS。
   - capability_id: music.previous
-    description: 上一首
+    description: >
+      能：网易云切到上一首。不能：指定歌名播放（music.play）；TTS。
 
 entry:
   android: android/NetEaseMusicSkill.kt
