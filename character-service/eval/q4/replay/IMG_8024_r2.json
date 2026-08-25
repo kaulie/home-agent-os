@@ -1,0 +1,697 @@
+{
+  "engine": "reading.point_to_character",
+  "status": "ok_with_alternatives",
+  "finger": {
+    "tip": [
+      2312.2,
+      3478.4
+    ],
+    "direction": [
+      -0.9632,
+      0.2687
+    ]
+  },
+  "candidates": [
+    {
+      "text": "霸",
+      "bbox": [
+        2157,
+        3420,
+        2255,
+        3500
+      ],
+      "score": 0.9066,
+      "split": true
+    },
+    {
+      "text": "是",
+      "bbox": [
+        2155,
+        3413,
+        2250,
+        3495
+      ],
+      "score": 0.8967,
+      "split": true
+    },
+    {
+      "text": "王",
+      "bbox": [
+        2156,
+        3500,
+        2255,
+        3581
+      ],
+      "score": 0.7937,
+      "split": true
+    },
+    {
+      "text": "之",
+      "bbox": [
+        2157,
+        3581,
+        2255,
+        3661
+      ],
+      "score": 0.4417,
+      "split": true
+    },
+    {
+      "text": "就",
+      "bbox": [
+        2155,
+        3331,
+        2250,
+        3413
+      ],
+      "score": 0.4267,
+      "split": true
+    },
+    {
+      "text": "相",
+      "bbox": [
+        2157,
+        3661,
+        2255,
+        3742
+      ],
+      "score": 0.4267,
+      "split": true
+    },
+    {
+      "text": "直",
+      "bbox": [
+        2155,
+        3249,
+        2250,
+        3331
+      ],
+      "score": 0.3856,
+      "split": true
+    }
+  ],
+  "top3": [
+    {
+      "text": "霸",
+      "bbox": [
+        2157,
+        3420,
+        2255,
+        3500
+      ],
+      "score": 0.9066
+    },
+    {
+      "text": "是",
+      "bbox": [
+        2155,
+        3413,
+        2250,
+        3495
+      ],
+      "score": 0.8967
+    },
+    {
+      "text": "王",
+      "bbox": [
+        2156,
+        3500,
+        2255,
+        3581
+      ],
+      "score": 0.7937
+    }
+  ],
+  "ocr_blocks": 4,
+  "char_boxes": 28,
+  "timing": {
+    "hand_detection_s": 0.326,
+    "ocr_vlm_s": 4.9251,
+    "geometry_ranking_s": 0.9524,
+    "total_s": 6.3549
+  },
+  "replay": {
+    "landmarks": {
+      "5": [
+        2449.55,
+        3440.07
+      ],
+      "6": [
+        2367.9,
+        3418.75
+      ],
+      "7": [
+        2323.41,
+        3449.75
+      ],
+      "8": [
+        2312.16,
+        3478.4
+      ]
+    },
+    "origin": [
+      2312.16,
+      3478.4
+    ],
+    "direction": [
+      -0.963213,
+      0.26874
+    ],
+    "max_distance": 3927.0,
+    "max_angle_deg": 30.0,
+    "min_score": 0.28,
+    "min_margin": 0.06,
+    "blocks": [
+      {
+        "text": "就是“霸王之相",
+        "bbox": [
+          2156.0,
+          3178.0,
+          2255.0,
+          3742.0
+        ]
+      },
+      {
+        "text": "就是“霸王之相",
+        "bbox": [
+          2157.0,
+          3178.0,
+          2255.0,
+          3742.0
+        ]
+      },
+      {
+        "text": "直就是“霸王之",
+        "bbox": [
+          2155.0,
+          3249.0,
+          2250.0,
+          3824.0
+        ]
+      },
+      {
+        "text": "直就是“霸王之",
+        "bbox": [
+          2155.0,
+          3249.0,
+          2250.0,
+          3824.0
+        ]
+      }
+    ],
+    "chars": [
+      {
+        "text": "就",
+        "bbox": [
+          2156,
+          3178,
+          2255,
+          3259
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "是",
+        "bbox": [
+          2156,
+          3259,
+          2255,
+          3339
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "“",
+        "bbox": [
+          2156,
+          3339,
+          2255,
+          3420
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "霸",
+        "bbox": [
+          2156,
+          3420,
+          2255,
+          3500
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "王",
+        "bbox": [
+          2156,
+          3500,
+          2255,
+          3581
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "之",
+        "bbox": [
+          2156,
+          3581,
+          2255,
+          3661
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "相",
+        "bbox": [
+          2156,
+          3661,
+          2255,
+          3742
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "就",
+        "bbox": [
+          2157,
+          3178,
+          2255,
+          3259
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "是",
+        "bbox": [
+          2157,
+          3259,
+          2255,
+          3339
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "“",
+        "bbox": [
+          2157,
+          3339,
+          2255,
+          3420
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "霸",
+        "bbox": [
+          2157,
+          3420,
+          2255,
+          3500
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "王",
+        "bbox": [
+          2157,
+          3500,
+          2255,
+          3581
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "之",
+        "bbox": [
+          2157,
+          3581,
+          2255,
+          3661
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "相",
+        "bbox": [
+          2157,
+          3661,
+          2255,
+          3742
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相"
+      },
+      {
+        "text": "直",
+        "bbox": [
+          2155,
+          3249,
+          2250,
+          3331
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "就",
+        "bbox": [
+          2155,
+          3331,
+          2250,
+          3413
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "是",
+        "bbox": [
+          2155,
+          3413,
+          2250,
+          3495
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "“",
+        "bbox": [
+          2155,
+          3495,
+          2250,
+          3578
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "霸",
+        "bbox": [
+          2155,
+          3578,
+          2250,
+          3660
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "王",
+        "bbox": [
+          2155,
+          3660,
+          2250,
+          3742
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "之",
+        "bbox": [
+          2155,
+          3742,
+          2250,
+          3824
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "直",
+        "bbox": [
+          2155,
+          3249,
+          2250,
+          3331
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "就",
+        "bbox": [
+          2155,
+          3331,
+          2250,
+          3413
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "是",
+        "bbox": [
+          2155,
+          3413,
+          2250,
+          3495
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "“",
+        "bbox": [
+          2155,
+          3495,
+          2250,
+          3578
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "霸",
+        "bbox": [
+          2155,
+          3578,
+          2250,
+          3660
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "王",
+        "bbox": [
+          2155,
+          3660,
+          2250,
+          3742
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      },
+      {
+        "text": "之",
+        "bbox": [
+          2155,
+          3742,
+          2250,
+          3824
+        ],
+        "split": true,
+        "source_text": "直就是“霸王之"
+      }
+    ],
+    "ranked": [
+      {
+        "text": "霸",
+        "bbox": [
+          2157,
+          3420,
+          2255,
+          3500
+        ],
+        "score": 0.906641,
+        "mode": "lateral",
+        "split": true
+      },
+      {
+        "text": "是",
+        "bbox": [
+          2155,
+          3413,
+          2250,
+          3495
+        ],
+        "score": 0.896656,
+        "mode": "lateral",
+        "split": true
+      },
+      {
+        "text": "王",
+        "bbox": [
+          2156,
+          3500,
+          2255,
+          3581
+        ],
+        "score": 0.793712,
+        "mode": "ray",
+        "split": true
+      },
+      {
+        "text": "之",
+        "bbox": [
+          2157,
+          3581,
+          2255,
+          3661
+        ],
+        "score": 0.441664,
+        "mode": "lateral",
+        "split": true
+      },
+      {
+        "text": "就",
+        "bbox": [
+          2155,
+          3331,
+          2250,
+          3413
+        ],
+        "score": 0.426723,
+        "mode": "lateral",
+        "split": true
+      },
+      {
+        "text": "相",
+        "bbox": [
+          2157,
+          3661,
+          2255,
+          3742
+        ],
+        "score": 0.426705,
+        "mode": "lateral",
+        "split": true
+      },
+      {
+        "text": "直",
+        "bbox": [
+          2155,
+          3249,
+          2250,
+          3331
+        ],
+        "score": 0.385603,
+        "mode": "lateral",
+        "split": true
+      }
+    ],
+    "verdict": {
+      "status": "ok_with_alternatives",
+      "top": {
+        "text": "霸",
+        "bbox": [
+          2157,
+          3420,
+          2255,
+          3500
+        ],
+        "split": true,
+        "source_text": "就是“霸王之相",
+        "score": 0.9066409774088278,
+        "mode": "lateral",
+        "entry_t": 107.74282207885189,
+        "intersection": 0.0,
+        "alignment": 0.7175003689351755,
+        "distance": 0.8381719538351384,
+        "center": 0.7755500049125857,
+        "angle_deg": 25.424966795834194,
+        "pixel_distance": 107.74282207885189
+      },
+      "alternatives": [
+        {
+          "text": "是",
+          "bbox": [
+            2155,
+            3413,
+            2250,
+            3495
+          ],
+          "split": true,
+          "source_text": "直就是“霸王之",
+          "score": 0.8966562213112668,
+          "mode": "lateral",
+          "entry_t": 112.34206199224845,
+          "intersection": 0.0,
+          "alignment": 0.6873761485703572,
+          "distance": 0.8328365879814799,
+          "center": 0.7023792732052687,
+          "angle_deg": 28.13614662866785,
+          "pixel_distance": 112.34206199224845
+        },
+        {
+          "text": "王",
+          "bbox": [
+            2156,
+            3500,
+            2255,
+            3581
+          ],
+          "split": true,
+          "source_text": "就是“霸王之相",
+          "score": 0.7937115156168183,
+          "mode": "ray",
+          "entry_t": 80.35675942995645,
+          "intersection": 0.8259244609256136,
+          "alignment": 1.0,
+          "distance": 0.9795373670919387,
+          "center": 0.0,
+          "angle_deg": 14.617886315502943,
+          "pixel_distance": 123.41793254083963
+        }
+      ],
+      "margin": 0.009984756097560998
+    }
+  },
+  "character": "霸",
+  "bbox": [
+    2157,
+    3420,
+    2255,
+    3500
+  ],
+  "score": 0.9066,
+  "split_from_line": true,
+  "alternatives": [
+    {
+      "text": "是",
+      "bbox": [
+        2155,
+        3413,
+        2250,
+        3495
+      ],
+      "score": 0.8967
+    },
+    {
+      "text": "王",
+      "bbox": [
+        2156,
+        3500,
+        2255,
+        3581
+      ],
+      "score": 0.7937
+    }
+  ],
+  "margin": 0.01
+}

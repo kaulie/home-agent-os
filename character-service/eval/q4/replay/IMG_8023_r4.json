@@ -1,0 +1,922 @@
+{
+  "engine": "reading.point_to_character",
+  "status": "ok_with_alternatives",
+  "finger": {
+    "tip": [
+      2046.3,
+      2833.9
+    ],
+    "direction": [
+      0.2728,
+      -0.9621
+    ]
+  },
+  "candidates": [
+    {
+      "text": "娘",
+      "bbox": [
+        2053,
+        2594,
+        2152,
+        2721
+      ],
+      "score": 0.8214,
+      "split": true
+    },
+    {
+      "text": "吹",
+      "bbox": [
+        2057,
+        2389,
+        2178,
+        2508
+      ],
+      "score": 0.7922,
+      "split": true
+    },
+    {
+      "text": "姑",
+      "bbox": [
+        1955,
+        2591,
+        2070,
+        2722
+      ],
+      "score": 0.6098,
+      "split": true
+    },
+    {
+      "text": "）",
+      "bbox": [
+        1937,
+        2389,
+        2057,
+        2508
+      ],
+      "score": 0.5858,
+      "split": true
+    },
+    {
+      "text": "风",
+      "bbox": [
+        2178,
+        2389,
+        2298,
+        2508
+      ],
+      "score": 0.4827,
+      "split": true
+    },
+    {
+      "text": "（",
+      "bbox": [
+        2152,
+        2594,
+        2252,
+        2721
+      ],
+      "score": 0.4784,
+      "split": true
+    }
+  ],
+  "top3": [
+    {
+      "text": "娘",
+      "bbox": [
+        2053,
+        2594,
+        2152,
+        2721
+      ],
+      "score": 0.8214
+    },
+    {
+      "text": "吹",
+      "bbox": [
+        2057,
+        2389,
+        2178,
+        2508
+      ],
+      "score": 0.7922
+    },
+    {
+      "text": "姑",
+      "bbox": [
+        1955,
+        2591,
+        2070,
+        2722
+      ],
+      "score": 0.6098
+    }
+  ],
+  "ocr_blocks": 12,
+  "char_boxes": 44,
+  "timing": {
+    "hand_detection_s": 0.3135,
+    "ocr_vlm_s": 13.7959,
+    "geometry_ranking_s": 48.2821,
+    "total_s": 62.4987
+  },
+  "replay": {
+    "landmarks": {
+      "5": [
+        1515.21,
+        4706.72
+      ],
+      "6": [
+        1743.71,
+        3712.95
+      ],
+      "7": [
+        1936.87,
+        3227.36
+      ],
+      "8": [
+        2046.32,
+        2833.89
+      ]
+    },
+    "origin": [
+      2046.32,
+      2833.89
+    ],
+    "direction": [
+      0.272827,
+      -0.962063
+    ],
+    "max_distance": 3927.0,
+    "max_angle_deg": 30.0,
+    "min_score": 0.28,
+    "min_margin": 0.06,
+    "blocks": [
+      {
+        "text": "g）姑娘（ni",
+        "bbox": [
+          1755.0,
+          2594.0,
+          2351.0,
+          2721.0
+        ]
+      },
+      {
+        "text": "同 学",
+        "bbox": [
+          1797.0,
+          2814.0,
+          2317.0,
+          2935.0
+        ]
+      },
+      {
+        "text": "日 字",
+        "bbox": [
+          1783.0,
+          3034.0,
+          2307.0,
+          3137.0
+        ]
+      },
+      {
+        "text": "g）姑娘（ni",
+        "bbox": [
+          1755.0,
+          2594.0,
+          2352.0,
+          2721.0
+        ]
+      },
+      {
+        "text": "同 学",
+        "bbox": [
+          1793.0,
+          2815.0,
+          2317.0,
+          2935.0
+        ]
+      },
+      {
+        "text": "日 字",
+        "bbox": [
+          1781.0,
+          3032.0,
+          2309.0,
+          3139.0
+        ]
+      },
+      {
+        "text": "ng）吹风（",
+        "bbox": [
+          1817.0,
+          2388.0,
+          2418.0,
+          2510.0
+        ]
+      },
+      {
+        "text": "）姑娘（niá",
+        "bbox": [
+          1841.0,
+          2591.0,
+          2413.0,
+          2722.0
+        ]
+      },
+      {
+        "text": "同 学",
+        "bbox": [
+          1817.0,
+          2814.0,
+          2317.0,
+          2891.0
+        ]
+      },
+      {
+        "text": "ng）吹风（",
+        "bbox": [
+          1817.0,
+          2389.0,
+          2418.0,
+          2508.0
+        ]
+      },
+      {
+        "text": "）姑娘（niá",
+        "bbox": [
+          1841.0,
+          2592.0,
+          2413.0,
+          2721.0
+        ]
+      },
+      {
+        "text": "同 学",
+        "bbox": [
+          1817.0,
+          2815.0,
+          2317.0,
+          2892.0
+        ]
+      }
+    ],
+    "chars": [
+      {
+        "text": "g",
+        "bbox": [
+          1755,
+          2594,
+          1854,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "）",
+        "bbox": [
+          1854,
+          2594,
+          1954,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "姑",
+        "bbox": [
+          1954,
+          2594,
+          2053,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "娘",
+        "bbox": [
+          2053,
+          2594,
+          2152,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "（",
+        "bbox": [
+          2152,
+          2594,
+          2252,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "ni",
+        "bbox": [
+          2252,
+          2594,
+          2351,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "同",
+        "bbox": [
+          1797,
+          2814,
+          2057,
+          2935
+        ],
+        "split": true,
+        "source_text": "同 学"
+      },
+      {
+        "text": "学",
+        "bbox": [
+          2057,
+          2814,
+          2317,
+          2935
+        ],
+        "split": true,
+        "source_text": "同 学"
+      },
+      {
+        "text": "日",
+        "bbox": [
+          1783,
+          3034,
+          2045,
+          3137
+        ],
+        "split": true,
+        "source_text": "日 字"
+      },
+      {
+        "text": "字",
+        "bbox": [
+          2045,
+          3034,
+          2307,
+          3137
+        ],
+        "split": true,
+        "source_text": "日 字"
+      },
+      {
+        "text": "g",
+        "bbox": [
+          1755,
+          2594,
+          1854,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "）",
+        "bbox": [
+          1854,
+          2594,
+          1954,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "姑",
+        "bbox": [
+          1954,
+          2594,
+          2054,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "娘",
+        "bbox": [
+          2054,
+          2594,
+          2153,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "（",
+        "bbox": [
+          2153,
+          2594,
+          2252,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "ni",
+        "bbox": [
+          2252,
+          2594,
+          2352,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni"
+      },
+      {
+        "text": "同",
+        "bbox": [
+          1793,
+          2815,
+          2055,
+          2935
+        ],
+        "split": true,
+        "source_text": "同 学"
+      },
+      {
+        "text": "学",
+        "bbox": [
+          2055,
+          2815,
+          2317,
+          2935
+        ],
+        "split": true,
+        "source_text": "同 学"
+      },
+      {
+        "text": "日",
+        "bbox": [
+          1781,
+          3032,
+          2045,
+          3139
+        ],
+        "split": true,
+        "source_text": "日 字"
+      },
+      {
+        "text": "字",
+        "bbox": [
+          2045,
+          3032,
+          2309,
+          3139
+        ],
+        "split": true,
+        "source_text": "日 字"
+      },
+      {
+        "text": "ng",
+        "bbox": [
+          1817,
+          2388,
+          1937,
+          2510
+        ],
+        "split": true,
+        "source_text": "ng）吹风（"
+      },
+      {
+        "text": "）",
+        "bbox": [
+          1937,
+          2388,
+          2057,
+          2510
+        ],
+        "split": true,
+        "source_text": "ng）吹风（"
+      },
+      {
+        "text": "吹",
+        "bbox": [
+          2057,
+          2388,
+          2178,
+          2510
+        ],
+        "split": true,
+        "source_text": "ng）吹风（"
+      },
+      {
+        "text": "风",
+        "bbox": [
+          2178,
+          2388,
+          2298,
+          2510
+        ],
+        "split": true,
+        "source_text": "ng）吹风（"
+      },
+      {
+        "text": "（",
+        "bbox": [
+          2298,
+          2388,
+          2418,
+          2510
+        ],
+        "split": true,
+        "source_text": "ng）吹风（"
+      },
+      {
+        "text": "）",
+        "bbox": [
+          1841,
+          2591,
+          1955,
+          2722
+        ],
+        "split": true,
+        "source_text": "）姑娘（niá"
+      },
+      {
+        "text": "姑",
+        "bbox": [
+          1955,
+          2591,
+          2070,
+          2722
+        ],
+        "split": true,
+        "source_text": "）姑娘（niá"
+      },
+      {
+        "text": "娘",
+        "bbox": [
+          2070,
+          2591,
+          2184,
+          2722
+        ],
+        "split": true,
+        "source_text": "）姑娘（niá"
+      },
+      {
+        "text": "（",
+        "bbox": [
+          2184,
+          2591,
+          2299,
+          2722
+        ],
+        "split": true,
+        "source_text": "）姑娘（niá"
+      },
+      {
+        "text": "niá",
+        "bbox": [
+          2299,
+          2591,
+          2413,
+          2722
+        ],
+        "split": true,
+        "source_text": "）姑娘（niá"
+      },
+      {
+        "text": "同",
+        "bbox": [
+          1817,
+          2814,
+          2067,
+          2891
+        ],
+        "split": true,
+        "source_text": "同 学"
+      },
+      {
+        "text": "学",
+        "bbox": [
+          2067,
+          2814,
+          2317,
+          2891
+        ],
+        "split": true,
+        "source_text": "同 学"
+      },
+      {
+        "text": "ng",
+        "bbox": [
+          1817,
+          2389,
+          1937,
+          2508
+        ],
+        "split": true,
+        "source_text": "ng）吹风（"
+      },
+      {
+        "text": "）",
+        "bbox": [
+          1937,
+          2389,
+          2057,
+          2508
+        ],
+        "split": true,
+        "source_text": "ng）吹风（"
+      },
+      {
+        "text": "吹",
+        "bbox": [
+          2057,
+          2389,
+          2178,
+          2508
+        ],
+        "split": true,
+        "source_text": "ng）吹风（"
+      },
+      {
+        "text": "风",
+        "bbox": [
+          2178,
+          2389,
+          2298,
+          2508
+        ],
+        "split": true,
+        "source_text": "ng）吹风（"
+      },
+      {
+        "text": "（",
+        "bbox": [
+          2298,
+          2389,
+          2418,
+          2508
+        ],
+        "split": true,
+        "source_text": "ng）吹风（"
+      },
+      {
+        "text": "）",
+        "bbox": [
+          1841,
+          2592,
+          1955,
+          2721
+        ],
+        "split": true,
+        "source_text": "）姑娘（niá"
+      },
+      {
+        "text": "姑",
+        "bbox": [
+          1955,
+          2592,
+          2070,
+          2721
+        ],
+        "split": true,
+        "source_text": "）姑娘（niá"
+      },
+      {
+        "text": "娘",
+        "bbox": [
+          2070,
+          2592,
+          2184,
+          2721
+        ],
+        "split": true,
+        "source_text": "）姑娘（niá"
+      },
+      {
+        "text": "（",
+        "bbox": [
+          2184,
+          2592,
+          2299,
+          2721
+        ],
+        "split": true,
+        "source_text": "）姑娘（niá"
+      },
+      {
+        "text": "niá",
+        "bbox": [
+          2299,
+          2592,
+          2413,
+          2721
+        ],
+        "split": true,
+        "source_text": "）姑娘（niá"
+      },
+      {
+        "text": "同",
+        "bbox": [
+          1817,
+          2815,
+          2067,
+          2892
+        ],
+        "split": true,
+        "source_text": "同 学"
+      },
+      {
+        "text": "学",
+        "bbox": [
+          2067,
+          2815,
+          2317,
+          2892
+        ],
+        "split": true,
+        "source_text": "同 学"
+      }
+    ],
+    "ranked": [
+      {
+        "text": "娘",
+        "bbox": [
+          2053,
+          2594,
+          2152,
+          2721
+        ],
+        "score": 0.821362,
+        "mode": "ray",
+        "split": true
+      },
+      {
+        "text": "吹",
+        "bbox": [
+          2057,
+          2389,
+          2178,
+          2508
+        ],
+        "score": 0.792227,
+        "mode": "ray",
+        "split": true
+      },
+      {
+        "text": "姑",
+        "bbox": [
+          1955,
+          2591,
+          2070,
+          2722
+        ],
+        "score": 0.609779,
+        "mode": "lateral",
+        "split": true
+      },
+      {
+        "text": "）",
+        "bbox": [
+          1937,
+          2389,
+          2057,
+          2508
+        ],
+        "score": 0.585765,
+        "mode": "lateral",
+        "split": true
+      },
+      {
+        "text": "风",
+        "bbox": [
+          2178,
+          2389,
+          2298,
+          2508
+        ],
+        "score": 0.482707,
+        "mode": "cone",
+        "split": true
+      },
+      {
+        "text": "（",
+        "bbox": [
+          2152,
+          2594,
+          2252,
+          2721
+        ],
+        "score": 0.478433,
+        "mode": "lateral",
+        "split": true
+      }
+    ],
+    "verdict": {
+      "status": "ok_with_alternatives",
+      "top": {
+        "text": "娘",
+        "bbox": [
+          2053,
+          2594,
+          2152,
+          2721
+        ],
+        "split": true,
+        "source_text": "g）姑娘（ni",
+        "score": 0.821361591217749,
+        "mode": "ray",
+        "entry_t": 117.33650642180766,
+        "intersection": 1.0,
+        "alignment": 1.0,
+        "distance": 0.9701205738676324,
+        "center": 0.0,
+        "angle_deg": 1.8337960498362236,
+        "pixel_distance": 185.11517365172583
+      },
+      "alternatives": [
+        {
+          "text": "吹",
+          "bbox": [
+            2057,
+            2389,
+            2178,
+            2508
+          ],
+          "split": true,
+          "source_text": "ng）吹风（",
+          "score": 0.7922274499979697,
+          "mode": "ray",
+          "entry_t": 338.73567643598426,
+          "intersection": 1.0,
+          "alignment": 1.0,
+          "distance": 0.9137418700188479,
+          "center": 0.0,
+          "angle_deg": 5.368389290930363,
+          "pixel_distance": 391.90297264981643
+        },
+        {
+          "text": "姑",
+          "bbox": [
+            1955,
+            2591,
+            2070,
+            2722
+          ],
+          "split": true,
+          "source_text": "）姑娘（niá",
+          "score": 0.609779010624895,
+          "mode": "lateral",
+          "entry_t": 180.58086623333972,
+          "intersection": 0.0,
+          "alignment": 0.7041366808490338,
+          "distance": 0.9334202596521753,
+          "center": 0.047605864457258076,
+          "angle_deg": 26.62769872358696,
+          "pixel_distance": 180.58086623333972
+        }
+      ],
+      "margin": 0.029134141219779308
+    }
+  },
+  "character": "娘",
+  "bbox": [
+    2053,
+    2594,
+    2152,
+    2721
+  ],
+  "score": 0.8214,
+  "split_from_line": true,
+  "alternatives": [
+    {
+      "text": "吹",
+      "bbox": [
+        2057,
+        2389,
+        2178,
+        2508
+      ],
+      "score": 0.7922
+    },
+    {
+      "text": "姑",
+      "bbox": [
+        1955,
+        2591,
+        2070,
+        2722
+      ],
+      "score": 0.6098
+    }
+  ],
+  "margin": 0.0291
+}

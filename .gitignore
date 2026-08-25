@@ -19,6 +19,7 @@ mac/data/edge_id.json
 mac/data/local_ledger.json
 mac/data/local_ledger.tmp
 mac/data/query/
+mac/data/search_images/
 mac/logs/
 mac/**/*.log
 *.pyc
@@ -34,3 +35,17 @@ server/llm_logs/
 server/uploads/
 kindle/serve.log
 kindle/latest.json
+img-server/img/*
+!img-server/img/.gitkeep
+img-server/logs/
+img-server/**/__pycache__/
+ocr-service/cache/
+ocr-service/.venv/
+ocr-service/pyenv/
+ocr-service/paddlex-home/
+ocr-service/**/__pycache__/
+ocr-service/samples/
+ocr-service/qa_samples/*.png
+character-service/**/__pycache__/
+character-service/.venv/
+character-service/samples/
