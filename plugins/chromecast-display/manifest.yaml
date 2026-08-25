@@ -1,18 +1,20 @@
 id: chromecast-display
 service_id: chromecast.display
 group: display
-version: "0.4.0"
+    version: "0.5.0"
 display_name: Chromecast Cast
-description: Cast image_ref / slideshow 到 Chromecast（Mac :9095；iPhone Cast Sender 另路径）
+description: >
+  Cast asset_ref / slideshow 到自定义 Receiver F7649303（Presentation Protocol V1）。
+  iPhone Cast Sender 主路径；Mac :9095 为 legacy URL-only。
 
 capabilities:
   - capability_id: display.photo
     description: >
-      能：把本步 image_ref（AssetRef）投到 Chromecast 显示一张图。仅用户明确要投电视时用。
+      能：把本步 asset_ref（AssetRef）投到 Chromecast 显示一张图。仅用户明确要投电视时用。
       不能：拍照、自己捡图、收 photo_url、当默认用户交付、TTS。
   - capability_id: display.slideshow
     description: >
-      能：把本步必填 image_refs 轮播投到电视。不要拆成多个 display.photo。
+      能：把本步必填 asset_refs 轮播投到电视。不要拆成多个 display.photo。
       不能：从前序自己拼列表、空数组、photo_url、拍照。
 
 entry:

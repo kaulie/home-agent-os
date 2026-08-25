@@ -101,7 +101,13 @@ class LocalEdgeRuntime(
                 stepId = task.taskId,
             )
             try {
-                skill.execute(task.action, runtimeCtx.resolveParams(task.params), ctx)
+                val resolved = runtimeCtx.resolveParams(task.params)
+                val avail = skill.isAvailable(task.action, resolved, ctx)
+                if (!avail.ok) {
+                    SkillResult.error(avail.message ?: "${task.action} unavailable")
+                } else {
+                    skill.execute(task.action, resolved, ctx)
+                }
             } catch (t: Throwable) {
                 Log.e(TAG, "skill threw", t)
                 SkillResult.error(t.message ?: t.javaClass.simpleName)

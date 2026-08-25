@@ -10,7 +10,13 @@ data class SchemaField(
 /** One capability under a service (wire + local invoke). */
 data class CapabilityDescriptor(
     val capabilityId: String,
-    val description: String,
+    val role: String = "",
+    val plannerRecognize: String = "",
+    val typicalTriggers: List<String> = emptyList(),
+    val doNotDispatch: List<String> = emptyList(),
+    /** Legacy; not the planning contract. Prefer structured fields above. */
+    val description: String = "",
+    val kind: String = "",
     val inputSchema: Map<String, SchemaField> = emptyMap(),
     val outputSchema: Map<String, SchemaField> = emptyMap(),
 )
@@ -105,10 +111,37 @@ data class EdgeHealthSnapshot(
 
 /** Participant Model roles (docs/participant-model.md). */
 object ParticipantWire {
+    const val ROLE_INTENT_SOURCE = "intent_source"
     const val ROLE_RUNTIME = "runtime"
+    const val ROLE_ENDPOINT = "endpoint"
+    const val ROLE_OBSERVER = "observer"
+
+    val ALL_ROLES = listOf(
+        ROLE_INTENT_SOURCE,
+        ROLE_RUNTIME,
+        ROLE_ENDPOINT,
+        ROLE_OBSERVER,
+    )
+
+    /** Chromecast: execute local caps + TV display. Not an Intent Source. */
+    fun defaultRoles(): List<String> = listOf(ROLE_RUNTIME, ROLE_ENDPOINT)
 
     fun runtimeRoles(): List<String> = listOf(ROLE_RUNTIME)
+
+    fun ordered(picked: Collection<String>): List<String> =
+        ALL_ROLES.filter { picked.contains(it) }
 }
+
+data class IntentSourceAd(
+    val sourceId: String,
+    val channel: String,
+)
+
+data class EndpointAd(
+    val endpointId: String,
+    val type: String,
+    val supportedPresentation: List<String>,
+)
 
 /** Static identity before Brain assigns edgeId. */
 data class EdgeIdentity(
@@ -131,8 +164,11 @@ data class EdgeRegisterRequest(
     val services: List<ServiceDescriptor>,
     val appVersion: String? = null,
     val reportedAtSec: Double = System.currentTimeMillis() / 1000.0,
-    val roles: List<String> = ParticipantWire.runtimeRoles(),
+    val roles: List<String> = ParticipantWire.defaultRoles(),
     val location: String? = null,
+    val intentSources: List<IntentSourceAd> = emptyList(),
+    val endpoints: List<EndpointAd> = emptyList(),
+    val participantId: String? = null,
 )
 
 data class EdgeRegisterResponse(
@@ -160,6 +196,9 @@ data class EdgeNodeInfo(
     val appVersion: String? = null,
     val reportedAtSec: Double = System.currentTimeMillis() / 1000.0,
     val clientTimeMs: Long = System.currentTimeMillis(),
-    val roles: List<String> = ParticipantWire.runtimeRoles(),
+    val roles: List<String> = ParticipantWire.defaultRoles(),
     val location: String? = null,
+    val intentSources: List<IntentSourceAd> = emptyList(),
+    val endpoints: List<EndpointAd> = emptyList(),
+    val participantId: String? = null,
 )

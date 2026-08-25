@@ -1,0 +1,202 @@
+[
+  {
+    "path": "ocr-service/qa_samples/syn_01_zh_print.png",
+    "desc": "白底印刷中文四行家居指令",
+    "scene": "印刷中文",
+    "expect": "客厅灯光已经打开。请把温度调到二十六度。小明今天去公园玩",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_02_en_print.png",
+    "desc": "白底英文四行",
+    "scene": "英文",
+    "expect": "Living room lights are on. Set the temperature to 26C.",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_03_mixed.png",
+    "desc": "中英混合订单/地址/SSID",
+    "scene": "混合",
+    "expect": "混合场景 Mixed Scene 订单号 Order ID",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_04_ui_dark.png",
+    "desc": "深色控制台 UI 截图风",
+    "scene": "截图",
+    "expect": "Home Agent 控制台 Intent #71 image.ocr",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_05_receipt.png",
+    "desc": "合成销售小票",
+    "scene": "小票",
+    "expect": "家庭便利店 矿泉水 合计 Total 23.30",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_06_book.png",
+    "desc": "书页风中英段落",
+    "scene": "印刷中文",
+    "expect": "智能家居把感知、理解、规划与执行贯通",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_07_sign.png",
+    "desc": "红底禁止拍照标识",
+    "scene": "混合",
+    "expect": "禁止拍照 NO PHOTOGRAPHY",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_08_smallprint.png",
+    "desc": "细小印刷配料与厂家",
+    "scene": "混合",
+    "expect": "细小印刷 有效期 儿童 Keep out of reach",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_09_rotated.png",
+    "desc": "旋转约 15 度中文标题",
+    "scene": "合成",
+    "expect": "旋转十五度的中文标题",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_10_noise.png",
+    "desc": "噪声+轻微模糊中英",
+    "scene": "合成",
+    "expect": "噪声干扰下的识别：客厅窗帘已关闭",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_11_lowcontrast.png",
+    "desc": "低对比度请勿打扰",
+    "scene": "合成",
+    "expect": "低对比度：请勿打扰 Do not disturb",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_12_handlike.png",
+    "desc": "MarkerFelt 手写风格备忘",
+    "scene": "混合",
+    "expect": "买牛奶和鸡蛋 Call mom",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_13_ticket.png",
+    "desc": "合成地铁乘车凭证",
+    "scene": "小票",
+    "expect": "北京地铁 国贸 望京 票价",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_14_waybill.png",
+    "desc": "合成快递运单",
+    "scene": "混合",
+    "expect": "运单号 SF 1234 货到付款",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ocr-service/qa_samples/syn_15_exit_sign.png",
+    "desc": "绿色出口指示牌",
+    "scene": "混合",
+    "expect": "出口 EXIT 请靠右行走 消防通道",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "img-server/img/4c616807_20260823_203159_query.png",
+    "desc": "客厅电视实拍：屏幕小猫+角标 AI生成",
+    "scene": "印刷中文",
+    "expect": "AI生成",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "img-server/img/5c90fca4_20260823_194844_query.png",
+    "desc": "电视实拍大字「大」+ 角标",
+    "scene": "印刷中文",
+    "expect": "大",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "server/uploads/gopro/assets/f57938525c3d_scan_1787459128070.jpg",
+    "desc": "自来水缴费通知单扫描/实拍",
+    "scene": "小票",
+    "expect": "请及时缴费 自来水缴费通知单 用户编号",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "mac/data/query/20260823_194844_query.png",
+    "desc": "Mac query 电视「大」字照片",
+    "scene": "印刷中文",
+    "expect": "大",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "ios/LivingRoomEdge/LivingRoomEdge/Brand/home-agent-mark.png",
+    "desc": "Home Agent 品牌图形标",
+    "scene": "截图",
+    "expect": "",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "img-server/img/667a22cd_20260823_195230_query.png",
+    "desc": "客厅电视实拍 query 图 195230",
+    "scene": "印刷中文",
+    "expect": "",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "img-server/img/6b631aa4_20260823_194944_query.png",
+    "desc": "客厅电视实拍 query 图 194944",
+    "scene": "印刷中文",
+    "expect": "",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "img-server/img/6bb87bda_20260823_195439_query.png",
+    "desc": "客厅电视实拍 query 图 195439",
+    "scene": "印刷中文",
+    "expect": "",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "server/uploads/gopro/assets/7245932cf0ad_photo_1787486435.jpg",
+    "desc": "GoPro/相册实拍照片",
+    "scene": "印刷中文",
+    "expect": "",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  },
+  {
+    "path": "mac/data/voice_tests/gopro_probe/intent269.jpg",
+    "desc": "voice_tests GoPro probe 实拍",
+    "scene": "印刷中文",
+    "expect": "",
+    "error": "ssh/curl failed rc=255: ssh: connect to host 115.190.153.53 port 22: Operation not permitted\r\n",
+    "latency_ms": null
+  }
+]

@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Literal
 
-from mac_edge.asset.backends.img_server import http_url_from_storage
+from mac_edge.asset.backends.img_server import (
+    brain_content_http_url,
+    http_url_from_storage,
+)
 from mac_edge.asset.id import new_asset_id
 from mac_edge.asset.types import (
     AssetAccessDeniedError,
@@ -42,6 +49,8 @@ class AssetManager:
         size_bytes: int | None = None,
         metadata: dict[str, Any] | None = None,
         public_base: str | None = None,
+        cloud_public_base: str | None = None,
+        cloud_key: str | None = None,
     ) -> AssetRef:
         aid = new_asset_id()
         storage: dict[str, Any] = {
@@ -51,6 +60,13 @@ class AssetManager:
         }
         if public_base:
             storage["public_base"] = public_base.rstrip("/")
+        # Cloud mirror for Intent Source / Brain content proxy (Cast still uses LAN).
+        cbase = (cloud_public_base or "").strip().rstrip("/")
+        ckey = (cloud_key or "").strip()
+        if cbase:
+            storage["cloud_public_base"] = cbase
+        if ckey:
+            storage["cloud_key"] = ckey
         body: dict[str, Any] = {
             "asset_id": aid,
             "type": type,
@@ -123,6 +139,20 @@ class AssetManager:
         if not isinstance(storage, dict):
             raise AssetStorageError(f"asset {ref.asset_id} has no storage locator")
         if need == "http_url":
+            backend = str(storage.get("backend") or storage.get("provider") or "").strip()
+            if backend == "local_upload":
+                brain_base = str(
+                    getattr(getattr(self._brain, "config", None), "brain_base_url", "")
+                    or ""
+                ).strip()
+                if not brain_base:
+                    raise AssetStorageError(
+                        f"asset {ref.asset_id} is local_upload but Brain URL is missing"
+                    )
+                return HttpUrlRepresentation(
+                    url=brain_content_http_url(brain_base, ref.asset_id, iid),
+                    expires_at_ms=None,
+                )
             return http_url_from_storage(storage)
         if need == "local_path":
             backend = str(storage.get("backend") or "").strip()
@@ -135,6 +165,69 @@ class AssetManager:
                 f"asset {ref.asset_id} has no local_path representation"
             )
         raise AssetStorageError(f"unknown representation need: {need}")
+
+    def materialize_file(self, ref: AssetRef, *, intent_id: str) -> Path:
+        """Local file for upload: edge_fs path, else download via http_url."""
+        try:
+            local = self.resolve_for_capability(
+                ref, intent_id=intent_id, need="local_path"
+            )
+            if isinstance(local, LocalFileRepresentation) and local.path.is_file():
+                return local.path
+        except (AssetStorageError, AssetNotFoundError):
+            pass
+        http = self.resolve_for_capability(ref, intent_id=intent_id, need="http_url")
+        url = str(http.url or "").strip()
+        if not url.startswith("http://") and not url.startswith("https://"):
+            raise AssetStorageError(f"asset {ref.asset_id} has no fetchable representation")
+        suffix = Path(url.split("?", 1)[0]).suffix or ".bin"
+        root = Path(os.environ.get("MAC_EDGE_DATA_DIR") or "").strip()
+        if root:
+            staging = Path(root) / "upload"
+        else:
+            staging = Path(tempfile.gettempdir()) / "mac-edge-asset-upload"
+        staging.mkdir(parents=True, exist_ok=True)
+        dest = staging / f"{ref.asset_id}{suffix}"
+        try:
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=60.0) as resp:
+                dest.write_bytes(resp.read())
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            raise AssetStorageError(
+                f"asset {ref.asset_id} download failed: {e}"
+            ) from e
+        if not dest.is_file() or dest.stat().st_size <= 0:
+            raise AssetStorageError(f"asset {ref.asset_id} downloaded empty file")
+        return dest
+
+    def inventory(
+        self,
+        *,
+        intent_id: str,
+        asset_type: str | None = None,
+        producer_capability: str | None = None,
+        day: str | None = None,
+        timezone: str | None = None,
+        since: str | float | None = None,
+        until: str | float | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        newest_first: bool = True,
+    ) -> dict[str, Any]:
+        """List assets via Brain GET /api/v1/assets only (never open Brain SQLite here)."""
+        return self._brain.list_assets(
+            edge_id=self._edge_id,
+            intent_id=str(intent_id).strip(),
+            asset_type=asset_type,
+            producer_capability=producer_capability,
+            day=day,
+            timezone=timezone,
+            since=since,
+            until=until,
+            limit=limit,
+            offset=offset,
+            newest_first=newest_first,
+        )
 
     @staticmethod
     def parse_ref(raw: Any) -> AssetRef | None:

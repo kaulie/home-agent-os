@@ -118,7 +118,6 @@ class ReconcilePeekedTerminalTests(unittest.TestCase):
             {
                 "id": 49,
                 "status": "running",
-                "scheduler_node": "edge-a",
                 "execution_plan": [
                     {
                         "step": 1,

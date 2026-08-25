@@ -20,6 +20,8 @@ mac/data/local_ledger.json
 mac/data/local_ledger.tmp
 mac/data/query/
 mac/data/search_images/
+mac/data/mac_edge.out
+mac/data/video-live/
 mac/logs/
 mac/**/*.log
 *.pyc
@@ -32,6 +34,7 @@ docs/agent-mailbox.lock/
 *.sqlite3-shm
 server/data/
 server/llm_logs/
+server/logs/
 server/uploads/
 kindle/serve.log
 kindle/latest.json
@@ -45,7 +48,10 @@ ocr-service/pyenv/
 ocr-service/paddlex-home/
 ocr-service/**/__pycache__/
 ocr-service/samples/
-ocr-service/qa_samples/*.png
+ocr-service/qa_samples/**/*.png
+ocr-service/qa_samples/**/*.jpg
+ocr-service/qa_samples/**/*.jpeg
+ocr-service/qa_samples/bench.tar.gz
 character-service/**/__pycache__/
 character-service/.venv/
 character-service/samples/

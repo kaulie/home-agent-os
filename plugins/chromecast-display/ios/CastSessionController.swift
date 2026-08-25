@@ -239,18 +239,20 @@ final class CastSessionController: NSObject {
         }
     }
 
-    /// Cast a photo URL to the custom HTML Receiver via `urn:x-cast:local.image` (not loadMedia / DMR).
+    /// Cast a photo via Presentation Command V1 (`urn:x-cast:local.image`).
+    /// Dual-writes top-level `url` for legacy HTML. Waits for `presentation.started` when possible.
     /// - Parameter onProgress: optional step logs for UI (discovery / session / message).
     func castPhoto(
         urlString: String,
+        assetId: String? = nil,
         timeoutSeconds: TimeInterval = 35,
+        eventWaitSeconds: TimeInterval = 20,
         onProgress: ((String) -> Void)? = nil
     ) async -> ControllerResult {
         progressHandler = onProgress
         defer { progressHandler = nil }
 
         configureIfNeeded()
-        // Warm Bonjour / Cast discovery before URL probe (helps after GoPro Wi‑Fi switch).
         ensureDiscoveryRunning(reason: "castPhoto")
         LocalNetworkAccessTrigger.shared.ping(keepAliveSeconds: 40)
 
@@ -261,7 +263,7 @@ final class CastSessionController: NSObject {
             return .failure("cast failed: invalid photo_url \(urlString)")
         }
 
-        note("1/4 解析 / 检查图片 URL…")
+        note("1/5 解析 / 检查图片 URL…")
         var playable: URL
         do {
             playable = try await resolvePlayablePhotoURL(url)
@@ -275,11 +277,9 @@ final class CastSessionController: NSObject {
             )
         }
         if playable.absoluteString != url.absoluteString {
-            note("1/4 已解析为直接图片 URL\n\(playable.absoluteString)")
+            note("1/5 已解析为直接图片 URL\n\(playable.absoluteString)")
         }
         if let probeError = await probePhotoURL(playable) {
-            // home-img-server: SimpleHTTP needs /img/{file}; Flask accepts both.
-            // Never strip a working /img/ path — only retry the alternate form on probe failure.
             if let alt = Self.alternateHomeImgURL(playable),
                await probePhotoURL(alt) == nil
             {
@@ -287,7 +287,7 @@ final class CastSessionController: NSObject {
                     "%@",
                     "[CastSession] probe fallback \(playable.absoluteString) → \(alt.absoluteString)"
                 )
-                note("1/4 路径回退成功\n\(alt.absoluteString)")
+                note("1/5 路径回退成功\n\(alt.absoluteString)")
                 playable = alt
             } else {
                 return .failure(
@@ -299,16 +299,16 @@ final class CastSessionController: NSObject {
                 )
             }
         }
-        note("1/4 图片 URL 可达（GET/Range probe OK）")
+        note("1/5 图片 URL 可达（GET/Range probe OK）")
 
         do {
             let sessions = GCKCastContext.sharedInstance().sessionManager
             let canReuse = sessions.hasConnectedCastSession() && isCustomReceiverSession(sessions.currentCastSession)
             let forceRestart = preferFreshSession || !canReuse
             if forceRestart {
-                note("2/4 准备自定义 Receiver session \(Self.receiverAppID)…")
+                note("2/5 准备自定义 Receiver session \(Self.receiverAppID)…")
             } else {
-                note("2/4 复用已连接自定义 Receiver session…")
+                note("2/5 复用已连接自定义 Receiver session…")
             }
             try await ensureCastSession(
                 timeoutSeconds: timeoutSeconds,
@@ -317,24 +317,63 @@ final class CastSessionController: NSObject {
             preferFreshSession = false
             let deviceName = GCKCastContext.sharedInstance().sessionManager.currentCastSession?.device.friendlyName
                 ?? "Chromecast"
-            note("2/4 已连接 \(deviceName) · app=\(Self.receiverAppID)")
+            note("2/5 已连接 \(deviceName) · app=\(Self.receiverAppID)")
 
-            note("3/4 等待自定义通道 \(Self.imageMessageNamespace)…")
+            note("3/5 等待自定义通道 \(Self.imageMessageNamespace)…")
             let channel = try await ensureImageChannel(timeoutSeconds: 12)
-            note("3/4 通道就绪（writable）")
+            note("3/5 通道就绪（writable）")
 
-            // Optional cache-bust so Receiver <img> reloads when re-casting the same path.
             let playURL = Self.cacheBustedURL(playable)
-            note("4/4 发送图片 URL 消息…\n\(playURL.absoluteString)")
-            try sendLocalImageMessage(url: playURL, on: channel)
-            note("4/4 已发送 \(Self.imageMessageNamespace) {\"url\":…}")
+            let commandId = Self.makeCommandId()
+            let presentationId = Self.makePresentationId()
+            note("4/5 发送 Presentation Command…\n\(playURL.absoluteString)")
+            try sendPresentationCommand(
+                action: "present",
+                commandId: commandId,
+                presentationId: presentationId,
+                contentType: "image",
+                accessURL: playURL,
+                assetId: assetId,
+                text: nil,
+                on: channel
+            )
+            note("4/5 accepted · cmd=\(commandId) p=\(presentationId)")
+
+            note("5/5 等待 presentation.started（≤\(Int(eventWaitSeconds))s）…")
+            let castStatus = await waitForPresentationOutcome(
+                commandId: commandId,
+                presentationId: presentationId,
+                timeoutSeconds: eventWaitSeconds,
+                on: channel
+            )
+            let statusLine: String
+            switch castStatus {
+            case .started:
+                statusLine = "cast_status=started"
+            case .completed:
+                statusLine = "cast_status=completed"
+            case let .error(code, message):
+                preferFreshSession = true
+                return .failure(
+                    """
+                    cast failed after accepted: \(code) \(message)
+                    command_id=\(commandId) presentation_id=\(presentationId)
+                    """
+                )
+            case .timeout:
+                // Legacy HTML may not emit events — treat as soft success with accepted.
+                statusLine = "cast_status=accepted_no_event (Receiver 未回传 started；若仍是旧 HTML 属预期)"
+            case .cleared:
+                statusLine = "cast_status=cleared"
+            }
 
             return .success(
                 """
                 cast ok · \(deviceName) · \(Self.receiverAppID)
                 namespace: \(Self.imageMessageNamespace)
-                payload: {"url":"\(playURL.absoluteString)"}
-                提示: Receiver HTML 须监听该 namespace 并自行拉图；大 JPG 显示速度取决于 Chromecast 下载网速。
+                command_id=\(commandId) presentation_id=\(presentationId)
+                \(statusLine)
+                url: \(playURL.absoluteString)
                 """
             )
         } catch {
@@ -346,6 +385,120 @@ final class CastSessionController: NSObject {
             }
             return .failure("cast failed: \(detail)")
         }
+    }
+
+    /// Clear the Receiver stage (`action=clear`).
+    func castClear(
+        timeoutSeconds: TimeInterval = 25,
+        eventWaitSeconds: TimeInterval = 10,
+        onProgress: ((String) -> Void)? = nil
+    ) async -> ControllerResult {
+        progressHandler = onProgress
+        defer { progressHandler = nil }
+        configureIfNeeded()
+        do {
+            try await ensureCastSession(timeoutSeconds: timeoutSeconds, forceRestart: false)
+            let channel = try await ensureImageChannel(timeoutSeconds: 12)
+            let commandId = Self.makeCommandId()
+            try sendPresentationCommand(
+                action: "clear",
+                commandId: commandId,
+                presentationId: nil,
+                contentType: nil,
+                accessURL: nil,
+                assetId: nil,
+                text: nil,
+                on: channel
+            )
+            let outcome = await waitForPresentationOutcome(
+                commandId: commandId,
+                presentationId: nil,
+                timeoutSeconds: eventWaitSeconds,
+                on: channel,
+                acceptCleared: true
+            )
+            switch outcome {
+            case .cleared, .completed, .started, .timeout:
+                return .success("cast clear ok command_id=\(commandId) status=\(outcome.label)")
+            case let .error(code, message):
+                return .failure("cast clear failed: \(code) \(message)")
+            }
+        } catch {
+            return .failure("cast clear failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Present plain text on the Receiver (`content.type=text`).
+    func castText(
+        _ text: String,
+        timeoutSeconds: TimeInterval = 25,
+        eventWaitSeconds: TimeInterval = 15,
+        onProgress: ((String) -> Void)? = nil
+    ) async -> ControllerResult {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return .failure("cast text requires non-empty text") }
+        progressHandler = onProgress
+        defer { progressHandler = nil }
+        configureIfNeeded()
+        do {
+            try await ensureCastSession(timeoutSeconds: timeoutSeconds, forceRestart: preferFreshSession)
+            preferFreshSession = false
+            let channel = try await ensureImageChannel(timeoutSeconds: 12)
+            let commandId = Self.makeCommandId()
+            let presentationId = Self.makePresentationId()
+            try sendPresentationCommand(
+                action: "present",
+                commandId: commandId,
+                presentationId: presentationId,
+                contentType: "text",
+                accessURL: nil,
+                assetId: nil,
+                text: body,
+                on: channel
+            )
+            let outcome = await waitForPresentationOutcome(
+                commandId: commandId,
+                presentationId: presentationId,
+                timeoutSeconds: eventWaitSeconds,
+                on: channel
+            )
+            if case let .error(code, message) = outcome {
+                return .failure("cast text failed: \(code) \(message)")
+            }
+            return .success(
+                "cast text ok command_id=\(commandId) presentation_id=\(presentationId) status=\(outcome.label)"
+            )
+        } catch {
+            preferFreshSession = true
+            return .failure("cast text failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Slideshow: sequential V1 `present` commands (same namespace).
+    func castSlideshow(
+        urlStrings: [String],
+        intervalSec: TimeInterval = 5,
+        timeoutSeconds: TimeInterval = 35,
+        eventWaitSeconds: TimeInterval = 15,
+        onProgress: ((String) -> Void)? = nil
+    ) async -> ControllerResult {
+        let urls = urlStrings.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard !urls.isEmpty else { return .failure("cast slideshow requires URLs") }
+        var last = ""
+        for (i, u) in urls.enumerated() {
+            let r = await castPhoto(
+                urlString: u,
+                timeoutSeconds: timeoutSeconds,
+                eventWaitSeconds: eventWaitSeconds,
+                onProgress: onProgress
+            )
+            guard r.ok else { return r }
+            last = r.message
+            if i + 1 < urls.count, intervalSec > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(intervalSec * 1_000_000_000))
+            }
+        }
+        return .success("slideshow ok count=\(urls.count) \(last)")
     }
 
     /// Surface exact Cast error + Console checklist when custom receiver launch fails.
@@ -361,7 +514,7 @@ final class CastSessionController: NSObject {
         ③ App 已 Published，或 Chromecast 序列号已加入测试设备（unpublished 必填）
         ④ 变更后等待数分钟传播；必要时重启 Chromecast
         ⑤ 测试时 Chromecast 登录与 Console 同一 Google 账号（若 Console 要求）
-        ⑥ Receiver HTML 须监听 namespace \(imageMessageNamespace) 并处理 {"url":"…"}
+        ⑥ Receiver HTML 须监听 namespace \(imageMessageNamespace)，处理 V1 command 或 legacy {"url":"…"}（见 docs/chromecast-cast-protocol.md）
         """
     }
 
@@ -759,20 +912,122 @@ final class CastSessionController: NSObject {
         )
     }
 
-    private func sendLocalImageMessage(url: URL, on channel: GCKCastChannel) throws {
-        let payload: [String: String] = ["url": url.absoluteString]
-        let data = try JSONSerialization.data(withJSONObject: payload, options: [])
-        guard let message = String(data: data, encoding: .utf8) else {
-            throw CastError.channelFailed("failed to encode {\"url\":…} JSON")
+    private func sendPresentationCommand(
+        action: String,
+        commandId: String,
+        presentationId: String?,
+        contentType: String?,
+        accessURL: URL?,
+        assetId: String?,
+        text: String?,
+        on channel: GCKCastChannel
+    ) throws {
+        var payload: [String: Any] = [:]
+        if let presentationId, !presentationId.isEmpty {
+            payload["presentation_id"] = presentationId
         }
-        note("sendTextMessage \(Self.imageMessageNamespace) → \(message)")
+        if let contentType {
+            var content: [String: Any] = ["type": contentType]
+            if contentType == "image" || contentType == "video" {
+                var asset: [String: Any] = [:]
+                if let assetId, !assetId.isEmpty {
+                    asset["asset_id"] = assetId
+                }
+                if let accessURL {
+                    asset["access"] = [
+                        "url": accessURL.absoluteString,
+                        "expires_at": 0,
+                    ]
+                }
+                content["asset"] = asset
+            } else if contentType == "text", let text {
+                content["text"] = text
+            }
+            payload["content"] = content
+            payload["options"] = ["fit": "contain", "background": "black"]
+        }
+
+        var messageObj: [String: Any] = [
+            "type": "command",
+            "protocol_version": 1,
+            "command_id": commandId,
+            "action": action,
+            "payload": payload,
+        ]
+        // Dual-write legacy top-level url for old Receiver HTML.
+        if let accessURL {
+            messageObj["url"] = accessURL.absoluteString
+        }
+
+        let data = try JSONSerialization.data(withJSONObject: messageObj, options: [])
+        guard let message = String(data: data, encoding: .utf8) else {
+            throw CastError.channelFailed("failed to encode Presentation Command JSON")
+        }
+        note("sendTextMessage \(Self.imageMessageNamespace) → \(message.prefix(240))…")
         var sendError: GCKError?
         let ok = channel.sendTextMessage(message, error: &sendError)
         if !ok {
             throw CastError.channelFailed(
-                "sendTextMessage failed: \(sendError?.localizedDescription ?? "unknown") — payload \(message)"
+                "sendTextMessage failed: \(sendError?.localizedDescription ?? "unknown") — payload \(message.prefix(200))"
             )
         }
+    }
+
+    private enum PresentationOutcome {
+        case started
+        case completed
+        case cleared
+        case error(code: String, message: String)
+        case timeout
+
+        var label: String {
+            switch self {
+            case .started: return "started"
+            case .completed: return "completed"
+            case .cleared: return "cleared"
+            case let .error(code, _): return "error:\(code)"
+            case .timeout: return "timeout"
+            }
+        }
+    }
+
+    private func waitForPresentationOutcome(
+        commandId: String,
+        presentationId: String?,
+        timeoutSeconds: TimeInterval,
+        on channel: LocalImageCastChannel,
+        acceptCleared: Bool = false
+    ) async -> PresentationOutcome {
+        let deadline = Date().addingTimeInterval(max(1, timeoutSeconds))
+        while Date() < deadline {
+            if let event = channel.drainMatchingEvent(
+                commandId: commandId,
+                presentationId: presentationId
+            ) {
+                switch event.name {
+                case "presentation.started":
+                    return .started
+                case "presentation.completed":
+                    return .completed
+                case "presentation.cleared":
+                    if acceptCleared { return .cleared }
+                case "presentation.error":
+                    return .error(code: event.errorCode ?? "ERROR", message: event.errorMessage ?? "")
+                default:
+                    break
+                }
+            }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
+        return .timeout
+    }
+
+    private static func makeCommandId() -> String {
+        "cmd_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(16))"
+    }
+
+    private static func makePresentationId() -> String {
+        "p_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(16))"
     }
 
     private static func cacheBustedURL(_ url: URL) -> URL {
@@ -1102,8 +1357,18 @@ private enum CastError: LocalizedError {
     }
 }
 
-/// Custom namespace channel for photo URLs (`urn:x-cast:local.image`).
+/// Custom namespace channel for Presentation Protocol (`urn:x-cast:local.image`).
 private final class LocalImageCastChannel: GCKCastChannel {
+    struct ReceiverEvent {
+        let name: String
+        let commandId: String?
+        let presentationId: String?
+        let errorCode: String?
+        let errorMessage: String?
+    }
+
+    private var pendingEvents: [ReceiverEvent] = []
+
     override func didConnect() {
         super.didConnect()
         NSLog("%@", "[CastSession] LocalImageCastChannel didConnect ns=\(protocolNamespace)")
@@ -1112,6 +1377,56 @@ private final class LocalImageCastChannel: GCKCastChannel {
     override func didDisconnect() {
         super.didDisconnect()
         NSLog("%@", "[CastSession] LocalImageCastChannel didDisconnect ns=\(protocolNamespace)")
+    }
+
+    override func didReceiveTextMessage(_ message: String) {
+        super.didReceiveTextMessage(message)
+        NSLog("%@", "[CastSession] LocalImageCastChannel recv \(message.prefix(300))")
+        guard let data = message.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return
+        }
+        let type = (obj["type"] as? String)?.lowercased() ?? ""
+        let eventName: String?
+        if type == "event" {
+            eventName = obj["event"] as? String
+        } else if let e = obj["event"] as? String {
+            eventName = e
+        } else {
+            eventName = nil
+        }
+        guard let name = eventName, !name.isEmpty else { return }
+        var errCode: String?
+        var errMsg: String?
+        if let err = obj["error"] as? [String: Any] {
+            errCode = err["code"] as? String
+            errMsg = err["message"] as? String
+        }
+        let event = ReceiverEvent(
+            name: name,
+            commandId: obj["command_id"] as? String,
+            presentationId: obj["presentation_id"] as? String,
+            errorCode: errCode,
+            errorMessage: errMsg
+        )
+        pendingEvents.append(event)
+        if pendingEvents.count > 32 {
+            pendingEvents.removeFirst(pendingEvents.count - 32)
+        }
+    }
+
+    func drainMatchingEvent(commandId: String, presentationId: String?) -> ReceiverEvent? {
+        if let idx = pendingEvents.firstIndex(where: { ev in
+            if let cid = ev.commandId, cid == commandId { return true }
+            if let want = presentationId, let pid = ev.presentationId, pid == want {
+                return ev.name.hasPrefix("presentation.")
+            }
+            return false
+        }) {
+            return pendingEvents.remove(at: idx)
+        }
+        // Legacy / ready events without ids: only accept presentation.* when waiting and queue empty of matches.
+        return nil
     }
 }
 

@@ -9,7 +9,9 @@ Mac Edge 拉图并调用视觉模型，针对用户这一句问句作答。
 
 ## 规划自描述
 
-心跳 `description`：能对必填 `image_ref`+`query` 只根据图中可见内容作答；不能无图问答、不能收 `photo_url`、不能产出场景结构字段、不生图。
+心跳结构化字段：基于图片回答具体问题（含屏幕/电视画面上在播什么、哪部剧）。  
+典型触发：`照片里有几个人`、`电视画面里是哪部剧`、`屏幕上在放什么`、`客厅在看什么电视`。  
+不能：无图问答、拍照本身。
 
 ## 标识
 
@@ -25,10 +27,10 @@ Mac Edge 拉图并调用视觉模型，针对用户这一句问句作答。
 
 | 方向 | 内容 |
 |------|------|
-| **输入** | `image_ref`（必填 AssetRef）、`query`（必填，用户原话） |
+| **输入** | `asset_ref`（必填 AssetRef）、`query`（必填，用户原话） |
 | **输出** | `answer_text`（必填） |
 
-本能力 **只看本步入参**。缺 `image_ref` 或 `query` 则失败，禁止从前序 step 补。  
+本能力 **只看本步入参**。缺 `asset_ref` 或 `query` 则失败，禁止从前序 step 补。  
 **不**自己 TTS / Cast。给用户看/听结果的默认下游是 `endpoint.present`（`input_constrict` 为 `{}`，用 `$answer_text`）；纯提醒仍用 `notify.speak`。
 
 ## 作答规则
@@ -48,7 +50,7 @@ Mac Edge 拉图并调用视觉模型，针对用户这一句问句作答。
   "step": 2,
   "assigned_edge_id": "<mac-edge-id>",
   "input_constrict": {
-    "image_ref": "$capture_ref",
+    "asset_ref": "$asset_ref",
     "query": "这个字读啥"
   },
   "output_constrict": {
@@ -57,7 +59,7 @@ Mac Edge 拉图并调用视觉模型，针对用户这一句问句作答。
 }
 ```
 
-典型流水线：`camera.capture` → `vision.ask`（`image_ref=$capture_ref`，`query` 为用户问句）→ Brain `presentation`。
+典型流水线：`camera.capture` → `vision.ask`（`asset_ref=$asset_ref`，`query` 为用户问句）→ Brain `presentation`。
 
 模型原始返回：
 

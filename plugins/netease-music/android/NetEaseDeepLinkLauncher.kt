@@ -60,7 +60,10 @@ class NetEaseDeepLinkLauncher(
         val packages = buildPackageCandidates(preferredPackage)
         Log.i(TAG, "installed packages=${packages.ifEmpty { listOf("none") }}")
         if (packages.isEmpty()) {
-            return OpenResult(false, detail = "未安装手机版网易云 ($PHONE_PACKAGE)")
+            return OpenResult(
+                false,
+                detail = "未安装网易云 ($PHONE_PACKAGE / $TV_PACKAGE)",
+            )
         }
 
         val errors = ArrayList<String>()
@@ -72,18 +75,8 @@ class NetEaseDeepLinkLauncher(
                     waitForRedirect()
                     return it
                 }
-                tryStartActivity(uri, pkg)?.let {
-                    Log.i(TAG, "ok method=${it.method} uri=$uri pkg=$pkg")
-                    waitForRedirect()
-                    return it
-                }
                 tryIntentUri(intentPath, pkg)?.let {
                     Log.i(TAG, "ok method=${it.method} pkg=$pkg")
-                    waitForRedirect()
-                    return it
-                }
-                tryShellAm(uri, pkg)?.let {
-                    Log.i(TAG, "ok method=${it.method} uri=$uri pkg=$pkg")
                     waitForRedirect()
                     return it
                 }
@@ -100,12 +93,13 @@ class NetEaseDeepLinkLauncher(
     private fun buildPackageCandidates(preferred: String): List<String> {
         val out = LinkedHashSet<String>()
         if (isInstalled(preferred)) out.add(preferred)
+        if (isInstalled(TV_PACKAGE)) out.add(TV_PACKAGE)
+        if (isInstalled(LITE_PACKAGE)) out.add(LITE_PACKAGE)
         try {
             @Suppress("DEPRECATION")
             context.packageManager.getInstalledApplications(0).forEach { app ->
                 val name = app.packageName
-                val lower = name.lowercase()
-                if (lower == PHONE_PACKAGE || lower == "com.netease.cloudmusic.lite") {
+                if (NetEasePlayPolicy.isNeteasePackage(name)) {
                     out.add(name)
                 }
             }
@@ -175,15 +169,6 @@ class NetEaseDeepLinkLauncher(
         }
     }
 
-    private fun tryStartActivity(uri: String, packageName: String): OpenResult? {
-        val intent = viewIntent(uri, packageName)
-        return if (startSafe(intent)) {
-            OpenResult(true, uri, "startActivity", packageName)
-        } else {
-            null
-        }
-    }
-
     private fun tryIntentUri(path: String, packageName: String): OpenResult? {
         val intentUri =
             "intent://$path/#Intent;" +
@@ -197,26 +182,6 @@ class NetEaseDeepLinkLauncher(
             }
             if (startSafe(intent)) {
                 OpenResult(true, intentUri, "intentUri", packageName)
-            } else {
-                null
-            }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    private fun tryShellAm(uri: String, packageName: String): OpenResult? {
-        val escaped = uri.replace("'", "'\\''")
-        val cmd = arrayOf(
-            "sh", "-c",
-            "am start -W -a android.intent.action.VIEW -d '$escaped' -p $packageName",
-        )
-        return try {
-            val proc = Runtime.getRuntime().exec(cmd)
-            val exit = proc.waitFor()
-            val out = proc.inputStream.bufferedReader().readText().trim()
-            if (exit == 0 || out.contains("Starting") || out.contains("Status: ok")) {
-                OpenResult(true, uri, "shell_am", packageName, out.take(200))
             } else {
                 null
             }
@@ -244,6 +209,8 @@ class NetEaseDeepLinkLauncher(
 
     companion object {
         private const val TAG = "NetEaseDeepLink"
-        const val PHONE_PACKAGE = "com.netease.cloudmusic"
+        const val PHONE_PACKAGE = NetEasePlayPolicy.PHONE_PACKAGE
+        const val LITE_PACKAGE = NetEasePlayPolicy.LITE_PACKAGE
+        const val TV_PACKAGE = NetEasePlayPolicy.TV_PACKAGE
     }
 }

@@ -1,0 +1,18 @@
+id: document-scanner
+service_id: document.scanner
+group: document
+version: "0.3.0"
+display_name: Document Scanner
+description: >
+  本地 Input：系统文档扫描后 POST /api/v1/assets/upload 一次登记 Asset；
+  Chat 入口不经 Planner。
+
+capabilities:
+  - capability_id: document.scan
+    description: >
+      能：立刻打开系统文档扫描，上传并登记 Image Asset。
+      不能：OCR、经「扫描一下」文本意图理解、投屏、开灯。
+
+entry:
+  ios: ios/LivingRoomEdge/LivingRoomEdge/VisualInput/VisualInput.swift
+config: []

@@ -8,8 +8,8 @@ description: Edge 本地视觉感知；provider 可切换（默认火山方舟 R
 capabilities:
   - capability_id: vision.perceive
     description: >
-      能：给定本步 image_ref（AssetRef），产出 summary/people 等场景结构。
-      不能：无图；收 photo_url；指向问答（vision.ask）；拍照；投屏；TTS。缺 image_ref 则失败。
+      能：给定本步 asset_ref（AssetRef），产出 summary/people 等场景结构。
+      不能：无图；收 photo_url；指向问答（vision.ask）；拍照；投屏；TTS。缺 asset_ref 则失败。
 
 entry:
   mac: mac/src/mac_edge/plugins/vision_perceive.py

@@ -1,40 +1,63 @@
-# Living Room Android Edge（精简）
+# HomeAgent Console（Android）
 
-手机 Edge，核心能力：
+与 iPhone [HomeAgent Console](../../ios/README.md) 对齐的手机发出窗口：**Intent Source + Endpoint + 本机 Runtime**。
 
-1. **注册 / 心跳**（`client_hint = living-room-android`）
-2. **用户意图**：文本输入框 + 本机语音转写 → `POST /api/v1/intent`；物流图跟踪
-3. **指定 Wi‑Fi 切换 UI**（调试用；见下方暂停说明）
-
-不做：拍照上传、Chromecast Cast、网易云音乐（那些仍在 iPhone / `app-v2`）。
-
-### 暂停：无感 / 自动切 Wi‑Fi
-
-**当前不继续推进 Android 无感切网。** Android 10+ 普通 App 无法静默切换默认 Wi‑Fi；`WifiNetworkSpecifier` 只做进程绑定且常不改状态栏。GoPro / 上传主路径以 **iOS + 蜂窝上云** 为准；本模块 Wi‑Fi 按钮仅保留作人工调试，不再投入无感切换优化。
+五栏壳 + 对话发意图；**扫描 / 拍照 / 文件 / 录音**走本机 inbox 上传 Asset；**phone.call** 按本机家庭目录给特定人拨号；**camera.capture** 用已连接的 GoPro 热点拍照。直播本期不做。不广告、不执行 `light.set`。
 
 ## 构建
 
 ```bash
 cd android
-# 使用本机 Gradle 8.9 或 Android Studio
-gradle :living-room-android:assembleDebug
+./gradlew :living-room-android:assembleDebug
 adb install -r living-room-android/build/outputs/apk/debug/living-room-android-debug.apk
 ```
 
-## 服务能力
+- 主屏幕名称：`HomeAgent Console`
+- applicationId：`com.smarthome.livingroom_android`
+- 最低系统：Android 8.0（API 26）
+- 扫描依赖 Google Play 服务（ML Kit Document Scanner）
 
-| service | capability |
-|---------|------------|
-| `network.wifi` | `network.wifi.join` / `network.wifi.leave` |
+## 做什么
 
-收到 `camera.*` / `display.photo` / `music.*` 会 **skip** 并在物流图标为跳过（本 Edge 不执行）。
+```text
+启动 / 改 Brain URL
+        │
+    POST /api/v1/edge-register
+      roles: intent_source + runtime + endpoint
+      services: document.scanner → document.scan
+                android.phone → phone.call
+                gopro.camera → camera.capture
+      endpoints: android.display → image, text
+        │
+    POST /api/v1/edge-heartbeat（立刻，之后每 30s；发意图前必须先成功）
+        │
+用户（文本 / 语音）
+        │
+    POST /api/v1/intent
+      { text, source, participant_id, client_hint }
+        │
+    GET  /api/v1/intent_detail?intent_id=   （每 5s，直到 succeeded / failed）
+```
 
-## UI
+- Brain 两个地址槽：LAN 默认 `http://192.168.3.73:9527`，Cloud 默认 `http://115.190.153.53:9527`。节点页和设置里用 **按网络自动 / 锁定局域网 / 锁定云端**；点「更改连接方式」预览后再确认，不会一碰就改。对话顶栏显示当前环境。自动时家庭局域网且 `/api/v1/ping` 通 LAN 则走 LAN，否则走 Cloud。路径变化或回到前台才重新探测；发出意图前再确认一次。
+- `client_hint` 本机稳定（`living-room-android-…`）；`participant_id` 来自登记回执。
+- 主界面底栏「互动 · 系统 · 能力 · 实体 · 节点」；互动顶部分段「对话 | 扫描 | 拍照 | 文件 | 录音」。
+- **GoPro 拍照**：心跳广告 `camera.capture`。与 iPhone 一样 **不切网**，须已连 GoPro 热点；gpControl `http://10.5.5.9`，媒体下载 `:8080`，`POST /api/v1/assets/upload`（`upload_intent=camera.capture`）走蜂窝。顶部「拍照」不是这条能力。
+- **扫描**：顶部「扫描」→ 系统文档扫描仪 → `POST /api/v1/assets/upload`（`upload_intent=document.scan`）。**不经 Planner**，也不进对话列表。Brain 派 `document.scan` 时同样打开扫描仪（Console 须在前台）。
+- **本机拍照**：顶部「拍照」全屏后置取景，点快门 → `upload_intent=android.photo`。不经 Planner，不是 GoPro。
+- **文件**：顶部「文件」→ 系统文件选择器 → `upload_intent=android.file`。不经 Planner。
+- **录音**：顶部「录音」。暂停不上传；「停止并上传」才 `upload_intent=android.audio`。离开录音页且仍在录（未暂停）时会停止并上传。
+- **打电话**：设置里维护「可呼叫的人」（姓名 + 号码）。说「给妈妈打电话」由 Brain 派 `phone.call`，本步必填 `name`；plugin 只查这份目录，不读通讯录、不捡前序 step。已授 `CALL_PHONE` 则直接拨，否则打开拨号盘。
+- 图结果只认 `presentation.asset_ref`：`GET /api/v1/assets/{id}/content?intent_id=`（聊天默认 `preview`，点大图再 `original`）。
+- 下拉刷新：`GET /api/v1/intents?participant_id=&before_id=&limit=`，每次最多 **5** 条本机历史。
+- 语音在本机转成中文后再 POST。
 
-- **意图物流图**：pull 到意图后展示阶段（parsed → hub → assigned → running → succeeded/failed）与 plan steps
-- **Wi‑Fi**：SSID/密码 → 加入目标网 / 离开回默认网（系统可能弹一次确认）
-- **Agent**：启动/停止后台 register+heartbeat+拉意图
+## 明确不做（本期）
 
-## 权限
+- MPEG-TS 直播
+- `light.set` / 海信 climate
+- Wi‑Fi 切网（GoPro 不停在热点上控相机，不把 Mac 的切网搬过来）
+- `display.photo` / 投电视（仍由 Mac Cast）
+- HomeAgent Admin
 
-位置 / 附近的设备（Wi‑Fi）/ 通知。
+现场管理中控是另一个 App（iOS `HomeAgentAdmin`）。不要把开关塞进 Console 底栏。

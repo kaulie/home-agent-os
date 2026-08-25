@@ -1,7 +1,8 @@
 > 固化自 `/Users/gaolei/devspace/home-agent-docs/home_agent_participate_model.txt`（2026-08-18）。Prompt、Runtime Protocol、Registry 以本模型为准。
 >
 > **命名不要混：** 文中 Role **Observer** = 消费系统事件的 Participant（CLI / Dashboard）。Cursor 会话 **system coordinator agent / `@coordinator`** = 团队协调员，不是这个 Role。旧称 `@observer` 仅历史信箱有效。
-
+>
+> Endpoint 功能契约补充：[`endpoint-contract.md`](endpoint-contract.md)。Cast 呈现协议：[`chromecast-cast-protocol.md`](chromecast-cast-protocol.md)。
 可以。今天这个其实已经不只是对 Endpoint 的补充，而是把 **Home Agent 的 Participant Model** 基本定型了。我建议把它单独固化成架构文档，后面 Prompt、Runtime Protocol、Registry 都以这个模型为准。
 
 # Home Agent Participant Model

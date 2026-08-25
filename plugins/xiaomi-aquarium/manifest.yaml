@@ -1,0 +1,28 @@
+id: xiaomi-aquarium
+service_id: livingroom.aquarium
+group: aquarium
+version: "0.1.0"
+display_name: 米家智能鱼缸
+description: 经小米云开关鱼缸、灯光、水泵、喂食；禁止 LLM
+
+capabilities:
+  - capability_id: aquarium.set
+    description: >
+      能：开关米家鱼缸、灯光、水泵，调节流量，远程喂食。至少一项 power/light/pump/pump_flux/feed。
+      不能：开锁、开空调、拆成 notify.speak、知识问答。缺入参则失败。
+
+entry:
+  mac: mac/src/mac_edge/plugins/xiaomi_aquarium.py
+config:
+  - key: MAC_EDGE_XIAOMI_USERNAME
+    platform: mac
+    description: 小米账号（通常为手机号）；本机 mac/.env，禁止入库
+  - key: MAC_EDGE_XIAOMI_PASSWORD
+    platform: mac
+    description: 小米账号密码；本机 mac/.env，禁止入库
+  - key: MAC_EDGE_XIAOMI_AQUARIUM_DID
+    platform: mac
+    description: 可选；多台鱼缸时指定 did
+  - key: MAC_EDGE_XIAOMI_COUNTRY
+    platform: mac
+    description: 可选；默认 cn

@@ -217,7 +217,7 @@ def ask_from_params(
     if not isinstance(asset, CapAsset):
         raise VisionAskError("vision.ask requires CapAsset (Runtime SDK)")
     try:
-        ref = asset.require_ref(params, "image_ref")
+        ref = asset.require_ref(params, "asset_ref")
         photo_url = asset.http_url(ref)
     except AssetError as e:
         raise VisionAskError(str(e)) from e

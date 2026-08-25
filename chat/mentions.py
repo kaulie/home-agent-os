@@ -10,6 +10,7 @@ HANDLES: tuple[str, ...] = (
     "runtime",
     "intent",
     "capability",
+    "endpoint",
     "quality",
     "dba",
 )
@@ -30,6 +31,7 @@ DISPLAY_NAMES = {
     "runtime": "runtime dev agent",
     "intent": "Intent dev agent",
     "capability": "capability dev agent",
+    "endpoint": "endpoint agent",
     "quality": "quality agent",
     "dba": "dba agent",
 }
@@ -72,11 +74,12 @@ def parse_mentions(body: str) -> list[str]:
 
 
 def audience_for(from_handle: str, mentions: list[str]) -> list[str]:
+    sender = normalize_handle(from_handle)
     if "all" in mentions:
         return ["all"]
     if mentions:
         return list(mentions)
-    if from_handle == OWNER:
+    if sender == OWNER:
         return []
     return ["all"]
 

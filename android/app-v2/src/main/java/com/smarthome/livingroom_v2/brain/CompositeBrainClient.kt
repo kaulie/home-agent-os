@@ -29,6 +29,9 @@ class CompositeBrainClient(
                     appVersion = request.appVersion,
                     roles = request.roles,
                     location = request.location,
+                    intentSources = request.intentSources,
+                    endpoints = request.endpoints,
+                    participantId = request.participantId,
                 ),
             )
             return response

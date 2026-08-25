@@ -16,22 +16,28 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 25,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 130,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：现在几点了",
         "source": "text",
         "text": "现在几点了"
       },
-      "intent_id": 25,
+      "intent_id": 130,
       "wait": {
-        "elapsed_sec": 91.6,
+        "elapsed_sec": 9.2,
         "final": {
-          "status": "running",
+          "status": "succeeded",
           "msg": null,
           "text": "现在几点了",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "time_text",
+            "text": "2026年8月19日 15:41:18（CST，UTC+08:00）",
+            "type": "text"
+          },
           "caps": [
             "clock.now"
           ],
@@ -67,28 +73,18 @@
             "step_outputs_keys": null
           },
           {
-            "t": 6.1,
-            "http": 200,
-            "status": "intent_parsed",
-            "msg": null,
-            "text": "现在几点了",
-            "presentation": null,
-            "caps": [
-              "clock.now"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn"
-            ],
-            "has_status_log": true,
-            "step_outputs_keys": null
-          },
-          {
             "t": 9.2,
             "http": 200,
-            "status": "running",
+            "status": "succeeded",
             "msg": null,
             "text": "现在几点了",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "time_text",
+              "text": "2026年8月19日 15:41:18（CST，UTC+08:00）",
+              "type": "text"
+            },
             "caps": [
               "clock.now"
             ],
@@ -99,19 +95,51 @@
             "step_outputs_keys": [
               "1"
             ]
+          },
+          {
+            "t": 9.2,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "现在几点了",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "time_text",
+              "text": "2026年8月19日 15:41:18（CST，UTC+08:00）",
+              "type": "text"
+            },
+            "caps": [
+              "clock.now"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "steps": [
+              {
+                "step": 1,
+                "capability": "clock.now",
+                "status": 2,
+                "msg": "",
+                "edge": "edge-node-9tkgMTtn",
+                "timing": "immediate"
+              }
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787060635654,\"context\":{\"now_iso\":\"2026-08-18T21:44:01+08:00\",\"time_text\":\"2026\\u5e748\\u670818\\u65e5 21:44:01\\uff08CST\\uff0cUTC+08:00\\uff09\"},\"created_at\":1787060635.656758,\"ctx_param\":{"
+          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787125271442,\"better_capabilities\":[],\"context\":{\"now_iso\":\"2026-08-19T15:41:18+08:00\",\"time_text\":\"2026\\u5e748\\u670819\\u65e5 15:41:18\\uff08CST\\uff0cUTC+08:00\\uff09\"},\"created_at\":178712"
         }
       },
       "judge": {
-        "ok": false,
-        "notes": [
-          "status=running"
-        ],
-        "status": "running",
+        "ok": true,
+        "notes": [],
+        "status": "succeeded",
         "caps": [
           "clock.now"
         ]
@@ -132,25 +160,30 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 26,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 131,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：用语音告诉我现在几点了",
         "source": "text",
         "text": "用语音告诉我现在几点了"
       },
-      "intent_id": 26,
+      "intent_id": 131,
       "wait": {
-        "elapsed_sec": 91.6,
+        "elapsed_sec": 15.3,
         "final": {
-          "status": "running",
+          "status": "succeeded",
           "msg": null,
           "text": "用语音告诉我现在几点了",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "time_text",
+            "text": "2026年8月19日 15:41:33（CST，UTC+08:00）",
+            "type": "audio"
+          },
           "caps": [
-            "clock.now",
-            "notify.speak"
+            "clock.now"
           ],
           "edges": [
             "edge-node-9tkgMTtn"
@@ -163,25 +196,16 @@
               "msg": "",
               "edge": "edge-node-9tkgMTtn",
               "timing": "immediate"
-            },
-            {
-              "step": 2,
-              "capability": "notify.speak",
-              "status": 2,
-              "msg": "",
-              "edge": "edge-node-9tkgMTtn",
-              "timing": "immediate"
             }
           ],
           "has_status_log": true,
           "step_outputs_keys": [
-            "1",
-            "2"
+            "1"
           ]
         },
         "snapshots": [
           {
-            "t": 0.1,
+            "t": 0.0,
             "http": 200,
             "status": "intent_received",
             "msg": null,
@@ -193,57 +217,75 @@
             "step_outputs_keys": null
           },
           {
-            "t": 6.2,
+            "t": 15.3,
             "http": 200,
-            "status": "intent_parsed",
+            "status": "succeeded",
             "msg": null,
             "text": "用语音告诉我现在几点了",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "time_text",
+              "text": "2026年8月19日 15:41:33（CST，UTC+08:00）",
+              "type": "audio"
+            },
             "caps": [
-              "clock.now",
-              "notify.speak"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn"
-            ],
-            "has_status_log": true,
-            "step_outputs_keys": null
-          },
-          {
-            "t": 9.2,
-            "http": 200,
-            "status": "running",
-            "msg": null,
-            "text": "用语音告诉我现在几点了",
-            "presentation": null,
-            "caps": [
-              "clock.now",
-              "notify.speak"
+              "clock.now"
             ],
             "edges": [
               "edge-node-9tkgMTtn"
             ],
             "has_status_log": true,
             "step_outputs_keys": [
-              "1",
-              "2"
+              "1"
+            ]
+          },
+          {
+            "t": 15.3,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "用语音告诉我现在几点了",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "time_text",
+              "text": "2026年8月19日 15:41:33（CST，UTC+08:00）",
+              "type": "audio"
+            },
+            "caps": [
+              "clock.now"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "steps": [
+              {
+                "step": 1,
+                "capability": "clock.now",
+                "status": 2,
+                "msg": "",
+                "edge": "edge-node-9tkgMTtn",
+                "timing": "immediate"
+              }
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
             ]
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787060727266,\"context\":{\"time_text\":\"2026\\u5e748\\u670818\\u65e5 21:45:35\\uff08CST\\uff0cUTC+08:00\\uff09\"},\"created_at\":1787060727.267125,\"ctx_param\":{\"time_text\":\"2026\\u5e748\\u670818\\u65e5"
+          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787125280695,\"better_capabilities\":[],\"context\":{\"time_text\":\"2026\\u5e748\\u670819\\u65e5 15:41:33\\uff08CST\\uff0cUTC+08:00\\uff09\"},\"created_at\":1787125280.697116,\"ctx_param\":{\"time_text\":\""
         }
       },
       "judge": {
-        "ok": false,
-        "notes": [
-          "status=running"
-        ],
-        "status": "running",
+        "ok": true,
+        "notes": [],
+        "status": "succeeded",
         "caps": [
-          "clock.now",
-          "notify.speak"
+          "clock.now"
         ]
       }
     },
@@ -263,22 +305,27 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 27,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 132,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：用语音说：你好，这是TTS测试",
         "source": "text",
         "text": "用语音说：你好，这是TTS测试"
       },
-      "intent_id": 27,
+      "intent_id": 132,
       "wait": {
-        "elapsed_sec": 91.5,
+        "elapsed_sec": 21.4,
         "final": {
-          "status": "running",
+          "status": "succeeded",
           "msg": null,
           "text": "用语音说：你好，这是TTS测试",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "",
+            "from": "state",
+            "type": "audio"
+          },
           "caps": [
             "notify.speak"
           ],
@@ -316,10 +363,36 @@
           {
             "t": 6.1,
             "http": 200,
+            "status": "intent_parsed",
+            "msg": null,
+            "text": "用语音说：你好，这是TTS测试",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "",
+              "from": "state",
+              "type": "audio"
+            },
+            "caps": [
+              "notify.speak"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": null
+          },
+          {
+            "t": 15.3,
+            "http": 200,
             "status": "running",
             "msg": null,
             "text": "用语音说：你好，这是TTS测试",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "",
+              "from": "state",
+              "type": "audio"
+            },
             "caps": [
               "notify.speak"
             ],
@@ -330,19 +403,73 @@
             "step_outputs_keys": [
               "1"
             ]
+          },
+          {
+            "t": 21.4,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "用语音说：你好，这是TTS测试",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "",
+              "from": "state",
+              "type": "audio"
+            },
+            "caps": [
+              "notify.speak"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
+          },
+          {
+            "t": 21.4,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "用语音说：你好，这是TTS测试",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "",
+              "from": "state",
+              "type": "audio"
+            },
+            "caps": [
+              "notify.speak"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "steps": [
+              {
+                "step": 1,
+                "capability": "notify.speak",
+                "status": 2,
+                "msg": "",
+                "edge": "edge-node-9tkgMTtn",
+                "timing": "immediate"
+              }
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787060818878,\"context\":{},\"created_at\":1787060818.8782113,\"ctx_param\":{},\"edge_id\":\"\",\"edge_node_id\":\"edge-node-9tkgMTtn\",\"execution_plan\":[{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"capa"
+          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787125296034,\"better_capabilities\":[],\"context\":{},\"created_at\":1787125296.0353365,\"ctx_param\":{},\"edge_id\":\"edge-node-CiqVl9ZB\",\"edge_node_id\":\"edge-node-9tkgMTtn\",\"execution_plan\":[{\"a"
         }
       },
       "judge": {
-        "ok": false,
-        "notes": [
-          "status=running"
-        ],
-        "status": "running",
+        "ok": true,
+        "notes": [],
+        "status": "succeeded",
         "caps": [
           "notify.speak"
         ]
@@ -364,22 +491,28 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 28,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 133,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：一加一等于几",
         "source": "text",
         "text": "一加一等于几"
       },
-      "intent_id": 28,
+      "intent_id": 133,
       "wait": {
-        "elapsed_sec": 122.1,
+        "elapsed_sec": 82.4,
         "final": {
-          "status": "running",
+          "status": "succeeded",
           "msg": null,
           "text": "一加一等于几",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "answer_text",
+            "text": "在常规十进制数学运算中，一加一等于二。",
+            "type": "text"
+          },
           "caps": [
             "query.content"
           ],
@@ -415,12 +548,17 @@
             "step_outputs_keys": null
           },
           {
-            "t": 12.2,
+            "t": 15.3,
             "http": 200,
             "status": "running",
             "msg": null,
             "text": "一加一等于几",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
             "caps": [
               "query.content"
             ],
@@ -431,19 +569,75 @@
             "step_outputs_keys": [
               "1"
             ]
+          },
+          {
+            "t": 82.4,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "一加一等于几",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "text": "在常规十进制数学运算中，一加一等于二。",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
+          },
+          {
+            "t": 82.4,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "一加一等于几",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "text": "在常规十进制数学运算中，一加一等于二。",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "steps": [
+              {
+                "step": 1,
+                "capability": "query.content",
+                "status": 2,
+                "msg": "",
+                "edge": "edge-node-9tkgMTtn",
+                "timing": "immediate"
+              }
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787060910468,\"context\":{\"answer_text\":\"\\u4e00\\u52a0\\u4e00\\u7b49\\u4e8e\\u4e8c\\u3002\"},\"created_at\":1787060910.4686353,\"ctx_param\":{\"answer_text\":\"\\u4e00\\u52a0\\u4e00\\u7b49\\u4e8e\\u4e8c\\u3002"
+          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787125317494,\"better_capabilities\":[],\"context\":{\"answer_text\":\"\\u5728\\u5e38\\u89c4\\u5341\\u8fdb\\u5236\\u6570\\u5b66\\u8fd0\\u7b97\\u4e2d\\uff0c\\u4e00\\u52a0\\u4e00\\u7b49\\u4e8e\\u4e8c\\u3002\"},\"crea"
         }
       },
       "judge": {
-        "ok": false,
-        "notes": [
-          "status=running"
-        ],
-        "status": "running",
+        "ok": true,
+        "notes": [],
+        "status": "succeeded",
         "caps": [
           "query.content"
         ]
@@ -465,22 +659,28 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 30,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 134,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：晋字一共几画",
         "source": "text",
         "text": "晋字一共几画"
       },
-      "intent_id": 30,
+      "intent_id": 134,
       "wait": {
-        "elapsed_sec": 122.1,
+        "elapsed_sec": 51.9,
         "final": {
-          "status": "running",
+          "status": "succeeded",
           "msg": null,
           "text": "晋字一共几画",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "answer_text",
+            "text": "据汉典，「晋」字一共10画，笔顺为横、竖、竖、点、撇、横、竖、横折、横、横。",
+            "type": "text"
+          },
           "caps": [
             "query.content"
           ],
@@ -516,12 +716,17 @@
             "step_outputs_keys": null
           },
           {
-            "t": 6.1,
+            "t": 9.2,
             "http": 200,
             "status": "intent_parsed",
             "msg": null,
             "text": "晋字一共几画",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
             "caps": [
               "query.content"
             ],
@@ -532,12 +737,17 @@
             "step_outputs_keys": null
           },
           {
-            "t": 9.2,
+            "t": 12.2,
             "http": 200,
             "status": "intent_dispatched",
             "msg": null,
             "text": "晋字一共几画",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
             "caps": [
               "query.content"
             ],
@@ -548,12 +758,17 @@
             "step_outputs_keys": null
           },
           {
-            "t": 27.5,
+            "t": 24.4,
             "http": 200,
             "status": "running",
             "msg": null,
             "text": "晋字一共几画",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
             "caps": [
               "query.content"
             ],
@@ -564,19 +779,75 @@
             "step_outputs_keys": [
               "1"
             ]
+          },
+          {
+            "t": 51.9,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "晋字一共几画",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "text": "据汉典，「晋」字一共10画，笔顺为横、竖、竖、点、撇、横、竖、横折、横、横。",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
+          },
+          {
+            "t": 51.9,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "晋字一共几画",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "text": "据汉典，「晋」字一共10画，笔顺为横、竖、竖、点、撇、横、竖、横折、横、横。",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "steps": [
+              {
+                "step": 1,
+                "capability": "query.content",
+                "status": 2,
+                "msg": "",
+                "edge": "edge-node-9tkgMTtn",
+                "timing": "immediate"
+              }
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787061032580,\"context\":{\"answer_text\":\"\\u636e\\u6c49\\u5178\\uff0c\\u300c\\u664b\\u300d\\u5b57\\u4e00\\u5171\\u670910\\u753b\\uff0c\\u7b14\\u987a\\u4e3a\\u6a2a\\u3001\\u7ad6\\u3001\\u7ad6\\u3001\\u70b9\\u3001\\"
+          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787125399931,\"better_capabilities\":[],\"context\":{\"answer_text\":\"\\u636e\\u6c49\\u5178\\uff0c\\u300c\\u664b\\u300d\\u5b57\\u4e00\\u517110\\u753b\\uff0c\\u7b14\\u987a\\u4e3a\\u6a2a\\u3001\\u7ad6\\u3001\\u7ad6"
         }
       },
       "judge": {
-        "ok": false,
-        "notes": [
-          "status=running"
-        ],
-        "status": "running",
+        "ok": true,
+        "notes": [],
+        "status": "succeeded",
         "caps": [
           "query.content"
         ]
@@ -597,22 +868,28 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 31,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 135,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：我家里那只猫叫什么名字",
         "source": "text",
         "text": "我家里那只猫叫什么名字"
       },
-      "intent_id": 31,
+      "intent_id": 135,
       "wait": {
-        "elapsed_sec": 122.1,
+        "elapsed_sec": 45.8,
         "final": {
-          "status": "running",
+          "status": "succeeded",
           "msg": null,
           "text": "我家里那只猫叫什么名字",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "answer_text",
+            "text": "我不知道你家里那只猫叫什么名字，缺少你家猫咪名字的相关信息。",
+            "type": "text"
+          },
           "caps": [
             "query.content"
           ],
@@ -648,12 +925,59 @@
             "step_outputs_keys": null
           },
           {
-            "t": 9.2,
+            "t": 12.2,
+            "http": 200,
+            "status": "intent_parsed",
+            "msg": null,
+            "text": "我家里那只猫叫什么名字",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": null
+          },
+          {
+            "t": 15.3,
+            "http": 200,
+            "status": "intent_dispatched",
+            "msg": null,
+            "text": "我家里那只猫叫什么名字",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": null
+          },
+          {
+            "t": 33.6,
             "http": 200,
             "status": "running",
             "msg": null,
             "text": "我家里那只猫叫什么名字",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
             "caps": [
               "query.content"
             ],
@@ -664,19 +988,75 @@
             "step_outputs_keys": [
               "1"
             ]
+          },
+          {
+            "t": 45.8,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "我家里那只猫叫什么名字",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "text": "我不知道你家里那只猫叫什么名字，缺少你家猫咪名字的相关信息。",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
+          },
+          {
+            "t": 45.8,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "我家里那只猫叫什么名字",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "text": "我不知道你家里那只猫叫什么名字，缺少你家猫咪名字的相关信息。",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "steps": [
+              {
+                "step": 1,
+                "capability": "query.content",
+                "status": 2,
+                "msg": "",
+                "edge": "edge-node-9tkgMTtn",
+                "timing": "immediate"
+              }
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787061154680,\"context\":{\"answer_text\":\"\\u6211\\u4e0d\\u77e5\\u9053\\u4f60\\u5bb6\\u91cc\\u90a3\\u53ea\\u732b\\u53eb\\u4ec0\\u4e48\\u540d\\u5b57\\uff0c\\u6211\\u6ca1\\u6709\\u4f60\\u5bb6\\u732b\\u54aa\\u547d\\u5"
+          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787125451877,\"better_capabilities\":[],\"context\":{\"answer_text\":\"\\u6211\\u4e0d\\u77e5\\u9053\\u4f60\\u5bb6\\u91cc\\u90a3\\u53ea\\u732b\\u53eb\\u4ec0\\u4e48\\u540d\\u5b57\\uff0c\\u7f3a\\u5c11\\u4f60\\u5bb6\\u"
         }
       },
       "judge": {
-        "ok": false,
-        "notes": [
-          "status=running"
-        ],
-        "status": "running",
+        "ok": true,
+        "notes": [],
+        "status": "succeeded",
         "caps": [
           "query.content"
         ]
@@ -697,63 +1077,33 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 32,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 136,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：客厅现在适合看书吗，用语音告诉我",
         "source": "text",
         "text": "客厅现在适合看书吗，用语音告诉我"
       },
-      "intent_id": 32,
+      "intent_id": 136,
       "wait": {
-        "elapsed_sec": 122.2,
+        "elapsed_sec": 12.3,
         "final": {
-          "status": "running",
-          "msg": null,
+          "status": "failed",
+          "msg": "需要先拍摄或获取客厅当前画面的 AssetRef，才能用视觉能力判断光线、环境是否适合看书；当前没有任何拍照/取图能力。",
           "text": "客厅现在适合看书吗，用语音告诉我",
-          "presentation": null,
-          "caps": [
-            "camera.capture",
-            "vision.perceive",
-            "notify.speak"
-          ],
-          "edges": [
-            "edge-node-9tkgMTtn",
-            "edge-node-x0OjfixA"
-          ],
-          "steps": [
-            {
-              "step": 1,
-              "capability": "camera.capture",
-              "status": 2,
-              "msg": "",
-              "edge": "edge-node-x0OjfixA",
-              "timing": "immediate"
-            },
-            {
-              "step": 2,
-              "capability": "vision.perceive",
-              "status": 2,
-              "msg": "",
-              "edge": "edge-node-9tkgMTtn",
-              "timing": "immediate"
-            },
-            {
-              "step": 3,
-              "capability": "notify.speak",
-              "status": 1,
-              "msg": "",
-              "edge": "edge-node-9tkgMTtn",
-              "timing": "immediate"
-            }
-          ],
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "msg",
+            "text": "需要先拍摄或获取客厅当前画面的 AssetRef，才能用视觉能力判断光线、环境是否适合看书；当前没有任何拍照/取图能力。",
+            "type": "text"
+          },
+          "caps": [],
+          "edges": [],
+          "steps": [],
           "has_status_log": true,
-          "step_outputs_keys": [
-            "1",
-            "2",
-            "3"
-          ]
+          "step_outputs_keys": null
         },
         "snapshots": [
           {
@@ -769,64 +1119,56 @@
             "step_outputs_keys": null
           },
           {
-            "t": 9.2,
+            "t": 12.2,
             "http": 200,
-            "status": "intent_parsed",
-            "msg": null,
+            "status": "failed",
+            "msg": "需要先拍摄或获取客厅当前画面的 AssetRef，才能用视觉能力判断光线、环境是否适合看书；当前没有任何拍照/取图能力。",
             "text": "客厅现在适合看书吗，用语音告诉我",
-            "presentation": null,
-            "caps": [
-              "camera.capture",
-              "vision.perceive",
-              "notify.speak"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn",
-              "edge-node-x0OjfixA"
-            ],
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "需要先拍摄或获取客厅当前画面的 AssetRef，才能用视觉能力判断光线、环境是否适合看书；当前没有任何拍照/取图能力。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
             "has_status_log": true,
             "step_outputs_keys": null
           },
           {
-            "t": 12.3,
+            "t": 12.2,
             "http": 200,
-            "status": "running",
-            "msg": null,
+            "status": "failed",
+            "msg": "需要先拍摄或获取客厅当前画面的 AssetRef，才能用视觉能力判断光线、环境是否适合看书；当前没有任何拍照/取图能力。",
             "text": "客厅现在适合看书吗，用语音告诉我",
-            "presentation": null,
-            "caps": [
-              "camera.capture",
-              "vision.perceive",
-              "notify.speak"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn",
-              "edge-node-x0OjfixA"
-            ],
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "需要先拍摄或获取客厅当前画面的 AssetRef，才能用视觉能力判断光线、环境是否适合看书；当前没有任何拍照/取图能力。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
+            "steps": [],
             "has_status_log": true,
-            "step_outputs_keys": [
-              "1"
-            ]
+            "step_outputs_keys": null
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-x0OjfixA\",\"base_time\":1787061276863,\"context\":{\"lighting\":\"{\\\"whole\\\": \\\"\\u5929\\u82b1\\u677f\\u4e3b\\u5438\\u9876\\u706f\\u4e0e\\u843d\\u5730\\u706f\\u5747\\u70b9\\u4eae\\uff0c\\u6574\\u4f53\\u5149\\u7ebf\\u67d4\\u548c\\u504f\\u66"
+          "body": "{\"base_time\":1787125497740,\"better_capabilities\":[],\"created_at\":1787125497.741359,\"edge_id\":\"edge-node-CiqVl9ZB\",\"error\":\"\\u9700\\u8981\\u5148\\u62cd\\u6444\\u6216\\u83b7\\u53d6\\u5ba2\\u5385\\u5f53\\u524d\\u753b\\u9762\\u7684 AssetRef\\uff0c\\u624d\\u80fd"
         }
       },
       "judge": {
         "ok": false,
         "notes": [
-          "status=running",
-          "missing query.content",
-          "forbidden camera.capture"
+          "status=failed",
+          "missing query.content"
         ],
-        "status": "running",
-        "caps": [
-          "camera.capture",
-          "vision.perceive",
-          "notify.speak"
-        ]
+        "status": "failed",
+        "caps": []
       }
     },
     {
@@ -842,22 +1184,28 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 33,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 137,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：把客厅窗帘打开",
         "source": "text",
         "text": "把客厅窗帘打开"
       },
-      "intent_id": 33,
+      "intent_id": 137,
       "wait": {
-        "elapsed_sec": 6.2,
+        "elapsed_sec": 9.2,
         "final": {
           "status": "failed",
-          "msg": "execution_plan 为空，无法调度",
+          "msg": "用户请求打开客厅窗帘，需要具备控制窗帘开合的设备控制能力，但当前 Available Capabilities 中没有任何窗帘/窗帘电机控制能力，无法完成该动作。",
           "text": "把客厅窗帘打开",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "msg",
+            "text": "用户请求打开客厅窗帘，需要具备控制窗帘开合的设备控制能力，但当前 Available Capabilities 中没有任何窗帘/窗帘电机控制能力，无法完成该动作。",
+            "type": "text"
+          },
           "caps": [],
           "edges": [],
           "steps": [],
@@ -878,24 +1226,36 @@
             "step_outputs_keys": null
           },
           {
-            "t": 6.1,
+            "t": 9.2,
             "http": 200,
             "status": "failed",
-            "msg": "execution_plan 为空，无法调度",
+            "msg": "用户请求打开客厅窗帘，需要具备控制窗帘开合的设备控制能力，但当前 Available Capabilities 中没有任何窗帘/窗帘电机控制能力，无法完成该动作。",
             "text": "把客厅窗帘打开",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户请求打开客厅窗帘，需要具备控制窗帘开合的设备控制能力，但当前 Available Capabilities 中没有任何窗帘/窗帘电机控制能力，无法完成该动作。",
+              "type": "text"
+            },
             "caps": [],
             "edges": [],
             "has_status_log": true,
             "step_outputs_keys": null
           },
           {
-            "t": 6.1,
+            "t": 9.2,
             "http": 200,
             "status": "failed",
-            "msg": "execution_plan 为空，无法调度",
+            "msg": "用户请求打开客厅窗帘，需要具备控制窗帘开合的设备控制能力，但当前 Available Capabilities 中没有任何窗帘/窗帘电机控制能力，无法完成该动作。",
             "text": "把客厅窗帘打开",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户请求打开客厅窗帘，需要具备控制窗帘开合的设备控制能力，但当前 Available Capabilities 中没有任何窗帘/窗帘电机控制能力，无法完成该动作。",
+              "type": "text"
+            },
             "caps": [],
             "edges": [],
             "steps": [],
@@ -905,7 +1265,7 @@
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"base_time\":1787061399120,\"created_at\":1787061399.120351,\"edge_id\":\"\",\"error\":\"execution_plan \\u4e3a\\u7a7a\\uff0c\\u65e0\\u6cd5\\u8c03\\u5ea6\",\"execution_plan\":[],\"id\":33,\"intent_base_time\":1787061399120,\"intent_id\":33,\"intent_status\":\"failed\","
+          "body": "{\"base_time\":1787125510045,\"better_capabilities\":[],\"created_at\":1787125510.0464506,\"edge_id\":\"edge-node-CiqVl9ZB\",\"error\":\"\\u7528\\u6237\\u8bf7\\u6c42\\u6253\\u5f00\\u5ba2\\u5385\\u7a97\\u5e18\\uff0c\\u9700\\u8981\\u5177\\u5907\\u63a7\\u5236\\u7a97\\u5e18\\u"
         }
       },
       "judge": {
@@ -927,42 +1287,33 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 34,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 138,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：拍张照",
         "source": "text",
         "text": "拍张照"
       },
-      "intent_id": 34,
+      "intent_id": 138,
       "wait": {
-        "elapsed_sec": 180.4,
+        "elapsed_sec": 27.5,
         "final": {
-          "status": "running",
-          "msg": null,
+          "status": "failed",
+          "msg": "用户要求“拍张照”，需要调用设备相机拍摄并产出照片 AssetRef；当前 Available Capabilities 中没有任何拍照/拍摄能力，无法完成。",
           "text": "拍张照",
-          "presentation": null,
-          "caps": [
-            "camera.capture"
-          ],
-          "edges": [
-            "edge-node-x0OjfixA"
-          ],
-          "steps": [
-            {
-              "step": 1,
-              "capability": "camera.capture",
-              "status": 2,
-              "msg": "",
-              "edge": "edge-node-x0OjfixA",
-              "timing": "immediate"
-            }
-          ],
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "msg",
+            "text": "用户要求“拍张照”，需要调用设备相机拍摄并产出照片 AssetRef；当前 Available Capabilities 中没有任何拍照/拍摄能力，无法完成。",
+            "type": "text"
+          },
+          "caps": [],
+          "edges": [],
+          "steps": [],
           "has_status_log": true,
-          "step_outputs_keys": [
-            "1"
-          ]
+          "step_outputs_keys": null
         },
         "snapshots": [
           {
@@ -978,54 +1329,56 @@
             "step_outputs_keys": null
           },
           {
-            "t": 6.1,
+            "t": 27.5,
             "http": 200,
-            "status": "intent_parsed",
-            "msg": null,
+            "status": "failed",
+            "msg": "用户要求“拍张照”，需要调用设备相机拍摄并产出照片 AssetRef；当前 Available Capabilities 中没有任何拍照/拍摄能力，无法完成。",
             "text": "拍张照",
-            "presentation": null,
-            "caps": [
-              "camera.capture"
-            ],
-            "edges": [
-              "edge-node-x0OjfixA"
-            ],
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户要求“拍张照”，需要调用设备相机拍摄并产出照片 AssetRef；当前 Available Capabilities 中没有任何拍照/拍摄能力，无法完成。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
             "has_status_log": true,
             "step_outputs_keys": null
           },
           {
-            "t": 24.5,
+            "t": 27.5,
             "http": 200,
-            "status": "running",
-            "msg": null,
+            "status": "failed",
+            "msg": "用户要求“拍张照”，需要调用设备相机拍摄并产出照片 AssetRef；当前 Available Capabilities 中没有任何拍照/拍摄能力，无法完成。",
             "text": "拍张照",
-            "presentation": null,
-            "caps": [
-              "camera.capture"
-            ],
-            "edges": [
-              "edge-node-x0OjfixA"
-            ],
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户要求“拍张照”，需要调用设备相机拍摄并产出照片 AssetRef；当前 Available Capabilities 中没有任何拍照/拍摄能力，无法完成。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
+            "steps": [],
             "has_status_log": true,
-            "step_outputs_keys": [
-              "1"
-            ]
+            "step_outputs_keys": null
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-x0OjfixA\",\"base_time\":1787061405351,\"context\":{\"photo_url\":\"http://192.168.3.65:8080/2df0f9a2_20260818_215717_GOPR1158.JPG\"},\"created_at\":1787061405.3517797,\"ctx_param\":{\"photo_url\":\"http://192.168.3.65:8080/2"
+          "body": "{\"base_time\":1787125519295,\"better_capabilities\":[],\"created_at\":1787125519.2963426,\"edge_id\":\"edge-node-CiqVl9ZB\",\"error\":\"\\u7528\\u6237\\u8981\\u6c42\\u201c\\u62cd\\u5f20\\u7167\\u201d\\uff0c\\u9700\\u8981\\u8c03\\u7528\\u8bbe\\u5907\\u76f8\\u673a\\u62cd\\u"
         }
       },
       "judge": {
         "ok": false,
         "notes": [
-          "status=running"
+          "status=failed",
+          "missing camera.capture"
         ],
-        "status": "running",
-        "caps": [
-          "camera.capture"
-        ]
+        "status": "failed",
+        "caps": []
       }
     },
     {
@@ -1041,53 +1394,33 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 36,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 139,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：拍张照投到电视上",
         "source": "text",
         "text": "拍张照投到电视上"
       },
-      "intent_id": 36,
+      "intent_id": 139,
       "wait": {
-        "elapsed_sec": 55.0,
+        "elapsed_sec": 9.2,
         "final": {
           "status": "failed",
-          "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/9ce2261d_20260818_220007_GOPR1160.JPG",
+          "msg": "用户明确要求“拍张照”，需要一个能调用摄像头拍摄并产出 AssetRef 的拍照能力；当前 Available Capabilities 中没有任何拍照能力，无法获得要投屏的真实照片。",
           "text": "拍张照投到电视上",
-          "presentation": null,
-          "caps": [
-            "camera.capture",
-            "display.photo"
-          ],
-          "edges": [
-            "edge-node-9tkgMTtn",
-            "edge-node-x0OjfixA"
-          ],
-          "steps": [
-            {
-              "step": 1,
-              "capability": "camera.capture",
-              "status": 2,
-              "msg": "",
-              "edge": "edge-node-x0OjfixA",
-              "timing": "immediate"
-            },
-            {
-              "step": 2,
-              "capability": "display.photo",
-              "status": 3,
-              "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/9ce2261d_20260818_220007_GOPR1160.JPG",
-              "edge": "edge-node-9tkgMTtn",
-              "timing": "immediate"
-            }
-          ],
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "msg",
+            "text": "用户明确要求“拍张照”，需要一个能调用摄像头拍摄并产出 AssetRef 的拍照能力；当前 Available Capabilities 中没有任何拍照能力，无法获得要投屏的真实照片。",
+            "type": "text"
+          },
+          "caps": [],
+          "edges": [],
+          "steps": [],
           "has_status_log": true,
-          "step_outputs_keys": [
-            "1",
-            "2"
-          ]
+          "step_outputs_keys": null
         },
         "snapshots": [
           {
@@ -1105,99 +1438,55 @@
           {
             "t": 9.2,
             "http": 200,
-            "status": "running",
-            "msg": null,
+            "status": "failed",
+            "msg": "用户明确要求“拍张照”，需要一个能调用摄像头拍摄并产出 AssetRef 的拍照能力；当前 Available Capabilities 中没有任何拍照能力，无法获得要投屏的真实照片。",
             "text": "拍张照投到电视上",
-            "presentation": null,
-            "caps": [
-              "camera.capture",
-              "display.photo"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn",
-              "edge-node-x0OjfixA"
-            ],
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户明确要求“拍张照”，需要一个能调用摄像头拍摄并产出 AssetRef 的拍照能力；当前 Available Capabilities 中没有任何拍照能力，无法获得要投屏的真实照片。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
             "has_status_log": true,
-            "step_outputs_keys": [
-              "1"
-            ]
+            "step_outputs_keys": null
           },
           {
-            "t": 54.9,
+            "t": 9.2,
             "http": 200,
             "status": "failed",
-            "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/9ce2261d_20260818_220007_GOPR1160.JPG",
+            "msg": "用户明确要求“拍张照”，需要一个能调用摄像头拍摄并产出 AssetRef 的拍照能力；当前 Available Capabilities 中没有任何拍照能力，无法获得要投屏的真实照片。",
             "text": "拍张照投到电视上",
-            "presentation": null,
-            "caps": [
-              "camera.capture",
-              "display.photo"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn",
-              "edge-node-x0OjfixA"
-            ],
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户明确要求“拍张照”，需要一个能调用摄像头拍摄并产出 AssetRef 的拍照能力；当前 Available Capabilities 中没有任何拍照能力，无法获得要投屏的真实照片。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
+            "steps": [],
             "has_status_log": true,
-            "step_outputs_keys": [
-              "1",
-              "2"
-            ]
-          },
-          {
-            "t": 54.9,
-            "http": 200,
-            "status": "failed",
-            "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/9ce2261d_20260818_220007_GOPR1160.JPG",
-            "text": "拍张照投到电视上",
-            "presentation": null,
-            "caps": [
-              "camera.capture",
-              "display.photo"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn",
-              "edge-node-x0OjfixA"
-            ],
-            "steps": [
-              {
-                "step": 1,
-                "capability": "camera.capture",
-                "status": 2,
-                "msg": "",
-                "edge": "edge-node-x0OjfixA",
-                "timing": "immediate"
-              },
-              {
-                "step": 2,
-                "capability": "display.photo",
-                "status": 3,
-                "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/9ce2261d_20260818_220007_GOPR1160.JPG",
-                "edge": "edge-node-9tkgMTtn",
-                "timing": "immediate"
-              }
-            ],
-            "has_status_log": true,
-            "step_outputs_keys": [
-              "1",
-              "2"
-            ]
+            "step_outputs_keys": null
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-x0OjfixA\",\"base_time\":1787061585830,\"context\":{\"photo_url\":\"http://192.168.3.65:8080/9ce2261d_20260818_220007_GOPR1160.JPG\"},\"created_at\":1787061585.8301928,\"ctx_param\":{\"photo_url\":\"http://192.168.3.65:8080/9"
+          "body": "{\"base_time\":1787125546823,\"better_capabilities\":[],\"created_at\":1787125546.8251524,\"edge_id\":\"edge-node-CiqVl9ZB\",\"error\":\"\\u7528\\u6237\\u660e\\u786e\\u8981\\u6c42\\u201c\\u62cd\\u5f20\\u7167\\u201d\\uff0c\\u9700\\u8981\\u4e00\\u4e2a\\u80fd\\u8c03\\u7528\\u"
         }
       },
       "judge": {
         "ok": false,
         "notes": [
-          "status=failed"
+          "status=failed",
+          "missing camera.capture",
+          "missing display.photo"
         ],
         "status": "failed",
-        "caps": [
-          "camera.capture",
-          "display.photo"
-        ]
+        "caps": []
       }
     },
     {
@@ -1216,63 +1505,33 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 38,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 140,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：拍张照看看客厅里有没有人，然后用语音告诉我",
         "source": "text",
         "text": "拍张照看看客厅里有没有人，然后用语音告诉我"
       },
-      "intent_id": 38,
+      "intent_id": 140,
       "wait": {
-        "elapsed_sec": 241.3,
+        "elapsed_sec": 12.3,
         "final": {
-          "status": "running",
-          "msg": null,
+          "status": "failed",
+          "msg": "用户要求“拍张照”以查看真实客厅是否有人，但当前已广告能力中没有任何拍照/摄像头抓拍能力，无法获取客厅实时照片供后续视觉判断。",
           "text": "拍张照看看客厅里有没有人，然后用语音告诉我",
-          "presentation": null,
-          "caps": [
-            "camera.capture",
-            "vision.ask",
-            "notify.speak"
-          ],
-          "edges": [
-            "edge-node-9tkgMTtn",
-            "edge-node-x0OjfixA"
-          ],
-          "steps": [
-            {
-              "step": 1,
-              "capability": "camera.capture",
-              "status": 2,
-              "msg": "",
-              "edge": "edge-node-x0OjfixA",
-              "timing": "immediate"
-            },
-            {
-              "step": 2,
-              "capability": "vision.ask",
-              "status": 2,
-              "msg": "",
-              "edge": "edge-node-9tkgMTtn",
-              "timing": "immediate"
-            },
-            {
-              "step": 3,
-              "capability": "notify.speak",
-              "status": 2,
-              "msg": "",
-              "edge": "edge-node-9tkgMTtn",
-              "timing": "immediate"
-            }
-          ],
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "msg",
+            "text": "用户要求“拍张照”以查看真实客厅是否有人，但当前已广告能力中没有任何拍照/摄像头抓拍能力，无法获取客厅实时照片供后续视觉判断。",
+            "type": "text"
+          },
+          "caps": [],
+          "edges": [],
+          "steps": [],
           "has_status_log": true,
-          "step_outputs_keys": [
-            "1",
-            "2",
-            "3"
-          ]
+          "step_outputs_keys": null
         },
         "snapshots": [
           {
@@ -1288,83 +1547,57 @@
             "step_outputs_keys": null
           },
           {
-            "t": 9.2,
+            "t": 12.2,
             "http": 200,
-            "status": "intent_parsed",
-            "msg": null,
+            "status": "failed",
+            "msg": "用户要求“拍张照”以查看真实客厅是否有人，但当前已广告能力中没有任何拍照/摄像头抓拍能力，无法获取客厅实时照片供后续视觉判断。",
             "text": "拍张照看看客厅里有没有人，然后用语音告诉我",
-            "presentation": null,
-            "caps": [
-              "camera.capture",
-              "vision.ask",
-              "notify.speak"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn",
-              "edge-node-x0OjfixA"
-            ],
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户要求“拍张照”以查看真实客厅是否有人，但当前已广告能力中没有任何拍照/摄像头抓拍能力，无法获取客厅实时照片供后续视觉判断。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
             "has_status_log": true,
             "step_outputs_keys": null
           },
           {
-            "t": 15.3,
+            "t": 12.2,
             "http": 200,
-            "status": "intent_dispatched",
-            "msg": null,
+            "status": "failed",
+            "msg": "用户要求“拍张照”以查看真实客厅是否有人，但当前已广告能力中没有任何拍照/摄像头抓拍能力，无法获取客厅实时照片供后续视觉判断。",
             "text": "拍张照看看客厅里有没有人，然后用语音告诉我",
-            "presentation": null,
-            "caps": [
-              "camera.capture",
-              "vision.ask",
-              "notify.speak"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn",
-              "edge-node-x0OjfixA"
-            ],
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户要求“拍张照”以查看真实客厅是否有人，但当前已广告能力中没有任何拍照/摄像头抓拍能力，无法获取客厅实时照片供后续视觉判断。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
+            "steps": [],
             "has_status_log": true,
             "step_outputs_keys": null
-          },
-          {
-            "t": 42.8,
-            "http": 200,
-            "status": "running",
-            "msg": null,
-            "text": "拍张照看看客厅里有没有人，然后用语音告诉我",
-            "presentation": null,
-            "caps": [
-              "camera.capture",
-              "vision.ask",
-              "notify.speak"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn",
-              "edge-node-x0OjfixA"
-            ],
-            "has_status_log": true,
-            "step_outputs_keys": [
-              "1"
-            ]
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-x0OjfixA\",\"base_time\":1787061640859,\"context\":{\"answer_text\":\"\\u6709\\u4eba\\u3002\",\"photo_url\":\"http://192.168.3.65:8080/cc261533_20260818_220131_GOPR1162.JPG\"},\"created_at\":1787061640.8596687,\"ctx_param\":{\"ans"
+          "body": "{\"base_time\":1787125556078,\"better_capabilities\":[],\"created_at\":1787125556.0799174,\"edge_id\":\"edge-node-CiqVl9ZB\",\"error\":\"\\u7528\\u6237\\u8981\\u6c42\\u201c\\u62cd\\u5f20\\u7167\\u201d\\u4ee5\\u67e5\\u770b\\u771f\\u5b9e\\u5ba2\\u5385\\u662f\\u5426\\u6709\\u"
         }
       },
       "judge": {
         "ok": false,
         "notes": [
-          "status=running",
-          "missing vision.perceive",
-          "forbidden vision.ask"
+          "status=failed",
+          "missing camera.capture",
+          "missing vision.perceive"
         ],
-        "status": "running",
-        "caps": [
-          "camera.capture",
-          "vision.ask",
-          "notify.speak"
-        ]
+        "status": "failed",
+        "caps": []
       }
     },
     {
@@ -1383,22 +1616,32 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 39,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 141,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：画一张客厅台灯的示意图，投到电视上",
         "source": "text",
         "text": "画一张客厅台灯的示意图，投到电视上"
       },
-      "intent_id": 39,
+      "intent_id": 141,
       "wait": {
-        "elapsed_sec": 64.2,
+        "elapsed_sec": 52.4,
         "final": {
-          "status": "failed",
-          "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/5268ac90_20260818_220514_query.png",
+          "status": "succeeded",
+          "msg": null,
           "text": "画一张客厅台灯的示意图，投到电视上",
-          "presentation": null,
+          "presentation": {
+            "asset_ref": {
+              "asset_id": "asset_8505a848fca15b2cf44bb2b9",
+              "mime_type": "image/png",
+              "type": "image"
+            },
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "asset_ref",
+            "type": "image"
+          },
           "caps": [
             "query.content",
             "display.photo"
@@ -1418,8 +1661,8 @@
             {
               "step": 2,
               "capability": "display.photo",
-              "status": 3,
-              "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/5268ac90_20260818_220514_query.png",
+              "status": 2,
+              "msg": "",
               "edge": "edge-node-9tkgMTtn",
               "timing": "immediate"
             }
@@ -1432,7 +1675,7 @@
         },
         "snapshots": [
           {
-            "t": 0.1,
+            "t": 0.0,
             "http": 200,
             "status": "intent_received",
             "msg": null,
@@ -1444,29 +1687,17 @@
             "step_outputs_keys": null
           },
           {
-            "t": 9.2,
-            "http": 200,
-            "status": "intent_parsed",
-            "msg": null,
-            "text": "画一张客厅台灯的示意图，投到电视上",
-            "presentation": null,
-            "caps": [
-              "query.content",
-              "display.photo"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn"
-            ],
-            "has_status_log": true,
-            "step_outputs_keys": null
-          },
-          {
-            "t": 12.3,
+            "t": 15.3,
             "http": 200,
             "status": "running",
             "msg": null,
             "text": "画一张客厅台灯的示意图，投到电视上",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "asset_ref",
+              "type": "image"
+            },
             "caps": [
               "query.content",
               "display.photo"
@@ -1480,12 +1711,22 @@
             ]
           },
           {
-            "t": 64.1,
+            "t": 52.1,
             "http": 200,
-            "status": "failed",
-            "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/5268ac90_20260818_220514_query.png",
+            "status": "succeeded",
+            "msg": null,
             "text": "画一张客厅台灯的示意图，投到电视上",
-            "presentation": null,
+            "presentation": {
+              "asset_ref": {
+                "asset_id": "asset_8505a848fca15b2cf44bb2b9",
+                "mime_type": "image/png",
+                "type": "image"
+              },
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "asset_ref",
+              "type": "image"
+            },
             "caps": [
               "query.content",
               "display.photo"
@@ -1500,12 +1741,22 @@
             ]
           },
           {
-            "t": 64.1,
+            "t": 52.1,
             "http": 200,
-            "status": "failed",
-            "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/5268ac90_20260818_220514_query.png",
+            "status": "succeeded",
+            "msg": null,
             "text": "画一张客厅台灯的示意图，投到电视上",
-            "presentation": null,
+            "presentation": {
+              "asset_ref": {
+                "asset_id": "asset_8505a848fca15b2cf44bb2b9",
+                "mime_type": "image/png",
+                "type": "image"
+              },
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "asset_ref",
+              "type": "image"
+            },
             "caps": [
               "query.content",
               "display.photo"
@@ -1525,8 +1776,8 @@
               {
                 "step": 2,
                 "capability": "display.photo",
-                "status": 3,
-                "msg": "cast service HTTP 503: fail\ncast push failed: cast.wait failed: Execution of wait timed out after 15 s.\nurl=http://192.168.3.65:8080/5268ac90_20260818_220514_query.png",
+                "status": 2,
+                "msg": "",
                 "edge": "edge-node-9tkgMTtn",
                 "timing": "immediate"
               }
@@ -1540,15 +1791,13 @@
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787061882199,\"context\":{\"photo_url\":\"http://192.168.3.65:8080/5268ac90_20260818_220514_query.png\"},\"created_at\":1787061882.1996107,\"ctx_param\":{\"photo_url\":\"http://192.168.3.65:8080/5268"
+          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787125568389,\"better_capabilities\":[],\"context\":{\"answer_text\":\"\\u8fd9\\u662f\\u9002\\u5408\\u6295\\u653e\\u5230\\u7535\\u89c6\\u4e0a\\u5c55\\u793a\\u7684\\u5ba2\\u5385\\u53f0\\u706f\\u793a\\u610f\\u56fe\\u"
         }
       },
       "judge": {
-        "ok": false,
-        "notes": [
-          "status=failed"
-        ],
-        "status": "failed",
+        "ok": true,
+        "notes": [],
+        "status": "succeeded",
         "caps": [
           "query.content",
           "display.photo"
@@ -1567,22 +1816,28 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 40,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 142,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：播放陈奕迅的十年",
         "source": "text",
         "text": "播放陈奕迅的十年"
       },
-      "intent_id": 40,
+      "intent_id": 142,
       "wait": {
-        "elapsed_sec": 6.2,
+        "elapsed_sec": 9.2,
         "final": {
           "status": "failed",
-          "msg": "execution_plan 为空，无法调度",
+          "msg": "用户要播放陈奕迅的《十年》，需要音乐播放能力来搜索并播放指定歌曲；当前 Available Capabilities 中没有可调用的 music.play 能力。",
           "text": "播放陈奕迅的十年",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "msg",
+            "text": "用户要播放陈奕迅的《十年》，需要音乐播放能力来搜索并播放指定歌曲；当前 Available Capabilities 中没有可调用的 music.play 能力。",
+            "type": "text"
+          },
           "caps": [],
           "edges": [],
           "steps": [],
@@ -1603,24 +1858,36 @@
             "step_outputs_keys": null
           },
           {
-            "t": 6.1,
+            "t": 9.2,
             "http": 200,
             "status": "failed",
-            "msg": "execution_plan 为空，无法调度",
+            "msg": "用户要播放陈奕迅的《十年》，需要音乐播放能力来搜索并播放指定歌曲；当前 Available Capabilities 中没有可调用的 music.play 能力。",
             "text": "播放陈奕迅的十年",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户要播放陈奕迅的《十年》，需要音乐播放能力来搜索并播放指定歌曲；当前 Available Capabilities 中没有可调用的 music.play 能力。",
+              "type": "text"
+            },
             "caps": [],
             "edges": [],
             "has_status_log": true,
             "step_outputs_keys": null
           },
           {
-            "t": 6.1,
+            "t": 9.2,
             "http": 200,
             "status": "failed",
-            "msg": "execution_plan 为空，无法调度",
+            "msg": "用户要播放陈奕迅的《十年》，需要音乐播放能力来搜索并播放指定歌曲；当前 Available Capabilities 中没有可调用的 music.play 能力。",
             "text": "播放陈奕迅的十年",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户要播放陈奕迅的《十年》，需要音乐播放能力来搜索并播放指定歌曲；当前 Available Capabilities 中没有可调用的 music.play 能力。",
+              "type": "text"
+            },
             "caps": [],
             "edges": [],
             "steps": [],
@@ -1630,7 +1897,7 @@
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"base_time\":1787061946434,\"created_at\":1787061946.43423,\"edge_id\":\"\",\"error\":\"execution_plan \\u4e3a\\u7a7a\\uff0c\\u65e0\\u6cd5\\u8c03\\u5ea6\",\"execution_plan\":[],\"id\":40,\"intent_base_time\":1787061946434,\"intent_id\":40,\"intent_status\":\"failed\",\""
+          "body": "{\"base_time\":1787125620870,\"better_capabilities\":[],\"created_at\":1787125620.871823,\"edge_id\":\"edge-node-CiqVl9ZB\",\"error\":\"\\u7528\\u6237\\u8981\\u64ad\\u653e\\u9648\\u5955\\u8fc5\\u7684\\u300a\\u5341\\u5e74\\u300b\\uff0c\\u9700\\u8981\\u97f3\\u4e50\\u64ad\\u6"
         }
       },
       "judge": {
@@ -1652,22 +1919,28 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 41,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 143,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：投到电视上",
         "source": "text",
         "text": "投到电视上"
       },
-      "intent_id": 41,
+      "intent_id": 143,
       "wait": {
-        "elapsed_sec": 6.2,
+        "elapsed_sec": 15.3,
         "final": {
           "status": "failed",
-          "msg": "execution_plan 为空，无法调度",
+          "msg": "缺少明确的待投屏内容来源：用户未指定要投什么图片/内容，当前也没有已提供的 asset_ref 或可获取当前屏幕/最近媒体的能力，无法满足“投到电视上”的请求。",
           "text": "投到电视上",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "msg",
+            "text": "缺少明确的待投屏内容来源：用户未指定要投什么图片/内容，当前也没有已提供的 asset_ref 或可获取当前屏幕/最近媒体的能力，无法满足“投到电视上”的请求。",
+            "type": "text"
+          },
           "caps": [],
           "edges": [],
           "steps": [],
@@ -1688,24 +1961,36 @@
             "step_outputs_keys": null
           },
           {
-            "t": 6.1,
+            "t": 15.3,
             "http": 200,
             "status": "failed",
-            "msg": "execution_plan 为空，无法调度",
+            "msg": "缺少明确的待投屏内容来源：用户未指定要投什么图片/内容，当前也没有已提供的 asset_ref 或可获取当前屏幕/最近媒体的能力，无法满足“投到电视上”的请求。",
             "text": "投到电视上",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "缺少明确的待投屏内容来源：用户未指定要投什么图片/内容，当前也没有已提供的 asset_ref 或可获取当前屏幕/最近媒体的能力，无法满足“投到电视上”的请求。",
+              "type": "text"
+            },
             "caps": [],
             "edges": [],
             "has_status_log": true,
             "step_outputs_keys": null
           },
           {
-            "t": 6.1,
+            "t": 15.3,
             "http": 200,
             "status": "failed",
-            "msg": "execution_plan 为空，无法调度",
+            "msg": "缺少明确的待投屏内容来源：用户未指定要投什么图片/内容，当前也没有已提供的 asset_ref 或可获取当前屏幕/最近媒体的能力，无法满足“投到电视上”的请求。",
             "text": "投到电视上",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "缺少明确的待投屏内容来源：用户未指定要投什么图片/内容，当前也没有已提供的 asset_ref 或可获取当前屏幕/最近媒体的能力，无法满足“投到电视上”的请求。",
+              "type": "text"
+            },
             "caps": [],
             "edges": [],
             "steps": [],
@@ -1715,7 +2000,7 @@
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"base_time\":1787061952669,\"created_at\":1787061952.6692154,\"edge_id\":\"\",\"error\":\"execution_plan \\u4e3a\\u7a7a\\uff0c\\u65e0\\u6cd5\\u8c03\\u5ea6\",\"execution_plan\":[],\"id\":41,\"intent_base_time\":1787061952669,\"intent_id\":41,\"intent_status\":\"failed\""
+          "body": "{\"base_time\":1787125630363,\"better_capabilities\":[],\"created_at\":1787125630.3645031,\"edge_id\":\"edge-node-CiqVl9ZB\",\"error\":\"\\u7f3a\\u5c11\\u660e\\u786e\\u7684\\u5f85\\u6295\\u5c4f\\u5185\\u5bb9\\u6765\\u6e90\\uff1a\\u7528\\u6237\\u672a\\u6307\\u5b9a\\u8981\\u"
         }
       },
       "judge": {
@@ -1734,22 +2019,28 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 42,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 144,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：把刚才拍的那些照片做成轮播投到电视",
         "source": "text",
         "text": "把刚才拍的那些照片做成轮播投到电视"
       },
-      "intent_id": 42,
+      "intent_id": 144,
       "wait": {
-        "elapsed_sec": 6.2,
+        "elapsed_sec": 12.3,
         "final": {
           "status": "failed",
-          "msg": "execution_plan 为空，无法调度",
+          "msg": "需要能获取用户“刚才拍的那些照片”对应的 AssetRef 列表，才能传给 display.slideshow 做电视轮播；当前没有任何已广告能力可读取/列出最近拍摄照片。",
           "text": "把刚才拍的那些照片做成轮播投到电视",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "msg",
+            "text": "需要能获取用户“刚才拍的那些照片”对应的 AssetRef 列表，才能传给 display.slideshow 做电视轮播；当前没有任何已广告能力可读取/列出最近拍摄照片。",
+            "type": "text"
+          },
           "caps": [],
           "edges": [],
           "steps": [],
@@ -1770,24 +2061,36 @@
             "step_outputs_keys": null
           },
           {
-            "t": 6.2,
+            "t": 12.2,
             "http": 200,
             "status": "failed",
-            "msg": "execution_plan 为空，无法调度",
+            "msg": "需要能获取用户“刚才拍的那些照片”对应的 AssetRef 列表，才能传给 display.slideshow 做电视轮播；当前没有任何已广告能力可读取/列出最近拍摄照片。",
             "text": "把刚才拍的那些照片做成轮播投到电视",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "需要能获取用户“刚才拍的那些照片”对应的 AssetRef 列表，才能传给 display.slideshow 做电视轮播；当前没有任何已广告能力可读取/列出最近拍摄照片。",
+              "type": "text"
+            },
             "caps": [],
             "edges": [],
             "has_status_log": true,
             "step_outputs_keys": null
           },
           {
-            "t": 6.2,
+            "t": 12.2,
             "http": 200,
             "status": "failed",
-            "msg": "execution_plan 为空，无法调度",
+            "msg": "需要能获取用户“刚才拍的那些照片”对应的 AssetRef 列表，才能传给 display.slideshow 做电视轮播；当前没有任何已广告能力可读取/列出最近拍摄照片。",
             "text": "把刚才拍的那些照片做成轮播投到电视",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "需要能获取用户“刚才拍的那些照片”对应的 AssetRef 列表，才能传给 display.slideshow 做电视轮播；当前没有任何已广告能力可读取/列出最近拍摄照片。",
+              "type": "text"
+            },
             "caps": [],
             "edges": [],
             "steps": [],
@@ -1797,7 +2100,7 @@
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"base_time\":1787061958896,\"created_at\":1787061958.8962986,\"edge_id\":\"\",\"error\":\"execution_plan \\u4e3a\\u7a7a\\uff0c\\u65e0\\u6cd5\\u8c03\\u5ea6\",\"execution_plan\":[],\"id\":42,\"intent_base_time\":1787061958896,\"intent_id\":42,\"intent_status\":\"failed\""
+          "body": "{\"base_time\":1787125645728,\"better_capabilities\":[],\"created_at\":1787125645.7302234,\"edge_id\":\"edge-node-CiqVl9ZB\",\"error\":\"\\u9700\\u8981\\u80fd\\u83b7\\u53d6\\u7528\\u6237\\u201c\\u521a\\u624d\\u62cd\\u7684\\u90a3\\u4e9b\\u7167\\u7247\\u201d\\u5bf9\\u5e94\\u"
         }
       },
       "judge": {
@@ -1819,22 +2122,27 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 43,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 145,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：一分钟后用语音说：该喝水了",
         "source": "text",
         "text": "一分钟后用语音说：该喝水了"
       },
-      "intent_id": 43,
+      "intent_id": 145,
       "wait": {
-        "elapsed_sec": 150.6,
+        "elapsed_sec": 64.1,
         "final": {
-          "status": "running",
+          "status": "succeeded",
           "msg": null,
           "text": "一分钟后用语音说：该喝水了",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "",
+            "from": "state",
+            "type": "audio"
+          },
           "caps": [
             "notify.speak"
           ],
@@ -1870,12 +2178,38 @@
             "step_outputs_keys": null
           },
           {
-            "t": 6.2,
+            "t": 6.1,
+            "http": 200,
+            "status": "intent_parsed",
+            "msg": null,
+            "text": "一分钟后用语音说：该喝水了",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "",
+              "from": "state",
+              "type": "audio"
+            },
+            "caps": [
+              "notify.speak"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": null
+          },
+          {
+            "t": 9.2,
             "http": 200,
             "status": "intent_dispatched",
             "msg": null,
             "text": "一分钟后用语音说：该喝水了",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "",
+              "from": "state",
+              "type": "audio"
+            },
             "caps": [
               "notify.speak"
             ],
@@ -1891,7 +2225,12 @@
             "status": "running",
             "msg": null,
             "text": "一分钟后用语音说：该喝水了",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "",
+              "from": "state",
+              "type": "audio"
+            },
             "caps": [
               "notify.speak"
             ],
@@ -1902,19 +2241,73 @@
             "step_outputs_keys": [
               "1"
             ]
+          },
+          {
+            "t": 64.1,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "一分钟后用语音说：该喝水了",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "",
+              "from": "state",
+              "type": "audio"
+            },
+            "caps": [
+              "notify.speak"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
+          },
+          {
+            "t": 64.1,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "一分钟后用语音说：该喝水了",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "",
+              "from": "state",
+              "type": "audio"
+            },
+            "caps": [
+              "notify.speak"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "steps": [
+              {
+                "step": 1,
+                "capability": "notify.speak",
+                "status": 2,
+                "msg": "",
+                "edge": "edge-node-9tkgMTtn",
+                "timing": "delay"
+              }
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787061965141,\"context\":{},\"created_at\":1787061965.1412654,\"ctx_param\":{},\"edge_id\":\"\",\"edge_node_id\":\"edge-node-9tkgMTtn\",\"execution_plan\":[{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"capa"
+          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787125658043,\"better_capabilities\":[],\"context\":{},\"created_at\":1787125658.0451417,\"ctx_param\":{},\"edge_id\":\"edge-node-CiqVl9ZB\",\"edge_node_id\":\"edge-node-9tkgMTtn\",\"execution_plan\":[{\"a"
         }
       },
       "judge": {
-        "ok": false,
-        "notes": [
-          "status=running"
-        ],
-        "status": "running",
+        "ok": true,
+        "notes": [],
+        "status": "succeeded",
         "caps": [
           "notify.speak"
         ]
@@ -1932,42 +2325,33 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 45,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 146,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：用 take_photo 拍一张",
         "source": "text",
         "text": "用 take_photo 拍一张"
       },
-      "intent_id": 45,
+      "intent_id": 146,
       "wait": {
-        "elapsed_sec": 180.2,
+        "elapsed_sec": 9.2,
         "final": {
-          "status": "running",
-          "msg": null,
+          "status": "failed",
+          "msg": "用户明确要求“用 take_photo 拍一张”，但已广告能力列表中没有任何拍照/拍摄照片的能力，无法完成拍照请求。",
           "text": "用 take_photo 拍一张",
-          "presentation": null,
-          "caps": [
-            "camera.capture"
-          ],
-          "edges": [
-            "edge-node-x0OjfixA"
-          ],
-          "steps": [
-            {
-              "step": 1,
-              "capability": "camera.capture",
-              "status": 2,
-              "msg": "",
-              "edge": "edge-node-x0OjfixA",
-              "timing": "immediate"
-            }
-          ],
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "msg",
+            "text": "用户明确要求“用 take_photo 拍一张”，但已广告能力列表中没有任何拍照/拍摄照片的能力，无法完成拍照请求。",
+            "type": "text"
+          },
+          "caps": [],
+          "edges": [],
+          "steps": [],
           "has_status_log": true,
-          "step_outputs_keys": [
-            "1"
-          ]
+          "step_outputs_keys": null
         },
         "snapshots": [
           {
@@ -1983,36 +2367,53 @@
             "step_outputs_keys": null
           },
           {
-            "t": 6.2,
+            "t": 9.2,
             "http": 200,
-            "status": "running",
-            "msg": null,
+            "status": "failed",
+            "msg": "用户明确要求“用 take_photo 拍一张”，但已广告能力列表中没有任何拍照/拍摄照片的能力，无法完成拍照请求。",
             "text": "用 take_photo 拍一张",
-            "presentation": null,
-            "caps": [
-              "camera.capture"
-            ],
-            "edges": [
-              "edge-node-x0OjfixA"
-            ],
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户明确要求“用 take_photo 拍一张”，但已广告能力列表中没有任何拍照/拍摄照片的能力，无法完成拍照请求。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
             "has_status_log": true,
-            "step_outputs_keys": [
-              "1"
-            ]
+            "step_outputs_keys": null
+          },
+          {
+            "t": 9.2,
+            "http": 200,
+            "status": "failed",
+            "msg": "用户明确要求“用 take_photo 拍一张”，但已广告能力列表中没有任何拍照/拍摄照片的能力，无法完成拍照请求。",
+            "text": "用 take_photo 拍一张",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户明确要求“用 take_photo 拍一张”，但已广告能力列表中没有任何拍照/拍摄照片的能力，无法完成拍照请求。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
+            "steps": [],
+            "has_status_log": true,
+            "step_outputs_keys": null
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-x0OjfixA\",\"base_time\":1787062115767,\"context\":{\"photo_url\":\"http://192.168.3.65:8080/c6817a42_20260818_220852_GOPR1164.JPG\"},\"created_at\":1787062115.7674344,\"ctx_param\":{\"photo_url\":\"http://192.168.3.65:8080/c"
+          "body": "{\"base_time\":1787125722236,\"better_capabilities\":[],\"created_at\":1787125722.238054,\"edge_id\":\"edge-node-CiqVl9ZB\",\"error\":\"\\u7528\\u6237\\u660e\\u786e\\u8981\\u6c42\\u201c\\u7528 take_photo \\u62cd\\u4e00\\u5f20\\u201d\\uff0c\\u4f46\\u5df2\\u5e7f\\u544a\\u8"
         }
       },
       "judge": {
         "ok": true,
         "notes": [],
-        "status": "running",
-        "caps": [
-          "camera.capture"
-        ]
+        "status": "failed",
+        "caps": []
       }
     },
     {
@@ -2024,42 +2425,33 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 47,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 147,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：拍张照，但是不要拍照",
         "source": "text",
         "text": "拍张照，但是不要拍照"
       },
-      "intent_id": 47,
+      "intent_id": 147,
       "wait": {
-        "elapsed_sec": 91.5,
+        "elapsed_sec": 9.2,
         "final": {
-          "status": "running",
-          "msg": null,
+          "status": "failed",
+          "msg": "用户提到“拍张照”，但当前已广告能力中没有任何拍照/拍摄照片的能力，无法完成拍照动作。",
           "text": "拍张照，但是不要拍照",
-          "presentation": null,
-          "caps": [
-            "notify.speak"
-          ],
-          "edges": [
-            "edge-node-9tkgMTtn"
-          ],
-          "steps": [
-            {
-              "step": 1,
-              "capability": "notify.speak",
-              "status": 2,
-              "msg": "",
-              "edge": "edge-node-9tkgMTtn",
-              "timing": "immediate"
-            }
-          ],
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "msg",
+            "text": "用户提到“拍张照”，但当前已广告能力中没有任何拍照/拍摄照片的能力，无法完成拍照动作。",
+            "type": "text"
+          },
+          "caps": [],
+          "edges": [],
+          "steps": [],
           "has_status_log": true,
-          "step_outputs_keys": [
-            "1"
-          ]
+          "step_outputs_keys": null
         },
         "snapshots": [
           {
@@ -2077,71 +2469,51 @@
           {
             "t": 9.2,
             "http": 200,
-            "status": "intent_scheduled",
-            "msg": null,
+            "status": "failed",
+            "msg": "用户提到“拍张照”，但当前已广告能力中没有任何拍照/拍摄照片的能力，无法完成拍照动作。",
             "text": "拍张照，但是不要拍照",
-            "presentation": null,
-            "caps": [
-              "notify.speak"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn"
-            ],
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户提到“拍张照”，但当前已广告能力中没有任何拍照/拍摄照片的能力，无法完成拍照动作。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
             "has_status_log": true,
             "step_outputs_keys": null
           },
           {
-            "t": 12.3,
+            "t": 9.2,
             "http": 200,
-            "status": "intent_dispatched",
-            "msg": null,
+            "status": "failed",
+            "msg": "用户提到“拍张照”，但当前已广告能力中没有任何拍照/拍摄照片的能力，无法完成拍照动作。",
             "text": "拍张照，但是不要拍照",
-            "presentation": null,
-            "caps": [
-              "notify.speak"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn"
-            ],
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "msg",
+              "text": "用户提到“拍张照”，但当前已广告能力中没有任何拍照/拍摄照片的能力，无法完成拍照动作。",
+              "type": "text"
+            },
+            "caps": [],
+            "edges": [],
+            "steps": [],
             "has_status_log": true,
             "step_outputs_keys": null
-          },
-          {
-            "t": 36.4,
-            "http": 0,
-            "raw": "TimeoutError: timed out"
-          },
-          {
-            "t": 39.4,
-            "http": 200,
-            "status": "running",
-            "msg": null,
-            "text": "拍张照，但是不要拍照",
-            "presentation": null,
-            "caps": [
-              "notify.speak"
-            ],
-            "edges": [
-              "edge-node-9tkgMTtn"
-            ],
-            "has_status_log": true,
-            "step_outputs_keys": [
-              "1"
-            ]
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787062295998,\"context\":{},\"created_at\":1787062295.9988644,\"ctx_param\":{},\"edge_id\":\"\",\"edge_node_id\":\"edge-node-9tkgMTtn\",\"execution_plan\":[{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"capa"
+          "body": "{\"base_time\":1787125731495,\"better_capabilities\":[],\"created_at\":1787125731.4967844,\"edge_id\":\"edge-node-CiqVl9ZB\",\"error\":\"\\u7528\\u6237\\u63d0\\u5230\\u201c\\u62cd\\u5f20\\u7167\\u201d\\uff0c\\u4f46\\u5f53\\u524d\\u5df2\\u5e7f\\u544a\\u80fd\\u529b\\u4e2d\\u"
         }
       },
       "judge": {
         "ok": true,
         "notes": [],
-        "status": "running",
-        "caps": [
-          "notify.speak"
-        ]
+        "status": "failed",
+        "caps": []
       }
     },
     {
@@ -2160,22 +2532,27 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 49,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 148,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：地球到月球大约多远",
         "source": "text",
         "text": "地球到月球大约多远"
       },
-      "intent_id": 49,
+      "intent_id": 148,
       "wait": {
-        "elapsed_sec": 120.2,
+        "elapsed_sec": 100.9,
         "final": {
-          "status": "running",
-          "msg": null,
+          "status": "failed",
+          "msg": "ark responses.create failed: Request timed out., request_id: 20260819154908x68UjADrFqiak74uJ2gm",
           "text": "地球到月球大约多远",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "answer_text",
+            "type": "text"
+          },
           "caps": [
             "query.content"
           ],
@@ -2186,8 +2563,8 @@
             {
               "step": 1,
               "capability": "query.content",
-              "status": 1,
-              "msg": "",
+              "status": 3,
+              "msg": "ark responses.create failed: Request timed out., request_id: 20260819154908x68UjADrFqiak74uJ2gm",
               "edge": "edge-node-9tkgMTtn",
               "timing": "immediate"
             }
@@ -2199,7 +2576,7 @@
         },
         "snapshots": [
           {
-            "t": 0.1,
+            "t": 0.0,
             "http": 200,
             "status": "intent_received",
             "msg": null,
@@ -2211,12 +2588,17 @@
             "step_outputs_keys": null
           },
           {
-            "t": 6.3,
+            "t": 6.1,
             "http": 200,
-            "status": "intent_dispatched",
+            "status": "intent_parsed",
             "msg": null,
             "text": "地球到月球大约多远",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
             "caps": [
               "query.content"
             ],
@@ -2227,12 +2609,17 @@
             "step_outputs_keys": null
           },
           {
-            "t": 98.8,
+            "t": 9.2,
             "http": 200,
             "status": "running",
             "msg": null,
             "text": "地球到月球大约多远",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
             "caps": [
               "query.content"
             ],
@@ -2243,19 +2630,75 @@
             "step_outputs_keys": [
               "1"
             ]
+          },
+          {
+            "t": 100.9,
+            "http": 200,
+            "status": "failed",
+            "msg": "ark responses.create failed: Request timed out., request_id: 20260819154908x68UjADrFqiak74uJ2gm",
+            "text": "地球到月球大约多远",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
+          },
+          {
+            "t": 100.9,
+            "http": 200,
+            "status": "failed",
+            "msg": "ark responses.create failed: Request timed out., request_id: 20260819154908x68UjADrFqiak74uJ2gm",
+            "text": "地球到月球大约多远",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "steps": [
+              {
+                "step": 1,
+                "capability": "query.content",
+                "status": 3,
+                "msg": "ark responses.create failed: Request timed out., request_id: 20260819154908x68UjADrFqiak74uJ2gm",
+                "edge": "edge-node-9tkgMTtn",
+                "timing": "immediate"
+              }
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787062387715,\"context\":{\"answer_text\":null},\"created_at\":1787062387.7157514,\"ctx_param\":{\"answer_text\":null},\"edge_id\":\"\",\"edge_node_id\":\"edge-node-9tkgMTtn\",\"execution_plan\":[{\"assigned"
+          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787125740751,\"better_capabilities\":[],\"context\":{},\"created_at\":1787125740.752361,\"ctx_param\":{},\"detail\":\"ark responses.create failed: Request timed out., request_id: 20260819154908x68U"
         }
       },
       "judge": {
         "ok": false,
         "notes": [
-          "status=running"
+          "status=failed"
         ],
-        "status": "running",
+        "status": "failed",
         "caps": [
           "query.content"
         ]
@@ -2276,22 +2719,28 @@
       },
       "post_http": 200,
       "post": {
-        "edge_id": "",
-        "intent_id": 52,
+        "edge_id": "edge-node-CiqVl9ZB",
+        "intent_id": 149,
         "intent_status": "intent_received",
         "ok": true,
         "reply": "已收到指令（text）：今天天气适合散步吗",
         "source": "text",
         "text": "今天天气适合散步吗"
       },
-      "intent_id": 52,
+      "intent_id": 149,
       "wait": {
-        "elapsed_sec": 120.6,
+        "elapsed_sec": 67.2,
         "final": {
-          "status": "intent_dispatched",
+          "status": "succeeded",
           "msg": null,
           "text": "今天天气适合散步吗",
-          "presentation": null,
+          "presentation": {
+            "channel": "iphone",
+            "endpoint": "edge-node-CiqVl9ZB",
+            "from": "answer_text",
+            "text": "我不知道，缺少您所在的具体位置以及当地今日的实时天气相关信息。",
+            "type": "text"
+          },
           "caps": [
             "query.content"
           ],
@@ -2302,23 +2751,42 @@
             {
               "step": 1,
               "capability": "query.content",
-              "status": null,
+              "status": 2,
               "msg": "",
               "edge": "edge-node-9tkgMTtn",
               "timing": "immediate"
             }
           ],
           "has_status_log": true,
-          "step_outputs_keys": null
+          "step_outputs_keys": [
+            "1"
+          ]
         },
         "snapshots": [
           {
-            "t": 0.1,
+            "t": 0.0,
+            "http": 200,
+            "status": "intent_received",
+            "msg": null,
+            "text": "今天天气适合散步吗",
+            "presentation": null,
+            "caps": [],
+            "edges": [],
+            "has_status_log": true,
+            "step_outputs_keys": null
+          },
+          {
+            "t": 9.2,
             "http": 200,
             "status": "intent_parsed",
             "msg": null,
             "text": "今天天气适合散步吗",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
             "caps": [
               "query.content"
             ],
@@ -2329,12 +2797,17 @@
             "step_outputs_keys": null
           },
           {
-            "t": 3.1,
+            "t": 12.2,
             "http": 200,
             "status": "intent_dispatched",
             "msg": null,
             "text": "今天天气适合散步吗",
-            "presentation": null,
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
             "caps": [
               "query.content"
             ],
@@ -2343,19 +2816,98 @@
             ],
             "has_status_log": true,
             "step_outputs_keys": null
+          },
+          {
+            "t": 58.0,
+            "http": 200,
+            "status": "running",
+            "msg": null,
+            "text": "今天天气适合散步吗",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
+          },
+          {
+            "t": 67.1,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "今天天气适合散步吗",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "text": "我不知道，缺少您所在的具体位置以及当地今日的实时天气相关信息。",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
+          },
+          {
+            "t": 67.1,
+            "http": 200,
+            "status": "succeeded",
+            "msg": null,
+            "text": "今天天气适合散步吗",
+            "presentation": {
+              "channel": "iphone",
+              "endpoint": "edge-node-CiqVl9ZB",
+              "from": "answer_text",
+              "text": "我不知道，缺少您所在的具体位置以及当地今日的实时天气相关信息。",
+              "type": "text"
+            },
+            "caps": [
+              "query.content"
+            ],
+            "edges": [
+              "edge-node-9tkgMTtn"
+            ],
+            "steps": [
+              {
+                "step": 1,
+                "capability": "query.content",
+                "status": 2,
+                "msg": "",
+                "edge": "edge-node-9tkgMTtn",
+                "timing": "immediate"
+              }
+            ],
+            "has_status_log": true,
+            "step_outputs_keys": [
+              "1"
+            ]
           }
         ],
         "get_intent": {
           "http": 200,
-          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787062508072,\"created_at\":1787062508.0750246,\"edge_id\":\"\",\"edge_node_id\":\"edge-node-9tkgMTtn\",\"execution_plan\":[{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"capability\":\"query.content\",\"exe"
+          "body": "{\"assigned_edge_id\":\"edge-node-9tkgMTtn\",\"base_time\":1787125841684,\"better_capabilities\":[{\"capability\":\"weather.current\",\"reason\":\"\\u82e5\\u6709\\u4e13\\u95e8\\u7684\\u5b9e\\u65f6\\u5929\\u6c14\\u67e5\\u8be2\\u80fd\\u529b\\uff0c\\u53ef\\u66f4\\u51c6\\u786e"
         }
       },
       "judge": {
-        "ok": false,
-        "notes": [
-          "status=intent_dispatched"
-        ],
-        "status": "intent_dispatched",
+        "ok": true,
+        "notes": [],
+        "status": "succeeded",
         "caps": [
           "query.content"
         ]

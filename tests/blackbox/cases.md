@@ -2,7 +2,7 @@
 
 入口：`POST /api/v1/intent`（只给自然语言）  
 观察：`GET /api/v1/intent_detail?intent_id=`  
-Brain：`http://115.190.153.53:9527`  
+Brain：`http://127.0.0.1:9527`（本机 LAN Brain；拷到手机用 `http://192.168.3.73:9527`）  
 执行结果写入 [`log.md`](log.md)。
 
 **对外能力面（当前主路径）**
@@ -19,6 +19,7 @@ Brain：`http://115.190.153.53:9527`
 | `music.play` / `pause` / `stop` / `next` / `previous` | 网易云（Cast / TV） |
 | `execution_timing` | immediate / delay / interval / cron |
 | `clock.now` | 本机墙上时钟（`now_iso` + `time_text`）；禁止 LLM。问「现在几点了」应派此能力，不要派 `query.content` |
+| `math.calculate` | 确定性四则运算（`answer_text` + `result`）；禁止 LLM。问「一加一等于几」应派此能力，不要派 `query.content` |
 
 **观察约定**
 
@@ -187,9 +188,9 @@ Brain：`http://115.190.153.53:9527`
 - **期望 plan**：仅 `notify.speak`（text 含「你好」/「TTS」）。不要 `endpoint.feedback` 包一层，不要 query
 - **通过**：`succeeded`
 
-### Q4 简单算术问答
+### Q4 简单算术
 - **指令**：`一加一等于几`
-- **期望 plan**：`query.content` → `endpoint.feedback`（`$answer_text`）。无 camera / display / speak（未要求语音）
+- **期望 plan**：`math.calculate` → `endpoint.feedback`（`$answer_text`）。无 query.content / camera / display / speak（未要求语音）
 - **通过**：`succeeded`；detail 有 `answer_text` 或 feedback 产出
 
 ### Q5 专业域汉字（不投屏）
@@ -310,10 +311,10 @@ Brain：`http://115.190.153.53:9527`
 - **期望 plan**：`query.content` → `endpoint.feedback`。无 camera / display / speak
 - **通过**：`succeeded`；detail 有文字产出
 
-### Q28 问答且要语音
+### Q28 算术且要语音
 - **指令**：`用语音告诉我一加一等于几`
-- **期望 plan**：`query.content` → speak 或 endpoint voice。无 camera
-- **通过**：无拍照
+- **期望 plan**：`math.calculate` → speak 或 endpoint voice。无 query.content / camera
+- **通过**：无拍照；有算术答案
 
 ### 负例 / 边界
 

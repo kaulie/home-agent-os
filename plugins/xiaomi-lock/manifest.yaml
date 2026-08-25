@@ -1,0 +1,25 @@
+id: xiaomi-lock
+service_id: entry.lock
+group: lock
+version: "0.1.0"
+display_name: 小米门锁
+description: 经小米云只读门锁状态；禁止远程开锁；禁止 LLM
+
+capabilities:
+  - capability_id: lock.status
+    description: >
+      能：读取门锁是否上锁、门是否开着。
+      不能：远程开锁、开门、TTS、开灯。
+
+entry:
+  mac: mac/src/mac_edge/plugins/xiaomi_lock.py
+config:
+  - key: MAC_EDGE_XIAOMI_USERNAME
+    platform: mac
+    description: 小米账号；与鱼缸共用；本机 mac/.env，禁止入库
+  - key: MAC_EDGE_XIAOMI_PASSWORD
+    platform: mac
+    description: 小米账号密码；本机 mac/.env，禁止入库
+  - key: MAC_EDGE_XIAOMI_LOCK_DID
+    platform: mac
+    description: 可选；多把锁时指定 did

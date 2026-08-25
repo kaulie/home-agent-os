@@ -1,1 +1,1 @@
-"""Local plugins (Chromecast display, notify.speak, vision, query, clock.now, light.set, …)."""
+"""Local plugins (Chromecast display, notify.speak, vision, query, clock.now, math.calculate, …)."""

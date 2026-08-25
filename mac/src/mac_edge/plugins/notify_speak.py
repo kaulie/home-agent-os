@@ -15,6 +15,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from mac_edge.tts_playback import playback_session
+
 log = logging.getLogger("mac_edge.notify_speak")
 
 SAY_BIN = "/usr/bin/say"
@@ -210,29 +212,30 @@ def speak(
     backend = _tts_backend()
     errors: list[str] = []
 
-    if backend == "edge":
-        edge_voice = _edge_voice_for_lang(lang_s, voice)
+    with playback_session():
+        if backend == "edge":
+            edge_voice = _edge_voice_for_lang(lang_s, voice)
+            try:
+                _edge_tts_speak(body, voice=edge_voice, timeout_sec=timeout_sec)
+                return f"spoke via edge-tts voice={edge_voice}"
+            except NotifySpeakError as e:
+                errors.append(str(e))
+                log.warning("edge-tts path failed: %s — trying macOS say", e)
+
+        say_voice = voice if (voice and backend == "say") else _pick_say_voice(lang_s)
         try:
-            _edge_tts_speak(body, voice=edge_voice, timeout_sec=timeout_sec)
-            return f"spoke via edge-tts voice={edge_voice}"
+            _say(body, voice=say_voice, timeout_sec=timeout_sec)
+            return f"spoke via say voice={say_voice or 'default'}"
         except NotifySpeakError as e:
             errors.append(str(e))
-            log.warning("edge-tts path failed: %s — trying macOS say", e)
+            log.warning("say path failed: %s — trying pyttsx3", e)
 
-    say_voice = voice if (voice and backend == "say") else _pick_say_voice(lang_s)
-    try:
-        _say(body, voice=say_voice, timeout_sec=timeout_sec)
-        return f"spoke via say voice={say_voice or 'default'}"
-    except NotifySpeakError as e:
-        errors.append(str(e))
-        log.warning("say path failed: %s — trying pyttsx3", e)
-
-    try:
-        _pyttsx3_fallback(body)
-        return "spoke via pyttsx3"
-    except NotifySpeakError as e:
-        errors.append(str(e))
-        raise NotifySpeakError("; ".join(errors)) from None
+        try:
+            _pyttsx3_fallback(body)
+            return "spoke via pyttsx3"
+        except NotifySpeakError as e:
+            errors.append(str(e))
+            raise NotifySpeakError("; ".join(errors)) from None
 
 
 def speak_from_params(params: dict[str, Any], *, timeout_sec: float = DEFAULT_TIMEOUT_SEC) -> str:

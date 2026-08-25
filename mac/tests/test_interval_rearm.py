@@ -88,6 +88,20 @@ class IntervalSchedulingTests(unittest.TestCase):
         self.assertFalse(_step_open_for_run(plan[0], self.iid, 1))
         self.assertIsNone(find_next_eligible_local_step(plan, self.eid, intent_id=self.iid))
 
+    def test_one_shot_running_is_not_rerun(self) -> None:
+        """Brain lag after success still shows RUNNING; do not speak twice."""
+        plan = [
+            {
+                "step": 1,
+                "status": STEP_RUNNING,
+                "assigned_edge_id": self.eid,
+                "capability": "voicewakeup.echo",
+                "execution_timing": {"mode": "immediate"},
+            }
+        ]
+        self.assertFalse(_step_open_for_run(plan[0], self.iid, 1))
+        self.assertIsNone(find_next_eligible_local_step(plan, self.eid, intent_id=self.iid))
+
     def test_future_interval_beat_not_due(self) -> None:
         set_beat(self.iid, 1, 1)
         plan = [

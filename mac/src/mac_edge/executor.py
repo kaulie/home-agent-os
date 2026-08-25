@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import Any
 
 from mac_edge.brain_client import BrainClient, BrainError
@@ -22,15 +23,42 @@ from mac_edge.plugins.chromecast_display import (
     photo_from_params,
     slideshow_from_params,
 )
+from mac_edge.plugins.xiaomi_tv_display import (
+    XiaomiTvError,
+    display_backend,
+    photo_from_params as xiaomi_photo_from_params,
+    slideshow_from_params as xiaomi_slideshow_from_params,
+)
+from mac_edge.capability_availability import is_available as capability_is_available
 from mac_edge.plugins.clock_now import ClockNowError, now_from_params
+from mac_edge.plugins.math_calculate import MathCalculateError, calculate_from_params
+from mac_edge.plugins.chat_smalltalk import ChatSmalltalkError, smalltalk_from_params
+from mac_edge.plugins.asset_upload import AssetUploadError, upload_from_params
+from mac_edge.plugins.voice_stream import VoiceStreamError, run_from_params as voice_stream_from_params
+from mac_edge.plugins.video_live_stream import (
+    VideoLiveStreamError,
+    run_from_params as video_live_stream_from_params,
+)
 from mac_edge.plugins.gopro_camera import (
     GoProCameraError,
     capture_from_params,
     humanize_capture_error,
 )
+from mac_edge.plugins.hisense_ac import HisenseAcError, set_from_params as climate_set_from_params
+from mac_edge.plugins.xiaomi_aquarium import (
+    XiaomiAquariumError,
+    set_from_params as aquarium_set_from_params,
+)
+from mac_edge.plugins.xiaomi_lock import (
+    XiaomiLockError,
+    status_from_params as lock_status_from_params,
+)
 from mac_edge.plugins.livingroom_light import LivingRoomLightError, set_from_params
 from mac_edge.plugins.notify_speak import NotifySpeakError, prefetch_from_params, speak_from_params
+from mac_edge.plugins.voicewakeup_echo import VoiceWakeupEchoError, echo_from_params
+from mac_edge.plugins.voice_test.trial import VoiceTestError, run_trial_from_params
 from mac_edge.plugins.query_content import QueryContentError, query_from_params
+from mac_edge.plugins.search_images import SearchImagesError, search_from_params
 from mac_edge.plugins.vision_ask import VisionAskError, ask_from_params
 from mac_edge.plugins.vision_perceive import VisionPerceiveError, perceive_from_params
 from mac_edge.runtime_context import (
@@ -53,6 +81,9 @@ EMPTY_PLAN_MSG = "execution_plan 为空，无法调度"
 
 # (intent_id, step) currently inside _execute_capability on this process.
 _EXECUTING_STEPS: set[tuple[str, int]] = set()
+# Wall-clock start of the current local RUNNING attempt.
+_STEP_STARTED_AT_MS: dict[tuple[str, int], int] = {}
+_CAP_EXEC_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cap-exec")
 
 # Deadline-aware idle sleep: never longer than this, and never more than half
 # the remaining time — so wakes get denser as exec_time approaches.
@@ -61,6 +92,82 @@ DEADLINE_SLEEP_MIN_SEC = 0.1
 # Prefetch TTS when a timed speak is this far from due (ms).
 _PREFETCH_SPEAK_WITHIN_MS = 25_000
 _PREFETCH_SPEAK_MIN_REMAINING_MS = 1_500
+
+
+def capability_timeout_msg(capability_id: str, timeout_sec: float) -> str:
+    cap = (capability_id or "capability").strip() or "capability"
+    sec = int(max(1.0, float(timeout_sec)))
+    return f"{cap} 超时（>{sec}s），已回收"
+
+
+def _step_key(intent_id: str, step_num: int) -> tuple[str, int]:
+    return ((intent_id or "").strip(), int(step_num))
+
+
+def _mark_step_started(intent_id: str, step_num: int, *, ts_ms: int | None = None) -> int:
+    started = int(ts_ms) if ts_ms is not None else BRAIN_CLOCK.now_ms()
+    _STEP_STARTED_AT_MS[_step_key(intent_id, step_num)] = started
+    return started
+
+
+def _clear_step_started(intent_id: str, step_num: int) -> None:
+    _STEP_STARTED_AT_MS.pop(_step_key(intent_id, step_num), None)
+
+
+def running_since_ms(
+    intent: dict[str, Any] | None,
+    intent_id: str,
+    step_num: int,
+) -> int | None:
+    """Best-effort RUNNING start time: local tracker, then Brain step_log."""
+    key = _step_key(intent_id, step_num)
+    local = _STEP_STARTED_AT_MS.get(key)
+    if local is not None:
+        return int(local)
+    if not isinstance(intent, dict):
+        return None
+    latest: int | None = None
+    for entry in intent.get("step_log") or []:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            if int(entry.get("step") or 0) != int(step_num):
+                continue
+            if int(entry.get("status") or -1) != STEP_RUNNING:
+                continue
+            ts = int(entry.get("ts") or 0)
+        except (TypeError, ValueError):
+            continue
+        if ts <= 0:
+            continue
+        if latest is None or ts > latest:
+            latest = ts
+    return latest
+
+
+def _execute_capability_bounded(
+    cap: str,
+    asset: CapAsset,
+    *,
+    params: dict[str, str],
+    config: Config,
+) -> tuple[bool, str, dict[str, Any]]:
+    """Run capability with a wall-clock timeout; orphaned worker may still finish later."""
+    timeout = float(getattr(config, "capability_timeout_sec", 300.0) or 300.0)
+    timeout = max(30.0, min(timeout, 3600.0))
+    fut = _CAP_EXEC_POOL.submit(
+        _execute_capability,
+        cap,
+        asset,
+        params=params,
+        config=config,
+    )
+    try:
+        return fut.result(timeout=timeout)
+    except FuturesTimeoutError:
+        msg = capability_timeout_msg(cap, timeout)
+        log.error("capability timeout cap=%s limit_sec=%s", cap, int(timeout))
+        return False, msg, {}
 
 
 def sleep_sec_until_deadline(
@@ -269,7 +376,7 @@ def handle_intent(
     while True:
         # Advance past interval/cron beats that already missed their window.
         # Also reclaim stale RUNNING/FAILED and close exhausted series on Brain.
-        _advance_skipped_beats(plan, iid, eid, brain=brain)
+        _advance_skipped_beats(plan, iid, eid, brain=brain, intent=intent, config=config)
 
         step = find_next_eligible_local_step(plan, eid, intent_id=iid)
         if step is None:
@@ -363,14 +470,29 @@ def handle_intent(
             )
 
         _EXECUTING_STEPS.add((iid, step_num))
+        _mark_step_started(iid, step_num)
         cap_asset = CapAsset(manager=asset_mgr, intent_id=iid, step_num=step_num)
         try:
-            ok, message, outputs = _execute_capability(cap, cap_asset, params=params, config=config)
+            avail = capability_is_available(cap, config=config)
+            if not avail.ok:
+                ok, message, outputs = False, avail.msg, {}
+                log.warning(
+                    "intent %s step %s: is_available failed (%s): %s",
+                    iid,
+                    step_num,
+                    cap,
+                    message,
+                )
+            else:
+                ok, message, outputs = _execute_capability_bounded(
+                    cap, cap_asset, params=params, config=config
+                )
         except Exception as e:
             ok, message, outputs = False, f"{type(e).__name__}: {e}", {}
             log.exception("intent %s step %s: capability crashed (%s)", iid, step_num, cap)
         finally:
             _EXECUTING_STEPS.discard((iid, step_num))
+            _clear_step_started(iid, step_num)
         if not ok:
             message = (message or "").strip() or f"{cap} 失败"
             step["msg"] = message
@@ -709,23 +831,65 @@ def _advance_skipped_beats(
     edge_id: str,
     *,
     brain: BrainClient | None = None,
+    intent: dict[str, Any] | None = None,
+    config: Config | None = None,
 ) -> None:
     """Skip interval/cron beats past the miss window; reclaim stale RUNNING/FAILED.
 
-    Live RUNNING (this process inside execute) is busy, not missed.
+    Live RUNNING (this process inside execute) is busy, not missed — unless it
+    exceeds capability_timeout_sec (wall clock), in which case we fail+report.
     Stale RUNNING after restart, or FAILED left from a beat, can skip and re-arm.
     Skip late unstarted beats until the next wait/due slot; do not catch up.
     """
     now = BRAIN_CLOCK.now_ms()
     eid = edge_id.strip()
+    timeout_sec = float(
+        getattr(config, "capability_timeout_sec", 300.0) if config is not None else 300.0
+    )
+    timeout_sec = max(30.0, min(timeout_sec, 3600.0))
+    timeout_ms = int(timeout_sec * 1000)
     for step in plan:
         assigned = str(step.get("assigned_edge_id") or "").strip()
         if assigned != eid:
             continue
         n = int(step.get("step") or 0)
         st = step_status(step)
-        if st == STEP_RUNNING and _is_locally_executing(intent_id, n):
-            continue
+        cap = str(step.get("capability") or "").strip()
+        # Wall-clock reclaim for stuck RUNNING (one-shot or recurring beat).
+        if st == STEP_RUNNING:
+            since = running_since_ms(intent, intent_id, n)
+            if since is not None and now - since >= timeout_ms:
+                fail_msg = capability_timeout_msg(cap, timeout_sec)
+                log.error(
+                    "intent %s step %s: %s (running_for_ms=%s)",
+                    intent_id,
+                    n,
+                    fail_msg,
+                    now - since,
+                )
+                step["status"] = STEP_FAILED
+                step["msg"] = fail_msg
+                _clear_step_started(intent_id, n)
+                _EXECUTING_STEPS.discard(_step_key(intent_id, n))
+                _try_post_step_status(
+                    brain,
+                    intent_id,
+                    n,
+                    status=STEP_FAILED,
+                    edge_id=eid,
+                    msg=fail_msg,
+                )
+                if brain is not None:
+                    finalize_intent_from_plan(
+                        brain,
+                        intent_id,
+                        eid,
+                        plan,
+                        current_wire="running",
+                    )
+                continue
+            if _is_locally_executing(intent_id, n):
+                continue
         timing = parse_execution_timing(step)
         if not timing.is_recurring:
             if timing.mode == MODE_DELAY and st == STEP_WAITING:
@@ -798,6 +962,7 @@ def _advance_skipped_beats(
                 gate.reason,
             )
             _rearm_recurring_waiting(brain, intent_id, eid, step, n)
+
 
 
 def unique_assigned_edge_ids(plan: list[dict[str, Any]]) -> list[str]:
@@ -921,14 +1086,19 @@ def _is_locally_executing(intent_id: str, step_num: int) -> bool:
 
 
 def _step_open_for_run(step: dict[str, Any], intent_id: str, step_num: int) -> bool:
-    """WAITING, or stale RUNNING/FAILED on a recurring step this process is not running."""
+    """WAITING, or stale RUNNING/FAILED on a recurring step this process is not running.
+
+    One-shot RUNNING is in-flight (or just finished while Brain still shows
+    running). Re-running it would speak/act twice. Timeout reclaim in
+    ``_advance_skipped_beats`` can fail a stuck one-shot; until then skip.
+    """
     st = step_status(step)
     if st == STEP_WAITING:
         return True
     if _is_locally_executing(intent_id, step_num):
         return False
     if st == STEP_RUNNING:
-        return True
+        return parse_execution_timing(step).is_recurring
     if st == STEP_FAILED and parse_execution_timing(step).is_recurring:
         return True
     return False
@@ -1130,27 +1300,41 @@ def _execute_capability(
     """
     if cap == "display.photo":
         try:
-            msg = photo_from_params(
-                params,
-                asset=asset,
-                display_base_url=config.cast_display_url,
-                timeout_sec=config.display_http_timeout_sec,
-            )
-            return True, msg, {}
-        except (CastError, AssetError) as e:
+            if display_backend() == "xiaomi":
+                msg, outputs = xiaomi_photo_from_params(
+                    params,
+                    asset=asset,
+                    timeout_sec=config.display_http_timeout_sec,
+                )
+            else:
+                msg, outputs = photo_from_params(
+                    params,
+                    asset=asset,
+                    display_base_url=config.cast_display_url,
+                    timeout_sec=config.display_http_timeout_sec,
+                )
+            return True, msg, outputs
+        except (CastError, XiaomiTvError, AssetError) as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}
     if cap == "display.slideshow":
         try:
-            msg = slideshow_from_params(
-                params,
-                asset=asset,
-                display_base_url=config.cast_display_url,
-                timeout_sec=config.display_http_timeout_sec,
-            )
-            return True, msg, {}
-        except (CastError, AssetError) as e:
+            if display_backend() == "xiaomi":
+                msg, outputs = xiaomi_slideshow_from_params(
+                    params,
+                    asset=asset,
+                    timeout_sec=config.display_http_timeout_sec,
+                )
+            else:
+                msg, outputs = slideshow_from_params(
+                    params,
+                    asset=asset,
+                    display_base_url=config.cast_display_url,
+                    timeout_sec=config.display_http_timeout_sec,
+                )
+            return True, msg, outputs
+        except (CastError, XiaomiTvError, AssetError) as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}
@@ -1159,6 +1343,14 @@ def _execute_capability(
             msg = speak_from_params(params)
             return True, msg, {}
         except NotifySpeakError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "voicewakeup.echo":
+        try:
+            msg, outputs = echo_from_params(params)
+            return True, msg, outputs
+        except VoiceWakeupEchoError as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}
@@ -1198,11 +1390,63 @@ def _execute_capability(
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}
+    if cap == "search.images":
+        try:
+            msg, outputs = search_from_params(
+                params,
+                asset=asset,
+                timeout_sec=float(config.query_http_timeout_sec),
+            )
+            return True, msg, outputs
+        except (SearchImagesError, AssetError) as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
     if cap == "clock.now":
         try:
             msg, outputs = now_from_params(params)
             return True, msg, outputs
         except ClockNowError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "math.calculate":
+        try:
+            msg, outputs = calculate_from_params(params)
+            return True, msg, outputs
+        except MathCalculateError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "chat.smalltalk":
+        try:
+            msg, outputs = smalltalk_from_params(params)
+            return True, msg, outputs
+        except ChatSmalltalkError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "asset.upload":
+        try:
+            msg, outputs = upload_from_params(params, asset=asset)
+            return True, msg, outputs
+        except AssetUploadError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "voice.stream":
+        try:
+            msg, outputs = voice_stream_from_params(params)
+            return True, msg, outputs
+        except VoiceStreamError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "video.live_stream":
+        try:
+            msg, outputs = video_live_stream_from_params(params)
+            return True, msg, outputs
+        except VideoLiveStreamError as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}
@@ -1221,6 +1465,38 @@ def _execute_capability(
             msg, outputs = set_from_params(params)
             return True, msg, outputs
         except LivingRoomLightError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "climate.set":
+        try:
+            msg, outputs = climate_set_from_params(params)
+            return True, msg, outputs
+        except HisenseAcError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "aquarium.set":
+        try:
+            msg, outputs = aquarium_set_from_params(params)
+            return True, msg, outputs
+        except XiaomiAquariumError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "lock.status":
+        try:
+            msg, outputs = lock_status_from_params(params)
+            return True, msg, outputs
+        except XiaomiLockError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "voice_test.run_trial":
+        try:
+            msg, outputs = run_trial_from_params(params, asset=asset)
+            return True, msg, outputs
+        except VoiceTestError as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}

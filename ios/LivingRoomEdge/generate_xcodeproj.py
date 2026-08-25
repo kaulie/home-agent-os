@@ -26,6 +26,16 @@ class SwiftFile:
     name: str
 
 
+@dataclass(frozen=True)
+class ResourceFile:
+    path: Path
+    group_path: str
+    name: str
+
+
+_AUDIO_EXTS = {".m4a", ".wav", ".mp3", ".caf", ".aiff"}
+
+
 def collect_swift() -> list[SwiftFile]:
     files: list[SwiftFile] = []
     for f in sorted(SRC.rglob("*.swift")):
@@ -35,9 +45,24 @@ def collect_swift() -> list[SwiftFile]:
     return files
 
 
+def collect_resources() -> list[ResourceFile]:
+    files: list[ResourceFile] = []
+    for f in sorted(SRC.rglob("*")):
+        if not f.is_file():
+            continue
+        if f.suffix.lower() not in _AUDIO_EXTS:
+            continue
+        rel = f.relative_to(SRC)
+        parent = "" if str(rel.parent) == "." else str(rel.parent)
+        files.append(ResourceFile(path=f, group_path=parent, name=f.name))
+    return files
+
+
 def main() -> None:
     files = collect_swift()
+    resources = collect_resources()
     info_plist = SRC / "Info.plist"
+    assets = SRC / "Assets.xcassets"
 
     project_id = xid()
     target_id = xid()
@@ -54,22 +79,40 @@ def main() -> None:
     project_config_release = xid()
     target_config_list = xid()
     project_config_list = xid()
+    assets_ref = xid() if assets.is_dir() else None
+    assets_build = xid() if assets.is_dir() else None
 
     file_refs: dict[SwiftFile, str] = {}
     build_files: dict[SwiftFile, str] = {}
     for f in files:
         file_refs[f] = xid()
         build_files[f] = xid()
+    resource_refs: dict[ResourceFile, str] = {}
+    resource_build_files: dict[ResourceFile, str] = {}
+    for f in resources:
+        resource_refs[f] = xid()
+        resource_build_files[f] = xid()
     info_ref = xid()
 
     group_ids: dict[str, str] = {"": src_group}
+    all_group_paths: set[str] = set(group_ids.keys())
     for f in files:
-        parts = list(Path(f.group_path).parts) if f.group_path else []
-        path = ""
-        for part in parts:
-            path = f"{path}/{part}" if path else part
-            if path not in group_ids:
-                group_ids[path] = xid()
+        if f.group_path:
+            parts = list(Path(f.group_path).parts)
+            path = ""
+            for part in parts:
+                path = f"{path}/{part}" if path else part
+                all_group_paths.add(path)
+    for f in resources:
+        if f.group_path:
+            parts = list(Path(f.group_path).parts)
+            path = ""
+            for part in parts:
+                path = f"{path}/{part}" if path else part
+                all_group_paths.add(path)
+    for path in sorted(all_group_paths):
+        if path and path not in group_ids:
+            group_ids[path] = xid()
 
     def group_children(group_path: str) -> list[str]:
         out: list[str] = []
@@ -82,8 +125,13 @@ def main() -> None:
         for f, fid in sorted(file_refs.items(), key=lambda x: x[0].name):
             if f.group_path == group_path:
                 out.append(fid)
+        for f, fid in sorted(resource_refs.items(), key=lambda x: x[0].name):
+            if f.group_path == group_path:
+                out.append(fid)
         if group_path == "" and info_plist.exists():
             out.append(info_ref)
+        if group_path == "" and assets_ref:
+            out.append(assets_ref)
         return out
 
     lines: list[str] = []
@@ -100,6 +148,14 @@ def main() -> None:
         lines.append(
             f"\t\t{bid} /* {f.name} in Sources */ = {{isa = PBXBuildFile; fileRef = {file_refs[f]} /* {f.name} */; }};"
         )
+    for f, bid in resource_build_files.items():
+        lines.append(
+            f"\t\t{bid} /* {f.name} in Resources */ = {{isa = PBXBuildFile; fileRef = {resource_refs[f]} /* {f.name} */; }};"
+        )
+    if assets_ref and assets_build:
+        lines.append(
+            f"\t\t{assets_build} /* Assets.xcassets in Resources */ = {{isa = PBXBuildFile; fileRef = {assets_ref} /* Assets.xcassets */; }};"
+        )
     lines.append("/* End PBXBuildFile section */")
     lines.append("")
 
@@ -111,9 +167,17 @@ def main() -> None:
         lines.append(
             f"\t\t{fid} /* {f.name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {f.name}; sourceTree = \"<group>\"; }};"
         )
+    for f, fid in resource_refs.items():
+        lines.append(
+            f"\t\t{fid} /* {f.name} */ = {{isa = PBXFileReference; lastKnownFileType = audio; path = {f.name}; sourceTree = \"<group>\"; }};"
+        )
     lines.append(
         f"\t\t{info_ref} /* Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = \"<group>\"; }};"
     )
+    if assets_ref:
+        lines.append(
+            f"\t\t{assets_ref} /* Assets.xcassets */ = {{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = \"<group>\"; }};"
+        )
     lines.append("/* End PBXFileReference section */")
     lines.append("")
 
@@ -224,6 +288,10 @@ def main() -> None:
     lines.append("\t\t\tisa = PBXResourcesBuildPhase;")
     lines.append("\t\t\tbuildActionMask = 2147483647;")
     lines.append("\t\t\tfiles = (")
+    for f, bid in resource_build_files.items():
+        lines.append(f"\t\t\t\t{bid} /* {f.name} in Resources */,")
+    if assets_build:
+        lines.append(f"\t\t\t\t{assets_build} /* Assets.xcassets in Resources */,")
     lines.append("\t\t\t);")
     lines.append("\t\t\trunOnlyForDeploymentPostprocessing = 0;")
     lines.append("\t\t};")
@@ -272,13 +340,13 @@ def main() -> None:
         lines.append(f"\t\t{cfg_id} /* {name} */ = {{")
         lines.append("\t\t\tisa = XCBuildConfiguration;")
         lines.append("\t\t\tbuildSettings = {")
-        lines.append("\t\t\t\tCODE_SIGN_ENTITLEMENTS = LivingRoomEdge/LivingRoomEdge.entitlements;")
         lines.append("\t\t\t\tCODE_SIGN_STYLE = Automatic;")
         lines.append("\t\t\t\tCURRENT_PROJECT_VERSION = 4;")
         lines.append('\t\t\t\tDEVELOPMENT_TEAM = "";')
         lines.append("\t\t\t\tENABLE_PREVIEWS = YES;")
         lines.append("\t\t\t\tGENERATE_INFOPLIST_FILE = NO;")
         lines.append("\t\t\t\tINFOPLIST_FILE = LivingRoomEdge/Info.plist;")
+        lines.append('\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;')
         lines.append("\t\t\t\tLD_RUNPATH_SEARCH_PATHS = (")
         lines.append('\t\t\t\t\t"$(inherited)",')
         lines.append('\t\t\t\t\t"@executable_path/Frameworks",')
@@ -341,8 +409,11 @@ def main() -> None:
             encoding="utf-8",
         )
 
-    print(f"Wrote {PROJ / 'project.pbxproj'} with {len(files)} swift files")
-
+    extra = ", Assets.xcassets" if assets_ref else ""
+    print(
+        f"Wrote {PROJ / 'project.pbxproj'} with {len(files)} swift files, "
+        f"{len(resources)} audio resources{extra}"
+    )
 
 if __name__ == "__main__":
     main()

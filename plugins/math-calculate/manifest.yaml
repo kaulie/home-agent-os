@@ -1,0 +1,18 @@
+id: math-calculate
+service_id: local.math
+group: math
+version: "0.1.0"
+display_name: Local Math
+description: 确定性本地算术；禁止 LLM
+
+capabilities:
+  - capability_id: math.calculate
+    description: >
+      能：expression 为纯算式/算术问句（四则、括号、×÷、次方/平方/立方、根号/√、中英文数字），
+      产出 answer_text+result。例：一加一、1+1、3×5、二的三次方、根号4。
+      不能：应用题/方程/三角对数微积分/单位换算/笔顺几画/百科/报时/生图/TTS/拍照/开灯。
+      非上述形式禁止派本能力，应派 query.content 或 clock.now。无法解析则失败。
+
+entry:
+  mac: mac/src/mac_edge/plugins/math_calculate.py
+config: []

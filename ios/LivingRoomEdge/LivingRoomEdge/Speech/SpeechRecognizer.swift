@@ -3,6 +3,10 @@ import Foundation
 import Speech
 
 /// On-device speech → text (zh-CN). Used by the command-dispatch panel before POST to server.
+///
+/// Audio / Speech frameworks are created lazily on first mic tap — constructing
+/// `AVAudioEngine` / `SFSpeechRecognizer` during first frame has hung the main
+/// thread on device (UI appears frozen right after launch).
 @MainActor
 final class SpeechRecognizer: ObservableObject {
     @Published private(set) var transcript: String = ""
@@ -10,13 +14,13 @@ final class SpeechRecognizer: ObservableObject {
     @Published private(set) var statusMessage: String = ""
     @Published private(set) var lastError: String = ""
 
-    private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
+    private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
-    private let audioEngine = AVAudioEngine()
+    private var audioEngine: AVAudioEngine?
 
     var isAvailable: Bool {
-        speechRecognizer?.isAvailable == true
+        ensureSpeechRecognizer()?.isAvailable == true
     }
 
     func requestPermissions() async -> Bool {
@@ -26,7 +30,7 @@ final class SpeechRecognizer: ObservableObject {
             }
         }
         guard speechOk else {
-            lastError = "未授权语音识别（设置 → home agent edge → 语音识别）"
+            lastError = "未授权语音识别（设置 → HomeAgent Console → 语音识别）"
             return false
         }
 
@@ -36,7 +40,7 @@ final class SpeechRecognizer: ObservableObject {
             }
         }
         guard micOk else {
-            lastError = "未授权麦克风（设置 → home agent edge → 麦克风）"
+            lastError = "未授权麦克风（设置 → HomeAgent Console → 麦克风）"
             return false
         }
         return true
@@ -49,7 +53,7 @@ final class SpeechRecognizer: ObservableObject {
 
         let ok = await requestPermissions()
         guard ok else { return }
-        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+        guard let recognizer = ensureSpeechRecognizer(), recognizer.isAvailable else {
             lastError = "语音识别不可用（请用真机，并确认中文语音包）"
             return
         }
@@ -65,9 +69,9 @@ final class SpeechRecognizer: ObservableObject {
     }
 
     func stop() {
-        if audioEngine.isRunning {
-            audioEngine.stop()
-            audioEngine.inputNode.removeTap(onBus: 0)
+        if let engine = audioEngine, engine.isRunning {
+            engine.stop()
+            engine.inputNode.removeTap(onBus: 0)
         }
         recognitionRequest?.endAudio()
         recognitionRequest = nil
@@ -78,6 +82,20 @@ final class SpeechRecognizer: ObservableObject {
             statusMessage = transcript.isEmpty ? "已停止" : "识别完成"
         }
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private func ensureSpeechRecognizer() -> SFSpeechRecognizer? {
+        if let speechRecognizer { return speechRecognizer }
+        let next = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
+        speechRecognizer = next
+        return next
+    }
+
+    private func ensureAudioEngine() -> AVAudioEngine {
+        if let audioEngine { return audioEngine }
+        let next = AVAudioEngine()
+        audioEngine = next
+        return next
     }
 
     private func beginSession(recognizer: SFSpeechRecognizer) throws {
@@ -92,15 +110,16 @@ final class SpeechRecognizer: ObservableObject {
         request.shouldReportPartialResults = true
         recognitionRequest = request
 
-        let input = audioEngine.inputNode
+        let engine = ensureAudioEngine()
+        let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             self?.recognitionRequest?.append(buffer)
         }
 
-        audioEngine.prepare()
-        try audioEngine.start()
+        engine.prepare()
+        try engine.start()
 
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor in

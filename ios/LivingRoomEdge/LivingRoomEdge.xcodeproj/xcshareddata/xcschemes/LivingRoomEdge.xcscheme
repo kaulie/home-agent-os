@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "6D0ADAF360474F0F947E7C6A"
+               BlueprintIdentifier = "94DE8B462CF84593B62250B2"
                BuildableName = "LivingRoomEdge.app"
                BlueprintName = "LivingRoomEdge"
                ReferencedContainer = "container:LivingRoomEdge.xcodeproj">
@@ -43,7 +43,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "6D0ADAF360474F0F947E7C6A"
+            BlueprintIdentifier = "94DE8B462CF84593B62250B2"
             BuildableName = "LivingRoomEdge.app"
             BlueprintName = "LivingRoomEdge"
             ReferencedContainer = "container:LivingRoomEdge.xcodeproj">
@@ -60,7 +60,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "6D0ADAF360474F0F947E7C6A"
+            BlueprintIdentifier = "94DE8B462CF84593B62250B2"
             BuildableName = "LivingRoomEdge.app"
             BlueprintName = "LivingRoomEdge"
             ReferencedContainer = "container:LivingRoomEdge.xcodeproj">

@@ -1,0 +1,9 @@
+id: capabilities-summary
+service_id: system.capabilities
+group: meta
+version: 0.2.0
+capabilities:
+  - capabilities.summary
+platforms:
+  - brain
+notes: kind=system spoken summary of online Runtime capabilities; Brain executes.

@@ -25,9 +25,13 @@ class ChromecastDisplaySkill : Skill {
         capabilities = listOf(
             CapabilityDescriptor(
                 capabilityId = Capabilities.DISPLAY_PHOTO,
-                description = "能：把本步已给出的 image_ref（AssetRef）全屏投到本机屏幕。不能：拍照、自己捡图、收 photo_url、TTS、问答。缺 image_ref 则失败。",
+                role = "单图投屏器",
+                plannerRecognize = "把一张已有 Image Asset 投到电视/投屏端。入参 asset_ref（常为 \$asset_ref）。这是计划步，不能只用 presentation.endpoint 代替。多张轮播不要用本步",
+                typicalTriggers = listOf("把这张图投到电视", "投屏", "投到电视", "丢到电视", "放到电视"),
+                doNotDispatch = listOf("拍多图", "幻灯片", "放歌", "按厂商选 Chromecast"),
+                kind = "output",
                 inputSchema = mapOf(
-                    "image_ref" to SchemaField(
+                    "asset_ref" to SchemaField(
                         type = "string",
                         required = true,
                         description = "AssetRef JSON {asset_id, type}。禁止 photo_url。",

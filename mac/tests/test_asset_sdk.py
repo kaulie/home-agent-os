@@ -22,7 +22,7 @@ class CapAssetTests(unittest.TestCase):
         )
         asset = _cap(mgr)
         ref = asset.require_ref(
-            {"image_ref": json.dumps({"asset_id": "asset_x", "type": "image"})}
+            {"asset_ref": json.dumps({"asset_id": "asset_x", "type": "image"})}
         )
         self.assertEqual(ref.asset_id, "asset_x")
         self.assertEqual(asset.http_url(ref), "http://192.168.3.65:8080/a.jpg")
@@ -31,7 +31,7 @@ class CapAssetTests(unittest.TestCase):
         asset = _cap()
         refs = asset.require_refs(
             {
-                "image_refs": json.dumps(
+                "asset_refs": json.dumps(
                     [
                         {"asset_id": "a1", "type": "image"},
                         {"asset_id": "a2", "type": "image"},
@@ -41,7 +41,7 @@ class CapAssetTests(unittest.TestCase):
         )
         self.assertEqual([r.asset_id for r in refs], ["a1", "a2"])
 
-    def test_missing_image_ref_fails(self) -> None:
+    def test_missing_asset_ref_fails(self) -> None:
         asset = _cap()
         with self.assertRaises(AssetError):
             asset.require_ref({"query": "hi"})
@@ -61,6 +61,19 @@ class CapAssetTests(unittest.TestCase):
         kwargs = mgr.register_storage_locator.call_args.kwargs
         self.assertEqual(kwargs["key"], "foo.jpg")
         self.assertEqual(kwargs["producer"], "camera.capture")
+
+    def test_register_local_file(self) -> None:
+        mgr = MagicMock()
+        mgr.register_local_file.return_value = AssetRef(
+            asset_id="asset_local", type="image", mime_type="image/jpeg"
+        )
+        asset = _cap(mgr)
+        ref = asset.register_local_file("/tmp/a.jpg", producer="camera.capture")
+        self.assertEqual(ref.asset_id, "asset_local")
+        mgr.register_local_file.assert_called_once()
+        self.assertEqual(
+            mgr.register_local_file.call_args.kwargs["producer"], "camera.capture"
+        )
 
 
 if __name__ == "__main__":

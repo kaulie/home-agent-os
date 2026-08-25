@@ -2,10 +2,10 @@
 
 状态：**已批准**。本文是现行 DBA 合同，只描述当前库。实现：`server/sql/*.sql` + `server/db.py`。引擎 SQLite 3；表名与列名可平移到 Postgres。
 
-范围：intent 物流、Participant 注册与心跳、意图复盘、Asset 目录。  
+范围：intent 物流、Participant 注册与心跳、意图复盘、意图复杂度分类事件、Asset 目录、管理员调度策略 `edge_control_policy`、管理员操作日志 `admin_op_log`、**Entity Registry（一期 Device）**。  
 不在本期：Mac Edge `local_ledger.json` / `edge_id.json`、Android SharedPreferences、iOS UserDefaults。
 
-wire 名 `edge_id` / `assigned_edge_id` 仍用，值等于 `participant_id`。`location` 的入站别名是 `room`。
+wire 名 `edge_id` / 步上 `assigned_edge_id` 仍用，值等于 `participant_id`。`location` 的入站别名是 `room`。整单不再有 `jobs.assigned_edge_id` 或 `scheduler_node`。
 
 库文件：`server/data/brain.sqlite3`（环境变量 `BRAIN_DB_PATH`）。  
 运行参数：`journal_mode=WAL`，`foreign_keys=ON`，`busy_timeout=5000`，`synchronous=NORMAL`。
@@ -17,7 +17,7 @@ wire 名 `edge_id` / `assigned_edge_id` 仍用，值等于 `participant_id`。`l
 1. **标量进列，形状会变的数组/对象各自一列 JSON。** 禁止再套一层整份 job 的 JSON 列。`execution_plan` / `steps` / `step_log` 不拆行表。
 2. **拉取看 `jobs.status`，不另建队列表。** 非终态（以及 `succeeded` 且仍有 `pending_delivery.edge_id`）对 Edge 可见；终态行留给 `intent_detail`，不因 GET/pop 删除。
 3. **发出与规划都写 `jobs`。** 包括 `POST /api/v1/devices/living-room/intents`。
-4. **一套 intent 序号。** 存在 `meta.next_intent_id`。
+4. **一套 intent 序号。** `jobs.intent_id` 为 INTEGER PRIMARY KEY AUTOINCREMENT；`meta.next_intent_id` 仍用于应用层预分配并与 `sqlite_sequence` 对齐。
 5. **时间单位照 wire：** `base_time` / `client_time_ms` / `brain_time_ms` 为 Unix **毫秒**整数；`created_at` / `updated_at` / `registered_at` 为 Unix **秒**浮点。
 6. Plugin 只看本步已 resolve 的入参；本 schema 不引入 step 间读取。
 7. **不加二级索引。** 只保留 PRIMARY KEY。
@@ -31,25 +31,28 @@ wire 名 `edge_id` / `assigned_edge_id` 仍用，值等于 `participant_id`。`l
 ```mermaid
 erDiagram
   meta ||--|| meta : "kv"
-  participants ||--o| jobs : "participant_id as assigned_edge_id"
+  participants ||--o| jobs : "issuer edge_id / step assigned_edge_id"
   jobs ||--o{ intent_reviews : "intent_id, no FK"
+  jobs ||--o{ intent_classification_events : "intent_id, no FK"
+  jobs ||--o{ intent_user_feedback : "intent_id, no FK"
   jobs ||--o{ assets : "origin_intent_id, no FK"
   assets ||--o{ asset_grants : "asset_id + intent_id"
+  participants ||--o{ edge_control_policy : "participant_id, no FK"
+  participants ||--o{ admin_op_log : "participant_id, no FK"
 
   meta {
     text key PK
     text value
   }
   jobs {
-    text intent_id PK
+    int intent_id PK "AUTOINCREMENT"
     text job_id
     text status
     text text
     text source
+    text intent_origin
     text edge_id
-    text assigned_edge_id
     text edge_node_id
-    text scheduler_node
     text error
     text msg
     text detail
@@ -106,11 +109,33 @@ erDiagram
     text planner
     text model
     int cost_ms
+    text request_payload
     text raw_response
     text parsed_json
+    text response_json
     text execution_plan
     text error
     real created_at
+  }
+  intent_classification_events {
+    int event_id PK "AUTOINCREMENT"
+    text intent_id
+    text text
+    text classifier_version
+    real score
+    text classification
+    text features
+    text candidates
+    real created_at
+  }
+  intent_user_feedback {
+    int feedback_id PK
+    int intent_id
+    text participant_id
+    text understanding
+    text response_speed
+    real created_at
+    real updated_at
   }
   assets {
     text asset_id PK
@@ -132,6 +157,28 @@ erDiagram
     text asset_id PK
     text intent_id PK
     real granted_at
+  }
+  entities {
+    text entity_id PK
+    text type
+    text name
+    text metadata_json
+    text state_json
+    text references_json
+    int created_at_ms
+    int updated_at_ms
+  }
+  admin_op_log {
+    int id PK "AUTOINCREMENT"
+    real ts
+    text actor
+    text action
+    text participant_id
+    text target_kind
+    text target_id
+    text extra
+    text result
+    text summary
   }
 ```
 
@@ -167,15 +214,14 @@ erDiagram
 
 | 列 | 类型 | 空 | 说明 |
 |----|------|----|------|
-| `intent_id` | TEXT PK | 否 | 与 wire `intent_id` 相同；序号型写作十进制字符串 `"1"` |
+| `intent_id` | INTEGER PK AUTOINCREMENT | 否 | 与 wire `intent_id` 同值（整数）；INSERT 省略时 SQLite 自增分配 |
 | `job_id` | TEXT | 是 | 等于 `str(intent_id)` |
 | `status` | TEXT | 否 | 权威物流状态（读回时 `intent_status` 与此同值） |
 | `text` | TEXT | 是 | 用户原话 |
 | `source` | TEXT | 是 | `text` \| `voice` |
+| `intent_origin` | TEXT | 是 | `lan` \| `cloud`：受理该 intent 的 Brain 控制面（本机 LAN 实例或云实例），不是用户所在地。缺省/历史行为 NULL。迁移：`server/sql/019_jobs_intent_origin.sql` |
 | `edge_id` | TEXT | 是 | **发出端** Participant id |
-| `assigned_edge_id` | TEXT | 是 | 执行该步/整单的 Runtime Participant id |
 | `edge_node_id` | TEXT | 是 | 最近一次上报的执行节点 |
-| `scheduler_node` | TEXT | 是 | 中控 |
 | `error` | TEXT | 是 | 失败原因 |
 | `msg` | TEXT | 是 | 与 `error` 同源的可读失败 |
 | `detail` | TEXT | 是 | 最近一次状态说明 |
@@ -247,7 +293,7 @@ Edge 拉取（`GET …/intents?edge_id=`）读本表。可见条件：`status` �
 
 复盘表。一场 **会话（session）** 会有多轮对话，每轮都可能再调 LLM，所以不能把「原文 + 解析」塞进 `jobs` 一行里盖掉。本表 **只追加**：同一 `session_id` 下多轮、同一 `intent_id` 上多次介入（重试 / 改口 / 换 planner）各占一行。
 
-不是物流、不给 Edge 拉取。不外键到 `jobs`。不存完整 system prompt、不存密钥。未声明的键不落库。
+不是物流、不给 Edge 拉取。不外键到 `jobs`。为换模型横向回放，**存完整 Ark HTTP body**（含 system + user messages）。**不存密钥**（Authorization / API key 不落库）。未声明的键不落库。迁移：`server/sql/008_intent_reviews.sql`、`009_intent_reviews_session.sql`、`021_intent_reviews_request_payload.sql`。
 
 | 列 | 类型 | 空 | 说明 |
 |----|------|----|------|
@@ -259,14 +305,50 @@ Edge 拉取（`GET …/intents?edge_id=`）读本表。可见条件：`status` �
 | `edge_id` | TEXT | 是 | 发出端 Participant id |
 | `planner` | TEXT | 是 | `ark` \| `heuristic` |
 | `model` | TEXT | 是 | 模型 id |
-| `cost_ms` | INTEGER | 是 | 调用耗时，毫秒 |
-| `raw_response` | TEXT | 是 | 这一次模型原文（字符串，禁止双重 JSON 编码） |
+| `cost_ms` | INTEGER | 是 | 这次 Ark HTTP 墙钟耗时，毫秒（缓存命中为 0；失败也写到失败时刻） |
+| `request_payload` | TEXT | 是 | JSON object，实际发给 Ark 的 HTTP body（`model` / `messages` / `temperature` / `max_tokens` / `response_format` / `extra_body` 等）。禁止含 Authorization |
+| `raw_response` | TEXT | 是 | 这一次助手原文（`choices[0].message.content`，字符串，禁止双重 JSON 编码） |
 | `parsed_json` | TEXT | 是 | JSON object，这一次结构化输出 |
+| `response_json` | TEXT | 是 | JSON object，Ark 完整响应（usage / reasoning_content / HTTP 错误体）。缓存命中可空 |
 | `execution_plan` | TEXT | 是 | JSON array，这一次抽出的 plan 快照 |
 | `error` | TEXT | 是 | 这一次调用或拆包失败 |
 | `created_at` | REAL | 否 | Unix 秒 |
 
 `jobs` 只跟当前这一单的执行；复盘按 `session_id` 再按 `review_id` 看整场对话里每一次 LLM。
+
+### 3.5a `intent_user_feedback`
+
+Intent Source 用户对单条 intent 的主观评价，与物流 / 复盘分开存。
+
+| 列 | 类型 | 空 | 说明 |
+|----|------|----|------|
+| `feedback_id` | INTEGER PK | 否 | 自增 |
+| `intent_id` | INTEGER | 否 | `jobs.intent_id` |
+| `participant_id` | TEXT | 否 | 提交评价的发出端 |
+| `understanding` | TEXT | 否 | `accurate` \| `inaccurate`（意图理解是否准确） |
+| `response_speed` | TEXT | 否 | `fast` \| `normal` \| `slow` |
+| `created_at` | REAL | 否 | Unix 秒，首次提交 |
+| `updated_at` | REAL | 否 | Unix 秒，末次改评 |
+
+`UNIQUE(intent_id, participant_id)`，同一人对同一 intent 可改评（upsert）。不外键到 `jobs`。迁移：`server/sql/015_intent_user_feedback.sql`。API：`POST/GET /api/v1/intent_feedback`。
+
+### 3.5b `intent_classification_events`
+
+Intent Complexity Classifier V1 的观察事件。Planner 之前对用户原话做规则打分，**只追加、不改物流、不改 `execution_plan`**。Dry-run `POST /api/v1/intent_classify` 可以没有 `intent_id`。不外键到 `jobs`。无二级索引。迁移：`server/sql/018_intent_classification_events.sql`。
+
+| 列 | 类型 | 空 | 说明 |
+|----|------|----|------|
+| `event_id` | INTEGER PK AUTOINCREMENT | 否 | 一次分类一行 |
+| `intent_id` | TEXT | 是 | 对应 `jobs.intent_id`；dry-run 可空 |
+| `text` | TEXT | 是 | 用户原话 |
+| `classifier_version` | TEXT | 是 | 如 `v1-rule` |
+| `score` | REAL | 是 | 加权分 |
+| `classification` | TEXT | 是 | `SIMPLE` \| `MEDIUM` \| `COMPLEX` |
+| `features` | TEXT | 是 | JSON object，特征计数 |
+| `candidates` | TEXT | 是 | JSON array，命中的 `capability_id` |
+| `created_at` | REAL | 否 | Unix 秒 |
+
+`features` / `candidates` 禁止双重 JSON 编码。未声明的键不落库。
 
 ### 3.6 `assets`
 
@@ -307,6 +389,66 @@ MVP：同一 intent 内才能 resolve。拥有 `asset_id` ≠ 有权读内容。
 
 临时 signed URL / token 不落本表。
 
+### 3.8 `edge_control_policy`
+
+管理员对节点 Role / Runtime capability 的调度开关。**不写 `participants` 心跳或注册列**。无行 = 管理员未干涉，判定时跳过本条。
+
+节点能被调度，须同时：
+
+1. 管理员允许（无策略行则跳过）
+2. 当前在线（Runtime 能力 30s；Intent Source / Endpoint 5 分钟心跳窗）
+3. 节点自己声明了该项 Role 或 capability
+
+Planner 选边、选 Endpoint、建 `capability_edge_mapping` 用这三条。禁用 `intent_source` 时该 Participant **不能** `POST`/`GET /api/v1/intent` 下发命令（`intent_detail` 仍可查）。管理页只在本机 `python3 admin/serve.py`（http://127.0.0.1:8788/），**不上云**。
+
+| 列 | 类型 | 空 | 说明 |
+|----|------|----|------|
+| `participant_id` | TEXT | 否 | PK 之一；无外键 |
+| `target_kind` | TEXT | 否 | PK 之一；`role` 或 `capability` |
+| `target_id` | TEXT | 否 | PK 之一。role：`intent_source` / `runtime` / `endpoint` / `observer`。capability：如 `camera.capture` |
+| `enabled` | INTEGER | 否 | 0 禁用（不可调度）；1 显式允许（与缺行相同） |
+| `updated_at` | REAL | 否 | Unix 秒 |
+
+写入：`INSERT … ON CONFLICT DO UPDATE`。启用某项可删行或写 `enabled=1`。未声明的键不落库。无二级索引。
+
+### 3.9 `admin_op_log`
+
+管理员策略操作的服务端日志。只记写：`POST /api/v1/admin/policy`、`PUT/POST /api/v1/admin/nodes/<id>/policy`。**不记**心跳、`GET /api/v1/admin/nodes`。迁移：`server/sql/017_admin_op_log.sql`。读取：`GET /api/v1/admin/logs?limit=`（默认 100，上限 200，最新在前）。与其它 admin 路由同一 `_admin_auth_error()`。
+
+无外键、无二级索引。`extra` 为可选 JSON（失败原因、bulk items）。`summary` 由 Brain 用 display_name / location / target 拼中文，给管理页直接显示。
+
+| 列 | 类型 | 空 | 说明 |
+|----|------|----|------|
+| `id` | INTEGER PK AUTOINCREMENT | 否 | 行号 |
+| `ts` | REAL | 否 | Unix 秒 |
+| `actor` | TEXT | 否 | 请求带了管理员令牌为 `admin`，否则空串 |
+| `action` | TEXT | 否 | `policy_enable` / `policy_disable` / `policy_replace` / `policy_toggle` |
+| `participant_id` | TEXT | 否 | 可空串（请求体无效时） |
+| `target_kind` | TEXT | 否 | `role` / `capability`；bulk 可空 |
+| `target_id` | TEXT | 否 | 如 `camera.capture`；bulk 可空 |
+| `extra` | TEXT | 是 | JSON object/array，失败时含 `error` |
+| `result` | TEXT | 否 | `ok` 或 `error` |
+| `summary` | TEXT | 否 | 中文一行，如 `关掉 客厅 · Mac Edge 的 camera.capture` |
+
+### 3.10 `entities`
+
+Entity Registry（World Model 锚点）。**与 `participants` / `assets` 正交**。公约：[`docs/entity-model.md`](entity-model.md)。迁移：`server/sql/016_entities.sql`。API：`GET/PUT /api/v1/entities`。
+
+一期 `type` 仅允许 `device`（CHECK）。`metadata` / `state` / `references` 存 JSON 对象字符串，不做列展开。无外键、无二级索引。Seed 写入客厅空调/大灯/GoPro/电视（`INSERT OR IGNORE`）。
+
+| 列 | 类型 | 空 | 说明 |
+|----|------|----|------|
+| `entity_id` | TEXT | 否 | PK，如 `ent_dev_livingroom_ac` |
+| `type` | TEXT | 否 | V1 仅 `device` |
+| `name` | TEXT | 否 | 用户可理解名 |
+| `metadata_json` | TEXT | 否 | 稳定 JSON，默认 `{}` |
+| `state_json` | TEXT | 否 | 动态 JSON，默认 `{}` |
+| `references_json` | TEXT | 否 | 可选关联 JSON，默认 `{}` |
+| `created_at_ms` | INTEGER | 否 | Unix **毫秒** |
+| `updated_at_ms` | INTEGER | 否 | Unix **毫秒** |
+
+写入：`INSERT … ON CONFLICT(entity_id) DO UPDATE`（可保留原 `created_at_ms`）。
+
 ---
 
 ## 4. JSON 合同
@@ -332,7 +474,7 @@ MVP：同一 intent 内才能 resolve。拥有 `asset_id` ≠ 有权读内容。
 
 `get_job` 读回时补 `intent_status`（= `status`）与 `id`（= `intent_id`）。
 
-`GET …/intents` 返回的对象就是 `jobs` 行（`id` = `intent_id`）。无 `intent_status` 查询时排除终态（`succeeded` 且仍有 `pending_delivery.edge_id` 除外）；带 `edge_id` 时行必须碰到该节点（顶层 `assigned_edge_id`、或 `scheduler_node`、或某 step 的 `assigned_edge_id`）。
+`GET …/intents` 返回的对象就是 `jobs` 行（`id` = `intent_id`）。无 `intent_status` 查询时排除终态（`succeeded` 且仍有 `pending_delivery.edge_id` 除外）；带 `edge_id` 时行必须碰到该节点（某 step 的 `assigned_edge_id`，或 `pending_delivery.edge_id`）。入站若仍带整单 `assigned_edge_id` / `scheduler_node` 则丢弃，不落库、不参与领取。
 
 ### 4.2 Participant 契约 JSON
 
@@ -355,7 +497,18 @@ MVP：同一 intent 内才能 resolve。拥有 `asset_id` ≠ 有权读内容。
 | 列 | JSON 类型 | 说明 |
 |----|-----------|------|
 | `parsed_json` | object | 模型整段结构化输出；原文字符串在 `raw_response` |
+| `request_payload` | object | 发给 Ark 的 HTTP JSON body；含完整 system/user messages，不含密钥 |
+| `response_json` | object | Ark 完整 API JSON（含 usage / thinking 字段若有）；助手正文仍以 `raw_response` 为准 |
 | `execution_plan` | object[] | 同 §4.4 的能力步，但是解析当时的快照 |
+
+### 4.3a `intent_classification_events` JSON
+
+标量见 §3.5b。禁止双重编码。未声明的键不落库。
+
+| 列 | JSON 类型 | 说明 |
+|----|-----------|------|
+| `features` | object | 计数特征：`capability_candidate_count` / `action_count` / `condition_count` / `sequence_count` / `parallel_count` / `temporal_count` / `context_reference_count` / `ambiguity` / `character_count` / `token_count` / `text_length_factor` |
+| `candidates` | object[] | `{capability_id, strength, terms[]}`；`strength` 为 `trigger` \| `recognize` \| `alias` |
 
 ### 4.4 `execution_plan[]`
 
@@ -365,7 +518,7 @@ MVP：同一 intent 内才能 resolve。拥有 `asset_id` ≠ 有权读内容。
 | `step` | integer | 是 | 从 1；缺省按数组下标 +1 |
 | `status` / `step_status` | integer | 否 | 见 §5.2 |
 | `msg` | string | 否 | 本步失败可读原因；失败步必须能填上 |
-| `assigned_edge_id` | string | 否 | 仅当与整单不同才出现 |
+| `assigned_edge_id` | string | 是 | 执行该步的 Runtime participant_id |
 | `input_constrict` | object | 否 | 本步入参；`$var` 由 **runtime** hydrate，库只存字面量 |
 | `output_constrict` | object | 否 | 键 → `{type, data_dest?}`；`data_dest=context` 才进 `ctx_param` |
 | `execution_timing` | object | 否 | 见 §4.8 |
@@ -391,6 +544,7 @@ MVP：同一 intent 内才能 resolve。拥有 `asset_id` ≠ 有权读内容。
 | `status` | integer | §5.2 |
 | `ts` | integer | Unix 毫秒（Edge 上报）或秒 |
 | `msg` | string | |
+| `edge_id` | string | 上报该条的 Runtime participant_id；Brain 自记可省略 |
 
 `intent_detail` 把每步 **最后一条非空 msg** 折进 `execution_plan[].msg`。库存储仍保留完整数组。
 
@@ -480,10 +634,10 @@ Intent 根上的 `base_time` 是调度原点，不属于本对象。
 
 ## 6. 不变量
 
-1. `jobs.intent_id` 与读回字典的 `intent_id` 字符串化后相等。
+1. `jobs.intent_id` 为整数；读回字典的 `intent_id` 与 `id` 同值。
 2. `jobs.status` = 读回的 `intent_status` 与 `status`。
 3. 拉取列表由 `jobs.status` 决定，不另存队列表。
-4. 整份 `execution_plan` 至多一个 `assigned_edge_id`（计划层）；混了单节点不具备的能力不得入队。
+4. 每步各自有 `assigned_edge_id`；某步无在线节点具备该 capability 不得入队。没有单独的 scheduler Participant。
 5. 终态 job 行保留；`intent_waiting` 与终态都不进入默认拉取（`succeeded` 且仍有 `pending_delivery` 除外）。
 6. `next_intent_id` 单调，重启不回到 1。
 7. 已登记 `participant_id` 重启后仍在；同 `client_hint` 不重新签发。
@@ -491,6 +645,7 @@ Intent 根上的 `base_time` 是调度原点，不属于本对象。
 9. 失败意图在 `intent_detail` 上必须有可读 `msg`（来自 step `msg`、`step_log`、或 job `error`/`msg`）。
 10. `intent_reviews` 只追加；同一 `session_id` 下多轮、同一 `intent_id` 上多次 LLM 各占一行。物流改写 `jobs.execution_plan` 不回写复盘行。
 11. Asset 身份是 `asset_id`。步间只传 `asset_ref`。库不存 bytes，不存 `photo_url` / 永久 URL。Grant 绑 `(asset_id, intent_id)`。
+12. `intent_classification_events` 只追加。分类结果不写进 `jobs`，不改 Planner / `execution_plan`。
 
 ---
 
@@ -500,6 +655,7 @@ Intent 根上的 `base_time` 是调度原点，不属于本对象。
 POST /api/v1/intent
   → 分配 next_intent_id
   → INSERT jobs（status=intent_received，随后规划写成 intent_parsed / failed）
+  → 观察式 INSERT intent_classification_events（失败不挡入队）
   → 空 plan：jobs.status=failed
   → 规划完成（含失败）追加 INSERT intent_reviews
 
@@ -559,15 +715,14 @@ CREATE TABLE meta (
 );
 
 CREATE TABLE jobs (
-  intent_id TEXT PRIMARY KEY,
+  intent_id INTEGER PRIMARY KEY AUTOINCREMENT,
   job_id TEXT,
   status TEXT NOT NULL,
   text TEXT,
   source TEXT,
+  intent_origin TEXT,
   edge_id TEXT,
-  assigned_edge_id TEXT,
   edge_node_id TEXT,
-  scheduler_node TEXT,
   error TEXT,
   msg TEXT,
   detail TEXT,
@@ -626,10 +781,24 @@ CREATE TABLE intent_reviews (
   planner TEXT,
   model TEXT,
   cost_ms INTEGER,
+  request_payload TEXT,
   raw_response TEXT,
   parsed_json TEXT,
+  response_json TEXT,
   execution_plan TEXT,
   error TEXT,
+  created_at REAL NOT NULL
+);
+
+CREATE TABLE intent_classification_events (
+  event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  intent_id TEXT,
+  text TEXT,
+  classifier_version TEXT,
+  score REAL,
+  classification TEXT,
+  features TEXT,
+  candidates TEXT,
   created_at REAL NOT NULL
 );
 
@@ -657,5 +826,38 @@ CREATE TABLE asset_grants (
   intent_id TEXT NOT NULL,
   granted_at REAL NOT NULL,
   PRIMARY KEY (asset_id, intent_id)
+);
+
+CREATE TABLE edge_control_policy (
+  participant_id TEXT NOT NULL,
+  target_kind TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  enabled INTEGER NOT NULL,
+  updated_at REAL NOT NULL,
+  PRIMARY KEY (participant_id, target_kind, target_id)
+);
+
+CREATE TABLE entities (
+  entity_id TEXT PRIMARY KEY,
+  type TEXT NOT NULL CHECK(type = 'device'),
+  name TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  state_json TEXT NOT NULL DEFAULT '{}',
+  references_json TEXT NOT NULL DEFAULT '{}',
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE admin_op_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts REAL NOT NULL,
+  actor TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL,
+  participant_id TEXT NOT NULL DEFAULT '',
+  target_kind TEXT NOT NULL DEFAULT '',
+  target_id TEXT NOT NULL DEFAULT '',
+  extra TEXT,
+  result TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT ''
 );
 ```

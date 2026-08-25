@@ -136,7 +136,10 @@ Capability 业务逻辑（Cast / Vision API …）
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/api/v1/assets` | Edge 注册；body 含 type、storage、producer、origin_intent_id/step |
-| GET | `/api/v1/assets/{asset_id}` | 元数据 + storage（**仅 Runtime 凭证**，不对 Intent Source 开放） |
+| GET | `/api/v1/assets/{asset_id}?intent_id=` | Endpoint：**元数据 + `stream.href`**（Brain `/content` 相对路径），**不**含 `storage` / URL |
+| GET | `/api/v1/assets/{asset_id}?intent_id=&edge_id=` | Runtime（live heartbeat + `runtime` 角色）：元数据 + **locator**（`backend`/`key`/`public_base`，**无** `url` 预拼） |
+| GET | `/api/v1/assets/{asset_id}/content?intent_id=` | Endpoint 字节流（grant 校验；Brain 代拉 blob，不暴露 storage URL） |
+| GET | `/api/v1/assets/{asset_id}/stream?intent_id=` | 同上（`/content` 别名） |
 | POST | `/api/v1/assets/{asset_id}/grant` | 预留；Phase 2 跨 intent |
 
 `intent_detail` / GET intent 对外快照 **只暴露 `AssetRef` 形状**，不暴露 `storage` JSON。
@@ -184,18 +187,18 @@ _execute_capability(cap, asset, *, params, config)
 ```
 
 - ``asset``：本步 `CapAsset`（绑定 `AssetManager` + `intent_id` + `step_num`）
-- ``params``：非资产字段 + **AssetRef 身份**（`image_ref` / `capture_ref` / `image_refs`）
+- ``params``：非资产字段 + **AssetRef 身份**（单张 `asset_ref` / 轮播 `asset_refs`）
 - **禁止** executor 把 AssetRef 预解成 `photo_url` 再塞进 params
 - Capability **自己**调用 `asset.http_url(ref)` / `asset.register_*`
 
 ### 6.2 产出
 
-- Producer（如 `camera.capture`）上传 blob 后 `asset.register_from_upload_url(...)` → 只写 `capture_ref`
+- Producer（如 `camera.capture`）上传 blob 后 `asset.register_from_upload_url(...)` → 只写 `asset_ref`
 - `post_step_status.outputs` 示例：
 
 ```json
 {
-  "capture_ref": {
+  "asset_ref": {
     "asset_id": "asset_01J...",
     "type": "image",
     "mime_type": "image/jpeg"
@@ -205,13 +208,13 @@ _execute_capability(cap, asset, *, params, config)
 
 ### 6.3 消费
 
-- Planner：`input_constrict`: `{ "image_ref": "$capture_ref" }`
-- Hydrate：`$capture_ref` → context 中 AssetRef JSON（身份）
+- Planner：`input_constrict`: `{ "asset_ref": "$asset_ref" }`
+- Hydrate：`$asset_ref` → context 中 AssetRef JSON（身份）
 - Capability：`ref = asset.require_ref(params)` → `url = asset.http_url(ref)`（representation 仅本步内部）
 
 ### 6.4 前序门
 
-- `should_wait_for_unresolved(plan, step, "capture_ref")`：producer 步 RUNNING → wait
+- `should_wait_for_unresolved(plan, step, "asset_ref")`：producer 步 RUNNING → wait
 - 缺 ref 且无 producer → **fail**
 
 ---
@@ -220,12 +223,12 @@ _execute_capability(cap, asset, *, params, config)
 
 | 能力 | 旧 | 新 |
 |------|----|----|
-| camera.capture | output `photo_url` | output `capture_ref` : AssetRef |
-| vision.perceive / vision.ask | input `photo_url` | input `image_ref` : AssetRef（Runtime resolve 后调 API） |
-| display.photo / slideshow | input `photo_url(s)` | input `image_ref` / `image_refs` : AssetRef |
-| query.content（生图） | output `photo_url` | output `image_ref` : AssetRef |
+| camera.capture | output `photo_url` | output `asset_ref` : AssetRef |
+| vision.perceive / vision.ask | input `photo_url` | input `asset_ref` : AssetRef（Runtime resolve 后调 API） |
+| display.photo / slideshow | input `photo_url(s)` | input `asset_ref` / `asset_refs` : AssetRef |
+| query.content（生图） | output `photo_url` | output `asset_ref` : AssetRef |
 | Brain presentation | `from=photo_url`, `image_url` | `from=asset_ref`, `presentation.asset_ref` |
-| Planner hydrate | `$photo_url` | `$capture_ref` 等 |
+| Planner hydrate | `$photo_url` | `$asset_ref` |
 
 **一次性切换**，不保留旧字段。黑盒用例由 `@quality` 更新。
 

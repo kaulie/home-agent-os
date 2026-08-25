@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-BRAIN = "http://115.190.153.53:9527"
+BRAIN = "http://127.0.0.1:9527"
 OUT = Path(__file__).resolve().parent / "run_results_q50.json"
 TERMINAL = {"succeeded", "failed"}
 
@@ -38,9 +38,9 @@ CASES: list[tuple[str, str, int, str, dict]] = [
         "required": ["notify.speak"], "forbidden": ["query.content", "camera.capture"],
         "outcome": "succeeded",
     }),
-    ("Q4", "一加一等于几", 120, "query+feedback", {
-        "required": ["query.content"],
-        "forbidden": ["camera.capture", "display.photo", "clock.now"],
+    ("Q4", "一加一等于几", 120, "math+feedback", {
+        "required": ["math.calculate"],
+        "forbidden": ["query.content", "camera.capture", "display.photo", "clock.now"],
         "outcome": "succeeded",
     }),
     ("Q5", "晋字一共几画", 120, "professional hanzi", {
@@ -64,8 +64,9 @@ CASES: list[tuple[str, str, int, str, dict]] = [
         "forbidden": ["camera.capture", "display.photo", "notify.speak"],
         "outcome": "succeeded",
     }),
-    ("Q28", "用语音告诉我一加一等于几", 120, "query+voice no camera", {
-        "required": ["query.content"], "forbidden": ["camera.capture"], "outcome": "succeeded",
+    ("Q28", "用语音告诉我一加一等于几", 120, "math+voice no camera", {
+        "required": ["math.calculate"], "forbidden": ["query.content", "camera.capture"],
+        "outcome": "succeeded",
     }),
     ("Q40", "查询一下现在是几点钟", 90, "clock not query", {
         "required": ["clock.now"], "forbidden": ["query.content"], "outcome": "succeeded",

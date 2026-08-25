@@ -30,10 +30,11 @@ Cursor **会话标题**必须与下表「全称」一致。对外只写短名 `@
 | 全称（会话标题） | handle | 职责 |
 |------|--------|------|
 | system coordinator agent | `@coordinator` | 协调、仲裁、催办、架构/需求/文档汇总、质检看板。不写产品代码。用户交代的越界事项 `@` 到对应 handle。其他 agent 的预期外情况 `@coordinator`。旧称 `@observer` 仅历史信箱有效；chat 里 `@observer` 视为 `@coordinator`。 |
-| brain agent | `@brain` | 组件注册（Edge `services[]`/`capabilities[]`）；意图 / 事件 / 定时路由；选边、`execution_timing`、整单 `assigned_edge_id`；对外 API。入口 `server/home_brain.py`。规划与控制面。不改 plugin / 发出 UI / 未经点名的 schema。 |
+| brain agent | `@brain` | 组件注册（Edge `services[]`/`capabilities[]`）；意图 / 事件 / 定时路由；选边、`execution_timing`、每步 `assigned_edge_id`；对外 API。入口 `server/home_brain.py`。规划与控制面。不改 plugin / 发出 UI / 未经点名的 schema。 |
 | runtime dev agent | `@runtime` | 调度 / hydrate / 前序门；失败 `msg` |
 | Intent dev agent | `@intent` | 发出窗口与物流 UI（产品层仍叫 Intent Source，agent 不叫这个） |
-| capability dev agent | `@capability` | Plugin 契约与实现 |
+| capability dev agent | `@capability` | Plugin 契约与实现（非 Endpoint 呈现面） |
+| endpoint agent | `@endpoint` | Endpoint 契约与呈现面：Chromecast Receiver / Cast Presentation Protocol、display 投递、Endpoint Registry 对齐。见 [`endpoint-contract.md`](endpoint-contract.md)、[`chromecast-cast-protocol.md`](chromecast-cast-protocol.md)。不改 Brain 规划 / Runtime hydrate（除非点名）。 |
 | quality agent | `@quality` | 黑盒：只打对外 API，不改代码 |
 | dba agent | `@dba` | schema / SQL。Brain 一期 SQLite：`server/data/brain.sqlite3`。Edge JSON 未经用户点名不要改。 |
 
@@ -99,7 +100,7 @@ Cursor 停会话不会被 HTTP 叫醒；用户仍须打开闲置会话。
 
 - 读到发给自己的消息：先回复，再做事；做不了或越层，再 `@` 发件人说明。
 - `@coordinator` 不写产品代码；需要实现时 `@runtime` / `@intent` / `@capability`；需要黑盒时 `@quality`。
-- 用户对 `@coordinator` 说的非协调事项：coordinator `@` 转到对应 handle（plugin→`@capability`；调度/hydrate/前序门/失败 msg→`@runtime`；发出窗口→`@intent`；黑盒 API→`@quality`；规划/选边/入队/Brain API→`@brain`）。
+- 用户对 `@coordinator` 说的非协调事项：coordinator `@` 转到对应 handle（plugin→`@capability`；调度/hydrate/前序门/失败 msg→`@runtime`；发出窗口→`@intent`；Endpoint/Cast 呈现/Receiver→`@endpoint`；黑盒 API→`@quality`；规划/选边/入队/Brain API→`@brain`）。
 - 预期外情况 **第一时间** `@coordinator`，由 coordinator 集中仲裁/拆单。不要自行跨层改。
 - `@quality` 只打对外 API。修复须验收：实现方报完工后 `@quality` 请验收；结果写入 `tests/blackbox/`。不得自报结案。
 - 不要在 chat 里贴密钥、`.env`、完整 token。

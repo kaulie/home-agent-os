@@ -52,6 +52,22 @@ function run(argv) {
 }
 """
 
+_JXA_SCAN = """
+ObjC.import("CoreWLAN");
+function run(argv) {
+  var ssid = argv[0] || "";
+  if (!ssid) return "ERR empty ssid";
+  var iface = $.CWWiFiClient.sharedWiFiClient.interface;
+  if (!iface) return "ERR no wifi interface";
+  var err = Ref();
+  var nets = iface.scanForNetworksWithNameError(ssid, err);
+  if (!nets || Number(nets.count) < 1) {
+    return "MISS";
+  }
+  return "OK";
+}
+"""
+
 
 class WifiSwitchError(Exception):
     pass
@@ -337,6 +353,41 @@ def restore_network(
         timeout_sec=max(15.0, timeout_sec / 2.0),
     )
     _hold_ssid(home.ssid, device=dev, password=password)
+
+
+def ssid_visible(
+    ssid: str,
+    *,
+    timeout_sec: float = 8.0,
+) -> bool:
+    """Fast CoreWLAN scan: True if ``ssid`` is currently visible (no join)."""
+    name = (ssid or "").strip()
+    if not name:
+        raise WifiSwitchError("ssid is empty")
+    argv = [_OSASCRIPT, "-l", "JavaScript", "-", name]
+    try:
+        proc = subprocess.run(
+            argv,
+            input=_JXA_SCAN,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=max(2.0, float(timeout_sec)),
+        )
+    except subprocess.TimeoutExpired as e:
+        raise WifiSwitchError(f"wifi scan timed out ssid={name}") from e
+    except OSError as e:
+        raise WifiSwitchError(f"osascript failed to start: {e}") from e
+    stdout = (proc.stdout or "").strip()
+    stderr = (proc.stderr or "").strip()
+    out = "\n".join(x for x in (stdout, stderr) if x)
+    if re.search(r'(^|\n)"?OK"?\s*$', stdout) or stdout.endswith("OK"):
+        return True
+    if "MISS" in stdout or "MISS" in out:
+        return False
+    if "ERR" in out:
+        raise WifiSwitchError(f"wifi scan failed ssid={name}: {out[:240]}")
+    return False
 
 
 def wait_until_ssid(

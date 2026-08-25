@@ -1,0 +1,11 @@
+---
+description: Planner prompt changes only in task_planner_system_prompt.md.en
+alwaysApply: true
+---
+
+# Planner 提示词：只改 md
+
+规划器契约与规则 **只维护** [`server/prompts/task_planner_system_prompt.md.en`](server/prompts/task_planner_system_prompt.md.en)（经 `compact_prompt()` 作为唯一 system 消息）。
+
+- **禁止**在 `home_brain.py` 再引入 `PLANNER_SYSTEM_PROMPT` 或其它内联规划规则长文。
+- 部署：rsync `server/prompts/`（改了 `home_brain.py` 调用方式时一并 rsync），按 cloud-deploy 约定。

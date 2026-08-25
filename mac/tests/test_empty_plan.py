@@ -20,26 +20,21 @@ class EmptyPlanSchedulerTest(unittest.TestCase):
         intent = {
             "id": 7,
             "status": "intent_parsed",
-            "scheduler_node": "edge-node-x",
             "execution_plan": [],
         }
         with patch("mac_edge.scheduler._ledger_active", return_value=None), patch(
             "mac_edge.scheduler._try_post_intent_status", return_value=True
         ) as post:
             sched.handle(intent, edge_id="edge-node-x", brain=brain)
-        post.assert_called_once()
-        kwargs = post.call_args.kwargs
-        self.assertEqual(kwargs["status"], "failed")
-        self.assertIn("为空", kwargs["message"])
+        post.assert_not_called()
 
 
 class EmptyPlanPeekTest(unittest.TestCase):
-    def test_fail_without_scheduler_node(self) -> None:
+    def test_fail_empty_plan_helper_still_posts(self) -> None:
         brain = MagicMock()
         intent = {
             "id": 1,
             "status": "intent_parsed",
-            "scheduler_node": "",
             "execution_plan": [],
             "text": "14000千米是多远",
         }
@@ -56,19 +51,36 @@ class EmptyPlanPeekTest(unittest.TestCase):
 
 
 class EmptyPlanRelevanceTest(unittest.TestCase):
-    def test_empty_plan_visible_to_any_edge(self) -> None:
+    def test_empty_plan_not_visible(self) -> None:
         intent = {
             "id": 1,
             "status": "intent_parsed",
             "execution_plan": [],
         }
-        self.assertTrue(intent_relevant_to_edge(intent, "edge-a"))
-        self.assertTrue(intent_relevant_to_edge(intent, "edge-b"))
+        self.assertFalse(intent_relevant_to_edge(intent, "edge-a"))
+        self.assertFalse(intent_relevant_to_edge(intent, "edge-b"))
 
     def test_nonempty_plan_still_requires_assignee(self) -> None:
         intent = {
             "id": 2,
             "status": "intent_parsed",
+            "execution_plan": [
+                {
+                    "step": 1,
+                    "capability": "query.content",
+                    "assigned_edge_id": "edge-a",
+                }
+            ],
+        }
+        self.assertTrue(intent_relevant_to_edge(intent, "edge-a"))
+        self.assertFalse(intent_relevant_to_edge(intent, "edge-b"))
+
+    def test_leftover_scheduler_node_does_not_claim(self) -> None:
+        intent = {
+            "id": 3,
+            "status": "intent_parsed",
+            "scheduler_node": "edge-b",
+            "assigned_edge_id": "edge-b",
             "execution_plan": [
                 {
                     "step": 1,

@@ -2,7 +2,7 @@
 
 Contract:
   input:  query (required); upload_dest optional (default lan)
-  output: answer_text (required); image_ref advertised (plugin still returns
+  output: answer_text (required); asset_ref advertised (plugin still returns
   photo_url+saved_as for Runtime register); citations (JSON string)
 
 Must not import vision_perceive / vision_providers / gopro_camera.
@@ -15,20 +15,18 @@ import logging
 import os
 import re
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
 
+from mac_edge.asset.img_upload import (
+    ImgUploadError,
+    normalize_upload_dest,
+    upload_image_bytes,
+)
 from mac_edge.plugins.query_providers import QueryProviderError
 from mac_edge.plugins.query_providers.registry import get_provider
 
 log = logging.getLogger("mac_edge.query_content")
-
-DEFAULT_LAN_UPLOAD_URL = "http://192.168.3.65:8080/api/v1/photos/upload"
-DEFAULT_LAN_PUBLIC_BASE = "http://192.168.3.65:8080"
-DEFAULT_CLOUD_UPLOAD_URL = "http://115.190.153.53:9527/api/v1/photos/upload"
-DEFAULT_CLOUD_PUBLIC_BASE = "http://115.190.153.53:8080"
 
 PROFESSIONAL_DOMAINS = frozenset(
     {"science", "health", "medicine", "professional"}
@@ -46,7 +44,9 @@ DEFAULT_PROMPT = (
     "2) 图片或动态示意能更好解释（外观长什么样、结构、对比、步骤、笔顺、过程）则 want_image=true，并写具体 image_prompt；"
     "3) 用户明确要求出图/画一张/配图/看图，尽量 want_image=true；"
     "4) 用户要把结果投屏/投到电视/做成电视上展示的画面，want_image=true，"
-    "image_prompt 为适合电视展示的清晰大字卡片（白底、少字、远看可读）。"
+    "image_prompt 为适合电视展示的清晰画面（要图则画主体，拼写/卡片才用大字白底）。"
+    "5) 用户说「来张图/来张图片/图片投到电视」是生图请求，不是知识问答；"
+    "want_image=true、refused=false，按主题画图，不要因为不确定百科而拒答不配图。"
     "汉字笔顺/笔画怎么写/几画：domain=professional；image_prompt 为规范笔顺示意图（白底黑字、带笔画序号）；"
     "citations 必须引用汉语字典（如汉典 zdic.net、新华字典、教育部《通用规范汉字笔顺规范》），"
     "正文点名来源；没有字典依据则 refused=true，不生图。"
@@ -87,6 +87,16 @@ STRUCTURE_HINT = """
   "citations": [{"name": "汉典", "url": "https://www.zdic.net/"}]
 }
 
+用户只要图（即使主题很短）：
+{
+  "answer_text": "这是一张战斗机示意图。",
+  "want_image": true,
+  "image_prompt": "写实风格，一架战斗机在蓝天上飞行，侧视清晰",
+  "domain": "general",
+  "refused": false,
+  "citations": []
+}
+
 不确定时不生图：
 {
   "answer_text": "我不知道明天会不会下雨。",
@@ -99,10 +109,10 @@ STRUCTURE_HINT = """
 
 字段约定：
 - answer_text: 中文回答；不确定时必须包含「我不知道」
-- want_image: 简单知识 false；示意/外观/步骤 true；用户点名要图或要投屏/电视展示则 true；拒答 false
+- want_image: 简单知识 false；示意/外观/步骤 true；用户点名要图或要投屏/电视展示则 true
 - image_prompt: 出图时必填的画面描述
 - domain: general | science | health | medicine | professional；笔顺/笔画用 professional
-- refused: 不知道或不能答时为 true；此时禁止生图
+- refused: 无法作答的知识问题时为 true。用户只要图时不要 refused，也不要因此跳过生图
 - citations: [{name, url}, …]；专业域与笔顺作答时必须非空，笔顺须为字典来源
 """.strip()
 
@@ -120,6 +130,9 @@ _USER_WANTS_IMAGE_MARKERS = (
     "图示",
     "动画",
     "给我图",
+    "来张",
+    "来一张",
+    "图片",
     "投屏",
     "投到电视",
     "投电视",
@@ -154,13 +167,27 @@ def _visual_helps_explain(query: str) -> bool:
     return any(m in q for m in _VISUAL_HELPS_MARKERS)
 
 
-def _should_draw_image(*, refused: bool, want_image: bool, query: str) -> bool:
+def _should_draw_image(
+    *,
+    refused: bool,
+    want_image: bool,
+    query: str,
+    force_image: bool = False,
+) -> bool:
+    """Draw when the user asked for a picture, even if the model refused facts.
+
+    Stroke-order queries still skip drawing when refused (no fake 笔顺 diagram).
+    """
+    user_wants = force_image or _user_requested_image(query)
+    if _is_stroke_order_query(query) and refused:
+        return False
+    if user_wants:
+        return True
     if refused:
         return False
     if want_image:
         return True
-    # Principle 2/3: appearance / stroke / user asked for a picture.
-    return _user_requested_image(query) or _visual_helps_explain(query)
+    return _visual_helps_explain(query)
 
 
 def _illustration_prompt(image_prompt: str, query: str) -> str:
@@ -236,26 +263,6 @@ def _parse_model_json(text: str) -> dict[str, Any]:
     return data
 
 
-def _normalize_upload_dest(raw: str | None) -> str:
-    v = (raw or "").strip().lower()
-    if v in ("cloud",):
-        return "cloud"
-    if v in ("lan", "local", "home", ""):
-        return "lan"
-    log.warning("unknown upload_dest=%r — using lan", raw)
-    return "lan"
-
-
-def _upload_endpoints(dest: str) -> tuple[str, str]:
-    if dest == "lan":
-        upload = _env("MAC_EDGE_LAN_PHOTO_UPLOAD_URL") or DEFAULT_LAN_UPLOAD_URL
-        public = _env("MAC_EDGE_LAN_PHOTO_PUBLIC_BASE") or DEFAULT_LAN_PUBLIC_BASE
-        return upload, public.rstrip("/")
-    upload = _env("MAC_EDGE_PHOTO_UPLOAD_URL") or DEFAULT_CLOUD_UPLOAD_URL
-    public = _env("MAC_EDGE_PHOTO_PUBLIC_BASE") or DEFAULT_CLOUD_PUBLIC_BASE
-    return upload, public.rstrip("/")
-
-
 def _data_dir() -> Path:
     root = Path(__file__).resolve().parents[3]
     data = Path(_env("MAC_EDGE_DATA_DIR") or str(root / "data"))
@@ -264,84 +271,36 @@ def _data_dir() -> Path:
     return out
 
 
-def _multipart_upload(path: Path, upload_url: str) -> dict[str, Any]:
-    boundary = f"----MacEdgeQuery{int(time.time() * 1000)}"
-    filename = path.name
-    file_bytes = path.read_bytes()
-    parts: list[bytes] = [
-        f"--{boundary}\r\n".encode(),
-        (
-            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-            f"Content-Type: application/octet-stream\r\n\r\n"
-        ).encode(),
-        file_bytes,
-        b"\r\n",
-        f"--{boundary}--\r\n".encode(),
-    ]
-    body = b"".join(parts)
-    req = urllib.request.Request(
-        upload_url,
-        data=body,
-        method="POST",
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=120.0) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            code = int(resp.getcode() or 0)
-    except urllib.error.HTTPError as e:
-        raw = e.read().decode("utf-8", errors="replace")
-        raise QueryContentError(f"upload HTTP {e.code}: {raw[:300]}") from e
-    except urllib.error.URLError as e:
-        raise QueryContentError(f"upload failed: {e}") from e
-
-    try:
-        data = json.loads(raw) if raw.strip() else {}
-    except json.JSONDecodeError as e:
-        raise QueryContentError(
-            f"upload response not JSON (http={code}): {raw[:200]}"
-        ) from e
-    if not isinstance(data, dict):
-        raise QueryContentError("upload response must be object")
-    return data
-
-
-def _resolve_photo_url(
-    upload_json: dict[str, Any],
-    *,
-    public_base: str,
-) -> tuple[str, str]:
-    saved_as = str(upload_json.get("saved_as") or "").strip()
-    url = str(upload_json.get("url") or "").strip()
-    base = public_base.rstrip("/")
-    if url.startswith("http://") or url.startswith("https://"):
-        if saved_as and url.startswith("http://127."):
-            return f"{base}/{Path(saved_as).name}", saved_as
-        return url, saved_as
-    if saved_as:
-        return f"{base}/{Path(saved_as).name}", saved_as
-    raise QueryContentError(f"upload ok but no photo_url/saved_as: {upload_json}")
-
-
 def _upload_generated_image(
     image_bytes: bytes,
     *,
     upload_dest: str,
 ) -> dict[str, str]:
-    if not image_bytes:
-        raise QueryContentError("generated image is empty")
-    dest = _normalize_upload_dest(upload_dest)
-    upload_url, public_base = _upload_endpoints(dest)
+    dest = normalize_upload_dest(upload_dest)
     ts = time.strftime("%Y%m%d_%H%M%S")
-    path = _data_dir() / f"{ts}_query.png"
-    path.write_bytes(image_bytes)
-    upload_json = _multipart_upload(path, upload_url)
-    photo_url, saved_as = _resolve_photo_url(upload_json, public_base=public_base)
-    if not photo_url.startswith("http://") and not photo_url.startswith("https://"):
-        raise QueryContentError(f"refusing non-http photo_url: {photo_url}")
-    out = {"photo_url": photo_url, "photo_local_path": str(path)}
-    if saved_as:
-        out["saved_as"] = saved_as
+    try:
+        result = upload_image_bytes(
+            image_bytes,
+            filename=f"{ts}_query.png",
+            preferred_dest=dest,
+            allow_cloud_fallback=True,
+            staging_dir=_data_dir(),
+        )
+    except ImgUploadError as e:
+        raise QueryContentError(str(e)) from e
+    out = {
+        "photo_url": result.photo_url,
+        "photo_local_path": result.local_path or "",
+        "upload_dest": result.dest,
+    }
+    if result.saved_as:
+        out["saved_as"] = result.saved_as
+    if result.cloud_public_base:
+        out["cloud_public_base"] = result.cloud_public_base
+    if result.cloud_saved_as:
+        out["cloud_saved_as"] = result.cloud_saved_as
+    if result.cloud_photo_url:
+        out["cloud_photo_url"] = result.cloud_photo_url
     return out
 
 
@@ -365,6 +324,7 @@ def query_content(
     timeout_sec: float = 90.0,
     provider_name: str | None = None,
     provider: Any = None,
+    force_image: bool = False,
 ) -> dict[str, str]:
     q = (query or "").strip()
     if not q:
@@ -381,6 +341,8 @@ def query_content(
         raise
     except Exception as e:
         raise QueryContentError(f"{type(e).__name__}: {e}") from e
+    llm_ms = int((time.perf_counter() - t0) * 1000)
+    timings: dict[str, int] = {"llm": llm_ms}
 
     if not isinstance(raw, dict):
         raise QueryContentError("query provider must return a dict")
@@ -426,26 +388,44 @@ def query_content(
         "citations": json.dumps(citations, ensure_ascii=False),
     }
 
-    if not refused:
-        draw = _should_draw_image(
-            refused=refused, want_image=want_image, query=q
-        )
-        if draw:
-            draw_prompt = _illustration_prompt(image_prompt, q)
-            try:
-                image_bytes = prov.generate_image(
-                    prompt=draw_prompt, timeout_sec=timeout_sec
-                )
-                uploaded = _upload_generated_image(
-                    image_bytes, upload_dest=upload_dest
-                )
-            except QueryProviderError as e:
-                raise QueryContentError(str(e)) from e
-            outputs["photo_url"] = uploaded["photo_url"]
-            if uploaded.get("saved_as"):
-                outputs["saved_as"] = uploaded["saved_as"]
+    draw = _should_draw_image(
+        refused=refused,
+        want_image=want_image,
+        query=q,
+        force_image=force_image,
+    )
+    if draw:
+        draw_prompt = _illustration_prompt(image_prompt, q)
+        t_img = time.perf_counter()
+        try:
+            image_bytes = prov.generate_image(
+                prompt=draw_prompt, timeout_sec=timeout_sec
+            )
+        except QueryProviderError as e:
+            raise QueryContentError(str(e)) from e
+        timings["image_gen"] = int((time.perf_counter() - t_img) * 1000)
+        t_up = time.perf_counter()
+        try:
+            uploaded = _upload_generated_image(
+                image_bytes, upload_dest=upload_dest
+            )
+        except QueryProviderError as e:
+            raise QueryContentError(str(e)) from e
+        timings["upload"] = int((time.perf_counter() - t_up) * 1000)
+        outputs["photo_url"] = uploaded["photo_url"]
+        if uploaded.get("saved_as"):
+            outputs["saved_as"] = uploaded["saved_as"]
+        for k in (
+            "cloud_public_base",
+            "cloud_saved_as",
+            "cloud_photo_url",
+        ):
+            if uploaded.get(k):
+                outputs[k] = uploaded[k]
 
     total_ms = int((time.perf_counter() - t0) * 1000)
+    timings["total"] = total_ms
+    outputs["action_timings"] = json.dumps(timings, ensure_ascii=False)
     log.info(
         "query.content ok refused=%s domain=%s want_image=%s has_photo=%s "
         "total_ms=%s answer=%s",
@@ -472,8 +452,14 @@ def query_from_params(
         raise QueryContentError("query.content requires CapAsset (Runtime SDK)")
     q = str(params.get("query") or "").strip()
     dest = str(params.get("upload_dest") or "lan").strip() or "lan"
-    outputs = query_content(query=q, upload_dest=dest, timeout_sec=timeout_sec)
-    # Register generated image via Asset Manager — identity is image_ref only.
+    force_image = _as_bool(params.get("want_image"))
+    outputs = query_content(
+        query=q,
+        upload_dest=dest,
+        timeout_sec=timeout_sec,
+        force_image=force_image,
+    )
+    # Register generated image via Asset Manager — identity is asset_ref only.
     if "photo_url" in outputs:
         try:
             ref = asset.register_from_upload_url(
@@ -481,10 +467,21 @@ def query_from_params(
                 saved_as=str(outputs.get("saved_as") or "") or None,
                 producer="query.content",
                 mime_type="image/png",
+                cloud_public_base=str(outputs.get("cloud_public_base") or "") or None,
+                cloud_saved_as=str(outputs.get("cloud_saved_as") or "") or None,
             )
         except AssetError as e:
             raise QueryContentError(str(e)) from e
-        outputs = {k: v for k, v in outputs.items() if k not in ("photo_url", "saved_as")}
-        outputs["image_ref"] = ref.to_dict()
+        drop = (
+            "photo_url",
+            "saved_as",
+            "cloud_public_base",
+            "cloud_saved_as",
+            "cloud_photo_url",
+            "photo_local_path",
+            "upload_dest",
+        )
+        outputs = {k: v for k, v in outputs.items() if k not in drop}
+        outputs["asset_ref"] = ref.to_dict()
     preview = str(outputs.get("answer_text") or "")[:100]
     return f"query: {preview or 'ok'}", outputs

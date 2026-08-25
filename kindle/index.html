@@ -301,17 +301,26 @@
         return "";
       }
 
-      function displayImage(data) {
-        var ctx = data.ctx_param || data.context || {};
-        var fromCtx = pickBag(ctx, "photo_url");
-        if (fromCtx) {
-          return fromCtx;
+      function assetIdFromPresentation(data) {
+        var pres = data.presentation;
+        if (!pres || typeof pres !== "object") {
+          return "";
         }
-        var fromOut = pickBag(data.outputs, "photo_url");
-        if (fromOut) {
-          return fromOut;
+        var ref = pres.asset_ref;
+        if (!ref || typeof ref !== "object") {
+          return "";
         }
-        return firstStepValue(data.step_outputs, "photo_url");
+        return str(ref.asset_id);
+      }
+
+      function displayAssetContentPath(data, intentId) {
+        var aid = assetIdFromPresentation(data);
+        var iid = str(intentId);
+        if (!aid || !iid) {
+          return "";
+        }
+        return "/api/v1/assets/" + encodeURIComponent(aid)
+          + "/content?intent_id=" + encodeURIComponent(iid);
       }
 
       function isTerminalStatus(data) {
@@ -387,7 +396,7 @@
         return hh + ":" + mm;
       }
 
-      function paint(data) {
+      function paint(data, intentId) {
         if (!data || data.ok === false) {
           return;
         }
@@ -413,11 +422,11 @@
         replyEl.innerHTML = esc(reply);
         showText();
 
-        var imageUrl = displayImage(data);
-        if (imageUrl) {
+        var contentPath = displayAssetContentPath(data, intentId);
+        if (contentPath) {
           picFallback.style.display = "none";
           pic.style.display = "block";
-          pic.src = imageUrl;
+          pic.src = contentPath;
         } else {
           pic.style.display = "none";
           pic.removeAttribute("src");
@@ -429,6 +438,7 @@
       pic.onerror = function () {
         pic.style.display = "none";
         picFallback.style.display = "block";
+        picFallback.innerHTML = "图片加载失败";
       };
 
       function loadDetail(intentId) {
@@ -442,7 +452,7 @@
             return;
           }
           try {
-            paint(JSON.parse(xhr.responseText));
+            paint(JSON.parse(xhr.responseText), intentId);
           } catch (e) {}
         };
         xhr.send(null);

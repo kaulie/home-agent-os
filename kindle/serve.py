@@ -4,7 +4,7 @@
   python3 kindle/serve.py
 
 Kindle / laptop: http://<lan-ip>:8088/?intent_id=<id>
-Proxies GET /api/v1/intent_detail to BRAIN_URL (default production 9527).
+Proxies GET /api/v1/intent_detail and GET /api/v1/assets/*/content to BRAIN_URL.
 """
 
 from __future__ import annotations
@@ -27,8 +27,9 @@ ROOT = Path(__file__).resolve().parent
 LOG_PATH = ROOT / "serve.log"
 PORT = int((os.environ.get("KINDLE_PAGE_PORT") or "8088").strip() or "8088")
 BRAIN_URL = (
-    os.environ.get("KINDLE_BRAIN_URL") or "http://115.190.153.53:9527"
+    os.environ.get("KINDLE_BRAIN_URL") or "http://127.0.0.1:9527"
 ).strip().rstrip("/")
+_ASSET_CONTENT_RE = re.compile(r"^/api/v1/assets/([^/]+)/content/?$")
 _LOG_LOCK = threading.Lock()
 _LOG_FP = None
 
@@ -72,6 +73,10 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in ("/api/v1/intent_detail", "/api/v1/intent_detail/"):
             self._proxy_detail(parsed.query)
+            return
+        asset_match = _ASSET_CONTENT_RE.match(parsed.path)
+        if asset_match:
+            self._proxy_asset_content(asset_match.group(1), parsed.query)
             return
         if parsed.path in ("/", "", "/index.html"):
             self._serve_index(parsed.query)
@@ -196,6 +201,56 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _proxy_asset_content(self, asset_id: str, query: str) -> None:
+        intent_id = (parse_qs(query).get("intent_id") or [""])[0]
+        intent_id = str(intent_id).strip()
+        if not intent_id:
+            self._json(400, {"ok": False, "error": "intent_id is required"})
+            return
+        extra = parse_qs(query)
+        rep = (extra.get("representation") or [""])[0]
+        rep = str(rep).strip()
+        qs_parts = ["intent_id=" + intent_id]
+        if rep:
+            qs_parts.append("representation=" + rep)
+        url = "%s/api/v1/assets/%s/content?%s" % (
+            BRAIN_URL,
+            asset_id,
+            "&".join(qs_parts),
+        )
+        req = Request(url, method="GET")
+        try:
+            resp = urlopen(req, timeout=30)
+        except HTTPError as exc:
+            body = exc.read() or json.dumps({"ok": False, "error": str(exc)}).encode("utf-8")
+            self.send_response(exc.code)
+            self.send_header("Content-Type", exc.headers.get("Content-Type") or "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        except URLError as exc:
+            self._json(502, {"ok": False, "error": "brain unreachable: %s" % exc.reason})
+            return
+        status = getattr(resp, "status", 200)
+        ctype = resp.headers.get("Content-Type") or "application/octet-stream"
+        clen = resp.headers.get("Content-Length")
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        if clen:
+            self.send_header("Content-Length", clen)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            while True:
+                chunk = resp.read(65536)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+        finally:
+            resp.close()
+
     def _json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -213,6 +268,7 @@ def main() -> None:
     ip = lan_ip()
     write_log("Kindle page  http://%s:%s/?intent_id=<id>" % (ip, PORT))
     write_log("Brain proxy  %s/api/v1/intent_detail" % BRAIN_URL)
+    write_log("Asset stream %s/api/v1/assets/{id}/content" % BRAIN_URL)
     write_log("access log   %s" % LOG_PATH)
     httpd.serve_forever()
 

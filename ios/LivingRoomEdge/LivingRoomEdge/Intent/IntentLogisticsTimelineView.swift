@@ -22,10 +22,18 @@ struct IntentLogisticsTimelineView: View {
                         .font(.subheadline.weight(.semibold))
                     Spacer()
                 }
-                if !journey.idle, let total = journey.totalElapsedSeconds(now: now) {
-                    Text("总耗时 \(IntentJourney.formatDuration(total))")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
+                if !journey.idle {
+                    let dual = IntentJourney.formatDualElapsed(
+                        client: journey.clientElapsedSeconds(now: now),
+                        server: journey.serverElapsedSeconds()
+                    )
+                    if !dual.isEmpty {
+                        Text(dual)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
                 }
                 if embedded { Spacer() }
                 Text(journey.idle ? "尚未发出" : "id \(journey.jobId)")
@@ -312,27 +320,77 @@ private struct IntentPlanStepRow: View {
                         )
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if !item.actionTimings.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Action 耗时")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        ForEach(item.actionTimings) { action in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(action.displayName)
+                                    .font(.caption2)
+                                    .foregroundStyle(.primary)
+                                Spacer(minLength: 8)
+                                if let seconds = action.durationSeconds {
+                                    Text(IntentJourney.formatDuration(seconds))
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(action.name == "total" ? .primary : .secondary)
+                                } else if let at = action.at {
+                                    Text(IntentPlanStepRow.timeFormatter.string(from: at))
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(.secondarySystemBackground).opacity(0.65))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
                 if !item.events.isEmpty {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("步骤记录")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        ForEach(item.events) { event in
+                        let sorted = item.sortedEvents
+                        ForEach(Array(sorted.enumerated()), id: \.element.id) { index, event in
                             HStack(alignment: .top, spacing: 4) {
                                 if let at = event.at {
                                     Text(IntentPlanStepRow.timeFormatter.string(from: at))
                                         .font(.caption2.monospaced())
                                         .foregroundStyle(.secondary)
                                 }
-                                Text(event.statusLabel)
+                                if index > 0,
+                                   let cur = event.at,
+                                   let prev = sorted[index - 1].at
+                                {
+                                    let delta = max(0, cur.timeIntervalSince(prev))
+                                    Text("+\(IntentJourney.formatDuration(delta))")
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.tertiary)
+                                }
+                                Text(event.parsedActionTiming?.displayName ?? event.statusLabel)
                                     .font(.caption2.weight(.semibold))
                                     .foregroundStyle(event.status == 3 ? .red : .secondary)
-                                if !event.msg.isEmpty {
+                                if let eid = event.edgeId, !eid.isEmpty {
+                                    Text(eid)
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.tertiary)
+                                }
+                                if !event.msg.isEmpty, event.parsedActionTiming == nil {
                                     Text(event.msg)
                                         .font(.caption2.monospaced())
                                         .foregroundStyle(event.status == 3 ? .red : .primary)
                                         .textSelection(.enabled)
                                         .fixedSize(horizontal: false, vertical: true)
+                                } else if let timing = event.parsedActionTiming,
+                                          let seconds = timing.durationSeconds
+                                {
+                                    Text(IntentJourney.formatDuration(seconds))
+                                        .font(.caption2.monospaced())
+                                        .foregroundStyle(.primary)
                                 }
                             }
                         }

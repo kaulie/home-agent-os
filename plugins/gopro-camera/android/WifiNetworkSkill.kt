@@ -31,6 +31,11 @@ class WifiNetworkSkill(
             capabilities = listOf(
                 CapabilityDescriptor(
                     capabilityId = Capabilities.WIFI_JOIN,
+                    kind = "action",
+                    role = "临时 Wi-Fi 调试连接器",
+                    plannerRecognize = "调试用：把手机临时加入指定 SSID（例如 GoPro 热点）。不是连蓝牙音箱、不是拍照、不是日常上网，不要排进用户家务计划",
+                    typicalTriggers = listOf("连上 GoPro 热点", "加入指定 SSID"),
+                    doNotDispatch = listOf("作为计划逐步执行", "拍照本身", "放歌", "连蓝牙音箱", "开灯", "知识问答", "日常上网"),
                     description = "Join via Specifier dialog (process bind; may not change status bar)",
                     inputSchema = mapOf(
                         "ssid" to SchemaField("string", required = false),
@@ -39,6 +44,11 @@ class WifiNetworkSkill(
                 ),
                 CapabilityDescriptor(
                     capabilityId = Capabilities.WIFI_LEAVE,
+                    kind = "action",
+                    role = "临时 Wi-Fi 调试断开器",
+                    plannerRecognize = "调试用：离开临时 SSID，回到家里默认网络。不是停歌、不是断开蓝牙音箱，不要排进用户家务计划",
+                    typicalTriggers = listOf("离开 GoPro 热点", "回到家里默认网络"),
+                    doNotDispatch = listOf("作为计划逐步执行", "拍照本身", "放歌", "断开蓝牙音箱", "开灯", "知识问答"),
                     description = "Leave temporary Wi‑Fi and return to default network",
                 ),
             ),

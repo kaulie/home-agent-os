@@ -223,12 +223,51 @@ class QueryContentTests(unittest.TestCase):
         self.assertIn("photo_url", out)
         self.assertIn("have", prov.last_image_prompt.lower())
 
-    def test_cast_keyword_draws_even_if_model_skips(self) -> None:
-        prov = FakeProvider(_json_answer(want_image=False, image_prompt=""))
+    def test_picture_keyword_draws_even_if_model_refuses(self) -> None:
+        prov = FakeProvider(
+            _json_answer(
+                answer_text="我不知道战斗机的具体型号。",
+                refused=True,
+                want_image=False,
+            )
+        )
         with _upload_ok():
-            out = query_content(query="把 have 的拼写投屏", provider=prov)
+            out = query_content(
+                query="来张战斗机的图片投到电视上",
+                provider=prov,
+            )
         self.assertEqual(prov.generate_calls, 1)
         self.assertIn("photo_url", out)
+        self.assertIn("战斗机", prov.last_image_prompt)
+
+    def test_force_image_param_draws_short_topic_even_if_refused(self) -> None:
+        prov = FakeProvider(
+            _json_answer(
+                answer_text="我不知道。",
+                refused=True,
+                want_image=False,
+            )
+        )
+        with _upload_ok():
+            out = query_content(
+                query="战斗机",
+                provider=prov,
+                force_image=True,
+            )
+        self.assertEqual(prov.generate_calls, 1)
+        self.assertIn("photo_url", out)
+
+    def test_short_topic_without_force_still_skips_when_refused(self) -> None:
+        prov = FakeProvider(
+            _json_answer(
+                answer_text="我不知道。",
+                refused=True,
+                want_image=False,
+            )
+        )
+        out = query_content(query="战斗机", provider=prov)
+        self.assertEqual(prov.generate_calls, 0)
+        self.assertNotIn("photo_url", out)
 
     def test_empty_image_prompt_uses_query(self) -> None:
         prov = FakeProvider(_json_answer(want_image=True, image_prompt=""))
@@ -315,9 +354,42 @@ class QueryContentTests(unittest.TestCase):
         self.assertIn("客厅朝南", outputs["answer_text"])
         self.assertIn("query:", msg)
         self.assertNotIn("photo_url", outputs)
-        self.assertNotIn("image_ref", outputs)  # no draw in this fixture
+        self.assertNotIn("asset_ref", outputs)  # no draw in this fixture
 
-    def test_query_from_params_registers_image_ref(self) -> None:
+    def test_query_from_params_want_image_registers_even_if_refused(self) -> None:
+        from mac_edge.asset.sdk import CapAsset
+        from mac_edge.asset.types import AssetRef
+
+        prov = FakeProvider(
+            _json_answer(
+                answer_text="我不知道。",
+                refused=True,
+                want_image=False,
+            ),
+            image_bytes=b"png",
+        )
+        mgr = MagicMock()
+        mgr.register_storage_locator.return_value = AssetRef(
+            asset_id="asset_jet", type="image", mime_type="image/png"
+        )
+        asset = CapAsset(manager=mgr, intent_id="125", step_num=1)
+        with patch(
+            "mac_edge.plugins.query_content.get_provider", return_value=prov
+        ), patch(
+            "mac_edge.plugins.query_content._upload_generated_image",
+            return_value={
+                "photo_url": "http://192.168.3.65:8080/jet.png",
+                "saved_as": "jet.png",
+            },
+        ):
+            _msg, outputs = query_from_params(
+                {"query": "战斗机", "want_image": "true"},
+                asset=asset,
+            )
+        self.assertEqual(outputs["asset_ref"]["asset_id"], "asset_jet")
+        self.assertNotIn("photo_url", outputs)
+
+    def test_query_from_params_registers_asset_ref(self) -> None:
         from mac_edge.asset.sdk import CapAsset
         from mac_edge.asset.types import AssetRef
 
@@ -347,7 +419,7 @@ class QueryContentTests(unittest.TestCase):
             _msg, outputs = query_from_params({"query": "画一只猫"}, asset=asset)
         self.assertNotIn("photo_url", outputs)
         self.assertNotIn("saved_as", outputs)
-        self.assertEqual(outputs["image_ref"]["asset_id"], "asset_q")
+        self.assertEqual(outputs["asset_ref"]["asset_id"], "asset_q")
         mgr.register_storage_locator.assert_called_once()
 
 

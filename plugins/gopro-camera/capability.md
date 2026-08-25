@@ -13,17 +13,38 @@ GoPro 相机服务插件（`gopro-camera`），group=`camera`。
 
 ## 做什么
 
-通过 GoPro gpControl HTTP API 完成拍照流水线。对外产出 `capture_ref`（AssetRef）；blob 上传后由 Runtime register，禁止对外 `photo_url`。
+通过 GoPro gpControl HTTP API 完成拍照流水线。对外产出本机 inbox `capture_ref`（还不是 Asset，没有 `asset_id`）；**不**在本步上传、不 `POST /assets`。禁止对外 `photo_url` / path。
+
+## is_available（Runtime 执行前必调）
+
+所有 capability 默认 `is_available()` → true。`camera.capture` **必须**快探：
+
+| 端 | 探测 |
+|----|------|
+| Mac | 配置 SSID/密码；已在热点上则短 HTTP status；否则 CoreWLAN 扫描热点是否可见（**不** join、不等 45s） |
+| iPhone | 短 GET `http://10.5.5.9/.../status`（需已连相机热点） |
+
+不可用时 Runtime 立即失败并带可读 `msg`，避免长时间切网/快门超时。
 
 ## 规划自描述
 
-心跳 `description`：能拍一张并产出 `capture_ref`；不能分析照片、投电视、TTS、无图硬答已经看了；不能产出 `photo_url`。
+心跳结构化字段：拍一张现场照片并写入本机 inbox，产出 `capture_ref`，**不上传、不登记 Asset**。  
+典型触发：`拍一张`、`看看现在`、`看看客厅电视画面`、`拍一下电视屏幕`、`拍照`。  
+不能：上传 / 传到图床 / 传到云上、看图理解、投屏、无拍照直接回答画面内容。要把图给用户看或上图床时，下一步排 `asset.upload`，入参 `$capture_ref`。禁止把 path 写进 plan。
 
-### iPhone
+### iPhone / Android Console
 
-家庭拍照不在 iPhone 上跑。iOS App 只做意图入口（`POST /api/v1/intent`）；`gopro.camera` 由 Mac home-server 执行。
+家庭拍照也可以在手机 Console 上跑：预装 `gopro.camera` / `camera.capture`。
 
-插件包里仍保留 `plugins/gopro-camera/ios/` 源码，但 **不再编入** LivingRoomEdge。
+**iPhone 与 Mac 实现必须分开：**
+
+| | iPhone / Android Console | Mac home-server |
+|--|--|--|
+| 源码 | iOS `ios/LivingRoomEdge/LivingRoomEdge/GoPro/`；Android `android/living-room-android/.../gopro/` | `mac/.../gopro_camera.py` + `wifi_switch.py` |
+| Wi‑Fi | **不切网**。停在 GoPro AP 上控相机；上传若需达 Brain 可走蜂窝 | 必须切网：家 → GoPro → **切回家** 再写 inbox |
+| 上传 | 不在 capture 里上传。下一步 `asset.upload` 走蜂窝，入参 `$capture_ref` | 不在 capture 里上传。下一步 `asset.upload` 走家里 LAN 图床，入参 `$capture_ref` |
+
+不要把 Mac 的 `wifi_switch` / restore home 搬进 iPhone 或 Android Console。
 
 ### Mac Edge（无感切网）
 
@@ -31,14 +52,8 @@ Mac 无蜂窝 Multipath，流水线必须切网：
 
 1. 记录家里 SSID  
 2. CoreWLAN 加入 GoPro AP（`MAC_EDGE_GOPRO_SSID` / `PASSWORD`；不用 `networksetup`，避免 LaunchAgent 弹管理员框）  
-3. 快门 → `gpMediaList` → `:8080` 下载到 `mac/data/gopro/`  
-4. 切回家里 Wi‑Fi（连上即跳过 settle；短 hold 防首选网络回跳 GoPro）→ `POST /api/v1/photos/upload` → Runtime register → `capture_ref`
-
-`camera.capture` 可选入参 `upload_dest`（开关）：
-
-- **默认 `lan`**：传到家里 `192.168.3.65:8080`。**投屏/电视/display.photo 必须 lan，禁止 cloud**
-- `cloud`：传到 `http://115.190.153.53:9527/api/v1/photos/upload`，下载 `http://115.190.153.53:8080/{saved_as}`。仅用户明确要求公网时才填
-- 未传时读环境变量 `MAC_EDGE_PHOTO_UPLOAD_DEST`（默认 `lan`）。别名：`local` / `home` → `lan`。
+3. 快门 → `gpMediaList` → `:8080` 下载到 Runtime inbox `mac/data/captures/inbox/{capture_id}.jpg`  
+4. 切回家里 Wi‑Fi（连上即跳过 settle；短 hold 防首选网络回跳 GoPro）→ 产出 `capture_ref`。**不**登记 Brain Asset，**不**在本步上传图床。
 
 实现：[`mac/src/mac_edge/plugins/gopro_camera.py`](../../mac/src/mac_edge/plugins/gopro_camera.py) + [`wifi_switch.py`](../../mac/src/mac_edge/plugins/wifi_switch.py)。
 
@@ -46,7 +61,7 @@ Mac 无蜂窝 Multipath，流水线必须切网：
 
 | capability_id | 说明 | output_schema |
 |---------------|------|---------------|
-| `camera.capture` | 拍照并上传；默认 lan（`192.168.3.65:8080`）；仅明确要求公网时 `cloud` | `capture_ref`（必填 AssetRef） |
+| `camera.capture` | 拍照并写入本机 inbox；**不上传、不登记 Asset**。上传走独立 `asset.upload` | `capture_ref`（必填 CaptureRef） |
 | `take_video` | 开始录像（仅 iOS 本地，不上报 Brain） | — |
 
 成功时 Skill / intent status 带结构化 `outputs`，例如：
@@ -54,14 +69,14 @@ Mac 无蜂窝 Multipath，流水线必须切网：
 ```json
 {
   "capture_ref": {
-    "asset_id": "asset_01J...",
+    "capture_id": "cap_01ab...",
     "type": "image",
     "mime_type": "image/jpeg"
   }
 }
 ```
 
-Plugin 内部仍把上传结果交给 Runtime register；步间与 Brain 只见 `capture_ref`，禁止 `photo_url`。
+Plugin 只写本机 inbox；步间只见 `capture_ref`。上传由 `asset.upload` 用本步 `$capture_ref` 完成，成功后才 `POST /assets` 得到 `asset_id`。禁止 plugin 自己去捡 `step_outputs` 或扫描 inbox。
 
 失败时步骤 `msg` 必须是可读中文（扫描不到热点 / 切回家失败 / 相机无响应 / 上传失败等），括号内保留技术原文。空 `msg` 不算完成。
 
@@ -74,7 +89,7 @@ Skill 仍可 `execute`：`status` / `stop_recording` / `latest_photo` / `upload_
 ## 与 Edge / Brain 的关系
 
 - **Capability 插件 → Edge**：iOS 经 `GoProPluginEntry`；Mac 经 `services.py` 广告 + `executor` 派发 `camera.capture`。
-- **Edge → Brain**：谁心跳广告了 `gopro.camera` / `camera.capture`，调度就派给谁。iPhone 默认 `advertiseGoProCameraToBrain = false`（插件与本地「拍照」仍可用）；家里拍照由已广告该能力的 Mac home-server 承接。
+- **Edge → Brain**：谁心跳广告了 `gopro.camera` / `camera.capture`，调度就派给谁。iPhone 预装并默认打开 runtime，会广告该能力。
 
 ## 入口
 

@@ -1,0 +1,26 @@
+id: voice-lamp-test
+service_id: local.voice_test
+group: experiment
+version: "0.1.0"
+display_name: 台灯语音控制实验
+description: 单次播唤醒词+开台灯命令，摄像头+vision.ask 验证是否亮起；禁止当成真正的 light.set
+
+capabilities:
+  - capability_id: voice_test.run_trial
+    description: >
+      能：按 VoiceProfile 生成并播放唤醒词与「打开台灯」，等待后用本机摄像头拍照，
+      再调用 vision.ask 判断台灯是否亮起，持久化 SUCCESS/FAIL。
+      不能：真正的日常开灯（用 light.set）；知识问答；投屏；把播放成功当成控制成功。
+
+entry:
+  mac: mac/src/mac_edge/plugins/voice_test/trial.py
+config:
+  - key: MAC_EDGE_VOICE_TEST_PROFILE
+    platform: mac
+    description: 可选；VoiceProfile YAML/JSON 路径
+  - key: MAC_EDGE_WEBCAM_DEVICE
+    platform: mac
+    description: 可选；ffmpeg avfoundation 视频设备序号或名称，默认 0
+  - key: MAC_EDGE_VOICE_TEST_DIR
+    platform: mac
+    description: 可选；实验 JSONL / 音频 / 截图目录

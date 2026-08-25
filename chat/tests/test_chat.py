@@ -55,7 +55,7 @@ class MentionTests(unittest.TestCase):
         self.assertEqual(recipients_for("owner", []), ["boss"])
         self.assertEqual(recipients_for("boss", ["brain"]), ["brain"])
         self.assertEqual(recipients_for("boss", ["all"]), [
-            "coordinator", "brain", "runtime", "intent", "capability", "quality", "dba",
+            "coordinator", "brain", "runtime", "intent", "capability", "endpoint", "quality", "dba",
         ])
         recips = recipients_for("brain", ["all"])
         self.assertIn("boss", recips)
@@ -92,7 +92,7 @@ class DbPullTests(unittest.TestCase):
 
     def test_all_visible_to_every_handle(self) -> None:
         db.push_message(from_handle="boss", body="@all 对齐 Asset")
-        for handle in ("coordinator", "brain", "runtime", "intent", "capability", "quality", "dba"):
+        for handle in ("coordinator", "brain", "runtime", "intent", "capability", "endpoint", "quality", "dba"):
             db.reset(path=Path(self.tmp.name) / "agent_chat.sqlite3")
             pulled = db.pull_messages(handle=handle)
             self.assertEqual(len(pulled["messages"]), 1, handle)

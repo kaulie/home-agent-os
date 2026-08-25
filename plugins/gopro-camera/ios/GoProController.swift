@@ -45,8 +45,8 @@ final class GoProController: DeviceController {
         await capturePhotoPipeline()
     }
 
-    /// Full wire pipeline: shutter → wait 2s → download → wait home Wi‑Fi → upload.
-    /// Cast is a separate `display.photo` plan step (not folded into camera.capture).
+    /// Capture only: shutter → wait 2s → download to a local file.
+    /// Upload is a later `asset.upload` step (debug action `upload_photo` still exists).
     func capturePhotoPipeline() async -> ControllerResult {
         emitProgress("① 快门：连接 GoPro 并拍照…")
         let shutter = await map { try await driver.capturePhoto() }
@@ -78,36 +78,12 @@ final class GoProController: DeviceController {
             emitProgress("③ 下载失败：无本地路径")
             return .failure("download failed after shutter: no local photo path")
         }
-        emitProgress("③ 下载完成：\(URL(fileURLWithPath: localPath).lastPathComponent)")
+        emitProgress("③ 下载完成（未上传）：\(URL(fileURLWithPath: localPath).lastPathComponent)")
 
-        // Stay on GoPro AP: cloud upload/download uses cellular (no wait_wifi / home Wi‑Fi switch).
-        emitProgress("④ 上传：仍在 GoPro 网，经蜂窝传到云…")
-        let uploaded = await uploadPhoto(localPath: localPath)
-        if !uploaded.ok {
-            emitProgress("④ 上传失败：\(uploaded.message)")
-            return .failure("upload failed: \(uploaded.message)\n(local: \(localPath))")
-        }
-
-        var outputs: [String: String] = ["photo_local_path": localPath]
-        if let outs = uploaded.outputs {
-            for (k, v) in outs {
-                outputs[k] = v
-            }
-        }
-        guard let photoURL = Self.cloudPhotoURL(outputs["photo_url"]) else {
-            emitProgress("④ 上传成功但 photo_url 无效")
-            return .failure(
-                "upload ok but photo_url is not a cloud http(s) link "
-                    + "(refusing local path)\n(local: \(localPath))\n\(uploaded.message)"
-            )
-        }
-        outputs["photo_url"] = photoURL
-        emitProgress("④ 上传完成：\(photoURL)")
-
+        let outputs: [String: String] = ["photo_local_path": localPath]
         let message = """
-        step shutter: ok
-        step download: \(localPath)
-        step upload: \(photoURL)
+        capture ok (local, no upload)
+        local: \(localPath)
         """
         return .success(message, data: lastPhotoData, outputs: outputs)
     }

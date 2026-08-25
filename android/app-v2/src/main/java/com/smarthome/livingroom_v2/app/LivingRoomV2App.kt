@@ -9,6 +9,8 @@ import com.smarthome.livingroom_v2.R
 import com.smarthome.livingroom_v2.brain.CompositeBrainClient
 import com.smarthome.livingroom_v2.brain.HttpEdgeReporter
 import com.smarthome.livingroom_v2.brain.MockBrainClient
+import com.smarthome.livingroom_v2.brain.ParticipantStore
+import com.smarthome.livingroom_v2.data.AppSettings
 import com.smarthome.livingroom_v2.command.CommandHandler
 import com.smarthome.livingroom_v2.command.HttpCommandSource
 import com.smarthome.livingroom_v2.command.IntentPipeline
@@ -34,6 +36,10 @@ class LivingRoomV2App : Application() {
         private set
     lateinit var commandSource: HttpCommandSource
         private set
+    lateinit var settings: AppSettings
+        private set
+    lateinit var participant: ParticipantStore
+        private set
 
     val clientHint: String = BuildConfig.DEFAULT_EDGE_CLIENT_HINT
 
@@ -45,6 +51,8 @@ class LivingRoomV2App : Application() {
         super.onCreate()
         instance = this
         createNotificationChannel()
+        settings = AppSettings(this)
+        participant = ParticipantStore(settings)
         val localBrain = MockBrainClient()
         brain = CompositeBrainClient(
             local = localBrain,
@@ -95,6 +103,7 @@ class LivingRoomV2App : Application() {
             commandHandler = commandHandler,
             localRuntime = localRuntime,
             intentPipeline = intentPipeline,
+            participant = participant,
         )
         agentRef = edgeAgent
         edgeAgent.installSkills(NetEaseMusicSkill())

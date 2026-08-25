@@ -8,7 +8,7 @@ cd server && python home_brain.py
 # 等价：python brain_app.py
 ```
 
-`:9527`。`POST /api/v1/intent` 立刻返回 `intent_received`，后台 `llm_worker` 调方舟，写入 `execution_plan` 后升到 `intent_parsed`（空 plan 或规划失败为 `failed`，`msg`/`error` 必填）。规划 prompt：[`prompts/task_planner_system_prompt.md.en`](prompts/task_planner_system_prompt.md.en)。选边：心跳 last-writer-wins（`capability_id → edge_id`），每步 `assigned_edge_id`。密钥只读 `ARK_API_KEY`，不要写进代码。
+`:9527`。现场管理 HTML **不上云、不由 Brain 提供**：本机 `python3 admin/serve.py` → <http://127.0.0.1:8788/>（默认代理云上 Brain `/api/v1/admin/*`）。`POST /api/v1/intent` 立刻返回 `intent_received`，后台 `llm_worker` 调方舟，写入 `execution_plan` 后升到 `intent_parsed`（空 plan 或规划失败为 `failed`，`msg`/`error` 必填）。每单写入 `intent_origin`（`lan` 或 `cloud`）：受理该单的 Brain 控制面，由本进程 `BRAIN_ORIGIN` 决定（未设时：`/root/chat-gateway` → `cloud`，否则 `lan`）。客户端可选 POST 该字段，Brain 仍以本机 origin 为准。规划 prompt：[`prompts/task_planner_system_prompt.md.en`](prompts/task_planner_system_prompt.md.en)。选边：心跳 last-writer-wins（`capability_id → edge_id`），每步 `assigned_edge_id`。密钥只读 `ARK_API_KEY`，不要写进代码。
 
 权威状态在 SQLite，对照 [`docs/db-schema.md`](../docs/db-schema.md)：`jobs`（物流）、`participants`（注册+心跳）、`intent_reviews`（按次追加，含 `session_id`）。重启后续同一 `intent_id` / `participant_id`（同 `client_hint` 不重签）；`intent_received` 未规划单会重新入队。库文件默认 `server/data/brain.sqlite3`（`BRAIN_DB_PATH`）。日志写到 `server/llm_logs/brain.log`（按天切割，`BRAIN_LOG_DIR` 可改路径），不打控制台。**Brain 进程不建库、不迁移**；空库由 `@dba` 执行 `python db.py init`。备份：`python db.py backup /path/to/brain.sqlite3.bak`。Mac Edge 的 `local_ledger.json` / `edge_id.json` 仍是 JSON。
 
@@ -37,7 +37,7 @@ iPhone 是 **Intent Source**：只发自然语言、只轮询 `intent_detail`，
 `music.play` 参数：`song` / `artist` / `album`（均可选，至少填一个）。  
 勿再使用 `author`、`singer_name`、`song_name`。  
 `camera.capture` 输出：`photo_url`（必填）、`photo_local_path`、`saved_as`。默认 `upload_dest=lan`；投屏/电视禁止 `cloud`。  
-`photo_url` 形如 `http://192.168.3.65:8080/{saved_as}`。  
+`photo_url` 形如 `http://192.168.3.73:8080/{saved_as}`（本机 img-server）。  
 `display.photo` 参数：`photo_url`（必填，须 LAN，Chromecast 在家里 Wi‑Fi 拉取）。  
 `display.slideshow` 参数：`photo_urls`（必填 JSON 数组）、`interval_sec`（默认 5）、`order`（`array_asc` 默认 / `array_desc` / `alphabet_asc` / `alphabet_desc` / `random`）。轮播用本能力，不要拆成多个 `display.photo`。不传 `photo_urls` 则失败。  
 `notify.speak` 参数：`text`（必填）、`lang`（可选，如 `zh_CN`）；仅 Mac Edge；定时提醒用 step 上 `execution_timing`。`text` 支持内嵌 `$photo_url`；视觉结果用 `$summary`（也兼容旧写法 `$perception_json.summary`）。  
@@ -59,7 +59,13 @@ iPhone 是 **Intent Source**：只发自然语言、只轮询 `intent_detail`，
 
 心跳里每个 `capability_id` last-writer-wins 记到 `capability_edge_mapping`。规划落地时每步写 `assigned_edge_id`（不同步可以不同边）。时钟偏差 ≥5 分钟的心跳 HTTP 400，不入库。
 
-拉取：`GET /api/v1/devices/living-room/intents` **必须**带 `?edge_id=`，否则 `{ "intents": [] }`。当前实现按 `intent_status` 过滤后返回最近 N 条（`last`，最大 10），**不按** `assigned_edge_id` 再滤。
+拉取：`GET /api/v1/devices/living-room/intents` **必须**带 `?edge_id=`，否则 `{ "intents": [] }`。按 `intent_status` 过滤后，只返回该节点出现在某步 `execution_plan[].assigned_edge_id`（或 `pending_delivery.edge_id`）的最近 N 条（`last`，最大 10）。
+
+能力目录（在线且可调度）：
+
+- `GET /api/v1/capabilities` — 扁平列表，每项含 `capability_id`、`description`、`input_schema`、`output_schema`、`service_id`、`group`、`edge_id`、`assigned_edge_id`。可选 `?capability_id=`、`?edge_id=` 过滤。
+- `GET /api/v1/services` — 按 `service_id` 分组，嵌套 `capabilities[]`。
+- `GET /api/v1/edges` — 参与者 + 心跳快照（含 `services[]`）。
 
 ## 文件对照
 
@@ -72,12 +78,18 @@ iPhone 是 **Intent Source**：只发自然语言、只轮询 `intent_detail`，
 
 心跳偏差 **>5 分钟** → HTTP 400。Intent 根字段 `intent_base_time` 为 Unix **毫秒**。
 
+连通性 / 对表：`GET /api/v1/ping`（别名 `/ping`）→ `server_time_ms`；可选 `?client_time_ms=` 回 `skew_ms`（server−client）。不鉴权、不碰 DB。
+
 ## 验收
 
 ```bash
+# 连通性 / 对表
+curl -s 'http://127.0.0.1:9527/api/v1/ping'
+curl -s "http://127.0.0.1:9527/api/v1/ping?client_time_ms=$(python3 -c 'import time; print(int(time.time()*1000))')"
 # 注册 + 心跳 + 发意图 + 查详情
 curl -s -X POST http://127.0.0.1:9527/api/v1/edge-register
 curl -s 'http://127.0.0.1:9527/api/v1/services'
+curl -s 'http://127.0.0.1:9527/api/v1/capabilities'
 curl -s -X POST http://127.0.0.1:9527/api/v1/intent \
   -H 'Content-Type: application/json' \
   -d '{"text":"现在几点了","source":"text"}'

@@ -1,6 +1,7 @@
 package com.smarthome.livingroom_v2.data
 
 import android.content.Context
+import com.smarthome.livingroom_v2.brain.dto.ParticipantWire
 
 /** Lightweight prefs for app-v2 (boot autostart, agent desired state). */
 class AppSettings(context: Context) {
@@ -34,6 +35,22 @@ class AppSettings(context: Context) {
         get() = prefs.getLong(KEY_LAST_HEARTBEAT_SUCCESS_AT, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_HEARTBEAT_SUCCESS_AT, value).apply()
 
+    var enabledRoles: List<String>
+        get() {
+            val saved = prefs.getStringSet(KEY_ROLES, null)
+            val picked = saved ?: ParticipantWire.defaultRoles().toSet()
+            return ParticipantWire.ordered(picked)
+        }
+        set(value) {
+            prefs.edit().putStringSet(KEY_ROLES, ParticipantWire.ordered(value).toSet()).apply()
+        }
+
+    var lastReportedRoles: List<String>
+        get() = ParticipantWire.ordered(prefs.getStringSet(KEY_LAST_ROLES, emptySet()) ?: emptySet())
+        set(value) {
+            prefs.edit().putStringSet(KEY_LAST_ROLES, ParticipantWire.ordered(value).toSet()).apply()
+        }
+
     fun recordHeartbeatSuccess(atMs: Long = System.currentTimeMillis()) {
         prefs.edit()
             .putLong(KEY_HEARTBEAT_SUCCESS_COUNT, heartbeatSuccessCount + 1)
@@ -47,5 +64,7 @@ class AppSettings(context: Context) {
         private const val KEY_AGENT_ENABLED = "agent_enabled"
         private const val KEY_HEARTBEAT_SUCCESS_COUNT = "heartbeat_success_count"
         private const val KEY_LAST_HEARTBEAT_SUCCESS_AT = "last_heartbeat_success_at"
+        private const val KEY_ROLES = "enabled_roles"
+        private const val KEY_LAST_ROLES = "last_reported_roles"
     }
 }

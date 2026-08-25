@@ -28,11 +28,11 @@ enum AssetTransportError: LocalizedError {
 
 /// Owns business-server HTTP details for digital assets (SDK-internal).
 enum AssetHTTPTransport {
-    /// Cloud / Brain photo API (reachable via cellular after leaving GoPro AP).
-    static let defaultUploadURL = "http://115.190.153.53:9527/api/v1/photos/upload"
-    static let defaultDownloadLatestURL = "http://115.190.153.53:9527/api/v1/photos/download_latest"
-    /// Public static host for Cast / download: `http://115.190.153.53:8080/{saved_as}`.
-    static let defaultPublicPhotoBaseURL = "http://115.190.153.53:8080"
+    /// LAN img-server on this Mac (reachable on home Wi-Fi).
+    static let defaultUploadURL = "http://192.168.3.73:8080/api/v1/photos/upload"
+    static let defaultDownloadLatestURL = "http://192.168.3.73:8080/api/v1/photos/download_latest"
+    /// Public static host for Cast / download.
+    static let defaultPublicPhotoBaseURL = "http://192.168.3.73:8080"
 
     struct UploadResult {
         let message: String

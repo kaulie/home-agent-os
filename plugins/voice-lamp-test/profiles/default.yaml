@@ -1,0 +1,23 @@
+# Phase 1 default VoiceProfile. Override via env MAC_EDGE_VOICE_TEST_*
+# or capability input_constrict. Do not hard-code in plugins.
+backend: say
+# 试验变量。扫描：--backends say,edge
+voice: Tingting
+# 试验变量。扫描：--voices Tingting,Mei-Jia
+speed: 1.0
+volume: 0.8
+# speed / volume 也是识别率试验变量。扫描：--speeds 0.8,1.0,1.2  --volumes 0.6,0.8,1.0
+pitch: ""
+# 试验变量（仅 edge 生效）。扫描：--pitches +0Hz,+10Hz,-10Hz
+wake_word: 小书小书
+command: 打开台灯
+# 小书小书 → 打开台灯 / 关闭台灯。识别率试验变量。>2000ms 命令窗口高风险（负对照可用 3000）。
+# 推荐扫描：500,800,1200,1500,2000,3000。不是 settle_ms，也不是两轮之间的 --gap-ms。
+wake_word_pause_ms: 1500
+# 命令播完到拍照。试验变量。扫描：--settles 1000,1500,2000。不是 wake_word_pause_ms。
+settle_ms: 1500
+verify_query: 图中请只判断落地台灯或书桌台灯的灯头/灯罩是否自己在发光。不要把天花板主灯、电视、窗外自然光当成台灯亮。若目标台灯亮着，answer_text 只写「亮」；若关着，只写「灭」；看不清则说「我不知道」。
+capture_before: true
+webcam_device: "0"
+capture_backend: gopro
+confirm_playback: true

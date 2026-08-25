@@ -1,7 +1,14 @@
 # Living Room Control v2 (Edge Agent + Skill)
 
-独立 APK：`applicationId = com.smarthome.livingroom_v2`。  
+独立 APK：`applicationId = com.smarthome.livingroom_v2`（`versionName` 见 `build.gradle.kts`）。  
 **不修改** 旧 module `:app`（`com.smarthome.livingroom`）。
+
+能力心跳协议（与 Mac / iPhone / Console 对齐）：每个 capability 发  
+`kind` / `role` / `planner_recognize` / `typical_triggers[]` / `do_not_dispatch[]` + schema；  
+`description` 可选，不是规划契约。源：`plugins/netease-music/android` + `EdgeJson.encodeCapabilities`。
+
+注册 / 心跳同时声明 Participant 角色（默认 `runtime` + `endpoint`）：`roles[]`、`role_*`、`intent_sources[]`（本机为空）、`endpoints[]`（`chromecast.display`，`supported_presentation=image,text,video`）、`participant_id`。  
+**不**广告 `display.photo` 为 Runtime capability（投屏由 iPhone Cast Sender 执行）；本机只广告已安装的 `netease.music`。
 
 ## 五层架构
 
@@ -27,7 +34,7 @@ GET /devices/living-room/intents?intent_status=intent_parsed
 
 与 iOS 意图窗口共用 intents / `execution_plan` / `intent_status` 契约。**无本地 Mock Plan**；本地按钮与意图下发是两条独立路径。
 
-心跳 / 注册 body 仅含 `services[]`（不再发顶层 `skills` / 扁平 `capabilities`）。
+心跳 / 注册 body 含 `services[]` + Participant 字段（`roles` / `intent_sources` / `endpoints` / `participant_id`），不再发顶层 `skills` / 扁平 `capabilities`。
 
 ## 包结构
 
@@ -46,7 +53,7 @@ com.smarthome.livingroom_v2
 ## Command 管线（对齐 iOS）
 
 - 拉取 URL：`BuildConfig.DEFAULT_COMMANDS_PULL_URL`  
-  `http://115.190.153.53:9527/api/v1/devices/living-room/intents?intent_status=intent_parsed`
+  `http://192.168.3.73:9527/api/v1/devices/living-room/intents?intent_status=intent_parsed`
 - 响应：`{ "intents": [ { "id", "status", "execution_plan": [{ "capability", "step" }] } ] }`  
   → 展开为带 `intent_id` 的 `Command[]`（兼容旧 `{ "commands": [...] }`）
 - Agent 每个 tick：heartbeat → **拉服务器 intents** → CommandHandler（标准意图管线）  
@@ -59,14 +66,14 @@ com.smarthome.livingroom_v2
 - 日志关键字（意图）：`Command received` → `Task decomposed` → `Scheduled` → `Dispatched` → `Executed`  
   日志关键字（本地）：`LocalAction …` → `LocalAction done`
 
-## Edge → Brain（对齐 iOS）
+## Edge → Brain（对齐 iOS / Console）
 
-1. 本地无 `edge_id` → `POST /api/v1/edge-register`（`client_hint=living-room-chromecast`）  
-2. Brain 签发 `edge_id` → 写入本地（`EdgeIdStore`），以后启动复用、**不再重复 register**  
-3. 每 **15 秒** `POST /api/v1/edge-heartbeat`（必须带已签发 id；同 tick 拉 intents）  
+1. 本地无 `edge_id` → `POST /api/v1/edge-register`（`client_hint=living-room-chromecast`，roles=`runtime`+`endpoint`）  
+2. Brain 签发 `edge_id`（= `participant_id`）→ 写入本地（`EdgeIdStore`），以后启动复用、**不再重复 register**  
+3. 每 **15 秒** `POST /api/v1/edge-heartbeat`（必须带已签发 id + `participant_id` + `endpoints`；同 tick 拉 intents）  
 4. 调试 Skill：UI 按钮走 `invokeLocalSkillAction`（单点，非意图管线）；业务任务靠真服 intents 拉取 
 
-默认服务器：`http://115.190.153.53:9527`（`BuildConfig.DEFAULT_BRAIN_BASE_URL`）。
+默认服务器：`http://192.168.3.73:9527`（`BuildConfig.DEFAULT_BRAIN_BASE_URL`）。
 
 调试：UI「清除本地 edgeId」可强制下次重新 register。
 
@@ -111,5 +118,6 @@ cd android
 ## 本期边界
 
 - 网易云：`API 搜歌 → 手机版深链 → 媒体键`（**无障碍不做**）  
-- 注册 service：**仅** `netease.music`（group=`music`，caps=`music.play|pause|stop|next|previous`）；Marshall 定义保留但不 install  
+- 注册 service：**仅** `netease.music`（group=`music`，caps=`music.play|pause|stop|next|previous`，`kind=action`）；Marshall 定义保留但不 install  
+- 角色：`runtime` + `endpoint`；广告 `chromecast.display`（image/text/video）。**不**广告 `display.photo`  
 - 意图拉取 / status 上报已接真服；无本地 Mock Plan 队列  

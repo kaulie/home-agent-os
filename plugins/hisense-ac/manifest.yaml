@@ -1,0 +1,28 @@
+id: hisense-ac
+service_id: livingroom.climate
+group: climate
+version: "0.1.0"
+display_name: 客厅海信空调
+description: 经海信爱家云端开关空调、制冷/制热/送风、设温、风速、扫风；禁止 LLM
+
+capabilities:
+  - capability_id: climate.set
+    description: >
+      能：开关客厅海信空调；制冷/制热/送风；设定温度（16–32）；风速（自动/柔风/低/中/高）；扫风（关/开/左右/上下）。至少一项 power/mode/target_temp/fan/swing。
+      不能：新风、除湿、电辅热；拆成 notify.speak；知识问答。缺入参则失败。
+
+entry:
+  mac: mac/src/mac_edge/plugins/hisense_ac.py
+config:
+  - key: MAC_EDGE_HISENSE_USERNAME
+    platform: mac
+    description: 海信爱家登录名（通常为手机号）；本机 mac/.env，禁止入库
+  - key: MAC_EDGE_HISENSE_PASSWORD
+    platform: mac
+    description: 海信爱家密码（须在 App 内先设好）；本机 mac/.env，禁止入库
+  - key: MAC_EDGE_HISENSE_DEVICE_ID
+    platform: mac
+    description: 可选；多台空调时指定 deviceId
+  - key: MAC_EDGE_HISENSE_HOME_ID
+    platform: mac
+    description: 可选；多家庭时指定 homeId

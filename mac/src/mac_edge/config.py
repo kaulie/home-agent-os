@@ -85,6 +85,8 @@ class Config:
     http_timeout_sec: float = 20.0
     display_http_timeout_sec: float = 60.0
     query_http_timeout_sec: float = 90.0
+    # Wall-clock cap per capability execution (one-shot or one recurring beat).
+    capability_timeout_sec: float = 300.0
     intranet_ping: IntranetPingSettings = field(default_factory=IntranetPingSettings)
 
     @property
@@ -156,7 +158,7 @@ def load_config() -> Config:
         app_version=os.environ.get("MAC_EDGE_APP_VERSION", "0.3.0").strip() or "0.3.0",
         services=default_services(),
     )
-    base = os.environ.get("MAC_EDGE_BRAIN_URL", "http://115.190.153.53:9527").strip()
+    base = os.environ.get("MAC_EDGE_BRAIN_URL", "http://127.0.0.1:9527").strip()
     base = base.rstrip("/")
 
     cast_display_url = (
@@ -171,6 +173,7 @@ def load_config() -> Config:
     # Optional pin; default empty so dispatched intents stay visible for step 2.
     intent_status = os.environ.get("MAC_EDGE_INTENT_STATUS", "").strip()
     query_timeout = float(os.environ.get("MAC_EDGE_QUERY_TIMEOUT_SEC", "90"))
+    cap_timeout = float(os.environ.get("MAC_EDGE_CAPABILITY_TIMEOUT_SEC", "300"))
 
     return Config(
         brain_base_url=base,
@@ -180,5 +183,6 @@ def load_config() -> Config:
         cast_display_url=cast_display_url.rstrip("/"),
         intent_status=intent_status,
         query_http_timeout_sec=max(30.0, query_timeout),
+        capability_timeout_sec=max(30.0, min(cap_timeout, 3600.0)),
         intranet_ping=_load_intranet_ping(root),
     )

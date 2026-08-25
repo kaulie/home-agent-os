@@ -3,7 +3,10 @@ package com.smarthome.livingroom_android.edge
 import android.content.Context
 import android.util.Log
 import com.smarthome.livingroom_android.brain.BrainClient
+import com.smarthome.livingroom_android.brain.BrainEndpoint
+import com.smarthome.livingroom_android.brain.CompositeBrainClient
 import com.smarthome.livingroom_android.brain.HttpEdgeException
+import com.smarthome.livingroom_android.brain.ParticipantStore
 import com.smarthome.livingroom_android.brain.dto.EdgeDeviceType
 import com.smarthome.livingroom_android.brain.dto.EdgeHealthSnapshot
 import com.smarthome.livingroom_android.brain.dto.EdgeHealthStatus
@@ -47,6 +50,7 @@ class EdgeAgent(
     private val commandHandler: CommandHandler,
     private val localRuntime: LocalEdgeRuntime,
     private val intentPipeline: IntentPipeline? = null,
+    private val participant: ParticipantStore,
 ) {
     interface Listener {
         fun onStatus(message: String)
@@ -111,6 +115,7 @@ class EdgeAgent(
                     }
                     if (ok) {
                         recordOnlineHeartbeatSuccess()
+                        settings.lastReportedRoles = info.roles
                         val capCount = info.services.sumOf { it.capabilities.size }
                         postStatus(
                             "Heartbeat ok edgeId=${info.edgeId} services=${info.services.size} " +
@@ -169,6 +174,7 @@ class EdgeAgent(
     fun clearAssignedEdgeId() {
         assignedEdgeId = null
         EdgeIdStore.clear(appContext)
+        settings.lastRegisteredBrainUrl = ""
         commandSource.localEdgeId = null
         localRuntime.updateEdgeId(identity.clientHint)
         postStatus("Cleared assigned edgeId; next start will re-register")
@@ -214,61 +220,95 @@ class EdgeAgent(
     /** One-shot UI heartbeat (same as iOS「心跳」) — requires assigned edge_id. */
     fun heartbeatOnce(onDone: (ok: Boolean, message: String) -> Unit = { _, _ -> }) {
         scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    ensureRegisteredWithBrain()
-                    val id = assignedEdgeId?.trim().orEmpty()
-                    if (id.isEmpty()) {
-                        error("请先注册拿到 edgeId，再发心跳")
-                    }
-                    val info = buildNodeInfo(EdgeOnlineStatus.ONLINE)
-                    val ok = brain.reportEdgeInfo(info)
-                    withContext(Dispatchers.Main) {
-                        listener?.onEdgeInfoReported(info)
-                    }
-                    if (!ok) error("Heartbeat failed (remote) edgeId=${info.edgeId}")
-                    recordOnlineHeartbeatSuccess()
-                    "心跳成功 edgeId=${info.edgeId} services=${info.services.size}"
-                }
+            val result = heartbeatNow()
+            onDone(result.isSuccess, result.getOrElse { it.message ?: it.javaClass.simpleName })
+        }
+    }
+
+    suspend fun heartbeatNow(): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            ensureRegisteredWithBrain()
+            val id = assignedEdgeId?.trim().orEmpty()
+            if (id.isEmpty()) {
+                error("请先注册拿到 edgeId，再发心跳")
             }
+            val info = buildNodeInfo(EdgeOnlineStatus.ONLINE)
+            val ok = brain.reportEdgeInfo(info)
+            withContext(Dispatchers.Main) {
+                listener?.onEdgeInfoReported(info)
+            }
+            if (!ok) error("Heartbeat failed (remote) edgeId=${info.edgeId}")
+            recordOnlineHeartbeatSuccess()
+            settings.lastReportedRoles = info.roles
+            "心跳成功 edgeId=${info.edgeId} services=${info.services.size}"
+        }.also { result ->
             val ok = result.isSuccess
             val msg = result.getOrElse { it.message ?: it.javaClass.simpleName }
             postStatus(if (ok) msg else "心跳失败：$msg")
             if (!ok) {
                 result.exceptionOrNull()?.let { handleBrainFailure(it, phase = "heartbeat") }
             }
-            onDone(ok, msg)
         }
+    }
+
+    /**
+     * Register with the Brain currently in [HttpEdgeReporter.baseURL].
+     * Matches iOS `ensureRegistered`: skip when this URL already registered,
+     * unless [force]. Switching LAN↔Cloud does **not** wipe the local edge id.
+     */
+    suspend fun registerNow(force: Boolean = false): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val url = currentBrainIntentUrl()
+            val cached = assignedEdgeId?.trim().orEmpty()
+                .ifBlank { EdgeIdStore.load(appContext).orEmpty() }
+            if (!force && cached.isNotBlank() && url.isNotBlank() &&
+                settings.lastRegisteredBrainUrl == url
+            ) {
+                applyAssignedEdgeId(cached)
+                return@runCatching "已注册，复用本地 edge_id=$cached"
+            }
+            if (cached.isNotBlank()) applyAssignedEdgeId(cached)
+            performRegisterWithBrain()
+            if (url.isNotBlank()) settings.lastRegisteredBrainUrl = url
+            "注册成功 edge_id=$assignedEdgeId"
+        }
+    }
+
+    private fun currentBrainIntentUrl(): String {
+        val base = (brain as? CompositeBrainClient)?.remote?.baseURL.orEmpty()
+        return if (base.isBlank()) "" else BrainEndpoint.intentUrl(base)
     }
 
     private suspend fun ensureRegisteredWithBrain() {
+        val url = currentBrainIntentUrl()
         val existing = assignedEdgeId?.trim().orEmpty()
-        if (existing.isNotEmpty()) {
-            commandSource.localEdgeId = existing
-            localRuntime.updateEdgeId(existing)
+            .ifBlank { EdgeIdStore.load(appContext).orEmpty() }
+        if (existing.isNotEmpty() && url.isNotBlank() && settings.lastRegisteredBrainUrl == url) {
+            applyAssignedEdgeId(existing)
             postStatus("Reuse cached edge_id=$existing (skip register)")
             return
         }
-        val fromStore = EdgeIdStore.load(appContext)
-        if (!fromStore.isNullOrBlank()) {
-            applyAssignedEdgeId(fromStore)
-            postStatus("Loaded edge_id=$fromStore from local store (skip register)")
-            return
-        }
+        if (existing.isNotEmpty()) applyAssignedEdgeId(existing)
         performRegisterWithBrain()
+        if (url.isNotBlank()) settings.lastRegisteredBrainUrl = url
     }
 
     private suspend fun performRegisterWithBrain() {
+        val roles = participant.enabledRoles()
         val request = EdgeRegisterRequest(
             clientHint = identity.clientHint,
             displayName = identity.displayName,
             deviceType = identity.deviceType,
             room = identity.room,
-            services = registry.services(),
+            services = participant.advertisedServices(roles, registry.services()),
             appVersion = identity.appVersion,
             location = identity.location,
+            roles = roles,
+            intentSources = participant.intentSources(roles),
+            endpoints = participant.endpoints(roles),
+            participantId = assignedEdgeId,
         )
-        postStatus("No cached edge_id — registering with Brain…")
+        postStatus("Registering with Brain…")
         val response = brain.registerEdge(request)
         if (!response.isApproved) {
             val detail = response.message.ifEmpty { response.status }
@@ -277,6 +317,7 @@ class EdgeAgent(
             )
         }
         applyAssignedEdgeId(response.edgeId)
+        settings.registeredAtMs = System.currentTimeMillis()
         postStatus(
             "Brain assigned edgeId=${response.edgeId} status=${response.status} (saved locally)",
         )
@@ -301,6 +342,7 @@ class EdgeAgent(
                 summary = if (running) "agent running" else "agent idle",
             )
         }
+        val roles = participant.enabledRoles()
         return EdgeNodeInfo(
             edgeId = edgeId,
             displayName = identity.displayName,
@@ -308,9 +350,13 @@ class EdgeAgent(
             room = identity.room,
             onlineStatus = online,
             health = health,
-            services = registry.services(),
+            services = participant.advertisedServices(roles, registry.services()),
             appVersion = identity.appVersion,
             location = identity.location,
+            roles = roles,
+            intentSources = participant.intentSources(roles),
+            endpoints = participant.endpoints(roles),
+            participantId = assignedEdgeId ?: edgeId,
         )
     }
 
@@ -326,6 +372,7 @@ class EdgeAgent(
                     }
                     if (ok) {
                         recordOnlineHeartbeatSuccess()
+                        settings.lastReportedRoles = info.roles
                     } else {
                         postStatus("Heartbeat failed (remote) edgeId=${info.edgeId}")
                     }
@@ -423,7 +470,12 @@ class EdgeAgent(
                         stepId = "local-${System.currentTimeMillis()}",
                     )
                     try {
-                        skill.execute(capabilityId, params, ctx)
+                        val avail = skill.isAvailable(capabilityId, params, ctx)
+                        if (!avail.ok) {
+                            SkillResult.error(avail.message ?: "$capabilityId unavailable")
+                        } else {
+                            skill.execute(capabilityId, params, ctx)
+                        }
                     } catch (t: Throwable) {
                         Log.e(
                             TAG,
@@ -480,7 +532,7 @@ class EdgeAgent(
         fun defaultIdentity(clientHint: String, appVersion: String?): EdgeIdentity =
             EdgeIdentity(
                 clientHint = clientHint,
-                displayName = "客厅 · Android Edge",
+                displayName = "客厅 Android",
                 deviceType = EdgeDeviceType.ANDROID,
                 room = "living-room",
                 appVersion = appVersion,

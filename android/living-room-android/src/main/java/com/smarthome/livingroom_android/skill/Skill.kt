@@ -26,9 +26,17 @@ data class SkillResult(
 /**
  * Local executable service plugin.
  * Wire contract is [service]; invoke with [capabilityId] (not legacy action names).
+ *
+ * Runtime MUST call [isAvailable] before [execute]. Default: available.
  */
 interface Skill {
     fun service(): ServiceDescriptor
+
+    suspend fun isAvailable(
+        capabilityId: String,
+        params: Map<String, Any?>,
+        ctx: SkillContext,
+    ): SkillResult = SkillResult.ok("available")
 
     suspend fun execute(
         capabilityId: String,

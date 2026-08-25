@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 /**
  * GET `/api/v1/devices/living-room/intents?edge_id=&peek=1`
  *
- * Keep where this node is `scheduler_node` OR any step `assigned_edge_id`.
+ * Keep where any step `assigned_edge_id` matches this node.
  * Drop terminal (`succeeded` / `failed`).
  */
 class HttpCommandSource(
@@ -150,14 +150,22 @@ class HttpCommandSource(
             return list.filter { it.length() > 0 && isRelevant(it, selfId) }
         }
 
-        /** Scheduler node or any step assignee. Terminals are never work. */
+        /** Any step assignee, or a real pending_delivery hook. Terminals are never work. */
         fun isRelevant(intent: JSONObject, localEdgeId: String): Boolean {
             val selfId = localEdgeId.trim()
             if (selfId.isEmpty()) return false
             val st = intentWireStatus(intent)
-            if (st == "succeeded" || st == "failed") return false
-            val scheduler = stringValue(intent.opt("scheduler_node"))?.trim().orEmpty()
-            if (scheduler == selfId) return true
+            if (st == "succeeded" || st == "failed") {
+                val pending = intent.optJSONObject("pending_delivery")
+                val pendingEdge = stringValue(pending?.opt("edge_id"))?.trim().orEmpty()
+                return st == "succeeded" && pendingEdge == selfId
+            }
+            return edgeHasAssignedStep(intent, selfId)
+        }
+
+        fun edgeHasAssignedStep(intent: JSONObject, localEdgeId: String): Boolean {
+            val selfId = localEdgeId.trim()
+            if (selfId.isEmpty()) return false
             val plan = intent.optJSONArray("execution_plan") ?: JSONArray()
             for (i in 0 until plan.length()) {
                 val step = plan.optJSONObject(i) ?: continue

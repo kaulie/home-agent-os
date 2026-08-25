@@ -1,6 +1,7 @@
 """Mac Edge capability: clock.now — local wall clock, no LLM.
 
 Independent of query.content. This step only sees its own resolved params.
+time_text is for speaking/reading; machine timezone lives on now_iso.
 """
 
 from __future__ import annotations
@@ -17,19 +18,6 @@ class ClockNowError(Exception):
     pass
 
 
-def _offset_label(delta: timedelta | None) -> str:
-    if delta is None:
-        return "UTC"
-    total = int(delta.total_seconds())
-    sign = "+" if total >= 0 else "-"
-    total = abs(total)
-    hours, rem = divmod(total, 3600)
-    minutes = rem // 60
-    if minutes:
-        return f"UTC{sign}{hours:02d}:{minutes:02d}"
-    return f"UTC{sign}{hours:02d}:00"
-
-
 def _resolve_now(timezone_name: str | None) -> datetime:
     name = (timezone_name or "").strip()
     if not name:
@@ -44,17 +32,45 @@ def _resolve_now(timezone_name: str | None) -> datetime:
         raise ClockNowError(f"报时失败：无法使用时区「{name}」（{e}）") from e
 
 
+def _day_period(hour: int) -> tuple[str, int]:
+    if hour == 0:
+        return "凌晨", 0
+    if hour < 6:
+        return "凌晨", hour
+    if hour < 12:
+        return "上午", hour
+    if hour == 12:
+        return "中午", 12
+    if hour < 18:
+        return "下午", hour - 12
+    return "晚上", hour - 12
+
+
+def _spoken_zone(dt: datetime) -> str:
+    if dt.utcoffset() == timedelta(0):
+        return "，世界时"
+    return ""
+
+
+def spoken_time_text(dt: datetime) -> str:
+    """Chinese wall-clock line meant for TTS. No IANA names, slashes, or UTC+HH:MM."""
+    period, hour12 = _day_period(dt.hour)
+    if dt.minute == 0:
+        clock = f"{hour12}点整"
+    else:
+        clock = f"{hour12}点{dt.minute}分"
+    return (
+        f"现在是{dt.year}年{dt.month}月{dt.day}日"
+        f"{period}{clock}"
+        f"{_spoken_zone(dt)}"
+    )
+
+
 def clock_now(*, timezone_name: str | None = None) -> dict[str, str]:
     """Read the wall clock. Never calls an LLM."""
     dt = _resolve_now(timezone_name)
-    tzinfo = dt.tzinfo
-    tz_key = getattr(tzinfo, "key", None) or (dt.tzname() or "local")
     now_iso = dt.isoformat(timespec="seconds")
-    time_text = (
-        f"{dt.year}年{dt.month}月{dt.day}日 "
-        f"{dt.hour:02d}:{dt.minute:02d}:{dt.second:02d}"
-        f"（{tz_key}，{_offset_label(dt.utcoffset())}）"
-    )
+    time_text = spoken_time_text(dt)
     return {"now_iso": now_iso, "time_text": time_text}
 
 

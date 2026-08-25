@@ -1,0 +1,22 @@
+id: video-live-stream
+service_id: iphone.video
+group: video
+version: "0.1.0"
+display_name: Video Live Stream
+description: iPhone 实时视频输入（kind=input）；本机推 MPEG-TS over TCP 到 Mac ingest；不作为计划逐步执行。
+
+capabilities:
+  - capability_id: video.live_stream
+    kind: input
+    description: >
+      把 iPhone 摄像头编成 H.264 MPEG-TS 推到已授权的 Mac Edge。
+      不做视觉理解、不抽帧、不作为计划逐步执行。
+
+entry:
+  ios: ios/LivingRoomEdge/LivingRoomEdge/VideoLiveStream/
+  mac: mac/src/mac_edge/plugins/video_live_ingest.py
+config:
+  - MAC_EDGE_VIDEO_INGEST
+  - MAC_EDGE_VIDEO_INGEST_HTTP_PORT
+  - MAC_EDGE_VIDEO_INGEST_LARIX_PORT
+  - MAC_EDGE_VIDEO_INGEST_PREVIEW

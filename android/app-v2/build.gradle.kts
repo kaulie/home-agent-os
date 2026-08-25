@@ -11,19 +11,19 @@ android {
         applicationId = "com.smarthome.livingroom_v2"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-v2"
+        versionCode = 3
+        versionName = "0.5.0"
         buildConfigField("String", "DEFAULT_EDGE_CLIENT_HINT", "\"living-room-chromecast\"")
-        buildConfigField("String", "DEFAULT_BRAIN_BASE_URL", "\"http://115.190.153.53:9527\"")
+        buildConfigField("String", "DEFAULT_BRAIN_BASE_URL", "\"http://192.168.3.73:9527\"")
         buildConfigField(
             "String",
             "DEFAULT_COMMANDS_PULL_URL",
-            "\"http://115.190.153.53:9527/api/v1/devices/living-room/intents\"",
+            "\"http://192.168.3.73:9527/api/v1/devices/living-room/intents\"",
         )
         buildConfigField(
             "String",
             "DEFAULT_INTENT_URL",
-            "\"http://115.190.153.53:9527/api/v1/intent\"",
+            "\"http://192.168.3.73:9527/api/v1/intent\"",
         )
         buildConfigField("long", "HEARTBEAT_INTERVAL_MS", "15000L")
     }
@@ -61,6 +61,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.leanback:leanback:1.0.0")

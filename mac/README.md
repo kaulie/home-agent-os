@@ -13,7 +13,7 @@
 | `display_name` | `客厅 · Mac Edge` |
 | `device_type` | `mac` |
 | `room` | `living-room` |
-| `services` | `MAC_EDGE_ROLE=laptop`（本机默认）：`chromecast.display`、`local.notify`、`local.vision`、`local.query`、`local.clock`。`MAC_EDGE_ROLE=home-server`：`gopro.camera`（需 `MAC_EDGE_GOPRO_SSID`）+ `livingroom.ceiling_light`（客厅大路灯 `light.set`，不依赖 GoPro）。用户可见结果由 Brain 组装 `intent_detail.presentation`；voice TTS 走 `pending_delivery` + `notify.speak`。 |
+| `services` | `MAC_EDGE_ROLE=laptop`（本机默认）：`chromecast.display`、`local.notify`、`local.vision`、`local.query`、`local.clock`。`MAC_EDGE_ROLE=home-server`：`gopro.camera`（需 `MAC_EDGE_GOPRO_SSID`）+ `livingroom.ceiling_light`（客厅大路灯 `light.set`，不依赖 GoPro）。用户可见结果由 Brain 组装 `intent_detail.presentation`；语音播报是 `execution_plan` 里的 `notify.speak`，由 Runtime 当普通 capability 执行。 |
 
 ## Cast plugin（薄转发）
 
@@ -33,7 +33,7 @@ GET http://127.0.0.1:9095/endpoint/display?url={urlencoded_photo_url}
 - `POST {BRAIN}/api/v1/edge-heartbeat`
 - `GET  {BRAIN}/api/v1/devices/living-room/intents?edge_id=…&peek=1`
 
-默认 Brain：`http://115.190.153.53:9527`，空闲轮询默认 **3s**（`MAC_EDGE_INTERVAL_SEC`）。  
+默认 Brain：本机 `http://127.0.0.1:9527`（home-server 用局域网 `http://192.168.3.73:9527`），空闲轮询默认 **3s**（`MAC_EDGE_INTERVAL_SEC`）。  
 有 pending `execution_timing` 时改为 **deadline sleep**：`min(10s, 剩余时间/2)`，临近到点会越睡越短；`notify.speak` 在独立 worker 线程执行，不堵主循环。  
 `edge_id` 持久化在 `data/edge_id.json`（已 gitignore）。
 
@@ -74,7 +74,7 @@ Mac 广告 `local.clock` / `clock.now`。读本机时刻（可选 IANA `timezone
 3. gpControl 快门 → 下载最新静图到 `data/gopro/`  
 4. 切回家里 Wi‑Fi → `POST` 上传 → 返回 `photo_url` / `saved_as`
 
-可选入参 `upload_dest`：默认 **lan**（家里 `192.168.3.65:8080`）。投屏/电视必须 `lan`，禁止 `cloud`。仅用户明确要求公网时才填 `cloud`。未传时读 `MAC_EDGE_PHOTO_UPLOAD_DEST`。
+可选入参 `upload_dest`：默认 **lan**（本机 img-server `http://192.168.3.73:8080`，Mac 上传走 `127.0.0.1:8080`）。投屏/电视必须 `lan`，禁止 `cloud`。仅用户明确要求公网时才填 `cloud`。未传时读 `MAC_EDGE_PHOTO_UPLOAD_DEST`。已有 Asset 再传到图床/云端用 `asset.upload`（`dest=img_server|cloud`）。
 
 必填：`MAC_EDGE_GOPRO_SSID`、`MAC_EDGE_GOPRO_PASSWORD`。失败时尽量恢复家里网。
 
@@ -97,3 +97,36 @@ Edge 启动后默认开启后台探测，结果写入独立文件 `logs/intranet
 - `lan`：周期性发现同网段在线机，再对 peer 列表做周期 ping  
 
 日志行示例：`SAMPLE host=… ok=1 rtt_ms=…`；`STATS window=1m host=… count=… avg_ms=…`。
+
+## mac_voice（voice.stream · kind=input）
+
+挂在客厅 **Mac Runtime** 上的常驻语音入口，**不是**独立 edge。
+
+- 心跳广告：`local.voice` / `voice.stream`（`MAC_EDGE_VOICE=0` 可关）
+- 进程：可由 `mac_edge` 自动监督拉起，也可手动跑；共用 `mac/data/edge_id.json`
+- `kind=input` → 可 `POST /api/v1/intent`。唤醒应答「又咋了」是本机 TTS 回复语，不建 intent、不走理解；STT 回声若整句就是这句也会丢掉。正文指令仍 `POST /api/v1/intent`。
+- 生命周期自管理：`MAC_VOICE_LISTEN_MODE=wake_word`（默认，整句里出现两次 **面条** 或近音即唤醒，中间可夹其它词；喇叭回「又咋了」；**下一句**须在唤醒回复结束后 5 秒内开口才当指令）| `always_on`（调试：任意语音都发）| `wait_command`（未实现，不会静默开麦）
+
+```bash
+cd mac
+source .venv/bin/activate
+# 通常只需跑 mac_edge（会监督 mac_voice）。单独调试：
+export MAC_EDGE_EDGE_ID=$(python -c "import json;print(json.load(open('data/edge_id.json'))['edge_id'])")
+PYTHONPATH=src python -m mac_voice --live --post-intent
+```
+
+STT 默认 `volc_sauc`。换厂商只加 `mac_voice/stt/*.py`。
+
+## video.live_stream ingest（MPEG-TS over TCP）
+
+Mac 收 iPhone Console「直播」或 **Larix Broadcaster** 的 H.264 MPEG-TS。不广告 `video.live_stream`（该 cap 在 iPhone 心跳上）；本机只做 LAN ingest。
+
+```bash
+cd mac
+source .venv/bin/activate
+PYTHONPATH=src python -m mac_edge
+curl -s http://127.0.0.1:8790/api/v1/video-live/status
+```
+
+控制口默认 `:8790`，Larix 常驻 MPEG-TS TCP `:5004`。详见 [`plugins/video-live-stream/capability.md`](../plugins/video-live-stream/capability.md)。
+`MAC_EDGE_VIDEO_INGEST=0` 可关；`MAC_EDGE_VIDEO_INGEST_PREVIEW=1` 连接后弹 ffplay。

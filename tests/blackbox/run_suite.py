@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-BRAIN = "http://115.190.153.53:9527"
+BRAIN = "http://127.0.0.1:9527"
 OUT = Path(__file__).resolve().parent / "run_results.json"
 
 # (id, text, timeout_sec, notes)

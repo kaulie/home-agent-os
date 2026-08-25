@@ -4,12 +4,15 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import com.smarthome.livingroom_android.BuildConfig
 import com.smarthome.livingroom_android.R
+import com.smarthome.livingroom_android.brain.BrainEndpoint
 import com.smarthome.livingroom_android.brain.CompositeBrainClient
 import com.smarthome.livingroom_android.brain.HttpEdgeReporter
 import com.smarthome.livingroom_android.brain.MockBrainClient
+import com.smarthome.livingroom_android.brain.ParticipantStore
 import com.smarthome.livingroom_android.brain.dto.EdgeDeviceType
 import com.smarthome.livingroom_android.brain.dto.EdgeIdentity
 import com.smarthome.livingroom_android.command.CommandHandler
@@ -19,21 +22,31 @@ import com.smarthome.livingroom_android.command.IntentStatusClient
 import com.smarthome.livingroom_android.command.dispatcher.LocalTaskDispatcher
 import com.smarthome.livingroom_android.command.runtime.EdgeRuntimeNode
 import com.smarthome.livingroom_android.command.runtime.LocalEdgeRuntime
+import com.smarthome.livingroom_android.data.AppSettings
 import com.smarthome.livingroom_android.data.EdgeIdStore
+import com.smarthome.livingroom_android.data.HouseholdDirectory
 import com.smarthome.livingroom_android.edge.EdgeAgent
 import com.smarthome.livingroom_android.edge.SkillRegistry
+import com.smarthome.livingroom_android.intent.IntentApi
 import com.smarthome.livingroom_android.intent.IntentJourneyStore
 import com.smarthome.livingroom_android.intent.IntentPhase
 import com.smarthome.livingroom_android.intent.PlanStepRow
 import com.smarthome.livingroom_android.service.EdgeAgentController
 import com.smarthome.livingroom_android.service.EdgeAgentService
-import com.smarthome.plugin.gopro.WifiNetworkSkill
+import com.smarthome.livingroom_android.skill.AssetUploadSkill
+import com.smarthome.livingroom_android.skill.DocumentScanSkill
+import com.smarthome.livingroom_android.skill.GoProCameraSkill
+import com.smarthome.livingroom_android.skill.PhoneCallSkill
 import org.json.JSONObject
 
 /**
- * Slim Android Edge: register/heartbeat + intent logistics + Wi‑Fi switch.
+ * HomeAgent Console: Intent Source + Endpoint + local runtime (document.scan, phone.call).
  */
 class LivingRoomAndroidApp : Application() {
+    lateinit var settings: AppSettings
+        private set
+    lateinit var participant: ParticipantStore
+        private set
     lateinit var brain: CompositeBrainClient
         private set
     lateinit var registry: SkillRegistry
@@ -44,10 +57,17 @@ class LivingRoomAndroidApp : Application() {
         private set
     lateinit var commandSource: HttpCommandSource
         private set
+    lateinit var intentStatusClient: IntentStatusClient
+        private set
     lateinit var intentJourney: IntentJourneyStore
         private set
+    lateinit var intentApi: IntentApi
+        private set
+    lateinit var reporter: HttpEdgeReporter
+        private set
 
-    val clientHint: String = BuildConfig.DEFAULT_EDGE_CLIENT_HINT
+    val clientHint: String
+        get() = settings.clientHint
 
     val edgeId: String
         get() = edgeAgent.edgeId
@@ -59,18 +79,24 @@ class LivingRoomAndroidApp : Application() {
         super.onCreate()
         instance = this
         createNotificationChannel()
+        settings = AppSettings(this)
+        settings.ensureClientHint(Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID))
+        participant = ParticipantStore(settings)
         intentJourney = IntentJourneyStore()
+        intentApi = IntentApi()
 
+        val initialBase = BrainEndpoint.normalizeBase(settings.cloudBrainUrl)
+        reporter = HttpEdgeReporter(initialBase, enabled = true)
         brain = CompositeBrainClient(
             local = MockBrainClient(),
-            remote = HttpEdgeReporter(BuildConfig.DEFAULT_BRAIN_BASE_URL, enabled = true),
+            remote = reporter,
         )
         registry = SkillRegistry()
         val localNode = EdgeRuntimeNode(
             nodeId = clientHint,
-            displayName = "客厅 · Android Edge",
+            displayName = "客厅 Android",
         )
-        val intentStatusClient = IntentStatusClient(BuildConfig.DEFAULT_INTENT_URL)
+        intentStatusClient = IntentStatusClient(BrainEndpoint.intentUrl(initialBase))
         val localRuntime = LocalEdgeRuntime(
             appContext = this,
             edgeId = clientHint,
@@ -85,7 +111,7 @@ class LivingRoomAndroidApp : Application() {
             },
         )
         commandSource = HttpCommandSource(
-            BuildConfig.DEFAULT_COMMANDS_PULL_URL,
+            BrainEndpoint.livingRoomIntentsPullUrl(initialBase),
             intentStatusFilter = null,
             localEdgeId = EdgeIdStore.load(this),
         )
@@ -113,7 +139,7 @@ class LivingRoomAndroidApp : Application() {
             appContext = this,
             identity = EdgeIdentity(
                 clientHint = clientHint,
-                displayName = "客厅 · Android Edge",
+                displayName = "客厅 Android",
                 deviceType = EdgeDeviceType.ANDROID,
                 room = "living-room",
                 appVersion = BuildConfig.VERSION_NAME,
@@ -125,16 +151,42 @@ class LivingRoomAndroidApp : Application() {
             commandHandler = commandHandler,
             localRuntime = localRuntime,
             intentPipeline = intentPipeline,
+            participant = participant,
         )
         agentRef = edgeAgent
         edgeAgent.installSkills(
-            WifiNetworkSkill(
-                onProgress = { pipelineLogSink?.invoke(it) },
-                homeProbeUrl = BuildConfig.DEFAULT_HOME_PROBE_URL,
+            DocumentScanSkill(
+                intentUrl = { BrainEndpoint.intentUrl(reporter.baseURL) },
+                participantId = { edgeAgent.assignedEdgeId ?: clientHint },
+                api = intentApi,
+            ),
+            GoProCameraSkill(
+                intentUrl = { BrainEndpoint.intentUrl(reporter.baseURL) },
+                cloudIntentUrl = { BrainEndpoint.intentUrl(settings.cloudBrainUrl) },
+                participantId = { edgeAgent.assignedEdgeId ?: clientHint },
+                api = intentApi,
+            ),
+            AssetUploadSkill(
+                intentUrl = { BrainEndpoint.intentUrl(reporter.baseURL) },
+                cloudIntentUrl = { BrainEndpoint.intentUrl(settings.cloudBrainUrl) },
+                participantId = { edgeAgent.assignedEdgeId ?: clientHint },
+                api = intentApi,
+            ),
+            PhoneCallSkill(
+                people = { HouseholdDirectory.parse(settings.householdDirectoryJson) },
             ),
         )
         EdgeAgentController.maybeResume(this, reason = "app_onCreate")
-        Log.i(TAG, "slim Edge ready hint=$clientHint")
+        Log.i(TAG, "Console ready hint=$clientHint")
+    }
+
+        fun applyBrainBase(base: String) {
+        val root = BrainEndpoint.normalizeBase(base)
+        if (root == BrainEndpoint.normalizeBase(reporter.baseURL)) return
+        reporter.baseURL = root
+        commandSource.setPullURL(BrainEndpoint.livingRoomIntentsPullUrl(root))
+        intentStatusClient.intentBaseURL = BrainEndpoint.intentUrl(root)
+        Log.i(TAG, "Brain base → $root")
     }
 
     fun seedJourneyFromPull(snapshot: com.smarthome.livingroom_android.command.IntentsPullSnapshot) {
@@ -213,7 +265,7 @@ class LivingRoomAndroidApp : Application() {
     }
 
     companion object {
-        private const val TAG = "LivingRoomAndroidApp"
+        private const val TAG = "HomeAgentConsole"
         lateinit var instance: LivingRoomAndroidApp
             private set
     }

@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>小花的下雨天</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #1b3344;
+      overflow: hidden;
+      font-family: "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  </style>
+</head>
+<body>
+<canvas id="g"></canvas>
+<script>
+(function () {
+  const canvas = document.getElementById("g");
+  const ctx = canvas.getContext("2d");
+  const JOY = 3;
+  const COOLDOWN = 360;
+  const WINDOW_MS = 1600;
+  const params = new URLSearchParams(location.search);
+  const POLL_MS = Math.max(500, Number(params.get("interval")) || 5000);
+  const demo = params.get("demo") === "1";
+  const stream = params.get("stream") === "1";
+  const wsUrl = params.get("ws") || "";
+  const sseUrl = params.get("sse") || "";
+  const pollUrl = params.get("poll") || params.get("api") || "";
+
+  const STORY = [
+    { id: "title", type: "title" },
+    { id: "s1", type: "talk", say: "下雨了。小花趴在窗边，雨点把玻璃敲得叮叮响。", pig: true },
+    { id: "s2", type: "talk", say: "「我想去找小黄鸭玩。」她穿上黄雨衣，推开了门。", pig: true },
+    {
+      id: "s3", type: "action", pig: true, puddle: "small", need: 1,
+      say: "门口有个小泥坑。金圈亮了，举起手拍出水花！",
+      win: "水花溅到雨靴上，小花咯咯笑。",
+    },
+    { id: "s4", type: "talk", pig: true, duck: true, say: "小路中间，小黄鸭站着不敢走。「泥坑太大了……」" },
+    {
+      id: "s5", type: "action", pig: true, duck: true, puddle: "mid", need: 2,
+      say: "帮小黄鸭拍开泥坑。金圈亮两次，各拍一下。",
+      win: "路溅开一条缝，小黄鸭咕咕叫着跟上来。",
+    },
+    { id: "s6", type: "talk", pig: true, duck: true, say: "两人往前走。草地尽头，有个好大的泥坑。" },
+    {
+      id: "s7", type: "action", pig: true, duck: true, puddle: "big", need: 3,
+      say: "大泥坑！连续拍三次，和小花一起玩水花。",
+      win: "泥点子溅得哪儿都是。小花说：这是今天最开心的事。",
+    },
+    { id: "s8", type: "talk", pig: true, duck: true, mom: true, say: "「小花——」妈妈撑着伞走来，看见两只小泥猴。" },
+    {
+      id: "s9", type: "action", pig: true, duck: true, mom: true, puddle: "none", need: 1,
+      say: "跟妈妈挥手打招呼！",
+      win: "妈妈也挥了挥手：「回家喝热汤吧。」",
+    },
+    {
+      id: "end", type: "end", pig: true, mom: true,
+      say: "洗干净以后，桌上有热蛋糕。小花说：明天还要下雨就好了。",
+    },
+  ];
+
+  let W = 1920, H = 1080, dpr = 1;
+  let mode = "title";
+  let scene = 0;
+  let joy = JOY;
+  let hits = 0;
+  let windowOn = false;
+  let windowUntil = 0;
+  let nextWindowAt = 0;
+  let lastAct = 0;
+  let say = "";
+  let sayHint = "";
+  let splashT = 0;
+  let drops = [];
+  let rain = [];
+  let demoArmed = false;
+  let talkUntil = 0;
+  let link = "本机点击或空格";
+  let lastTs = 0;
+
+  function loadImg(src) {
+    const im = new Image();
+    im.src = src;
+    return im;
+  }
+  const IM = {
+    bg: loadImg("rain-path.png?v=1"),
+    pig: loadImg("piglet.png?v=1"),
+    mom: loadImg("pig-mom.png?v=1"),
+    duck: loadImg("duckling.png?v=1"),
+  };
+  function ready(im) { return !!(im && im.complete && im.naturalWidth > 0); }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(640, window.innerWidth);
+    H = Math.max(360, window.innerHeight);
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  function nowMs() { return performance.now(); }
+  function beat() { return STORY[scene] || STORY[STORY.length - 1]; }
+  function puddlePos() {
+    const b = beat();
+    const size = b.puddle === "big" ? 0.16 : b.puddle === "mid" ? 0.12 : 0.09;
+    return { cx: W * 0.58, cy: H * 0.72, rx: W * size, ry: H * size * 0.38 };
+  }
+
+  function seedRain() {
+    rain = [];
+    for (let i = 0; i < 70; i++) {
+      rain.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        z: 0.5 + Math.random(),
+      });
+    }
+  }
+  seedRain();
+
+  function enterScene(i) {
+    scene = i;
+    const b = beat();
+    hits = 0;
+    windowOn = false;
+    demoArmed = false;
+    splashT = 0;
+    drops = [];
+    if (b.type === "title") {
+      mode = "title";
+      say = "";
+      sayHint = "举手开始小花的故事";
+    } else if (b.type === "talk") {
+      mode = "talk";
+      say = b.say;
+      sayHint = "举手继续";
+      talkUntil = nowMs() + 5500;
+    } else if (b.type === "end") {
+      mode = "end";
+      say = b.say;
+      sayHint = "再举一次手，从头听";
+    } else {
+      mode = "action";
+      say = b.say;
+      sayHint = b.need > 1 ? ("还要拍 " + b.need + " 下") : "金圈亮了就举手";
+      nextWindowAt = nowMs() + 700;
+    }
+  }
+
+  function startStory() {
+    joy = JOY;
+    enterScene(1);
+  }
+
+  function openWindow() {
+    windowOn = true;
+    windowUntil = nowMs() + WINDOW_MS;
+    demoArmed = false;
+    sayHint = "拍！";
+  }
+
+  function spawnSplash(x, y) {
+    splashT = 1;
+    for (let i = 0; i < 22; i++) {
+      const a = -Math.PI + Math.random() * Math.PI;
+      drops.push({
+        x: x, y: y,
+        vx: Math.cos(a) * (80 + Math.random() * 260),
+        vy: -80 - Math.random() * 280,
+        life: 1,
+        s: 4 + Math.random() * 10,
+      });
+    }
+  }
+
+  function succeedAction() {
+    const b = beat();
+    say = b.win || "好！";
+    sayHint = "";
+    windowOn = false;
+    setTimeout(function () { enterScene(scene + 1); }, 1200);
+  }
+
+  function onSplash() {
+    const t = nowMs();
+    if (t - lastAct < COOLDOWN) return;
+    lastAct = t;
+    const b = beat();
+    if (mode === "title") { startStory(); return; }
+    if (mode === "end") { startStory(); return; }
+    if (mode === "talk") { enterScene(scene + 1); return; }
+    if (mode !== "action") return;
+    const p = puddlePos();
+    if (windowOn) {
+      hits += 1;
+      spawnSplash(p.cx, p.cy - 10);
+      windowOn = false;
+      const left = (b.need || 1) - hits;
+      if (left <= 0) succeedAction();
+      else {
+        sayHint = "还要拍 " + left + " 下";
+        nextWindowAt = t + 650;
+      }
+    } else {
+      sayHint = "等金圈亮再拍";
+    }
+  }
+
+  function receiveAction(raw) {
+    let data = raw;
+    if (typeof raw === "string") {
+      try { data = JSON.parse(raw); } catch (e) { return; }
+    }
+    if (!data || typeof data !== "object") return;
+    const type = String(data.type || data.action || "").toLowerCase();
+    if (["splash", "punch", "hit", "fist", "wave", "arm_left", "arm_right"].indexOf(type) >= 0) {
+      onSplash();
+    }
+  }
+  window.receiveAction = receiveAction;
+  window.punch = onSplash;
+  window.splash = onSplash;
+
+  function connectSse(url) {
+    try {
+      const es = new EventSource(url);
+      es.onopen = function () { link = "实时流"; };
+      es.onerror = function () { link = "流重连中"; };
+      es.onmessage = function (ev) { receiveAction(ev.data); };
+    } catch (e) { link = "通道失败"; }
+  }
+  function connectWs(url) {
+    let retry = 800;
+    function open() {
+      let sock;
+      try { sock = new WebSocket(url); } catch (e) { return; }
+      sock.onopen = function () { link = "实时流"; retry = 800; };
+      sock.onclose = function () {
+        link = "流重连中";
+        setTimeout(open, retry);
+        retry = Math.min(retry * 1.5, 5000);
+      };
+      sock.onmessage = function (ev) { receiveAction(ev.data); };
+    }
+    open();
+  }
+  function startPoll(url) {
+    let since = null, inflight = false;
+    const sep = url.indexOf("?") >= 0 ? "&" : "?";
+    function tick() {
+      if (inflight) return;
+      inflight = true;
+      const u = since == null ? url : url + sep + "since=" + since;
+      fetch(u, { cache: "no-store" }).then(function (r) {
+        if (!r.ok) throw new Error("poll");
+        return r.json();
+      }).then(function (j) {
+        const latest = Number(j && j.latest_id);
+        const items = Array.isArray(j) ? j : ((j && j.events) || (j && j.type ? [j] : []));
+        if (since == null) {
+          since = Number.isFinite(latest) ? latest : 0;
+          items.forEach(function (item) {
+            if (item && item.id) since = Math.max(since, Number(item.id) || 0);
+          });
+          link = "每" + (POLL_MS / 1000) + "秒拉取";
+          return;
+        }
+        items.forEach(function (item) {
+          if (item && item.id) since = Math.max(since, Number(item.id) || 0);
+          receiveAction(item);
+        });
+        if (Number.isFinite(latest)) since = Math.max(since, latest);
+        link = "每" + (POLL_MS / 1000) + "秒拉取";
+      }).catch(function () { link = "拉取失败"; })
+        .then(function () { inflight = false; });
+    }
+    tick();
+    setInterval(tick, POLL_MS);
+  }
+  if (wsUrl) connectWs(wsUrl);
+  else if (sseUrl) connectSse(sseUrl);
+  else if (stream && /^https?:$/.test(location.protocol)) connectSse(location.origin + "/events/stream");
+  else if (pollUrl) startPoll(pollUrl);
+  else if (/^https?:$/.test(location.protocol)) startPoll(location.origin + "/events");
+  else link = "本机点击或空格";
+
+  canvas.addEventListener("pointerdown", function (e) { e.preventDefault(); onSplash(); });
+  window.addEventListener("keydown", function (e) {
+    if (e.code === "Space" || e.key === " " || e.key === "Enter") { e.preventDefault(); onSplash(); }
+  });
+
+  function wrapText(text, maxW, font) {
+    ctx.font = font;
+    const chars = String(text || "").split("");
+    const lines = [];
+    let line = "";
+    for (let i = 0; i < chars.length; i++) {
+      const t = line + chars[i];
+      if (ctx.measureText(t).width > maxW && line) {
+        lines.push(line);
+        line = chars[i];
+      } else line = t;
+    }
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  function drawSprite(im, cx, bottom, height) {
+    const w = height * (im.naturalWidth / im.naturalHeight);
+    ctx.drawImage(im, cx - w / 2, bottom - height, w, height);
+  }
+
+  function update(dt) {
+    const t = nowMs();
+    splashT = Math.max(0, splashT - dt * 1.8);
+    for (let i = drops.length - 1; i >= 0; i--) {
+      const p = drops[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 820 * dt;
+      p.life -= dt * 1.4;
+      if (p.life <= 0) drops.splice(i, 1);
+    }
+    for (let i = 0; i < rain.length; i++) {
+      rain[i].y += (220 + rain[i].z * 280) * dt;
+      if (rain[i].y > H) { rain[i].y = -10; rain[i].x = Math.random() * W; }
+    }
+    if (mode === "talk" && t >= talkUntil) enterScene(scene + 1);
+    if (mode === "action") {
+      if (windowOn && t >= windowUntil) {
+        windowOn = false;
+        joy = Math.max(0, joy - 1);
+        sayHint = joy > 0 ? "没关系，再等金圈" : "慢慢来，金圈还会亮";
+        nextWindowAt = t + 900;
+      }
+      if (!windowOn && t >= nextWindowAt && hits < (beat().need || 1)) openWindow();
+      if (demo && windowOn && !demoArmed) {
+        demoArmed = true;
+        setTimeout(onSplash, 400);
+      }
+    }
+  }
+
+  function drawBg() {
+    if (ready(IM.bg)) ctx.drawImage(IM.bg, 0, 0, W, H);
+    else {
+      ctx.fillStyle = "#24485c";
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.fillStyle = "rgba(20,40,55,0.22)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(180,210,230,0.35)";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < rain.length; i++) {
+      const r = rain[i];
+      ctx.beginPath();
+      ctx.moveTo(r.x, r.y);
+      ctx.lineTo(r.x - 2, r.y + 16 * r.z);
+      ctx.stroke();
+    }
+  }
+
+  function drawPuddle() {
+    const b = beat();
+    if (mode !== "action") return;
+    const p = puddlePos();
+    ctx.save();
+    if (b.puddle !== "none") {
+      ctx.fillStyle = windowOn ? "rgba(70,50,28,0.85)" : "rgba(50,38,22,0.7)";
+      ctx.beginPath();
+      ctx.ellipse(p.cx, p.cy, p.rx, p.ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = windowOn ? "#f4d03f" : "rgba(255,255,255,0.25)";
+    ctx.lineWidth = windowOn ? 14 : 6;
+    ctx.beginPath();
+    ctx.ellipse(p.cx, p.cy, p.rx * (b.puddle === "none" ? 1.15 : 1), p.ry * (b.puddle === "none" ? 1.2 : 1), 0, 0, Math.PI * 2);
+    ctx.stroke();
+    if (windowOn) {
+      ctx.fillStyle = "rgba(244,208,63,0.12)";
+      ctx.fill();
+      ctx.fillStyle = "#fff4b0";
+      ctx.font = "bold " + Math.floor(H * 0.07) + "px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(b.puddle === "none" ? "挥手！" : "拍！", p.cx, p.cy - p.ry - H * 0.04);
+    }
+    ctx.restore();
+    for (let i = 0; i < drops.length; i++) {
+      const d = drops[i];
+      ctx.globalAlpha = Math.max(0, d.life);
+      ctx.fillStyle = "#c4a882";
+      ctx.beginPath();
+      ctx.ellipse(d.x, d.y, d.s, d.s * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawCast() {
+    const b = beat();
+    const ground = H * 0.82;
+    if (b.mom && ready(IM.mom)) drawSprite(IM.mom, W * 0.82, ground, H * 0.58);
+    if ((b.pig || mode === "title") && ready(IM.pig)) drawSprite(IM.pig, W * 0.22, ground, H * 0.62);
+    if (b.duck && ready(IM.duck)) drawSprite(IM.duck, W * 0.42, ground + H * 0.02, H * 0.28);
+  }
+
+  function fillRound(x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawHud() {
+    ctx.fillStyle = "#f7fbff";
+    ctx.font = "bold " + Math.floor(H * 0.042) + "px sans-serif";
+    ctx.textAlign = "left";
+    const chapter = Math.max(0, scene);
+    ctx.fillText(mode === "title" ? "小花的下雨天" : ("故事  " + chapter + " / " + (STORY.length - 1)), W * 0.04, H * 0.08);
+    ctx.textAlign = "right";
+    let hearts = "";
+    for (let i = 0; i < JOY; i++) hearts += i < joy ? "● " : "○ ";
+    ctx.fillText("开心  " + hearts.trim(), W * 0.96, H * 0.08);
+
+    const boxY = H * 0.78;
+    ctx.fillStyle = "rgba(16,28,38,0.72)";
+    fillRound(W * 0.06, boxY, W * 0.88, H * 0.18, 18);
+    const font = "bold " + Math.floor(H * 0.038) + "px sans-serif";
+    const lines = wrapText(say || (mode === "title" ? "小花想出门找小黄鸭。举手，故事就开始。" : ""), W * 0.80, font);
+    ctx.fillStyle = "#f4f7fb";
+    ctx.textAlign = "left";
+    ctx.font = font;
+    for (let i = 0; i < lines.length && i < 3; i++) {
+      ctx.fillText(lines[i], W * 0.09, boxY + H * 0.065 + i * H * 0.045);
+    }
+    ctx.fillStyle = "#f4d03f";
+    ctx.font = Math.floor(H * 0.028) + "px sans-serif";
+    ctx.fillText(sayHint, W * 0.09, boxY + H * 0.155);
+    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.font = Math.floor(H * 0.022) + "px sans-serif";
+    ctx.fillText(link + (demo ? "  ·  演示" : ""), W * 0.62, boxY + H * 0.155);
+  }
+
+  function frame(ts) {
+    if (!lastTs) lastTs = ts;
+    let dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    if (dt > 0.05) dt = 0.05;
+    update(dt);
+    drawBg();
+    drawPuddle();
+    drawCast();
+    drawHud();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

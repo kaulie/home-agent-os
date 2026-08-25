@@ -1,5 +1,6 @@
 package com.smarthome.livingroom_android.intent
 
+import org.json.JSONObject
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.max
 
@@ -63,6 +64,8 @@ data class IntentJourney(
     val planSteps: List<PlanStepRow>,
     val startedAtMs: Long = System.currentTimeMillis(),
     val updatedAtMs: Long = System.currentTimeMillis(),
+    val presentation: IntentPresentation? = null,
+    val error: String? = null,
 ) {
     fun logisticsText(nowMs: Long = System.currentTimeMillis()): String = buildString {
         append("意图 #").append(intentId)
@@ -117,6 +120,84 @@ data class IntentJourney(
                     "${m}m${s}s"
                 }
             }
+
+        fun formatDualElapsed(clientMs: Long?, serverMs: Long?): String {
+            val client = clientMs?.let { formatDuration(it) }
+            val server = serverMs?.let { formatDuration(it) }
+            return when {
+                client != null && server != null -> "本机 $client · 服务 $server"
+                client != null -> "本机 $client"
+                server != null -> "服务 $server"
+                else -> ""
+            }
+        }
+    }
+}
+
+data class IntentPresentation(
+    val type: Kind,
+    val channel: String = "",
+    val endpoint: String = "",
+    val from: String = "",
+    val text: String = "",
+    val videoUrl: String? = null,
+    val assetId: String = "",
+) {
+    enum class Kind { TEXT, IMAGE, VIDEO, HTML, AUDIO }
+
+    val hasContent: Boolean
+        get() = when (type) {
+            Kind.IMAGE -> assetId.isNotEmpty()
+            Kind.VIDEO -> !videoUrl.isNullOrBlank()
+            Kind.AUDIO -> !videoUrl.isNullOrBlank() || text.isNotEmpty()
+            Kind.TEXT, Kind.HTML -> text.isNotEmpty()
+        }
+
+    val copyText: String
+        get() = when {
+            text.isNotEmpty() -> text
+            !videoUrl.isNullOrBlank() -> videoUrl
+            assetId.isNotEmpty() -> assetId
+            else -> ""
+        }
+
+    companion object {
+        fun parse(raw: Any?): IntentPresentation? {
+            val obj = raw as? JSONObject ?: return null
+            val typeRaw = obj.optString("type", "text").trim().lowercase()
+            val type = when (typeRaw) {
+                "image" -> Kind.IMAGE
+                "video" -> Kind.VIDEO
+                "html" -> Kind.HTML
+                "audio" -> Kind.AUDIO
+                else -> Kind.TEXT
+            }
+            val assetId = unwrapAssetId(
+                when (val ref = obj.opt("asset_ref")) {
+                    is JSONObject -> ref.optString("asset_id", "").trim()
+                    is String -> ref.trim()
+                    else -> ""
+                }
+            )
+            val pres = IntentPresentation(
+                type = type,
+                channel = obj.optString("channel", "").trim(),
+                endpoint = obj.optString("endpoint", "").trim(),
+                from = obj.optString("from", "").trim(),
+                text = obj.optString("text", "").trim(),
+                videoUrl = obj.optString("video_url", "").trim().takeIf { it.isNotEmpty() },
+                assetId = assetId,
+            )
+            return pres.takeIf { it.hasContent }
+        }
+
+        private fun unwrapAssetId(raw: String): String {
+            val text = raw.trim()
+            if (text.isEmpty() || !text.startsWith("{")) return text
+            val inner = runCatching { JSONObject(text).optString("asset_id") }.getOrNull()
+                ?.trim().orEmpty()
+            return inner.ifEmpty { text }
+        }
     }
 }
 
@@ -147,6 +228,8 @@ class IntentJourneyStore {
         text: String = active?.text.orEmpty(),
         phase: IntentPhase,
         planSteps: List<PlanStepRow> = active?.planSteps.orEmpty(),
+        presentation: IntentPresentation? = active?.presentation,
+        error: String? = active?.error,
     ) {
         val id = intentId.trim()
         if (id.isEmpty()) return
@@ -189,6 +272,8 @@ class IntentJourneyStore {
             planSteps = planSteps,
             startedAtMs = startedAt,
             updatedAtMs = now,
+            presentation = presentation ?: current?.takeIf { it.intentId == id }?.presentation,
+            error = error ?: current?.takeIf { it.intentId == id }?.error,
         )
         active = journey
         listeners.forEach { it.onJourneyChanged(journey) }

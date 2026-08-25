@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -37,7 +38,7 @@ class BrainDbTest(unittest.TestCase):
             )
         }
         self.assertTrue(
-            {"meta", "jobs", "participants", "intent_reviews", "assets", "asset_grants", "schema_migrations"} <= names
+            {"meta", "jobs", "participants", "intent_reviews", "intent_classification_events", "assets", "asset_grants", "edge_control_policy", "admin_op_log", "schema_migrations"} <= names
         )
         self.assertNotIn("edges", names)
         self.assertNotIn("intent_queue", names)
@@ -54,7 +55,12 @@ class BrainDbTest(unittest.TestCase):
                 "SELECT version FROM schema_migrations ORDER BY version"
             )
         ]
-        self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+        self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21])
+        job_cols = {
+            row[1]: row[2]
+            for row in conn.execute("PRAGMA table_info(jobs)")
+        }
+        self.assertEqual(job_cols["intent_id"], "INTEGER")
         pcols = {
             row[1] for row in conn.execute("PRAGMA table_info(participants)")
         }
@@ -69,10 +75,34 @@ class BrainDbTest(unittest.TestCase):
         self.assertNotIn("reply", cols)
         self.assertIn("execution_plan", cols)
         self.assertIn("text", cols)
+        self.assertIn("intent_origin", cols)
+        self.assertNotIn("assigned_edge_id", cols)
+        self.assertNotIn("scheduler_node", cols)
         rcols = {
             row[1] for row in conn.execute("PRAGMA table_info(intent_reviews)")
         }
         self.assertIn("session_id", rcols)
+        self.assertIn("cost_ms", rcols)
+        self.assertIn("request_payload", rcols)
+        self.assertIn("response_json", rcols)
+        self.assertIn("raw_response", rcols)
+        ccols = {
+            row[1] for row in conn.execute("PRAGMA table_info(intent_classification_events)")
+        }
+        self.assertEqual(
+            {
+                "event_id",
+                "intent_id",
+                "text",
+                "classifier_version",
+                "score",
+                "classification",
+                "features",
+                "candidates",
+                "created_at",
+            },
+            ccols,
+        )
         acols = {
             row[1] for row in conn.execute("PRAGMA table_info(assets)")
         }
@@ -127,8 +157,13 @@ class BrainDbTest(unittest.TestCase):
             brain_db.init_db()
             conn = brain_db._connect()
             jobs_cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)")}
-            self.assertIn("reply", jobs_cols)
-            self.assertIn("extra_json", jobs_cols)
+            job_types = {
+                row[1]: row[2]
+                for row in conn.execute("PRAGMA table_info(jobs)")
+            }
+            self.assertNotIn("reply", jobs_cols)
+            self.assertNotIn("extra_json", jobs_cols)
+            self.assertEqual(job_types["intent_id"], "INTEGER")
             pcols = {
                 row[1] for row in conn.execute("PRAGMA table_info(participants)")
             }
@@ -139,7 +174,7 @@ class BrainDbTest(unittest.TestCase):
                     "SELECT version FROM schema_migrations ORDER BY version"
                 )
             ]
-            self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+            self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21])
             brain_db.put_job(
                 {
                     "intent_id": 1,
@@ -155,6 +190,61 @@ class BrainDbTest(unittest.TestCase):
             brain_db._sqlite_supports_drop_column = original
             brain_db.reset(path=self.path)
             brain_db.init_db()
+
+    def test_create_job_autoincrement_intent_id(self) -> None:
+        iid = brain_db.create_job(
+            {
+                "status": "intent_received",
+                "text": "auto",
+                "created_at": 1.0,
+                "updated_at": 1.0,
+            }
+        )
+        self.assertEqual(iid, 1)
+        job = brain_db.get_job(iid)
+        assert job is not None
+        self.assertEqual(job["intent_id"], 1)
+        self.assertEqual(job["job_id"], "1")
+        iid2 = brain_db.create_job(
+            {
+                "status": "intent_received",
+                "created_at": 2.0,
+                "updated_at": 2.0,
+            }
+        )
+        self.assertEqual(iid2, 2)
+        self._reopen()
+        self.assertEqual(brain_db.get_job(2)["status"], "intent_received")
+
+    def test_put_job_without_id_uses_autoincrement(self) -> None:
+        brain_db.put_job(
+            {
+                "status": "intent_parsed",
+                "created_at": 1.0,
+                "updated_at": 1.0,
+            }
+        )
+        jobs = brain_db.list_jobs()
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["intent_id"], 1)
+
+    def test_list_jobs_page_newest_first(self) -> None:
+        for i in range(1, 6):
+            brain_db.put_job(
+                {
+                    "intent_id": i,
+                    "status": "succeeded",
+                    "text": f"t{i}",
+                    "created_at": float(i),
+                    "updated_at": float(i),
+                }
+            )
+        page = brain_db.list_jobs_page(limit=2)
+        self.assertEqual([job["intent_id"] for job in page], [5, 4])
+        page2 = brain_db.list_jobs_page(before_id=4, limit=2)
+        self.assertEqual([job["intent_id"] for job in page2], [3, 2])
+        page3 = brain_db.list_jobs_page(before_id=2, limit=2)
+        self.assertEqual([job["intent_id"] for job in page3], [1])
 
     def test_intent_id_survives_reconnect(self) -> None:
         a = brain_db.next_intent_id()
@@ -194,7 +284,14 @@ class BrainDbTest(unittest.TestCase):
                 "intent_id": 1,
                 "intent_status": "intent_parsed",
                 "assigned_edge_id": "edge-a",
-                "execution_plan": [{"capability": "notify.speak", "step": 1}],
+                "scheduler_node": "edge-a",
+                "execution_plan": [
+                    {
+                        "capability": "notify.speak",
+                        "step": 1,
+                        "assigned_edge_id": "edge-a",
+                    }
+                ],
                 "created_at": 1.0,
                 "updated_at": 1.0,
             }
@@ -203,14 +300,48 @@ class BrainDbTest(unittest.TestCase):
         job = brain_db.get_job(1)
         assert job is not None
         self.assertEqual(job["intent_status"], "intent_parsed")
-        self.assertEqual(job["assigned_edge_id"], "edge-a")
+        self.assertNotIn("assigned_edge_id", job)
+        self.assertNotIn("scheduler_node", job)
         self.assertEqual(job["execution_plan"][0]["capability"], "notify.speak")
+        self.assertEqual(job["execution_plan"][0]["assigned_edge_id"], "edge-a")
+
+    def test_job_persists_intent_origin(self) -> None:
+        brain_db.put_job(
+            {
+                "intent_id": 1,
+                "status": "intent_received",
+                "text": "hi",
+                "source": "voice",
+                "intent_origin": "cloud",
+                "created_at": 1.0,
+                "updated_at": 1.0,
+            }
+        )
+        job = brain_db.get_job(1)
+        assert job is not None
+        self.assertEqual(job["intent_origin"], "cloud")
+        brain_db.put_job(
+            {
+                "intent_id": 2,
+                "status": "intent_received",
+                "intent_origin": "not-a-slot",
+                "created_at": 1.0,
+                "updated_at": 1.0,
+            }
+        )
+        missing = brain_db.get_job(2)
+        assert missing is not None
+        self.assertNotIn("intent_origin", missing)
+        self._reopen()
+        again = brain_db.get_job(1)
+        assert again is not None
+        self.assertEqual(again["intent_origin"], "cloud")
 
     def test_queue_is_jobs_status(self) -> None:
         brain_db.upsert_queue(
-            {"id": 1, "status": "intent_parsed", "assigned_edge_id": "a", "text": "hi"}
+            {"id": 1, "status": "intent_parsed", "text": "hi"}
         )
-        brain_db.upsert_queue({"id": 2, "status": "intent_parsed", "assigned_edge_id": "b"})
+        brain_db.upsert_queue({"id": 2, "status": "intent_parsed"})
         ids = [row["id"] for row in brain_db.list_queue()]
         self.assertEqual(ids, [1, 2])
         job = brain_db.get_job(1)
@@ -222,7 +353,7 @@ class BrainDbTest(unittest.TestCase):
         self.assertEqual([row["id"] for row in still], [1, 2])
         merged = brain_db.upsert_queue({"id": 2, "status": "running"})
         self.assertEqual(merged["status"], "running")
-        self.assertEqual(merged.get("assigned_edge_id"), "b")
+        self.assertNotIn("assigned_edge_id", merged)
         self.assertEqual(brain_db.get_job(2)["intent_status"], "running")
 
     def test_terminal_job_leaves_pull_list(self) -> None:
@@ -243,6 +374,24 @@ class BrainDbTest(unittest.TestCase):
         self.assertEqual([row["id"] for row in brain_db.list_queue()], [2])
         brain_db.upsert_queue({"id": 2, "status": "succeeded", "pending_delivery": None})
         self.assertEqual(brain_db.list_queue(), [])
+
+    def test_put_job_does_not_wipe_existing_text(self) -> None:
+        brain_db.put_job(
+            {
+                "intent_id": 7,
+                "status": "intent_received",
+                "text": "播放歌曲十年",
+                "source": "voice",
+                "edge_id": "edge-a",
+            }
+        )
+        brain_db.put_job({"intent_id": 7, "status": "running"})
+        job = brain_db.get_job(7)
+        assert job is not None
+        self.assertEqual(job["text"], "播放歌曲十年")
+        self.assertEqual(job["source"], "voice")
+        self.assertEqual(job["edge_id"], "edge-a")
+        self.assertEqual(job["status"], "running")
 
     def test_intent_waiting_stays_out_of_pull_list(self) -> None:
         brain_db.upsert_queue({"id": 1, "status": "intent_parsed", "msg": "ready"})
@@ -266,9 +415,25 @@ class BrainDbTest(unittest.TestCase):
                 "edge_id": "phone-1",
                 "planner": "ark",
                 "model": "ep-test",
+                "cost_ms": 1842,
                 "raw_response": '{"goal":"clock","plan":[]}',
                 "parsed_json": {"goal": "clock", "plan": []},
                 "execution_plan": [{"capability": "clock.now", "step": 1}],
+                "request_payload": {
+                    "model": "ep-test",
+                    "messages": [
+                        {"role": "system", "content": "planner rules"},
+                        {"role": "user", "content": "现在几点了"},
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 4096,
+                    "response_format": {"type": "json_object"},
+                    "extra_body": {"thinking": {"type": "enabled"}},
+                },
+                "response_json": {
+                    "choices": [{"message": {"content": '{"goal":"clock","plan":[]}'}}],
+                    "usage": {"total_tokens": 88},
+                },
             }
         )
         brain_db.put_intent_review(
@@ -286,10 +451,17 @@ class BrainDbTest(unittest.TestCase):
         self.assertEqual(rows[0]["text"], "现在几点了")
         self.assertEqual(rows[0]["parsed_json"]["goal"], "clock")
         self.assertEqual(rows[0]["execution_plan"][0]["capability"], "clock.now")
+        self.assertEqual(rows[0]["cost_ms"], 1842)
+        self.assertEqual(rows[0]["request_payload"]["model"], "ep-test")
+        self.assertEqual(rows[0]["request_payload"]["messages"][0]["content"], "planner rules")
+        self.assertEqual(rows[0]["raw_response"], '{"goal":"clock","plan":[]}')
+        self.assertEqual(rows[0]["response_json"]["usage"]["total_tokens"], 88)
         self.assertEqual(rows[1]["error"], "retry")
         got = brain_db.get_intent_review(rid)
         assert got is not None
         self.assertEqual(got["planner"], "ark")
+        self.assertEqual(got["cost_ms"], 1842)
+        self.assertNotIn("Authorization", json.dumps(got["request_payload"]))
 
     def test_intent_reviews_group_by_session(self) -> None:
         brain_db.put_intent_review(
@@ -320,6 +492,98 @@ class BrainDbTest(unittest.TestCase):
         self.assertEqual([row["intent_id"] for row in rows], [10, 11])
         self.assertEqual(rows[0]["session_id"], "sess-a")
         self.assertEqual(rows[1]["text"], "投到电视上")
+
+    def test_intent_classification_events_append_only_and_stats(self) -> None:
+        first = brain_db.put_intent_classification_event(
+            {
+                "intent_id": 21,
+                "text": "打开客厅灯。",
+                "classifier_version": "v1-rule",
+                "score": 2.0,
+                "classification": "SIMPLE",
+                "features": {
+                    "capability_candidate_count": 1,
+                    "action_count": 1,
+                    "condition_count": 0,
+                    "sequence_count": 0,
+                    "parallel_count": 0,
+                    "temporal_count": 0,
+                    "context_reference_count": 0,
+                    "ambiguity": 0,
+                    "character_count": 6,
+                    "token_count": 5,
+                    "text_length_factor": 0.0,
+                },
+                "candidates": [{"capability_id": "light.set", "strength": "alias"}],
+            }
+        )
+        brain_db.put_intent_classification_event(
+            {
+                "text": "dry-run",
+                "classifier_version": "v1-rule",
+                "score": 9.0,
+                "classification": "COMPLEX",
+                "features": {"capability_candidate_count": 3, "action_count": 2},
+                "candidates": [],
+            }
+        )
+        brain_db.put_job(
+            {
+                "intent_id": 21,
+                "status": "intent_parsed",
+                "text": "打开客厅灯。",
+                "execution_plan": [
+                    {"step": 1, "capability": "light.set"},
+                ],
+            }
+        )
+        self._reopen()
+        rows = brain_db.list_intent_classification_events(21)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["event_id"], first)
+        self.assertEqual(rows[0]["classification"], "SIMPLE")
+        self.assertEqual(rows[0]["features"]["action_count"], 1)
+        all_rows = brain_db.list_intent_classification_events()
+        self.assertEqual(len(all_rows), 2)
+        stats = brain_db.list_intent_classification_stats()
+        self.assertEqual(stats["n"], 2)
+        self.assertEqual(stats["simple_count"], 1)
+        self.assertEqual(stats["complex_count"], 1)
+        self.assertEqual(stats["simple_rate"], 0.5)
+        self.assertEqual(stats["mean_plan_steps_by_class"]["SIMPLE"], 1.0)
+        self.assertIsNone(stats["mean_plan_steps_by_class"]["COMPLEX"])
+        with self.assertRaises(ValueError):
+            brain_db.put_intent_classification_event({"classification": "WEIRD", "score": 1})
+
+    def test_intent_user_feedback_upsert(self) -> None:
+        row = brain_db.upsert_intent_user_feedback(
+            {
+                "intent_id": 7,
+                "participant_id": "phone-1",
+                "understanding": "accurate",
+                "response_speed": "fast",
+            }
+        )
+        self.assertEqual(row["intent_id"], 7)
+        self.assertEqual(row["understanding"], "accurate")
+        self.assertEqual(row["response_speed"], "fast")
+        updated = brain_db.upsert_intent_user_feedback(
+            {
+                "intent_id": 7,
+                "participant_id": "phone-1",
+                "understanding": "inaccurate",
+                "response_speed": "slow",
+            }
+        )
+        self.assertEqual(updated["feedback_id"], row["feedback_id"])
+        self.assertEqual(updated["understanding"], "inaccurate")
+        got = brain_db.get_intent_user_feedback(7, "phone-1")
+        assert got is not None
+        self.assertEqual(got["response_speed"], "slow")
+        self._reopen()
+        again = brain_db.get_intent_user_feedback(7, "phone-1")
+        assert again is not None
+        self.assertEqual(again["understanding"], "inaccurate")
 
     def test_assets_catalog_and_grants(self) -> None:
         aid = brain_db.put_asset(
@@ -599,6 +863,127 @@ class BrainDbTest(unittest.TestCase):
         job = brain_db.get_job(7)
         assert job is not None
         self.assertEqual(job["status"], "failed")
+
+    def test_edge_control_policy_independent_of_heartbeat(self) -> None:
+        brain_db.put_registration(
+            {
+                "participant_id": "mac-1",
+                "roles": ["runtime"],
+                "services": [
+                    {
+                        "service_id": "gopro.camera",
+                        "group": "camera",
+                        "capabilities": [
+                            {
+                                "capability_id": "camera.capture",
+                                "input_schema": {},
+                                "output_schema": {},
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        brain_db.put_edge_control_policy(
+            participant_id="mac-1",
+            target_kind="capability",
+            target_id="camera.capture",
+            enabled=False,
+        )
+        brain_db.put_heartbeat(
+            "mac-1",
+            {
+                "online_status": "online",
+                "server_received_at": 100.0,
+                "services": [
+                    {
+                        "service_id": "gopro.camera",
+                        "group": "camera",
+                        "capabilities": [
+                            {
+                                "capability_id": "camera.capture",
+                                "input_schema": {},
+                                "output_schema": {},
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        beats = brain_db.list_heartbeats()
+        self.assertEqual(beats["mac-1"]["online_status"], "online")
+        self.assertEqual(
+            beats["mac-1"]["services"][0]["capabilities"][0]["capability_id"],
+            "camera.capture",
+        )
+        self.assertFalse(
+            brain_db.control_policy_allows("mac-1", "capability", "camera.capture")
+        )
+        self.assertTrue(brain_db.control_policy_allows("mac-1", "role", "runtime"))
+        rows = brain_db.list_participants()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["participant_id"], "mac-1")
+
+    def test_admin_op_log_insert_and_newest_first(self) -> None:
+        first = brain_db.insert_admin_op_log(
+            actor="admin",
+            action="policy_disable",
+            participant_id="mac-1",
+            target_kind="capability",
+            target_id="camera.capture",
+            result="ok",
+            summary="关掉 客厅 Mac 的 camera.capture",
+        )
+        second = brain_db.insert_admin_op_log(
+            actor="",
+            action="policy_enable",
+            participant_id="mac-1",
+            target_kind="capability",
+            target_id="camera.capture",
+            extra={"note": "reenable"},
+            result="ok",
+            summary="打开 客厅 Mac 的 camera.capture",
+        )
+        listed = brain_db.list_admin_op_logs(limit=10)
+        self.assertEqual(listed[0]["id"], second["id"])
+        self.assertEqual(listed[1]["id"], first["id"])
+        self.assertEqual(listed[0]["extra"], {"note": "reenable"})
+        capped = brain_db.list_admin_op_logs(limit=1)
+        self.assertEqual(len(capped), 1)
+        self.assertEqual(capped[0]["action"], "policy_enable")
+
+    def test_entities_v1_seed_and_upsert(self) -> None:
+        rows = brain_db.list_entities(entity_type="device")
+        ids = {r["entity_id"] for r in rows}
+        self.assertIn("ent_dev_livingroom_ac", ids)
+        self.assertIn("ent_dev_livingroom_ceiling_light", ids)
+        self.assertIn("ent_dev_livingroom_gopro", ids)
+        self.assertIn("ent_dev_livingroom_tv", ids)
+        ac = brain_db.get_entity("ent_dev_livingroom_ac")
+        assert ac is not None
+        self.assertEqual(ac["type"], "device")
+        self.assertEqual(ac["name"], "客厅空调")
+        self.assertEqual(ac["metadata"].get("room"), "living-room")
+        self.assertEqual(ac["state"], {})
+        updated = brain_db.upsert_entity(
+            {
+                "entity_id": "ent_dev_livingroom_ac",
+                "type": "device",
+                "name": "客厅空调",
+                "metadata": {"room": "living-room", "vendor": "hisense"},
+                "state": {"power": True, "temperature": 26},
+                "references": {"capability_ids": ["climate.set"]},
+            }
+        )
+        self.assertEqual(updated["state"].get("temperature"), 26)
+        with self.assertRaises(ValueError):
+            brain_db.upsert_entity(
+                {
+                    "entity_id": "ent_recipe_x",
+                    "type": "recipe",
+                    "name": "红烧肉",
+                }
+            )
 
 
 if __name__ == "__main__":

@@ -48,7 +48,7 @@ class IntentPipeline(
     }
 }
 
-/** Schedule hops when this edge is `scheduler_node`. */
+/** Schedule hops when this edge has an assigned plan step. */
 class IntentScheduler(
     private val intentStatusClient: IntentStatusClient,
     private val onLog: (String) -> Unit = {},
@@ -56,7 +56,6 @@ class IntentScheduler(
     suspend fun handle(intent: JSONObject, localEdgeId: String) {
         val eid = localEdgeId.trim()
         if (eid.isEmpty()) return
-        val scheduler = stringValue(intent.opt("scheduler_node"))?.trim().orEmpty()
         val iid = (
             stringValue(intent.opt("id"))
                 ?: stringValue(intent.opt("intent_id"))
@@ -64,8 +63,8 @@ class IntentScheduler(
             ).trim()
         val wireStatus = HttpCommandSource.intentWireStatus(intent)
 
-        if (scheduler != eid) {
-            log("scheduler: skip intent ${iid.ifEmpty { "?" }} scheduler_node=$scheduler != self=$eid")
+        if (!HttpCommandSource.edgeHasAssignedStep(intent, eid)) {
+            log("scheduler: skip intent ${iid.ifEmpty { "?" }} no assigned step for self=$eid")
             return
         }
         if (iid.isEmpty()) {
@@ -303,7 +302,6 @@ class IntentStepExecutor(
                         status = IntentStatusClient.RUNNING,
                         executionPlan = planToJsonArray(plan),
                         ctxParam = ctx.takeIf { it.isNotEmpty() } ?: stepOutputs.takeIf { it.isNotEmpty() },
-                        schedulerNode = eid,
                     )
                     log("executor: intent $iid requeueForPull=$requeued")
                 }

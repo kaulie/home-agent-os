@@ -48,6 +48,28 @@ class AssetManagerTests(unittest.TestCase):
         )
         self.assertEqual(rep.url, "http://192.168.3.65:8080/a.jpg")
 
+    def test_resolve_local_upload_uses_brain_content_url(self) -> None:
+        brain = MagicMock()
+        brain.config.brain_base_url = "http://127.0.0.1:9527"
+        brain.fetch_asset.return_value = {
+            "asset_id": "asset_iphone",
+            "storage": {
+                "backend": "local_upload",
+                "key": "8a3adf809f01_photo.jpg",
+            },
+        }
+        mgr = AssetManager(brain=brain, edge_id="edge-mac")
+        rep = mgr.resolve_for_capability(
+            AssetRef(asset_id="asset_iphone", type="image"),
+            intent_id="168",
+            need="http_url",
+        )
+        self.assertEqual(
+            rep.url,
+            "http://192.168.3.73:9527/api/v1/assets/asset_iphone/content"
+            "?intent_id=168&representation=original",
+        )
+
     def test_resolve_missing_asset(self) -> None:
         brain = MagicMock()
         brain.fetch_asset.return_value = None

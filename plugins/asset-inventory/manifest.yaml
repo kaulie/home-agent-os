@@ -1,0 +1,9 @@
+id: asset-inventory
+service_id: system.asset
+group: asset
+version: 0.2.0
+capabilities:
+  - asset.inventory
+platforms:
+  - brain
+notes: kind=system Brain-registered Asset inventory; Brain executes. No phone album / filesystem.

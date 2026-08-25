@@ -20,9 +20,15 @@ object Capabilities {
     const val BLUETOOTH_CONNECT = "bluetooth.connect"
     const val BLUETOOTH_DISCONNECT = "bluetooth.disconnect"
 
+    const val DOCUMENT_SCAN = "document.scan"
+    const val VISUAL_INPUT = "visual.input"
+    const val PHONE_CALL = "phone.call"
+    const val ASSET_UPLOAD = "asset.upload"
+
     val WIFI_ALL = setOf(WIFI_JOIN, WIFI_LEAVE)
     val CAMERA_ALL = setOf(CAMERA_CAPTURE, TAKE_VIDEO)
     val DISPLAY_ALL = setOf(DISPLAY_PHOTO)
     val MUSIC_ALL = setOf(MUSIC_PLAY, MUSIC_PAUSE, MUSIC_STOP, MUSIC_NEXT, MUSIC_PREVIOUS)
     val BLUETOOTH_ALL = setOf(BLUETOOTH_CONNECT, BLUETOOTH_DISCONNECT)
+    val SCAN_ALL = setOf(DOCUMENT_SCAN, VISUAL_INPUT)
 }

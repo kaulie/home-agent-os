@@ -4,14 +4,16 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-BRAIN = "http://115.190.153.53:9527"
+BRAIN = "http://127.0.0.1:9527"
 OUT = Path(__file__).resolve().parent / "run_results_n20.json"
 TERMINAL = {"succeeded", "failed", "plan_failed"}
+PARTICIPANT_ID = os.environ.get("BLACKBOX_PARTICIPANT_ID", "").strip()
 
 # id, text, timeout_sec, notes, expect
 # expect.required / forbidden: capability ids
@@ -27,9 +29,9 @@ CASES: list[tuple[str, str, int, str, dict]] = [
         "required": ["notify.speak"], "forbidden": ["query.content", "camera.capture"],
         "outcome": "succeeded",
     }),
-    ("N4", "一加一等于几", 120, "query.content", {
-        "required": ["query.content"],
-        "forbidden": ["camera.capture", "clock.now"], "outcome": "succeeded",
+    ("N4", "一加一等于几", 120, "math.calculate", {
+        "required": ["math.calculate"],
+        "forbidden": ["query.content", "camera.capture", "clock.now"], "outcome": "succeeded",
     }),
     ("N5", "晋字一共几画", 120, "professional query, no display", {
         "required": ["query.content"], "forbidden": ["display.photo", "camera.capture"],
@@ -104,7 +106,10 @@ def _req(url: str, data: bytes | None = None, timeout: int = 30) -> tuple[int, s
 
 
 def post_intent(text: str) -> tuple[int, dict | str]:
-    payload = json.dumps({"text": text, "source": "text"}, ensure_ascii=False).encode()
+    body: dict = {"text": text, "source": "text"}
+    if PARTICIPANT_ID:
+        body["participant_id"] = PARTICIPANT_ID
+    payload = json.dumps(body, ensure_ascii=False).encode()
     code, raw = _req(f"{BRAIN}/api/v1/intent", data=payload)
     try:
         return code, json.loads(raw)

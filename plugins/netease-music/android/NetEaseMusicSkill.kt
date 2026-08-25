@@ -26,13 +26,18 @@ class NetEaseMusicSkill(
 ) : Skill {
     override fun service(): ServiceDescriptor = ServiceDescriptor(
         serviceId = SKILL_ID,
-        version = "0.3.0",
+        version = "0.4.0",
         displayName = "网易云音乐",
         group = "music",
         capabilities = listOf(
+            // Structured ads — aligned with mac/src/mac_edge/capability_ads.py (not 能/不能 prose).
             CapabilityDescriptor(
                 capabilityId = Capabilities.MUSIC_PLAY,
-                description = "能：按 song / album / artist 在网易云播放。用户要放歌时用本能力。不能：用 query.content 或 notify.speak 顶替；无本能力时 plan=[]；不投屏、不 TTS 念歌词当播放。song/artist/album 至少填一个。",
+                role = "音乐播放器",
+                plannerRecognize = "按歌名/歌手/专辑开始放歌（网易云）。入参 song/artist/album。不负责连蓝牙音箱，不负责暂停/切歌",
+                typicalTriggers = listOf("放一首周杰伦", "播放歌曲", "放歌", "放十年", "来首邓丽君"),
+                doNotDispatch = listOf("蓝牙连接", "TTS", "开灯", "暂停", "下一首"),
+                kind = "action",
                 inputSchema = mapOf(
                     "song" to SchemaField(
                         type = "string",
@@ -53,19 +58,35 @@ class NetEaseMusicSkill(
             ),
             CapabilityDescriptor(
                 capabilityId = Capabilities.MUSIC_PAUSE,
-                description = "能：暂停当前网易云播放。不能：开始播放（用 music.play）；搜歌；TTS；投屏。",
+                role = "暂停播放器",
+                plannerRecognize = "暂停当前正在放的歌，不换歌、不选新歌。用户说「暂停一下」用本步，不是停止、不是下一首",
+                typicalTriggers = listOf("暂停", "暂停播放", "先停一下"),
+                doNotDispatch = listOf("选歌", "蓝牙连接", "TTS", "下一首", "停止播放"),
+                kind = "action",
             ),
             CapabilityDescriptor(
                 capabilityId = Capabilities.MUSIC_STOP,
-                description = "能：停止当前网易云播放。不能：开始播放（用 music.play）；搜歌；TTS；投屏。",
+                role = "停止播放器",
+                plannerRecognize = "停掉当前播放（这首结束，不是暂停可继续）。用户说「关掉音乐」用本步",
+                typicalTriggers = listOf("停止播放", "关掉音乐", "别放了"),
+                doNotDispatch = listOf("选歌", "蓝牙连接", "TTS", "暂停", "下一首"),
+                kind = "action",
             ),
             CapabilityDescriptor(
                 capabilityId = Capabilities.MUSIC_NEXT,
-                description = "能：网易云切到下一首。不能：指定歌名播放（用 music.play）；TTS；投屏。",
+                role = "下一首切换器",
+                plannerRecognize = "切到播放队列的下一首。用户说「下一首/切歌/换一首」用本步，不是按歌名点播",
+                typicalTriggers = listOf("下一首", "切歌", "换一首"),
+                doNotDispatch = listOf("选歌", "蓝牙连接", "TTS", "暂停", "上一首"),
+                kind = "action",
             ),
             CapabilityDescriptor(
                 capabilityId = Capabilities.MUSIC_PREVIOUS,
-                description = "能：网易云切到上一首。不能：指定歌名播放（用 music.play）；TTS；投屏。",
+                role = "上一首切换器",
+                plannerRecognize = "切回播放队列的上一首。用户说「上一首/上一曲」用本步",
+                typicalTriggers = listOf("上一首", "上一曲"),
+                doNotDispatch = listOf("选歌", "蓝牙连接", "TTS", "暂停", "下一首"),
+                kind = "action",
             ),
         ),
     )
@@ -141,11 +162,12 @@ class NetEaseMusicSkill(
         val opened = NetEaseDeepLinkLauncher(context).openAlbum(hit.id, hit.firstSongId)
         if (!opened.success) {
             return SkillResult.error(
-                "深链失败: ${opened.detail ?: "unknown"}（需安装手机版网易云）",
+                "深链失败: ${opened.detail ?: "unknown"}（需安装网易云手机版或 TV 版）",
             )
         }
-        nudgePlayback(context)
-        return SkillResult.ok(
+        return confirmPlayOrFail(
+            context,
+            opened,
             "深链已打开 $label → album#${hit.id} ${hit.name} - ${hit.artists}" +
                 " via ${opened.method}@${opened.packageName}",
         )
@@ -170,14 +192,30 @@ class NetEaseMusicSkill(
         val opened = NetEaseDeepLinkLauncher(context).openSong(hit.id)
         if (!opened.success) {
             return SkillResult.error(
-                "深链失败: ${opened.detail ?: "unknown"}（需安装手机版网易云）",
+                "深链失败: ${opened.detail ?: "unknown"}（需安装网易云手机版或 TV 版）",
             )
         }
-        nudgePlayback(context)
-        return SkillResult.ok(
+        return confirmPlayOrFail(
+            context,
+            opened,
             "深链已打开 $label → #${hit.id} ${hit.name} - ${hit.artists}" +
                 " via ${opened.method}@${opened.packageName}",
         )
+    }
+
+    private fun confirmPlayOrFail(
+        context: Context,
+        opened: NetEaseDeepLinkLauncher.OpenResult,
+        openedMsg: String,
+    ): SkillResult {
+        nudgePlayback(context)
+        if (!NetEasePlayPolicy.playbackConfirmed(isMusicActive(context))) {
+            return SkillResult.error(
+                "网易云深链已发出但未检测到播放（accepted≠playing）" +
+                    " via ${opened.method}@${opened.packageName}。电视静音/登录页/TV 版不接 orpheus 都会如此。",
+            )
+        }
+        return SkillResult.ok(openedMsg)
     }
 
     private fun nudgePlayback(context: Context) {
@@ -185,6 +223,15 @@ class NetEaseMusicSkill(
             dispatchMediaKey(context, KeyEvent.KEYCODE_MEDIA_PLAY)
             SystemClock.sleep(700)
         }
+    }
+
+    private fun isMusicActive(context: Context): Boolean {
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        repeat(8) {
+            if (audio.isMusicActive) return true
+            SystemClock.sleep(400)
+        }
+        return audio.isMusicActive
     }
 
     private fun dispatchMediaKey(context: Context, keyCode: Int) {

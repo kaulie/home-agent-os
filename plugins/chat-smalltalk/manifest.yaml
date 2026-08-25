@@ -1,0 +1,9 @@
+id: chat-smalltalk
+service_id: local.chat
+group: chat
+version: 0.1.0
+capabilities:
+  - chat.smalltalk
+platforms:
+  - mac
+notes: Deterministic greeting/smalltalk replies; no LLM.

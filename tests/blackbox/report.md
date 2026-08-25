@@ -2,19 +2,73 @@
 
 旧轮次结果已于 2026-08-18 删除。本文件只记 **N1–N20**（2026-08-18 17:32 起跑）。
 
-Brain：`http://115.190.153.53:9527`  
-原始：[`run_results_n20.json`](run_results_n20.json) · 本轮 [`run_results_n20_round3.json`](run_results_n20_round3.json)  
+Brain（下轮）：`http://127.0.0.1:9527`（本机 LAN Brain。下列历史轮次当时打的是云 `http://115.190.153.53:9527`）  
+原始：[`run_results_n20.json`](run_results_n20.json) · 本轮 [`run_results_n20_round4.json`](run_results_n20_round4.json) · 无 issuer 门闸 [`run_results_n20_round4_nopid.json`](run_results_n20_round4_nopid.json) · 23:00 [`run_results_n20_round3.json`](run_results_n20_round3.json)  
 记录：[`log.md`](log.md)
 
 **质量对照（对照章程 / Participant Model，不是 runner 自动 ok）**
 
 | 批次 | 通过 | 部分 | 不符合 |
 |------|------|------|--------|
+| **2026-08-19 15:32 再复测** | **13** | **1** | **6** |
 | 17:32 首跑 | 2 | 6 | 12 |
 | 21:44 环境恢复重测 | 3 | 12 | 5 |
 | **23:00 再测一轮** | **14** | **4** | **2** |
 
 对照口径：问钟应 `clock.now` 且可读时刻出现；问答应 `query.content` 且有 `answer_text`；拍照应 `camera.capture`；投电视应 `display.*`；放歌应 `music.play`；无能力应干净失败且不要硬套 speak；失败有可读 `msg`；Brain 顶层 `presentation`；物流应到 `succeeded`/`failed`，不得停在 `intent_parsed` / `intent_dispatched` / `running`。
+
+---
+
+## 2026-08-19 15:32 再复测
+
+用户「再复测一遍 case」。`GET /health` 200，`jobs=129`，`pending_intents=1`，`registered=5`。`tests/blackbox/run_n20.py` 原文（无 `participant_id`）**N1–N20 全部 POST 400**，body `participant_id is required; register and heartbeat first`，无 intent id。探针：未知 id **401**；Mac runtime `9tkgMTtn` **403** `did not declare intent_source`；iPhone `JzvEe287` **403** `heartbeat required`（`GET /edges` 该节点 `online_status=offline`）。
+
+随后用公开 `POST /api/v1/edge-register` + `/edge-heartbeat` 注册测试发出端 `edge-node-CiqVl9ZB`（roles=`intent_source`+`endpoint`，无 runtime 广告），再 **重新 POST N1–N20**（intent **130–149**）。快照 [`run_results_n20_round4.json`](run_results_n20_round4.json)。窗口约 15:41–15:52。全部离开 parsed/dispatched/running；事后再 GET 无非终态单。当时 `GET /edges`：laptop `9tkgMTtn` online；home-server `x0OjfixA` **offline**；Chromecast `ZeECgaki` online 但 `schedule_eligible=false`（time diff）。
+
+| ID | 指令 | intent | plan | 步 | 整单 | 对照 |
+|----|------|--------|------|----|------|------|
+| N1 | 现在几点了 | 130 | clock.now | status=2，`time_text=15:41:18` | succeeded @9s | **通过**；presentation type=text from=time_text；无 image_url / asset_ref；endpoint=`CiqVl9ZB` |
+| N2 | 用语音告诉我现在几点了 | 131 | 仅 clock.now | status=2 | succeeded @15s | **通过**：有时刻；plan 无 speak；presentation type=**audio** from=time_text；无 `pending_delivery` 字段 |
+| N3 | TTS你好 | 132 | notify.speak | status=2 | succeeded @21s | **通过**；presentation type=audio from=state，endpoint=`""` |
+| N4 | 一加一 | 133 | query.content | status=2 有 answer_text | succeeded @82s | **通过**；presentation type=text from=answer_text |
+| N5 | 晋字几画 | 134 | query.content | status=2，answer_text + 步内 asset_ref | succeeded @52s | **通过**；顶层 presentation type=text，**无** image_url、**无** asset_ref（asset_ref 只在 step_outputs） |
+| N6 | 猫叫什么 | 135 | query.content | status=2 诚实不知道 | succeeded @46s | **通过** |
+| N7 | 客厅适合看书吗语音 | 136 | **空 plan** | — | failed @12s，msg=要先拍 AssetRef / 当前无拍照能力 | **不符合**：看书未派 `query.content` |
+| N8 | 开窗帘 | 137 | 空 plan | — | failed，msg=无窗帘能力 | **通过**；未硬套 speak |
+| N9 | 拍张照 | 138 | 空 plan | — | failed，msg=无拍照能力 | **不符合**：无 `camera.capture` |
+| N10 | 拍照投电视 | 139 | 空 plan | — | failed，msg=无拍照能力 | **不符合**：无 camera / display |
+| N11 | 拍照看人语音 | 140 | 空 plan | — | failed，msg=无拍照能力 | **不符合**：无 capture / perceive |
+| N12 | 画台灯投电视 | 141 | query → display.photo | 两步 status=2 | **succeeded** @52s | **通过**；presentation type=image from=asset_ref，`asset_ref={asset_id,type,mime_type}`，**无 image_url** |
+| N13 | 放陈奕迅十年 | 142 | 空 plan | — | **failed** @9s，msg=没有可调用的 music.play | **不符合**：无 `music.play`；未停 `intent_parsed` |
+| N14 | 投到电视上 | 143 | 空 plan | — | failed | **通过** |
+| N15 | 轮播刚才的照片 | 144 | 空 plan | — | failed | **通过** |
+| N16 | 一分钟后该喝水了 | 145 | notify.speak delay | status=2 | succeeded @64s | **通过**；presentation type=audio endpoint=`""` |
+| N17 | take_photo | 146 | 空 plan | — | failed，msg=无拍照能力 | **部分**：未映射 capture；失败有 msg |
+| N18 | 拍张照但不要拍照 | 147 | 空 plan | — | failed | **通过**（未拍照） |
+| N19 | 地球到月球 | 148 | query.content | status=3 ark timeout + request_id | 观察窗 **failed** @101s；事后 GET 顶层 **succeeded**，步仍 3，无 answer_text，presentation 无 text | **不符合**：succeeded 无问答产出 |
+| N20 | 天气适合散步吗 | 149 | query.content | status=2 诚实不知道 | succeeded @67s | **通过** |
+
+### presentation 观察（成功出图 / 问钟；非 AssetRef 全链路验收）
+
+| 单 | 顶层 presentation keys | image_url | asset_ref | endpoint |
+|----|------------------------|-----------|-----------|----------|
+| N1 钟 130 | type, from, text, channel, endpoint | 无 | 无 | `CiqVl9ZB` |
+| N2 钟语音 131 | type=audio, from, text, channel, endpoint | 无 | 无 | `CiqVl9ZB` |
+| N5 晋字 134 | type=text, from, text, channel, endpoint | 无 | 顶层无（outputs 有） | `CiqVl9ZB` |
+| N12 台灯图 141 | type=image, from=asset_ref, asset_ref, channel, endpoint | **无** | **有** `{asset_id,type,mime_type}` | `CiqVl9ZB` |
+| N9/N10 拍照 | （失败 type=text from=msg） | 无 | 无 | `CiqVl9ZB` |
+
+### 相对 23:00 的变化（事实）
+
+1. **入队门闸**：无 `participant_id` 不再入队（400）。本轮执行单均带测试 issuer `CiqVl9ZB`。
+2. **物流**：20 单均到 `succeeded`/`failed`，无停 `intent_parsed`。N13 本轮是空 plan **failed**（23:00 是 `music.play` 停 parsed）。
+3. **投屏**：N12 `display.photo` status=2 整单 succeeded；本轮未见 Cast HTTP 503。N10 未规划到 display。
+4. **拍照**：N9/N10/N11/N17 空 plan；`x0OjfixA` 当时 offline。23:00 这些单有 `camera.capture`。
+5. **看书 N7**：23:00 为 camera→vision.ask→speak 且 succeeded；本轮空 plan failed，msg 要拍照 AssetRef，仍未见 `query.content`。
+6. **N19**：观察窗 failed（ark timeout 有 msg）；事后 GET 顶层变成 succeeded，步仍失败且无 `answer_text`。
+7. **顶层 presentation**：成功问钟/问答有 type=text 或 audio；N12 成功图为 `asset_ref`、无 `image_url`。纯 TTS endpoint 常为 `""`。
+
+不结案。
 
 ---
 

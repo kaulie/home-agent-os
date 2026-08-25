@@ -5,6 +5,9 @@ __pycache__/
 data/edge_id.json
 data/local_ledger.json
 data/local_ledger.tmp
+data/mac_voice/
+data/voice_tests/
+data/voice_tests/
 *.egg-info/
 dist/
 build/

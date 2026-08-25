@@ -2,47 +2,87 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
+    private enum ChatPane: String, Hashable {
+        case chat
+        case scan
+        case photo
+        case file
+        case audio
+        case live
+    }
+
     @EnvironmentObject private var model: AppModel
     @StateObject private var speech = SpeechRecognizer()
     @StateObject private var clicks = ClickGuard()
 
+    @State private var pane: ChatPane = .chat
     @State private var draft = ""
     @State private var intentSource = "text"
     @State private var hint = ""
     @State private var acceptTranscript = true
     @State private var showSettings = false
+    @State private var settingsFocus: SettingsFocus = .none
     @State private var progressTurnId: UUID?
+    @State private var showBrainSwitcher = false
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
         NavigationStack {
             ZStack {
-                VStack(spacing: 0) {
-                    chatList
-                    composer
-                }
-                if let turnId = progressTurnId,
-                   let journey = model.journey(for: turnId) {
-                    IntentProgressOverlay(journey: journey) {
-                        withAnimation(.easeOut(duration: 0.18)) {
-                            progressTurnId = nil
+                if pane == .chat {
+                    ZStack {
+                        VStack(spacing: 0) {
+                            BrainEnvironmentStrip {
+                                showBrainSwitcher = true
+                            }
+                            chatList
+                            composer
+                        }
+                        if let turnId = progressTurnId,
+                           let journey = model.journey(for: turnId) {
+                            IntentProgressOverlay(journey: journey) {
+                                withAnimation(.easeOut(duration: 0.18)) {
+                                    progressTurnId = nil
+                                }
+                            }
+                            .ignoresSafeArea(.keyboard)
                         }
                     }
-                    .ignoresSafeArea(.keyboard)
+                } else if pane == .scan {
+                    ScanWorkspaceView(showSettings: $showSettings)
+                } else if pane == .file {
+                    FileWorkspaceView(showSettings: $showSettings)
+                } else if pane == .audio {
+                    AudioWorkspaceView(showSettings: $showSettings)
+                } else if pane == .photo {
+                    PhotoWorkspaceView(showSettings: $showSettings) {
+                        pane = .chat
+                    }
+                } else {
+                    LiveStreamWorkspaceView(showSettings: $showSettings, settingsFocus: $settingsFocus) {
+                        pane = .chat
+                    }
                 }
             }
             .animation(.easeOut(duration: 0.18), value: progressTurnId)
-            .navigationTitle("home agent edge")
+            .animation(.easeOut(duration: 0.18), value: pane)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(pane == .photo || pane == .live ? .hidden : .visible, for: .navigationBar)
+            .toolbar(pane == .photo || pane == .live ? .hidden : .visible, for: .tabBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("新对话") {
-                        guard clicks.tryTap(cooldown: 0.4) else { return }
-                        dismissComposerKeyboard()
-                        resetComposer()
-                        model.clearSession()
+                ToolbarItem(placement: .principal) {
+                    Picker("页面", selection: $pane) {
+                        Text("对话").tag(ChatPane.chat)
+                        Text("扫描").tag(ChatPane.scan)
+                        Text("拍照").tag(ChatPane.photo)
+                        Text("文件").tag(ChatPane.file)
+                        Text("录音").tag(ChatPane.audio)
+                        Text("直播").tag(ChatPane.live)
                     }
-                    .disabled(model.inputLocked || speech.isRecording)
+                    .pickerStyle(.segmented)
+                    .frame(minWidth: 348, maxWidth: 420)
+                    .tint(pane == .chat ? Color.accentColor : EdgeTheme.sand)
+                    .accessibilityLabel("对话、扫描、拍照、文件、录音或直播")
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -50,24 +90,30 @@ struct ContentView: View {
                         showSettings = true
                     } label: {
                         Image(systemName: "gearshape")
+                            .foregroundStyle(pane == .chat ? Color.primary : EdgeTheme.sand)
                     }
                     .accessibilityLabel("设置")
                 }
             }
-            .sheet(isPresented: $showSettings) {
-                ChatSettingsSheet()
+            .toolbarBackground(pane == .chat ? Color(.systemBackground) : EdgeTheme.ink, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(isPresented: $showSettings, onDismiss: { settingsFocus = .none }) {
+                ChatSettingsSheet(focus: settingsFocus)
                     .environmentObject(model)
+            }
+            .sheet(isPresented: $showBrainSwitcher) {
+                BrainRoutingSwitcherSheet()
+                    .environmentObject(model)
+            }
+            .onChange(of: pane) { newValue in
+                if newValue != .chat {
+                    dismissComposerKeyboard()
+                    if speech.isRecording { speech.stop() }
+                }
             }
             .onDisappear {
                 if speech.isRecording { speech.stop() }
-            }
-            .onChange(of: model.inputLocked) { locked in
-                if locked, speech.isRecording {
-                    speech.stop()
-                }
-                if !locked, hint == Self.waitPreviousHint {
-                    hint = ""
-                }
             }
         }
     }
@@ -84,17 +130,22 @@ struct ContentView: View {
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.top, 4)
                         }
-                        if model.turns.isEmpty {
+                        if model.conversationTurns.isEmpty {
                             emptyState
                                 .padding(.top, 48)
                         }
-                        ForEach(model.turns) { turn in
+                        ForEach(model.conversationTurns) { turn in
                             ChatTurnView(
                                 turn: turn,
                                 onOpenProgress: {
                                     dismissComposerKeyboard()
-                                    withAnimation(.easeOut(duration: 0.18)) {
-                                        progressTurnId = turn.id
+                                    Task {
+                                        await model.refreshTurnProgress(turnId: turn.id)
+                                        await MainActor.run {
+                                            withAnimation(.easeOut(duration: 0.18)) {
+                                                progressTurnId = turn.id
+                                            }
+                                        }
                                     }
                                 }
                             )
@@ -115,21 +166,22 @@ struct ContentView: View {
                         dismissComposerKeyboard()
                     }
                 )
-                .onChange(of: model.turns.count) { _ in
+                .onChange(of: model.conversationTurns.count) { _ in
                     if model.consumeSkipScrollToLatest() { return }
                     scrollToLatest(proxy)
                 }
-                .onChange(of: model.turns.last?.journey.presentation?.copyText) { _ in
+                .onChange(of: model.conversationTurns.last?.journey.presentation?.copyText) { _ in
                     scrollToLatest(proxy)
                 }
-                .onChange(of: model.turns.last?.assistantText) { _ in
+                .onChange(of: model.conversationTurns.last?.assistantText) { _ in
                     scrollToLatest(proxy)
                 }
-                .onChange(of: model.turns.last?.awaitingTerminal) { _ in
+                .onChange(of: model.conversationTurns.last?.awaitingTerminal) { _ in
                     scrollToLatest(proxy)
                 }
             }
         }
+        .clipped()
     }
 
     private var emptyState: some View {
@@ -139,7 +191,7 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
             Text("对客厅说一句话")
                 .font(.headline)
-            Text("文本或语音发出意图，完成后可继续下一轮。下拉可加载本机历史。")
+            Text("文本或语音发出意图。可连续发多条，不必等上一单结束。下拉加载本机历史。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -200,14 +252,6 @@ struct ContentView: View {
                         }
                     }
                     .onSubmit { beginSend() }
-                    .toolbar {
-                        ToolbarItemGroup(placement: .keyboard) {
-                            Spacer()
-                            Button("完成") {
-                                dismissComposerKeyboard()
-                            }
-                        }
-                    }
 
                 Button {
                     guard clicks.tryTap() else { return }
@@ -216,7 +260,7 @@ struct ContentView: View {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 36))
                 }
-                .disabled(!model.inputLocked && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityLabel("发出")
             }
         }
@@ -226,7 +270,7 @@ struct ContentView: View {
     }
 
     private func scrollToLatest(_ proxy: ScrollViewProxy) {
-        guard let last = model.turns.last else { return }
+        guard let last = model.conversationTurns.last else { return }
         DispatchQueue.main.async {
             withAnimation(.easeOut(duration: 0.2)) {
                 proxy.scrollTo(last.id, anchor: .bottom)
@@ -235,10 +279,6 @@ struct ContentView: View {
     }
 
     private func toggleSpeech() async {
-        if model.inputLocked {
-            hint = Self.waitPreviousHint
-            return
-        }
         if speech.isRecording {
             speech.stop()
             intentSource = "voice"
@@ -248,6 +288,13 @@ struct ContentView: View {
             hint = speech.transcript.isEmpty ? "未识别到内容" : ""
             return
         }
+        if model.audioRecorder.isActive {
+            hint = "请先结束录音页的录制（暂停中请回到录音页继续或停止）"
+            return
+        }
+        if model.audioPlayer.isActive {
+            model.audioPlayer.stop(deactivate: true)
+        }
         acceptTranscript = true
         speech.clearTranscript()
         intentSource = "voice"
@@ -256,10 +303,6 @@ struct ContentView: View {
     }
 
     private func beginSend() {
-        if model.inputLocked {
-            hint = Self.waitPreviousHint
-            return
-        }
         if speech.isRecording {
             speech.stop()
             if !speech.transcript.isEmpty {
@@ -274,7 +317,7 @@ struct ContentView: View {
         }
         let server = model.intentServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !server.isEmpty else {
-            hint = "请先在设置里填写 Brain URL"
+            hint = "请先在设置里填写 LAN / Cloud Brain 地址"
             showSettings = true
             return
         }
@@ -314,8 +357,6 @@ struct ContentView: View {
         speech.clearTranscript()
         progressTurnId = nil
     }
-
-    private static let waitPreviousHint = "请先等待上个指令执行结束"
 }
 
 private struct ChatTurnView: View {
@@ -344,6 +385,11 @@ private struct ChatTurnView: View {
                         foreground: .white,
                         background: Color.accentColor
                     )
+                    if let aid = turn.inputAssetId, !aid.isEmpty {
+                        Text("asset \(aid)")
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
 
                     HStack(spacing: 6) {
                         Button(action: onOpenProgress) {
@@ -369,11 +415,22 @@ private struct ChatTurnView: View {
                 }
             }
 
-            HStack {
-                assistantBubble
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 0) {
+                    assistantBubble
+                    if canRateFeedback {
+                        IntentFeedbackStrip(intentId: turn.intentId)
+                    }
+                }
                 Spacer(minLength: 56)
             }
         }
+    }
+
+    private var canRateFeedback: Bool {
+        let id = turn.intentId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty, id != "pending…", Int(id) != nil else { return false }
+        return !turn.awaitingTerminal
     }
 
     @ViewBuilder
@@ -394,9 +451,21 @@ private struct ChatTurnView: View {
     }
 
     private func elapsedLabel(now: Date) -> String {
-        let seconds = turn.journey.totalElapsedSeconds(now: now)
-            ?? max(0, now.timeIntervalSince(turn.createdAt))
-        return IntentJourney.formatDuration(seconds)
+        let client: TimeInterval? = {
+            if let seconds = turn.journey.clientElapsedSeconds(now: now) {
+                return seconds
+            }
+            if turn.awaitingTerminal {
+                let t0 = turn.journey.clientStartedAt ?? turn.createdAt
+                return max(0, now.timeIntervalSince(t0))
+            }
+            return nil
+        }()
+        let dual = IntentJourney.formatDualElapsed(
+            client: client,
+            server: turn.journey.serverElapsedSeconds()
+        )
+        return dual.isEmpty ? "—" : dual
     }
 
     private var isExecutionComplete: Bool {
@@ -412,7 +481,11 @@ private struct ChatTurnView: View {
                 background: Color(.tertiarySystemBackground)
             )
         } else if let pres = turn.journey.presentation, pres.hasContent {
-            PresentationBubble(presentation: pres, stillRunning: turn.awaitingTerminal)
+            PresentationBubble(
+                presentation: pres,
+                intentId: turn.intentId,
+                stillRunning: turn.awaitingTerminal
+            )
         } else if turn.awaitingTerminal {
             HStack(spacing: 8) {
                 ProgressView()
@@ -466,48 +539,51 @@ private struct CopyableBubble: View {
 
 private struct PresentationBubble: View {
     let presentation: IntentPresentation
+    var intentId: String = ""
     var stillRunning: Bool = false
     @State private var showFullImage = false
+    @State private var imageData: Data?
+    @State private var fullImageData: Data?
+    @State private var assetFailed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             switch presentation.type {
             case .image:
-                if let url = presentation.imageURL {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .empty:
-                            ProgressView()
-                                .frame(maxWidth: .infinity, minHeight: 140)
-                        case .success(let image):
-                            Button {
-                                showFullImage = true
-                            } label: {
-                                image
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(maxWidth: 280, maxHeight: 320)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("查看大图")
-                        case .failure:
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("图片无法加载")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text(url.absoluteString)
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                    .textSelection(.enabled)
-                            }
-                        @unknown default:
-                            EmptyView()
+                if let data = imageData, let ui = UIImage(data: data) {
+                    chatImage(ui)
+                } else if assetFailed {
+                    Text("无法用 asset_ref 取到图")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if !presentation.assetId.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 140)
+                        Text("正在经 Brain 拉取缩略图…")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .task(id: "\(presentation.assetId)|\(intentId)") {
+                        let client = AppModel.shared.intentClient
+                        let url = AppModel.shared.intentServerURL
+                        let preview = await client.fetchAssetImageData(
+                            assetId: presentation.assetId,
+                            intentId: intentId,
+                            intentURL: url,
+                            representation: "preview"
+                        )
+                        if let preview {
+                            imageData = preview
+                            assetFailed = false
+                        } else {
+                            assetFailed = true
                         }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .fullScreenCover(isPresented: $showFullImage) {
-                        ImageLightbox(url: url)
-                    }
+                } else {
+                    Text("缺少 asset_ref")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 if !presentation.text.isEmpty {
                     Text(presentation.text)
@@ -556,10 +632,44 @@ private struct PresentationBubble: View {
             }
         }
     }
+
+    @ViewBuilder
+    private func chatImage(_ image: UIImage) -> some View {
+        Button {
+            showFullImage = true
+        } label: {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 280, maxHeight: 320)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("查看大图")
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .fullScreenCover(isPresented: $showFullImage) {
+            if let full = fullImageData ?? imageData, let ui = UIImage(data: full) {
+                ImageLightbox(image: ui)
+            }
+        }
+        .onChange(of: showFullImage) { open in
+            guard open, fullImageData == nil, !presentation.assetId.isEmpty else { return }
+            Task {
+                let original = await AppModel.shared.intentClient.fetchAssetImageData(
+                    assetId: presentation.assetId,
+                    intentId: intentId,
+                    intentURL: AppModel.shared.intentServerURL,
+                    representation: "original"
+                )
+                if let original, UIImage(data: original) != nil {
+                    fullImageData = original
+                }
+            }
+        }
+    }
 }
 
-private struct ImageLightbox: View {
-    let url: URL
+struct ImageLightbox: View {
+    let image: UIImage
     @Environment(\.dismiss) private var dismiss
     @State private var scale: CGFloat = 1
     @State private var lastScale: CGFloat = 1
@@ -570,35 +680,15 @@ private struct ImageLightbox: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .empty:
-                    ProgressView()
-                        .tint(.white)
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFit()
-                        .scaleEffect(scale)
-                        .offset(offset)
-                        .gesture(pinch)
-                        .simultaneousGesture(drag)
-                        .onTapGesture(count: 2, perform: toggleZoom)
-                case .failure:
-                    VStack(spacing: 8) {
-                        Text("图片无法加载")
-                            .foregroundStyle(.white)
-                        Text(url.absoluteString)
-                            .font(.caption2)
-                            .foregroundStyle(.white.opacity(0.7))
-                            .textSelection(.enabled)
-                    }
-                    .padding()
-                @unknown default:
-                    EmptyView()
-                }
-            }
-            .ignoresSafeArea()
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .scaleEffect(scale)
+                .offset(offset)
+                .gesture(pinch)
+                .simultaneousGesture(drag)
+                .onTapGesture(count: 2, perform: toggleZoom)
+                .ignoresSafeArea()
 
             VStack {
                 HStack {
@@ -677,56 +767,72 @@ private struct ImageLightbox: View {
     }
 }
 
-private struct ChatSettingsSheet: View {
+enum SettingsFocus: Equatable {
+    case none
+    case macIngest
+}
+
+struct ChatSettingsSheet: View {
+    var focus: SettingsFocus = .none
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var copyHint = ""
+    @State private var hisenseBindHint = ""
+    @State private var hisenseBindBusy = false
+    @State private var hisenseConfigured = HisenseCredentials.configured
+    @State private var hisenseBoundTick = 0
+    @FocusState private var macIngestFocused: Bool
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Brain") {
-                    TextField(AppModel.defaultIntentURL, text: $model.intentServerURL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .font(.caption)
-                        .disabled(model.inputLocked)
-                }
-                Section("本机 Participant") {
-                    LabeledContent("client_hint", value: model.clientHint)
-                        .font(.caption)
-                        .textSelection(.enabled)
-                    LabeledContent(
-                        "participant_id",
-                        value: model.participantId.isEmpty ? "（尚未登记）" : model.participantId
-                    )
-                    .font(.caption)
-                    .textSelection(.enabled)
-                    Text("Intent Source + Endpoint（屏幕 image/text）。不注册 Runtime。")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Section("最近一次服务器返回") {
-                    HStack {
-                        Spacer()
-                        if !copyHint.isEmpty {
-                            Text(copyHint)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Button("复制") {
-                            UIPasteboard.general.string = model.lastResponse
-                            copyHint = "已复制"
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copyHint = "" }
-                        }
-                        .disabled(model.lastResponse.isEmpty)
+            ScrollViewReader { proxy in
+                Form {
+                    if focus == .macIngest {
+                        macIngestSection
+                        brainSection
+                    } else {
+                        brainSection
+                        macIngestSection
                     }
-                    Text(model.lastResponse.isEmpty ? "（暂无）" : model.lastResponse)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
+                    participantSection
+                    runtimeSection
+                    Section("文档扫描") {
+                        Text("入口在顶部「扫描」。点「开始扫描」打开系统文档扫描仪，完成后 POST /api/v1/assets/upload（upload_intent=document.scan）。不经 Planner。")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        if !VisualInput.isSupported {
+                            Text("本机不支持系统文档扫描。")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    Section("本机拍照") {
+                        Text("入口在顶部「拍照」。切过去即后置取景，点快门后 POST /api/v1/assets/upload（upload_intent=iphone.photo）。不经 Planner，也不是 GoPro camera.capture。")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Section("本机文件") {
+                        Text("入口在顶部「文件」。选取后 POST /api/v1/assets/upload（upload_intent=iphone.file）。不经 Planner。")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Section("本机录音") {
+                        Text("入口在顶部「录音」。点开始后可暂停（暂停不上传）；点「停止并上传」才 POST /api/v1/assets/upload（upload_intent=iphone.audio）。不经 Planner。最近列表显示 asset_id，三点菜单可重命名，播放本机缓存。")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    hisenseSection
+                    lastResponseSection
+                }
+                .onAppear {
+                    guard focus == .macIngest else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        proxy.scrollTo("macIngestField", anchor: .center)
+                        macIngestFocused = true
+                    }
                 }
             }
-            .navigationTitle("设置")
+            .navigationTitle(focus == .macIngest ? "填直播地址" : "设置")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -734,8 +840,266 @@ private struct ChatSettingsSheet: View {
                 }
             }
             .onDisappear {
-                Task { await model.ensureRegistered(serverURL: model.intentServerURL, force: true) }
+                Task { await model.applyPinnedBrainURLs() }
             }
+        }
+    }
+
+    private var brainSection: some View {
+        Section {
+            BrainEnvironmentCard(chrome: .form)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("局域网地址")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                TextField(AppModel.defaultLanBrainURL, text: $model.lanBrainURL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.caption)
+                    .textContentType(.URL)
+                    .keyboardType(.URL)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("云端地址")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                TextField(AppModel.defaultCloudBrainURL, text: $model.cloudBrainURL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .font(.caption)
+                    .textContentType(.URL)
+                    .keyboardType(.URL)
+            }
+            Button {
+                Task { await model.applyPinnedBrainURLs() }
+            } label: {
+                if model.brainResolveBusy {
+                    ProgressView()
+                } else {
+                    Text("保存地址")
+                }
+            }
+            .disabled(model.brainResolveBusy)
+        } header: {
+            Text("Brain 环境")
+        } footer: {
+            Text("顶栏始终显示当前实际连接的是局域网还是云端。改连接方式要进确认页，不会一碰分段开关就切走。地址改完点「保存地址」。直播地址不要填到这里。")
+        }
+    }
+
+    private var macIngestSection: some View {
+        let ingest = model.macIngestURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Section {
+            Text("只填下面这一栏。把 iPhone 画面推到客厅那台跑 mac_edge 的电脑。")
+                .font(.caption)
+                .foregroundStyle(focus == .macIngest ? Color.primary : .secondary)
+            if ingest.isEmpty {
+                Text("当前：未填写（灰色字只是格式提示，还没保存）")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else {
+                Text("当前已保存：\(ingest)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            TextField("", text: $model.macIngestURL, prompt: Text("还没填，点这里输入"))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+                .font(.body.monospaced())
+                .focused($macIngestFocused)
+                .id("macIngestField")
+            Text("要填的内容示例（请自己敲进去，不要以为框里已经有了）：")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("http://192.168.x.x:8790")
+                .font(.caption.monospaced())
+                .textSelection(.enabled)
+            Text("电脑查 IP：终端执行 ipconfig getifaddr en0，把 x.x 换成查到的地址。端口 8790。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+        } header: {
+            Text("直播 · 填这里")
+        } footer: {
+            Text("端口必须是 8790。手机和电脑同一 Wi‑Fi。不要和上面的 LAN / Cloud Brain 填混：那是规划服务，这一栏是客厅电脑直播。电脑需先运行 mac_edge。")
+        }
+    }
+
+    private var participantSection: some View {
+        Section("本机 Participant") {
+            LabeledContent("client_hint", value: model.clientHint)
+                .font(.caption)
+                .textSelection(.enabled)
+            LabeledContent(
+                "participant_id",
+                value: model.participantId.isEmpty ? "（尚未登记）" : model.participantId
+            )
+            .font(.caption)
+            .textSelection(.enabled)
+            LabeledContent("心跳", value: model.lastHeartbeatOk ? "正常" : "失败或尚未成功")
+                .font(.caption)
+            ForEach(ParticipantStore.allRoles, id: \.self) { role in
+                Toggle(role, isOn: Binding(
+                    get: { model.enabledRoles.contains(role) },
+                    set: { model.setRole(role, enabled: $0) }
+                ))
+                .font(.caption)
+            }
+            Text("开关只改下次心跳组包时的 roles。顶栏「上报 role」是上一次心跳请求实际发出的列表。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var runtimeSection: some View {
+        Section("Runtime") {
+            Text("预装 camera.capture、light.set、visual.input；配置海信爱家后广告 climate.set。打开 runtime 后心跳上报。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(
+                model.lastReportedRoles.contains("runtime")
+                ? "本机 runtime 已上报（可拉单）"
+                : "本机 runtime 未上报：请打开 runtime 并等心跳成功"
+            )
+            .font(.caption2)
+            .foregroundStyle(model.lastReportedRoles.contains("runtime") ? .green : .orange)
+            ForEach(LivingRoomLight.clipStatusLines(), id: \.self) { line in
+                Text(line)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(line.contains("缺失") ? .orange : .secondary)
+            }
+            Text("若 Mac 也广告同一能力，Brain 可能派给另一边；进度里看 assigned_edge。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var hisenseSection: some View {
+        Section("海信空调") {
+            Text("账号只存本机 UserDefaults，不上报 Brain。点「验证并绑定」会立刻心跳广告 climate.set。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            TextField("爱家用户名（手机号）", text: Binding(
+                get: { HisenseCredentials.username },
+                set: {
+                    HisenseCredentials.username = $0
+                    hisenseConfigured = HisenseCredentials.configured
+                }
+            ))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            SecureField("爱家密码", text: Binding(
+                get: { HisenseCredentials.password },
+                set: {
+                    HisenseCredentials.password = $0
+                    hisenseConfigured = HisenseCredentials.configured
+                }
+            ))
+            TextField("homeId（多家庭时必填）", text: Binding(
+                get: { HisenseCredentials.homeId },
+                set: { HisenseCredentials.homeId = $0 }
+            ))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            TextField("下一台 deviceId（多空调时填要追加的那台；点绑定写入列表）", text: Binding(
+                get: { HisenseCredentials.deviceId },
+                set: { HisenseCredentials.deviceId = $0 }
+            ))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            if !HisenseCredentials.boundDevices.isEmpty {
+                ForEach(HisenseCredentials.boundDevices) { unit in
+                    // hisenseBoundTick forces refresh after add/unbind
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(unit.label.isEmpty ? unit.deviceId : unit.label)
+                                .font(.caption)
+                            Text("deviceId=\(unit.deviceId)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("解除绑定") {
+                            HisenseCredentials.removeBoundDevice(deviceId: unit.deviceId)
+                            hisenseBoundTick += 1
+                            Task { _ = await model.heartbeatNow(serverURL: model.intentServerURL) }
+                        }
+                        .font(.caption2)
+                    }
+                }
+            }
+            Text(
+                hisenseConfigured
+                ? "已填账号 · 点下方绑定会追加一台，不会冲掉已绑定的另一台"
+                : "未配置 · 暂不广告 climate.set"
+            )
+            .font(.caption2)
+            .foregroundStyle(hisenseConfigured ? .green : .orange)
+            Button {
+                Task { await bindHisenseClimate() }
+            } label: {
+                if hisenseBindBusy {
+                    ProgressView()
+                } else {
+                    Text("验证并绑定到本机（可绑第二台）")
+                }
+            }
+            .disabled(hisenseBindBusy || !hisenseConfigured)
+            if !hisenseBindHint.isEmpty {
+                Text(hisenseBindHint)
+                    .font(.caption2)
+                    .foregroundStyle(
+                        hisenseBindHint.contains("失败") || hisenseBindHint.hasPrefix("绑定失败")
+                        ? .orange : .secondary
+                    )
+            }
+        }
+    }
+
+    private var lastResponseSection: some View {
+        Section("最近一次服务器返回") {
+            HStack {
+                Spacer()
+                if !copyHint.isEmpty {
+                    Text(copyHint)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Button("复制") {
+                    UIPasteboard.general.string = model.lastResponse
+                    copyHint = "已复制"
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copyHint = "" }
+                }
+                .disabled(model.lastResponse.isEmpty)
+            }
+            Text(model.lastResponse.isEmpty ? "（暂无）" : model.lastResponse)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    }
+
+    @MainActor
+    private func bindHisenseClimate() async {
+        hisenseBindBusy = true
+        hisenseBindHint = ""
+        defer { hisenseBindBusy = false }
+        if !model.enabledRoles.contains("runtime") {
+            model.setRole("runtime", enabled: true)
+        }
+        do {
+            let found = try await HisenseClimate.probeBind()
+            hisenseBoundTick += 1
+            let ok = await model.heartbeatNow(serverURL: model.intentServerURL)
+            if ok {
+                hisenseBindHint = "\(found)。已心跳上报 climate.set。"
+            } else {
+                let err = model.lastHeartbeatError.isEmpty ? "未知原因" : model.lastHeartbeatError
+                hisenseBindHint = "\(found)。账号可用，但心跳失败：\(err)"
+            }
+        } catch {
+            hisenseBindHint = "绑定失败：\(error.localizedDescription)"
         }
     }
 }

@@ -4,7 +4,7 @@ import Foundation
 final class ChromecastDisplayCapabilityPlugin: CapabilityPlugin {
     let capabilityId = ChromecastCastSkill.skillId
     let description = "Cast 照片到 Chromecast"
-    let version = "0.2.0"
+    let version = "0.5.0"
 
     private let cast: CastSessionController
 

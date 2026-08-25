@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.smarthome.livingroom_v2.brain.BrainClient
 import com.smarthome.livingroom_v2.brain.HttpEdgeException
+import com.smarthome.livingroom_v2.brain.ParticipantStore
 import com.smarthome.livingroom_v2.brain.dto.EdgeDeviceType
 import com.smarthome.livingroom_v2.brain.dto.EdgeHealthSnapshot
 import com.smarthome.livingroom_v2.brain.dto.EdgeHealthStatus
@@ -47,6 +48,7 @@ class EdgeAgent(
     private val commandHandler: CommandHandler,
     private val localRuntime: LocalEdgeRuntime,
     private val intentPipeline: IntentPipeline? = null,
+    private val participant: ParticipantStore,
 ) {
     interface Listener {
         fun onStatus(message: String)
@@ -111,10 +113,11 @@ class EdgeAgent(
                     }
                     if (ok) {
                         recordOnlineHeartbeatSuccess()
+                        settings.lastReportedRoles = info.roles
                         val capCount = info.services.sumOf { it.capabilities.size }
                         postStatus(
                             "Heartbeat ok edgeId=${info.edgeId} services=${info.services.size} " +
-                                "caps=$capCount",
+                                "caps=$capCount roles=${info.roles.joinToString(",")}",
                         )
                     } else {
                         postStatus("Heartbeat failed (remote) edgeId=${info.edgeId}")
@@ -196,14 +199,19 @@ class EdgeAgent(
             return
         }
 
+        val roles = participant.enabledRoles()
         val request = EdgeRegisterRequest(
             clientHint = identity.clientHint,
             displayName = identity.displayName,
             deviceType = identity.deviceType,
             room = identity.room,
-            services = registry.services(),
+            services = participant.advertisedServices(roles, registry.services()),
             appVersion = identity.appVersion,
             location = identity.location,
+            roles = roles,
+            intentSources = participant.intentSources(roles),
+            endpoints = participant.endpoints(roles),
+            participantId = assignedEdgeId,
         )
         postStatus("No cached edge_id — registering with Brain…")
         val response = brain.registerEdge(request)
@@ -238,6 +246,7 @@ class EdgeAgent(
                 summary = if (running) "agent running" else "agent idle",
             )
         }
+        val roles = participant.enabledRoles()
         return EdgeNodeInfo(
             edgeId = edgeId,
             displayName = identity.displayName,
@@ -245,9 +254,13 @@ class EdgeAgent(
             room = identity.room,
             onlineStatus = online,
             health = health,
-            services = registry.services(),
+            services = participant.advertisedServices(roles, registry.services()),
             appVersion = identity.appVersion,
             location = identity.location,
+            roles = roles,
+            intentSources = participant.intentSources(roles),
+            endpoints = participant.endpoints(roles),
+            participantId = assignedEdgeId ?: edgeId,
         )
     }
 
@@ -263,6 +276,7 @@ class EdgeAgent(
                     }
                     if (ok) {
                         recordOnlineHeartbeatSuccess()
+                        settings.lastReportedRoles = info.roles
                     } else {
                         postStatus("Heartbeat failed (remote) edgeId=${info.edgeId}")
                     }
@@ -358,7 +372,12 @@ class EdgeAgent(
                         stepId = "local-${System.currentTimeMillis()}",
                     )
                     try {
-                        skill.execute(capabilityId, params, ctx)
+                        val avail = skill.isAvailable(capabilityId, params, ctx)
+                        if (!avail.ok) {
+                            SkillResult.error(avail.message ?: "$capabilityId unavailable")
+                        } else {
+                            skill.execute(capabilityId, params, ctx)
+                        }
                     } catch (t: Throwable) {
                         Log.e(
                             TAG,

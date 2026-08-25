@@ -8,7 +8,7 @@ description: Edge 本地看图问答；与 vision.perceive 独立 prompt/schema�
 capabilities:
   - capability_id: vision.ask
     description: >
-      能：给定本步 image_ref（AssetRef）+ query，只根据图中可见内容产出 answer_text。
+      能：给定本步 asset_ref（AssetRef）+ query，只根据图中可见内容产出 answer_text。
       不能：无图问答；收 photo_url；场景结构字段（vision.perceive）；拍照；生图；TTS。
 
 entry:

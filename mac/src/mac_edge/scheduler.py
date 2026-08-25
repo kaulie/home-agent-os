@@ -6,7 +6,7 @@ import logging
 import threading
 from typing import Any
 
-from mac_edge.brain_client import BrainClient
+from mac_edge.brain_client import BrainClient, edge_has_assigned_step
 from mac_edge.executor import (
     STEP_FAILED,
     STEP_RUNNING,
@@ -26,8 +26,8 @@ log = logging.getLogger("mac_edge.scheduler")
 
 class IntentScheduler:
     """
-    Reports intent-level schedule states when this node is scheduler_node,
-    and aggregates step outcomes into intent running/succeeded/failed.
+    Reports intent-level schedule states when this node has an assigned
+    plan step, and aggregates step outcomes into intent running/succeeded/failed.
     Does not execute capabilities or write step status.
 
     Local ledger is the source of truth; Brain posts are best-effort sync.
@@ -58,8 +58,7 @@ class IntentScheduler:
         eid = edge_id.strip()
         if not eid:
             return
-        scheduler = str(intent.get("scheduler_node") or "").strip()
-        if not scheduler or scheduler != eid:
+        if not edge_has_assigned_step(intent, eid):
             return
 
         ledger = _ledger_active()
@@ -224,8 +223,7 @@ class IntentScheduler:
         for intent in peeked:
             if not isinstance(intent, dict):
                 continue
-            scheduler = str(intent.get("scheduler_node") or "").strip()
-            if scheduler != eid:
+            if not edge_has_assigned_step(intent, eid):
                 continue
             if ledger is not None:
                 intent = ledger.overlay_intent(intent)

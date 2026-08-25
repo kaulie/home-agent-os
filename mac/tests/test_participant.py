@@ -10,6 +10,10 @@ from mac_edge.participant import registration_payload, runtime_roles
 class ParticipantWireTests(unittest.TestCase):
     def test_runtime_roles(self) -> None:
         self.assertEqual(runtime_roles(), ["runtime"])
+        self.assertEqual(
+            runtime_roles(with_intent_source=True),
+            ["runtime", "intent_source"],
+        )
 
     def test_registration_payload_runtime_only(self) -> None:
         body = registration_payload(
@@ -22,11 +26,29 @@ class ParticipantWireTests(unittest.TestCase):
         )
         self.assertEqual(body["roles"], ["runtime"])
         self.assertTrue(body["role_runtime"])
+        self.assertFalse(body["role_intent_source"])
         self.assertEqual(body["location"], "living-room")
         self.assertEqual(body["room"], "living-room")
         self.assertEqual(body["client_hint"], "living-room-mac")
         self.assertNotIn("intent_sources", body)
         self.assertNotIn("endpoints", body)
+
+    def test_registration_payload_with_voice_intent_sources(self) -> None:
+        body = registration_payload(
+            display_name="客厅 · Mac Edge",
+            device_type="mac",
+            location="living-room",
+            app_version="0.3.0",
+            services=[],
+            edge_id="edge-node-x",
+            intent_sources=[{"source_id": "mac.usb_microphone", "channel": "voice"}],
+        )
+        self.assertEqual(body["roles"], ["runtime", "intent_source"])
+        self.assertTrue(body["role_intent_source"])
+        self.assertEqual(
+            body["intent_sources"],
+            [{"source_id": "mac.usb_microphone", "channel": "voice"}],
+        )
 
     def test_heartbeat_includes_edge_id(self) -> None:
         body = registration_payload(

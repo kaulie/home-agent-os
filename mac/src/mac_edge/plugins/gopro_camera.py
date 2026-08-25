@@ -2,7 +2,7 @@
 
 Pipeline (unlike iOS cellular-on-AP):
   remember home SSID → join GoPro AP → shutter → download still
-  → restore home Wi‑Fi → upload → photo_url
+  → restore home Wi‑Fi → write local inbox capture_ref. Upload is ``asset.upload``.
 """
 
 from __future__ import annotations
@@ -23,15 +23,13 @@ from mac_edge.plugins.wifi_switch import (
     join_network,
     restore_network,
     snapshot as wifi_snapshot,
+    ssid_visible,
+    current_ssid,
 )
 
 log = logging.getLogger("mac_edge.gopro_camera")
 
 DEFAULT_HOST = "http://10.5.5.9"
-DEFAULT_UPLOAD_URL = "http://115.190.153.53:9527/api/v1/photos/upload"
-DEFAULT_PUBLIC_BASE = "http://115.190.153.53:8080"
-DEFAULT_LAN_UPLOAD_URL = "http://192.168.3.65:8080/api/v1/photos/upload"
-DEFAULT_LAN_PUBLIC_BASE = "http://192.168.3.65:8080"
 
 PATH_MODE_PHOTO = "/gp/gpControl/command/mode?p=1"
 PATH_SUB_MODE_PHOTO_SINGLE = "/gp/gpControl/command/sub_mode?mode=1&sub_mode=0"
@@ -82,7 +80,7 @@ def humanize_capture_error(err: BaseException | str) -> str:
     if "gopro not reachable" in low:
         return f"拍照失败：已连相机热点，但相机无响应。请确认 GoPro 已开机。（{text}）"
     if "home network not reachable" in low:
-        return f"拍照失败：已切回家里网，但图片服务器不可达。（{text}）"
+        return f"拍照失败：已切回家里网，但网络不通。（{text}）"
     if "download still" in low:
         return f"拍照失败：快门可能已按下，但下载照片失败。（{text}）"
     if "upload" in low:
@@ -120,38 +118,6 @@ class _StageTimer:
 
 def _env(name: str, default: str = "") -> str:
     return (os.environ.get(name) or default).strip()
-
-
-def _normalize_upload_dest(raw: str | None) -> str:
-    v = (raw or "").strip().lower()
-    if v in ("cloud",):
-        return "cloud"
-    if v in ("lan", "local", "home", ""):
-        return "lan"
-    log.warning("unknown upload_dest=%r — using lan", raw)
-    return "lan"
-
-
-def _upload_dest_from_params(params: dict[str, Any] | None) -> str:
-    if isinstance(params, dict):
-        raw = params.get("upload_dest") or params.get("uploadDest")
-        if raw is not None and str(raw).strip():
-            return _normalize_upload_dest(str(raw))
-    return _normalize_upload_dest(_env("MAC_EDGE_PHOTO_UPLOAD_DEST") or "lan")
-
-
-def _upload_endpoints(dest: str) -> tuple[str, str, str]:
-    """Return (upload_url, public_base, probe_url) for cloud or lan."""
-    if dest == "lan":
-        upload = _env("MAC_EDGE_LAN_PHOTO_UPLOAD_URL") or DEFAULT_LAN_UPLOAD_URL
-        public = _env("MAC_EDGE_LAN_PHOTO_PUBLIC_BASE") or DEFAULT_LAN_PUBLIC_BASE
-        probe = public.rstrip("/") + "/health"
-        return upload, public.rstrip("/"), probe
-    upload = _env("MAC_EDGE_PHOTO_UPLOAD_URL") or DEFAULT_UPLOAD_URL
-    public = _env("MAC_EDGE_PHOTO_PUBLIC_BASE") or DEFAULT_PUBLIC_BASE
-    brain = _env("MAC_EDGE_BRAIN_URL") or re.sub(r"/api/v1/photos/upload/?$", "", upload)
-    probe = brain.rstrip("/") + "/"
-    return upload, public.rstrip("/"), probe
 
 
 def _project_data_gopro() -> Path:
@@ -196,6 +162,58 @@ def wait_camera_reachable(*, timeout_sec: float = 45.0, poll_sec: float = 1.0) -
             last_err = str(e)
         time.sleep(max(0.3, poll_sec))
     raise GoProCameraError(f"GoPro not reachable at {_gopro_host()}: {last_err}")
+
+
+def probe_camera_http(*, timeout_sec: float = 2.0) -> bool:
+    """Single short status GET — used by is_available when already on GoPro AP."""
+    try:
+        code, _ = _control_get(PATH_STATUS, timeout=max(0.5, float(timeout_sec)))
+        return 200 <= code < 300
+    except GoProCameraError:
+        return False
+
+
+def is_available(*, config: Any = None):
+    """Cheap preflight for Runtime: do not join or wait 45s.
+
+    - Require MAC_EDGE_GOPRO_SSID (/password).
+    - If already on GoPro SSID → short HTTP status probe.
+    - Else → CoreWLAN scan for the hotspot (visible ⇔ likely powered on).
+    """
+    from mac_edge.capability_availability import Availability
+
+    ssid = _env("MAC_EDGE_GOPRO_SSID")
+    password = _env("MAC_EDGE_GOPRO_PASSWORD")
+    if not ssid:
+        return Availability.unavailable(
+            "拍照不可用：未配置 GoPro Wi‑Fi（MAC_EDGE_GOPRO_SSID）。"
+        )
+    if not password:
+        return Availability.unavailable(
+            "拍照不可用：未配置 GoPro Wi‑Fi 密码（MAC_EDGE_GOPRO_PASSWORD）。"
+        )
+
+    try:
+        on_ssid = current_ssid()
+    except WifiSwitchError as e:
+        return Availability.unavailable(f"拍照不可用：无法读取本机 Wi‑Fi（{e}）")
+
+    if on_ssid == ssid:
+        if probe_camera_http(timeout_sec=2.0):
+            return Availability.available()
+        return Availability.unavailable(
+            f"拍照不可用：已连热点「{ssid}」，但相机无响应。请确认 GoPro 已开机。"
+        )
+
+    try:
+        visible = ssid_visible(ssid, timeout_sec=8.0)
+    except WifiSwitchError as e:
+        return Availability.unavailable(f"拍照不可用：扫描 GoPro 热点失败（{e}）")
+    if not visible:
+        return Availability.unavailable(
+            f"拍照不可用：扫描不到热点「{ssid}」。请确认相机已开机并打开 Wi‑Fi。"
+        )
+    return Availability.available()
 
 
 def wait_home_reachable(
@@ -363,66 +381,6 @@ def fetch_latest_still_bytes() -> tuple[bytes, str]:
     return data, name
 
 
-def _multipart_upload(path: Path, upload_url: str) -> dict[str, Any]:
-    boundary = f"----MacEdgeGoPro{int(time.time() * 1000)}"
-    filename = path.name
-    file_bytes = path.read_bytes()
-    parts: list[bytes] = []
-    parts.append(f"--{boundary}\r\n".encode())
-    parts.append(
-        (
-            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-            f"Content-Type: application/octet-stream\r\n\r\n"
-        ).encode()
-    )
-    parts.append(file_bytes)
-    parts.append(b"\r\n")
-    parts.append(f"--{boundary}--\r\n".encode())
-    body = b"".join(parts)
-
-    req = urllib.request.Request(
-        upload_url,
-        data=body,
-        method="POST",
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=120.0) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-            code = int(resp.getcode() or 0)
-    except urllib.error.HTTPError as e:
-        raw = e.read().decode("utf-8", errors="replace")
-        raise GoProCameraError(f"upload HTTP {e.code}: {raw[:300]}") from e
-    except urllib.error.URLError as e:
-        raise GoProCameraError(f"upload failed: {e}") from e
-
-    try:
-        data = json.loads(raw) if raw.strip() else {}
-    except json.JSONDecodeError as e:
-        raise GoProCameraError(f"upload response not JSON (http={code}): {raw[:200]}") from e
-    if not isinstance(data, dict):
-        raise GoProCameraError("upload response must be object")
-    return data
-
-
-def _resolve_photo_url(
-    upload_json: dict[str, Any],
-    *,
-    public_base: str,
-) -> tuple[str, str]:
-    saved_as = str(upload_json.get("saved_as") or "").strip()
-    url = str(upload_json.get("url") or "").strip()
-    base = public_base.rstrip("/")
-    if url.startswith("http://") or url.startswith("https://"):
-        # Loopback is only reachable on the uploader; rewrite to this dest's public base.
-        if saved_as and url.startswith("http://127."):
-            return f"{base}/{Path(saved_as).name}", saved_as
-        return url, saved_as
-    if saved_as:
-        return f"{base}/{Path(saved_as).name}", saved_as
-    raise GoProCameraError(f"upload ok but no photo_url/saved_as: {upload_json}")
-
-
 def _join_gopro(home: WifiSnapshot) -> None:
     ssid = _env("MAC_EDGE_GOPRO_SSID")
     password = _env("MAC_EDGE_GOPRO_PASSWORD")
@@ -454,17 +412,11 @@ def _restore_home(home: WifiSnapshot) -> None:
         raise GoProCameraError(f"restore home Wi-Fi failed: {e}") from e
 
 
-def capture_photo_pipeline(*, upload_dest: str = "lan") -> dict[str, str]:
-    """Full wire pipeline → flat string outputs."""
-    target = _normalize_upload_dest(upload_dest)
-    upload_url, public_base, probe = _upload_endpoints(target)
-
+def capture_photo_pipeline() -> dict[str, Any]:
+    """Shutter + download + restore home. Does not upload (that is asset.upload)."""
     home = wifi_snapshot()
     log.info(
-        "camera.capture start dest=%s upload=%s probe=%s home_ssid=%s device=%s gopro_ssid=%s",
-        target,
-        upload_url,
-        probe,
+        "camera.capture start home_ssid=%s device=%s gopro_ssid=%s",
         home.ssid,
         home.device,
         _env("MAC_EDGE_GOPRO_SSID"),
@@ -492,37 +444,19 @@ def capture_photo_pipeline(*, upload_dest: str = "lan") -> dict[str, str]:
 
         timer.begin("download")
         data, name = fetch_latest_still_bytes()
-        ts = time.strftime("%Y%m%d_%H%M%S")
-        safe_name = re.sub(r"[^\w.\-]+", "_", name) or "capture.jpg"
-        dest = _project_data_gopro() / f"{ts}_{safe_name}"
-        dest.write_bytes(data)
-        local_path = str(dest)
+        from mac_edge.capture import store as capture_store
+        cref = capture_store.put(data, original_name=name)
+        local_path = str(capture_store.open_jpeg(cref["capture_id"]))
         timer.end("download")
-        log.info("downloaded still bytes=%s path=%s", len(data), local_path)
+        log.info("downloaded still bytes=%s capture_id=%s path=%s", len(data), cref["capture_id"], local_path)
 
         timer.begin("restore_home")
         _restore_home(home)
         timer.end("restore_home")
 
-        timer.begin("wait_home")
-        wait_home_reachable(probe_url=probe, timeout_sec=60.0, poll_sec=1.0)
-        timer.end("wait_home")
-
-        timer.begin("upload")
-        upload_json = _multipart_upload(dest, upload_url)
-        photo_url, saved_as = _resolve_photo_url(upload_json, public_base=public_base)
-        timer.end("upload")
-        if not photo_url.startswith("http://") and not photo_url.startswith("https://"):
-            raise GoProCameraError(f"refusing non-http photo_url: {photo_url}")
-
-        outputs = {
-            "photo_local_path": local_path,
-            "photo_url": photo_url,
-        }
-        if saved_as:
-            outputs["saved_as"] = saved_as
+        outputs = {"photo_local_path": local_path, "capture_ref": cref}
         timer.finish()
-        log.info("camera.capture ok photo_url=%s", photo_url)
+        log.info("camera.capture ok capture_id=%s", cref["capture_id"])
         return outputs
     except Exception:
         for name in list(timer._open):
@@ -530,7 +464,7 @@ def capture_photo_pipeline(*, upload_dest: str = "lan") -> dict[str, str]:
         timer.finish()
         raise
     finally:
-        # Always try to leave the GoPro AP, even if shutter/download/upload failed.
+        # Always try to leave the GoPro AP, even if shutter/download failed.
         try:
             _restore_home(home)
         except Exception as restore_err:  # noqa: BLE001
@@ -540,26 +474,18 @@ def capture_photo_pipeline(*, upload_dest: str = "lan") -> dict[str, str]:
 def capture_from_params(
     params: dict[str, Any] | None = None,
     *,
-    asset: "CapAsset",
+    asset: "CapAsset | None" = None,
 ) -> tuple[str, dict[str, Any]]:
-    """Upload still, then register via Runtime Asset Manager → capture_ref only."""
-    from mac_edge.asset.sdk import CapAsset
-
-    if not isinstance(asset, CapAsset):
-        raise GoProCameraError("camera.capture requires CapAsset (Runtime SDK)")
-    dest = _upload_dest_from_params(params)
-    raw = capture_photo_pipeline(upload_dest=dest)
-    ref = asset.register_from_upload_url(
-        photo_url=str(raw.get("photo_url") or ""),
-        saved_as=str(raw.get("saved_as") or "") or None,
-        producer="camera.capture",
-        mime_type="image/jpeg",
-    )
-    outputs: dict[str, Any] = {"capture_ref": ref.to_dict()}
-    local = str(raw.get("photo_local_path") or "").strip()
+    """Download still into the local inbox. Upload is a later asset.upload step."""
+    _ = params
+    _ = asset
+    raw = capture_photo_pipeline()
+    cref = raw.get("capture_ref")
+    if not isinstance(cref, dict) or not str(cref.get("capture_id") or "").strip():
+        raise GoProCameraError("camera.capture produced no capture_ref")
+    outputs: dict[str, Any] = {"capture_ref": cref}
     msg = (
-        f"capture ok dest={dest}\n"
-        f"asset_id: {ref.asset_id}\n"
-        f"local: {local}"
+        f"capture ok (local inbox, no asset)\n"
+        f"capture_id: {cref['capture_id']}"
     )
     return msg, outputs

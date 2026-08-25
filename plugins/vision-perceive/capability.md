@@ -6,7 +6,7 @@
 
 ## 规划自描述
 
-心跳 `description`：能对必填 `image_ref` 产出场景结构（summary/people 等）；不能无图、不能收 `photo_url`、不能做「这个字读啥」（用 `vision.ask`）、不拍照不投屏。
+心跳 `description`：能对必填 `asset_ref` 产出场景结构（summary/people 等）；不能无图、不能收 `photo_url`、不能做「这个字读啥」（用 `vision.ask`）、不拍照不投屏。
 
 ## 标识
 
@@ -22,7 +22,7 @@
 
 | 方向 | 内容 |
 |------|------|
-| **输入** | `image_ref`（必填 AssetRef）：待分析照片 |
+| **输入** | `asset_ref`（必填 AssetRef）：待分析照片 |
 | **输出** | 平铺字段：`summary`（必填）、`people` / `spatial` / `actions` / `posture` / `lighting` |
 
 字段语义：
@@ -42,7 +42,7 @@
 |----|------|
 | step `outputs` | 上述平铺字段 |
 | `output_constrict` | 声明要写入 context 的键（通常全量；播报至少 `summary`） |
-| `ctx_param` | 只含 constrict 声明的键（+ 上游如 `capture_ref`） |
+| `ctx_param` | 只含 constrict 声明的键（+ 上游如 `asset_ref`） |
 
 下游直接用 `$summary`（播报推荐）；复杂字段可用 `$lighting.whole` / `$people`。旧写法 `$perception_json.summary` 仍会落到 `$summary`。Brain 只按 `output_constrict` 登记 context，不做视觉专用改写。
 
@@ -53,7 +53,7 @@
   "capability": "vision.perceive",
   "step": 2,
   "assigned_edge_id": "<mac-edge-id>",
-  "input_constrict": { "image_ref": "$capture_ref" },
+  "input_constrict": { "asset_ref": "$asset_ref" },
   "output_constrict": {
     "summary": { "type": "string", "data_dest": "context" },
     "people": { "type": "string", "data_dest": "context" },
@@ -67,7 +67,7 @@
 
 典型流水线：`camera.capture`（Mac home-server 无感切网）→ `vision.perceive`（Mac）→ `endpoint.present`（`input_constrict: {}`，用 `$summary`）。整单须同一 `assigned_edge_id`。
 
-看图回答「这个字读啥」等指向问题用独立能力 `vision.ask`（`image_ref` + `query` → `answer_text`），不要把 OCR/问答塞进本能力。
+看图回答「这个字读啥」等指向问题用独立能力 `vision.ask`（`asset_ref` + `query` → `answer_text`），不要把 OCR/问答塞进本能力。
 
 ## Edge 本地模型配置（可插拔 provider，与 Brain 无关）
 
@@ -100,7 +100,7 @@ MAC_EDGE_VISION_MODEL=ep-xxxxxxxx    # 方舟推理接入点 ID，或模型名
 # MAC_EDGE_VISION_MODEL=gpt-4o-mini
 ```
 
-Runtime 把 `image_ref` resolve 成本步临时 HTTP URL 后再调模型（图须模型可达）。未配置 Key 时返回结构化占位。
+Runtime 把 `asset_ref` resolve 成本步临时 HTTP URL 后再调模型（图须模型可达）。未配置 Key 时返回结构化占位。
 
 ## 入口
 

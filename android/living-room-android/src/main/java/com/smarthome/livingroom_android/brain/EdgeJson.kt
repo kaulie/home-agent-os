@@ -5,6 +5,9 @@ import com.smarthome.livingroom_android.brain.dto.EdgeHealthSnapshot
 import com.smarthome.livingroom_android.brain.dto.EdgeNodeInfo
 import com.smarthome.livingroom_android.brain.dto.EdgeRegisterRequest
 import com.smarthome.livingroom_android.brain.dto.EdgeRegisterResponse
+import com.smarthome.livingroom_android.brain.dto.EndpointAd
+import com.smarthome.livingroom_android.brain.dto.IntentSourceAd
+import com.smarthome.livingroom_android.brain.dto.ParticipantWire
 import com.smarthome.livingroom_android.brain.dto.SchemaField
 import com.smarthome.livingroom_android.brain.dto.ServiceDescriptor
 import org.json.JSONArray
@@ -21,8 +24,14 @@ object EdgeJson {
         o.put("location", loc)
         o.put("room", request.room)
         o.put("services", encodeServices(request.services))
-        o.put("roles", JSONArray(request.roles))
-        o.put("role_runtime", true)
+        applyRoles(o, request.roles)
+        o.put("intent_sources", encodeIntentSources(request.intentSources))
+        o.put("endpoints", encodeEndpoints(request.endpoints))
+        val pid = request.participantId?.trim().orEmpty()
+        if (pid.isNotEmpty()) {
+            o.put("participant_id", pid)
+            o.put("edge_id", pid)
+        }
         if (request.appVersion != null) o.put("app_version", request.appVersion)
         o.put("reported_at", request.reportedAtSec)
         return o.toString()
@@ -39,8 +48,14 @@ object EdgeJson {
         o.put("online_status", info.onlineStatus.wire)
         o.put("health", encodeHealth(info.health))
         o.put("services", encodeServices(info.services))
-        o.put("roles", JSONArray(info.roles))
-        o.put("role_runtime", true)
+        applyRoles(o, info.roles)
+        o.put("intent_sources", encodeIntentSources(info.intentSources))
+        o.put("endpoints", encodeEndpoints(info.endpoints))
+        val pid = info.participantId?.trim().orEmpty().ifEmpty { info.edgeId }
+        if (pid.isNotEmpty()) {
+            o.put("participant_id", pid)
+            o.put("edge_id", pid)
+        }
         if (info.appVersion != null) o.put("app_version", info.appVersion)
         o.put("reported_at", info.reportedAtSec)
         o.put("client_time_ms", info.clientTimeMs)
@@ -49,14 +64,51 @@ object EdgeJson {
 
     fun parseRegisterResponse(body: String): EdgeRegisterResponse {
         val o = JSONObject(body)
-        val edgeId = o.optString("edge_id", o.optString("edgeId", "")).trim()
+        val edgeId = o.optString("edge_id", "")
+            .ifBlank { o.optString("participant_id", "") }
+            .ifBlank { o.optString("edgeId", "") }
+            .trim()
         return EdgeRegisterResponse(
-            ok = o.optBoolean("ok", false),
-            status = o.optString("status", ""),
+            ok = o.optBoolean("ok", false) || edgeId.isNotEmpty(),
+            status = o.optString("status", if (edgeId.isNotEmpty()) "approved" else ""),
             edgeId = edgeId,
             message = o.optString("message", ""),
             ts = if (o.has("ts")) o.optDouble("ts") else null,
         )
+    }
+
+    private fun applyRoles(o: JSONObject, roles: List<String>) {
+        val ordered = ParticipantWire.ordered(roles)
+        o.put("roles", JSONArray(ordered))
+        o.put("role_intent_source", ordered.contains(ParticipantWire.ROLE_INTENT_SOURCE))
+        o.put("role_runtime", ordered.contains(ParticipantWire.ROLE_RUNTIME))
+        o.put("role_endpoint", ordered.contains(ParticipantWire.ROLE_ENDPOINT))
+        o.put("role_observer", ordered.contains(ParticipantWire.ROLE_OBSERVER))
+    }
+
+    private fun encodeIntentSources(sources: List<IntentSourceAd>): JSONArray {
+        val arr = JSONArray()
+        for (s in sources) {
+            arr.put(
+                JSONObject()
+                    .put("source_id", s.sourceId)
+                    .put("channel", s.channel),
+            )
+        }
+        return arr
+    }
+
+    private fun encodeEndpoints(endpoints: List<EndpointAd>): JSONArray {
+        val arr = JSONArray()
+        for (e in endpoints) {
+            arr.put(
+                JSONObject()
+                    .put("endpoint_id", e.endpointId)
+                    .put("type", e.type)
+                    .put("supported_presentation", JSONArray(e.supportedPresentation)),
+            )
+        }
+        return arr
     }
 
     private fun encodeHealth(health: EdgeHealthSnapshot): JSONObject {
@@ -86,13 +138,21 @@ object EdgeJson {
     private fun encodeCapabilities(caps: List<CapabilityDescriptor>): JSONArray {
         val arr = JSONArray()
         for (cap in caps) {
-            arr.put(
-                JSONObject()
-                    .put("capability_id", cap.capabilityId)
-                    .put("description", cap.description)
-                    .put("input_schema", encodeSchema(cap.inputSchema))
-                    .put("output_schema", encodeSchema(cap.outputSchema)),
-            )
+            val o = JSONObject()
+                .put("capability_id", cap.capabilityId)
+                .put("role", cap.role)
+                .put("planner_recognize", cap.plannerRecognize)
+                .put("typical_triggers", JSONArray(cap.typicalTriggers))
+                .put("do_not_dispatch", JSONArray(cap.doNotDispatch))
+                .put("input_schema", encodeSchema(cap.inputSchema))
+                .put("output_schema", encodeSchema(cap.outputSchema))
+            if (cap.kind.isNotBlank()) {
+                o.put("kind", cap.kind)
+            }
+            if (cap.description.isNotBlank()) {
+                o.put("description", cap.description)
+            }
+            arr.put(o)
         }
         return arr
     }

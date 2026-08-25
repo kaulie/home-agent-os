@@ -2,7 +2,7 @@
 
 旧轮次结果已于 2026-08-18 清空。本文件只记 N1–N20。
 
-Brain：`http://115.190.153.53:9527`  
+Brain（下轮）：`http://127.0.0.1:9527`（本机 LAN Brain。下列历史条目当时打的是云 `http://115.190.153.53:9527`）  
 `POST /api/v1/intent` `source=text`，不带 `edge_id`。  
 原始 [`run_results_n20.json`](run_results_n20.json)。边均为 `edge-node-9tkgMTtn`（空 plan 单除外）。
 
@@ -258,3 +258,89 @@ Brain：`http://115.190.153.53:9527`
 - 与「无新对外路由」一致。
 
 不结案。验收未证明 011 已落到生产库（health 无 version）。
+
+---
+
+## 2026-08-19 15:32 再复测（intent 130–149）
+
+`GET /health` 200 `jobs=129` `pending_intents=1` `registered=5`。无 `participant_id` 的 runner 先全部 400，见 [`run_results_n20_round4_nopid.json`](run_results_n20_round4_nopid.json)。带测试 issuer `edge-node-CiqVl9ZB` 后 POST N1–N20。快照 [`run_results_n20_round4.json`](run_results_n20_round4.json)。边：执行步均为 `edge-node-9tkgMTtn`。home-server `x0OjfixA` 当时 offline。Chromecast `ZeECgaki` `schedule_eligible=false`。`GET /intent/{id}` 本轮未逐条打；`intent_detail` 均为 200。
+
+### 门闸（无 intent id）
+- POST `{"text":"现在几点了","source":"text"}` → 400 `participant_id is required; register and heartbeat first`
+- POST `participant_id=no-such-node` → 401 `unknown participant_id; register first`
+- POST `participant_id=edge-node-9tkgMTtn` → 403 `participant did not declare intent_source`
+- POST `participant_id=edge-node-JzvEe287` → 403 `participant heartbeat required`
+
+### N1 intent_id=130 — 现在几点了
+- 9s succeeded；clock.now status=2；`time_text=2026年8月19日 15:41:18（CST，UTC+08:00）`
+- presentation `{"type":"text","from":"time_text","text":"…15:41:18…","channel":"iphone","endpoint":"edge-node-CiqVl9ZB"}`；无 image_url / asset_ref
+
+### N2 intent_id=131 — 用语音告诉我现在几点了
+- 15s succeeded；仅 clock.now status=2；`time_text=15:41:33`
+- presentation type=audio from=time_text 同时刻；无 notify.speak；无 pending_delivery 字段
+
+### N3 intent_id=132 — 用语音说：你好，这是TTS测试
+- 21s succeeded；notify.speak status=2
+- presentation type=audio from=state endpoint=`""`
+
+### N4 intent_id=133 — 一加一等于几
+- 82s succeeded；query `answer_text=在常规十进制数学运算中，一加一等于二。`
+- presentation type=text from=answer_text
+
+### N5 intent_id=134 — 晋字一共几画
+- 52s succeeded；answer_text 10画+汉典；outputs.asset_ref=`asset_1eb63678d328788804064dec`
+- 顶层 presentation type=text，无 image_url、无 asset_ref
+
+### N6 intent_id=135 — 我家里那只猫叫什么名字
+- 46s succeeded；诚实不知道
+
+### N7 intent_id=136 — 客厅现在适合看书吗，用语音告诉我
+- 12s failed；空 plan
+- msg=`需要先拍摄或获取客厅当前画面的 AssetRef，才能用视觉能力判断光线、环境是否适合看书；当前没有任何拍照/取图能力。`
+- 无 query.content / camera.capture
+
+### N8 intent_id=137 — 把客厅窗帘打开
+- 9s failed；空 plan；msg=无窗帘能力；未派 speak
+
+### N9 intent_id=138 — 拍张照
+- 28s failed；空 plan；msg=无拍照能力；无 camera.capture
+
+### N10 intent_id=139 — 拍张照投到电视上
+- 9s failed；空 plan；msg=无拍照能力；无 camera / display
+
+### N11 intent_id=140 — 拍张照看看客厅里有没有人，然后用语音告诉我
+- 12s failed；空 plan；msg=无拍照能力；无 capture / perceive / speak
+
+### N12 intent_id=141 — 画一张客厅台灯的示意图，投到电视上
+- 52s succeeded；query.content status=2 + display.photo status=2
+- outputs.1 asset_ref=`asset_8505a848fca15b2cf44bb2b9`
+- presentation `{"type":"image","from":"asset_ref","asset_ref":{"asset_id":"asset_8505a848fca15b2cf44bb2b9","type":"image","mime_type":"image/png"},"channel":"iphone","endpoint":"edge-node-CiqVl9ZB"}`；无 image_url
+
+### N13 intent_id=142 — 播放陈奕迅的十年
+- 9s failed；空 plan；msg=`当前 Available Capabilities 中没有可调用的 music.play 能力`
+- 未停 intent_parsed；无 music.play 步
+
+### N14 intent_id=143 — 投到电视上
+- 15s failed；空 plan；msg=缺少待投屏内容 / asset_ref
+
+### N15 intent_id=144 — 把刚才拍的那些照片做成轮播投到电视
+- 12s failed；空 plan；msg=无法列出最近照片给 slideshow
+
+### N16 intent_id=145 — 一分钟后用语音说：该喝水了
+- 64s succeeded；notify.speak timing=delay status=2
+- presentation type=audio from=state endpoint=`""`
+
+### N17 intent_id=146 — 用 take_photo 拍一张
+- 9s failed；空 plan；msg=无拍照能力；无 camera.capture
+
+### N18 intent_id=147 — 拍张照，但是不要拍照
+- 9s failed；空 plan；msg=无拍照能力；未拍照
+
+### N19 intent_id=148 — 地球到月球大约多远
+- 观察窗 101s failed；query.content status=3 msg=`ark responses.create failed: Request timed out.` 含 request_id
+- 事后 GET：顶层 status=succeeded；步仍 status=3；step_outputs.1 空；presentation type=text from=answer_text 无 text 字段
+
+### N20 intent_id=149 — 今天天气适合散步吗
+- 67s succeeded；诚实不知道缺实时天气；presentation type=text
+
+不结案。

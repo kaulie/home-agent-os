@@ -18,13 +18,18 @@ import kotlinx.coroutines.withContext
 class MarshallSpeakerSkill : Skill {
     override fun service(): ServiceDescriptor = ServiceDescriptor(
         serviceId = SKILL_ID,
-        version = "0.1.0",
+        version = "0.4.0",
         displayName = "Marshall WILLEN",
         group = "speaker",
         capabilities = listOf(
+            // Structured ads — aligned with mac capability_ads (bluetooth.*).
             CapabilityDescriptor(
                 capabilityId = Capabilities.BLUETOOTH_CONNECT,
-                description = "能：连接已配对的 Marshall WILLEN 蓝牙音箱。不能：放歌（用 music.play）；TTS；开灯；当音源。",
+                role = "蓝牙音箱连接器",
+                plannerRecognize = "把 Marshall 一类蓝牙音箱连上。只负责连接，不负责选歌播放",
+                typicalTriggers = listOf("连上音箱", "连接音箱", "连上马歇尔"),
+                doNotDispatch = listOf("放歌本身", "TTS", "开灯", "断开音箱"),
+                kind = "action",
                 inputSchema = mapOf(
                     "device_name" to SchemaField(
                         type = "string",
@@ -35,7 +40,11 @@ class MarshallSpeakerSkill : Skill {
             ),
             CapabilityDescriptor(
                 capabilityId = Capabilities.BLUETOOTH_DISCONNECT,
-                description = "能：断开 Marshall WILLEN 蓝牙音箱。不能：放歌、TTS、开灯。",
+                role = "蓝牙音箱断开器",
+                plannerRecognize = "断开已连接的蓝牙音箱。只负责断开，不负责停歌或放歌",
+                typicalTriggers = listOf("断开音箱", "断开蓝牙", "断开马歇尔"),
+                doNotDispatch = listOf("放歌本身", "TTS", "开灯", "连上音箱"),
+                kind = "action",
                 inputSchema = mapOf(
                     "device_name" to SchemaField(
                         type = "string",

@@ -1,0 +1,573 @@
+{
+  "brain": "http://115.190.153.53:9527",
+  "cases": [
+    {
+      "id": "N1",
+      "text": "现在几点了",
+      "notes": "clock.now; presentation with time; no query",
+      "expect": {
+        "required": [
+          "clock.now"
+        ],
+        "forbidden": [
+          "query.content"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing clock.now"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N2",
+      "text": "用语音告诉我现在几点了",
+      "notes": "clock + voice",
+      "expect": {
+        "required": [
+          "clock.now"
+        ],
+        "forbidden": [
+          "query.content"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing clock.now"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N3",
+      "text": "用语音说：你好，这是TTS测试",
+      "notes": "notify.speak only",
+      "expect": {
+        "required": [
+          "notify.speak"
+        ],
+        "forbidden": [
+          "query.content",
+          "camera.capture"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing notify.speak"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N4",
+      "text": "一加一等于几",
+      "notes": "query.content",
+      "expect": {
+        "required": [
+          "query.content"
+        ],
+        "forbidden": [
+          "camera.capture",
+          "clock.now"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing query.content"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N5",
+      "text": "晋字一共几画",
+      "notes": "professional query, no display",
+      "expect": {
+        "required": [
+          "query.content"
+        ],
+        "forbidden": [
+          "display.photo",
+          "camera.capture"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing query.content"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N6",
+      "text": "我家里那只猫叫什么名字",
+      "notes": "must not invent name",
+      "expect": {
+        "required": [
+          "query.content"
+        ],
+        "forbidden": [
+          "camera.capture"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing query.content"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N7",
+      "text": "客厅现在适合看书吗，用语音告诉我",
+      "notes": "query not camera",
+      "expect": {
+        "required": [
+          "query.content"
+        ],
+        "forbidden": [
+          "camera.capture"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing query.content"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N8",
+      "text": "把客厅窗帘打开",
+      "notes": "no curtain cap; clean fail + msg",
+      "expect": {
+        "forbidden": [
+          "camera.capture",
+          "music.play"
+        ],
+        "outcome": "failed"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None want failed"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N9",
+      "text": "拍张照",
+      "notes": "camera only",
+      "expect": {
+        "required": [
+          "camera.capture"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing camera.capture"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N10",
+      "text": "拍张照投到电视上",
+      "notes": "camera + display.photo",
+      "expect": {
+        "required": [
+          "camera.capture",
+          "display.photo"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing camera.capture",
+          "missing display.photo"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N11",
+      "text": "拍张照看看客厅里有没有人，然后用语音告诉我",
+      "notes": "camera + perceive + speak",
+      "expect": {
+        "required": [
+          "camera.capture",
+          "vision.perceive"
+        ],
+        "forbidden": [
+          "vision.ask"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing camera.capture",
+          "missing vision.perceive"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N12",
+      "text": "画一张客厅台灯的示意图，投到电视上",
+      "notes": "query image + display",
+      "expect": {
+        "required": [
+          "query.content",
+          "display.photo"
+        ],
+        "forbidden": [
+          "camera.capture"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing query.content",
+          "missing display.photo"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N13",
+      "text": "播放陈奕迅的十年",
+      "notes": "music.play",
+      "expect": {
+        "required": [
+          "music.play"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing music.play"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N14",
+      "text": "投到电视上",
+      "notes": "display without photo must not succeed",
+      "expect": {
+        "outcome": "failed"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None want failed"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N15",
+      "text": "把刚才拍的那些照片做成轮播投到电视",
+      "notes": "slideshow without urls must fail",
+      "expect": {
+        "outcome": "failed"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None want failed"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N16",
+      "text": "一分钟后用语音说：该喝水了",
+      "notes": "delay speak ~60s",
+      "expect": {
+        "required": [
+          "notify.speak"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing notify.speak"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N17",
+      "text": "用 take_photo 拍一张",
+      "notes": "legacy name -> camera.capture",
+      "expect": {
+        "forbidden": [
+          "take_photo"
+        ],
+        "outcome": "either"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N18",
+      "text": "拍张照，但是不要拍照",
+      "notes": "contradiction; not both succeed",
+      "expect": {
+        "outcome": "either"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N19",
+      "text": "地球到月球大约多远",
+      "notes": "query only",
+      "expect": {
+        "required": [
+          "query.content"
+        ],
+        "forbidden": [
+          "camera.capture",
+          "display.photo"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing query.content"
+        ],
+        "status": null,
+        "caps": []
+      }
+    },
+    {
+      "id": "N20",
+      "text": "今天天气适合散步吗",
+      "notes": "query no camera",
+      "expect": {
+        "required": [
+          "query.content"
+        ],
+        "forbidden": [
+          "camera.capture"
+        ],
+        "outcome": "succeeded"
+      },
+      "post_http": 400,
+      "post": {
+        "error": "participant_id is required; register and heartbeat first",
+        "ok": false
+      },
+      "intent_id": null,
+      "judge": {
+        "ok": false,
+        "notes": [
+          "post_http=400",
+          "status=None",
+          "missing query.content"
+        ],
+        "status": null,
+        "caps": []
+      }
+    }
+  ]
+}

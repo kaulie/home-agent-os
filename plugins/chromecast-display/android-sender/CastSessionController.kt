@@ -159,10 +159,29 @@ class CastSessionController private constructor(context: Context) {
     }
 
     private suspend fun sendImageUrl(session: CastSession, url: String) {
-        val payload = JSONObject().put("url", url).toString()
+        val commandId = "cmd_" + java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+        val presentationId = "p_" + java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+        val asset = JSONObject()
+            .put(
+                "access",
+                JSONObject().put("url", url).put("expires_at", 0),
+            )
+        val content = JSONObject().put("type", "image").put("asset", asset)
+        val payloadObj = JSONObject()
+            .put("presentation_id", presentationId)
+            .put("content", content)
+            .put("options", JSONObject().put("fit", "contain").put("background", "black"))
+        val message = JSONObject()
+            .put("type", "command")
+            .put("protocol_version", 1)
+            .put("command_id", commandId)
+            .put("action", "present")
+            .put("payload", payloadObj)
+            .put("url", url) // legacy dual-write for old Receiver HTML
+            .toString()
         suspendCancellableCoroutine { cont ->
             try {
-                session.sendMessage(IMAGE_NAMESPACE, payload)
+                session.sendMessage(IMAGE_NAMESPACE, message)
                     .setResultCallback { status: Status ->
                         if (status.isSuccess) {
                             if (cont.isActive) cont.resume(Unit)
@@ -174,6 +193,7 @@ class CastSessionController private constructor(context: Context) {
                 if (cont.isActive) cont.resumeWithException(t)
             }
         }
+        log("sent $IMAGE_NAMESPACE command_id=$commandId presentation_id=$presentationId (V1+url dual-write)")
         delay(200)
     }
 

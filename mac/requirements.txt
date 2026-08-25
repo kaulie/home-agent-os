@@ -1,4 +1,10 @@
 httpx>=0.27.0,<1
 edge-tts>=6.1.0,<8
+cryptography>=42.0.0
 # vision.perceive default provider (火山方舟 Ark Responses)
 volcengine-python-sdk[ark]>=1.0.0
+# mac_voice Volcengine SAUC WebSocket STT
+aiohttp>=3.9.0,<4
+# continuous mic (same as Desktop save_sound.py)
+sounddevice>=0.4.6
+numpy>=1.24.0

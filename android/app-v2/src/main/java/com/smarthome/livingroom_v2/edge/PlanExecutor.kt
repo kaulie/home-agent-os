@@ -38,7 +38,12 @@ class PlanExecutor(
                     stepId = step.stepId,
                 )
                 result = try {
-                    skill.execute(step.action, step.params, ctx)
+                    val avail = skill.isAvailable(step.action, step.params, ctx)
+                    if (!avail.ok) {
+                        SkillResult.error(avail.message ?: "${step.action} unavailable")
+                    } else {
+                        skill.execute(step.action, step.params, ctx)
+                    }
                 } catch (t: Throwable) {
                     Log.e(TAG, "skill threw id=${step.skillId} capability=${step.action}", t)
                     SkillResult.error(t.message ?: t.javaClass.simpleName)

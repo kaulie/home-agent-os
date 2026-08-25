@@ -1,0 +1,28 @@
+id: xiaomi-tv-display
+service_id: xiaomi.tv.display
+group: display
+version: "0.1.0"
+display_name: 小米电视 DLNA
+description: 经 DLNA 把图投到小米电视；wire 仍为 display.photo / display.slideshow
+
+capabilities:
+  - capability_id: display.photo
+    description: 把一张图投到小米电视（DLNA）
+  - capability_id: display.slideshow
+    description: 把多张图轮播到小米电视（DLNA）
+
+entry:
+  mac: mac/src/mac_edge/plugins/xiaomi_tv_display.py
+config:
+  - key: MAC_EDGE_DISPLAY_BACKEND
+    platform: mac
+    description: xiaomi 用 DLNA；cast 用现有 Chromecast HTTP；缺省在配置了电视时选 xiaomi
+  - key: MAC_EDGE_XIAOMI_TV
+    platform: mac
+    description: 设 1 启用小米电视 DLNA 发现
+  - key: MAC_EDGE_XIAOMI_TV_HOST
+    platform: mac
+    description: 可选；电视 LAN IP
+  - key: MAC_EDGE_XIAOMI_TV_NAME
+    platform: mac
+    description: 可选；DLNA friendlyName 子串

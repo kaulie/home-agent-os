@@ -212,7 +212,7 @@ class BrainClient:
     def pull_intents(self, edge_id: str, *, consume: bool = False) -> list[dict[str, Any]]:
         """
         Peek intents visible to this edge (default: peek, not pop).
-        Keep where this node is scheduler_node OR any step.assigned_edge_id.
+        Keep where any step.assigned_edge_id matches this node.
         Drop succeeded. Keep failed — an interval beat fail is not the end
         of the series; executor/scheduler reclaim remaining beats.
         """
@@ -280,6 +280,77 @@ class BrainClient:
         if not data.get("ok"):
             raise BrainError(
                 f"register_asset failed: {data!r}",
+                status_code=resp.status_code,
+                body=data,
+            )
+        return data
+
+    def list_assets(
+        self,
+        *,
+        edge_id: str,
+        intent_id: str,
+        asset_type: str | None = None,
+        producer_capability: str | None = None,
+        day: str | None = None,
+        timezone: str | None = None,
+        since: str | float | None = None,
+        until: str | float | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        newest_first: bool = True,
+    ) -> dict[str, Any]:
+        """Query Brain-registered assets (inventory)."""
+        url = f"{self.config.brain_base_url}/api/v1/assets"
+        params: dict[str, str] = {
+            "edge_id": edge_id.strip(),
+            "intent_id": str(intent_id).strip(),
+        }
+        if asset_type:
+            params["type"] = str(asset_type).strip()
+        if producer_capability:
+            params["producer_capability"] = str(producer_capability).strip()
+        if day:
+            params["day"] = str(day).strip()
+        if timezone:
+            params["timezone"] = str(timezone).strip()
+        if since is not None and str(since).strip():
+            params["since"] = str(since).strip()
+        if until is not None and str(until).strip():
+            params["until"] = str(until).strip()
+        if limit is not None:
+            params["limit"] = str(int(limit))
+        if offset is not None:
+            params["offset"] = str(max(0, int(offset)))
+        params["order"] = "newest_first" if newest_first else "oldest_first"
+        resp = self._get(url, params=params)
+        data = self._json_or_raise(resp, "list_assets")
+        if not data.get("ok"):
+            raise BrainError(
+                f"list_assets failed: {data!r}",
+                status_code=resp.status_code,
+                body=data,
+            )
+        return data
+
+    def list_capabilities(
+        self,
+        *,
+        capability_id: str | None = None,
+        edge_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Online schedulable capabilities from Brain (Runtime ads plus kind=system)."""
+        url = f"{self.config.brain_base_url}/api/v1/capabilities"
+        params: dict[str, str] = {}
+        if capability_id:
+            params["capability_id"] = str(capability_id).strip()
+        if edge_id:
+            params["edge_id"] = str(edge_id).strip()
+        resp = self._get(url, params=params or None)
+        data = self._json_or_raise(resp, "list_capabilities")
+        if not data.get("ok"):
+            raise BrainError(
+                f"list_capabilities failed: {data!r}",
                 status_code=resp.status_code,
                 body=data,
             )
@@ -492,7 +563,16 @@ class BrainClient:
         health: dict[str, Any] | None = None,
         client_time_ms: int | None = None,
     ) -> dict[str, Any]:
+        from mac_edge.services import voice_stream_enabled
+
         ident: Identity = self.config.identity
+        intent_sources = None
+        if voice_stream_enabled():
+            # Compat for consumers that still read intent_sources; input privilege
+            # is kind=input on voice.stream, not a separate mic edge.
+            intent_sources = [
+                {"source_id": "mac.usb_microphone", "channel": "voice"},
+            ]
         return registration_payload(
             display_name=ident.display_name,
             device_type=ident.device_type,
@@ -505,6 +585,7 @@ class BrainClient:
             online_status=online_status,
             health=health,
             client_time_ms=client_time_ms,
+            intent_sources=intent_sources,
         )
 
     @staticmethod
@@ -573,23 +654,27 @@ def _recurring_series_still_open(item: dict[str, Any], now_ms: int | None = None
     return False
 
 
+def edge_has_assigned_step(intent: dict[str, Any], edge_id: str) -> bool:
+    eid = (edge_id or "").strip()
+    if not eid:
+        return False
+    plan = intent.get("execution_plan")
+    if not isinstance(plan, list):
+        return False
+    for step in plan:
+        if not isinstance(step, dict):
+            continue
+        if str(step.get("assigned_edge_id") or "").strip() == eid:
+            return True
+    return False
+
+
 def intent_relevant_to_edge(intent: dict[str, Any], edge_id: str) -> bool:
     eid = edge_id.strip()
-    wire = str(intent.get("intent_status") or intent.get("status") or "").strip().lower()
-    plan = intent.get("execution_plan")
-    if wire not in ("succeeded", "failed") and isinstance(plan, list) and not plan:
-        # Empty plan has no step assignee; any peeking edge may fail it.
-        return bool(eid)
-    scheduler = str(intent.get("scheduler_node") or "").strip()
-    if scheduler and scheduler == eid:
+    if not eid:
+        return False
+    if edge_has_assigned_step(intent, eid):
         return True
-    if isinstance(plan, list):
-        for step in plan:
-            if not isinstance(step, dict):
-                continue
-            assigned = str(step.get("assigned_edge_id") or "").strip()
-            if assigned == eid:
-                return True
     pending = intent.get("pending_delivery")
     if isinstance(pending, dict):
         if str(pending.get("edge_id") or "").strip() == eid:
@@ -607,7 +692,6 @@ def _safe_json(resp: httpx.Response) -> Any:
 def format_intent_summary(intent: dict[str, Any]) -> str:
     iid = intent.get("id") or intent.get("intent_id") or "?"
     status = intent.get("intent_status") or intent.get("status") or "?"
-    scheduler = intent.get("scheduler_node") or "-"
     plan = intent.get("execution_plan") or []
     steps: list[str] = []
     if isinstance(plan, list):
@@ -623,6 +707,5 @@ def format_intent_summary(intent: dict[str, Any]) -> str:
     text = (intent.get("text") or "")[:60]
     extra = f" text={text!r}" if text else ""
     return (
-        f"intent id={iid} status={status} scheduler={scheduler} "
-        f"plan=[{plan_s}]{extra}"
+        f"intent id={iid} status={status} plan=[{plan_s}]{extra}"
     )

@@ -49,6 +49,7 @@
     .avatar.runtime { background: #3d8bfd; }
     .avatar.intent { background: #00b4d8; }
     .avatar.capability { background: #f4a261; }
+    .avatar.endpoint { background: #9b59b6; }
     .avatar.dba { background: #c9a227; }
     .avatar.all { background: #5c6578; }
     .badge { background: #c45c5c; color: #fff; border-radius: 999px; padding: 0 6px; font-size: 11px; font-weight: 700; }
@@ -115,7 +116,7 @@
     </main>
   </div>
   <script>
-    const HANDLES = ["coordinator","brain","runtime","intent","capability","quality","dba"];
+    const HANDLES = ["coordinator","brain","runtime","intent","capability","endpoint","quality","dba"];
     const NAMES = {
       boss: "boss",
       owner: "boss",
@@ -125,6 +126,7 @@
       runtime: "runtime dev agent",
       intent: "Intent dev agent",
       capability: "capability dev agent",
+      endpoint: "endpoint agent",
       quality: "quality agent",
       dba: "dba agent",
     };
@@ -142,6 +144,7 @@
       runtime: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M4.8 6.5l1.6 1.6M17.6 15.9l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.8 17.5l1.6-1.6M17.6 8.1l1.6-1.6"/>',
       intent: '<path d="M5 6.5h10a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H10l-4 3v-3H5a2 2 0 0 1-2-2v-5a3 3 0 0 1 2-3z"/>',
       capability: '<path d="M9 4h3.2a2 2 0 0 1 2 2v2.2H18a2 2 0 0 1 2 2V14h-2.2v2.2a2 2 0 0 1-2 2H12V16h-2.2a2 2 0 0 1-2-2V10H4V7.8a2 2 0 0 1 2-2H9z"/>',
+      endpoint: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M8 20h8M12 16v4"/>',
       dba: '<ellipse cx="12" cy="6.5" rx="7" ry="2.4"/><path d="M5 6.5v11c0 1.3 3.1 2.4 7 2.4s7-1.1 7-2.4v-11"/><path d="M5 12c0 1.3 3.1 2.4 7 2.4s7-1.1 7-2.4"/>',
       all: '<circle cx="12" cy="12" r="8"/><path d="M12 5v14M5 12h14M7.2 7.2l9.6 9.6M16.8 7.2 7.2 16.8"/>',
     };

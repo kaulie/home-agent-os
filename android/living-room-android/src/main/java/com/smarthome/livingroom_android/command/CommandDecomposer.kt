@@ -1,12 +1,15 @@
 package com.smarthome.livingroom_android.command
 
 import com.smarthome.livingroom_android.capability.Capabilities
-import com.smarthome.plugin.gopro.WifiNetworkSkill
+import com.smarthome.livingroom_android.skill.AssetUploadSkill
+import com.smarthome.livingroom_android.skill.DocumentScanSkill
+import com.smarthome.livingroom_android.skill.GoProCameraSkill
+import com.smarthome.livingroom_android.skill.PhoneCallSkill
 import java.util.UUID
 
 /**
- * Slim Edge: only [network.wifi] executes locally.
- * Other capabilities are tracked/skipped (camera/cast/music belong elsewhere).
+ * Console Edge: map advertised capabilities to installed skills.
+ * Unmapped assigned steps are skipped with a readable msg.
  */
 object CommandDecomposer {
     fun fromServerCommand(cmd: Command): List<Task> {
@@ -38,10 +41,18 @@ object CommandDecomposer {
             return Mapped(null, "", cmd.params, "missing capability_id")
         }
         return when {
+            capability in Capabilities.SCAN_ALL ->
+                Mapped(DocumentScanSkill.SKILL_ID, capability, cmd.params)
+            capability == Capabilities.PHONE_CALL ->
+                Mapped(PhoneCallSkill.SKILL_ID, capability, cmd.params)
+            capability == Capabilities.CAMERA_CAPTURE ->
+                Mapped(GoProCameraSkill.SKILL_ID, capability, cmd.params)
+            capability == Capabilities.ASSET_UPLOAD ->
+                Mapped(AssetUploadSkill.SKILL_ID, capability, cmd.params)
+            capability == Capabilities.TAKE_VIDEO ->
+                Mapped(null, capability, cmd.params, "take_video is not advertised on Console")
             capability in Capabilities.WIFI_ALL ->
-                Mapped(WifiNetworkSkill.SKILL_ID, capability, cmd.params)
-            capability in Capabilities.CAMERA_ALL ->
-                Mapped(null, capability, cmd.params, "camera runs on capture edge (not android slim)")
+                Mapped(null, capability, cmd.params, "network.wifi is not advertised on Console")
             capability in Capabilities.DISPLAY_ALL ->
                 Mapped(null, capability, cmd.params, "display.photo runs on Cast sender edge")
             capability in Capabilities.MUSIC_ALL ->

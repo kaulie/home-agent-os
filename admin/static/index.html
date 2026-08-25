@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Home Agent 现场管理</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #10141c;
+      --panel: #1a2030;
+      --line: #2c3548;
+      --text: #e8edf7;
+      --muted: #8b97ad;
+      --ok: #3dd68c;
+      --warn: #e0b34a;
+      --off: #c45c5c;
+      --chip: #242c3d;
+      --accent: #6ea8fe;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; font: 14px/1.45 ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    header {
+      padding: 18px 24px 12px; border-bottom: 1px solid var(--line); background: var(--panel);
+      display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; flex-wrap: wrap;
+    }
+    h1 { margin: 0; font-size: 18px; }
+    .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .token { display: flex; gap: 8px; align-items: center; }
+    .token input {
+      background: var(--bg); border: 1px solid var(--line); color: var(--text);
+      border-radius: 8px; padding: 6px 10px; min-width: 220px;
+    }
+    .token button, .refresh {
+      background: var(--accent); color: #111; border: 0; border-radius: 8px;
+      padding: 7px 12px; font-weight: 700; cursor: pointer;
+    }
+    main { padding: 16px 24px 40px; display: grid; gap: 12px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px;
+    }
+    .head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+    .name { font-size: 16px; font-weight: 700; }
+    .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .pill {
+      display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700;
+    }
+    .pill.online { background: #163526; color: var(--ok); }
+    .pill.offline { background: #3a2428; color: #f0a0a0; }
+    .pill.never { background: var(--chip); color: var(--muted); }
+    .section { margin-top: 14px; }
+    .section h2 { margin: 0 0 8px; font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+    .row {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      background: var(--chip); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px;
+    }
+    .row .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    .row .hint { color: var(--muted); font-size: 11px; }
+    .muted { color: var(--muted); }
+    .err { color: var(--off); padding: 12px 24px; }
+    .switch { position: relative; width: 42px; height: 24px; flex: 0 0 auto; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; inset: 0; background: #5a3140; border-radius: 999px; cursor: pointer;
+    }
+    .slider:before {
+      content: ""; position: absolute; height: 18px; width: 18px; left: 3px; top: 3px;
+      background: #fff; border-radius: 50%; transition: transform .15s;
+    }
+    .switch input:checked + .slider { background: #246b4a; }
+    .switch input:checked + .slider:before { transform: translateX(18px); }
+    .switch input:disabled + .slider { opacity: .4; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Home Agent 现场管理</h1>
+      <div class="sub">本机页面，不上云。调度三条：管理员允许（未开关则跳过）· 当前在线 · 节点自己声明了该 Role / 能力。开关只写策略表，不改心跳。<span id="brainHint"></span></div>
+    </div>
+    <div class="token">
+      <input id="token" type="password" placeholder="管理员令牌（可选）" />
+      <button class="refresh" id="reload" type="button">刷新</button>
+    </div>
+  </header>
+  <div id="err" class="err" hidden></div>
+  <main id="list"><div class="muted">加载中…</div></main>
+  <script>
+    const ROLE_LABEL = {
+      intent_source: "Intent Source",
+      runtime: "Runtime",
+      endpoint: "Endpoint",
+      observer: "Observer",
+    };
+    const tokenEl = document.getElementById("token");
+    tokenEl.value = localStorage.getItem("brain_admin_token") || "";
+
+    function headers() {
+      const h = { "Content-Type": "application/json" };
+      const t = tokenEl.value.trim();
+      if (t) h["X-Admin-Token"] = t;
+      return h;
+    }
+    function fmtTime(sec) {
+      if (sec == null || sec === "") return "从未心跳";
+      const d = new Date(Number(sec) * 1000);
+      if (Number.isNaN(d.getTime())) return String(sec);
+      const pad = n => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    function statusPill(node) {
+      const st = node.online_status || "never";
+      const label = st === "online" ? "在线" : st === "offline" ? "离线" : "未心跳";
+      const note = node.online_status_note ? ` · ${node.online_status_note}` : "";
+      return `<span class="pill ${st}">${label}${note}</span>`;
+    }
+    function switchHtml(checked, disabled, attrs) {
+      return `<label class="switch"><input type="checkbox" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} ${attrs}><span class="slider"></span></label>`;
+    }
+
+    async function load() {
+      const err = document.getElementById("err");
+      err.hidden = true;
+      try {
+        const cfg = await fetch("/api/v1/admin/local_config");
+        if (cfg.ok) {
+          const info = await cfg.json();
+          const hint = document.getElementById("brainHint");
+          if (hint && info.brain) hint.textContent = " 连 Brain " + info.brain;
+        }
+      } catch (_) {}
+      const res = await fetch("/api/v1/admin/nodes", { headers: headers() });
+      const data = await res.json();
+      if (!res.ok) {
+        err.hidden = false;
+        err.textContent = data.error || ("加载失败 " + res.status);
+        return;
+      }
+      const nodes = data.nodes || [];
+      const el = document.getElementById("list");
+      if (!nodes.length) {
+        el.innerHTML = '<div class="muted">还没有注册节点。</div>';
+        return;
+      }
+      el.innerHTML = nodes.map(n => {
+        const roles = (n.roles || []).map(r => {
+          const label = ROLE_LABEL[r.id] || r.id;
+          const hint = r.id === "intent_source"
+            ? (r.registered ? (r.schedulable ? "禁用后无法下发命令" : "已声明，但当前不可调度") : "节点未声明此身份")
+            : (r.registered ? (r.schedulable ? "节点已声明" : "已声明，但当前不可调度") : "节点未声明此身份");
+          return `<div class="row"><div><div class="id">${label}</div><div class="hint">${hint}</div></div>${switchHtml(r.enabled, !r.registered, `data-kind="role" data-id="${r.id}" data-pid="${n.participant_id}"`)}</div>`;
+        }).join("");
+        const caps = (n.runtime_capabilities || []);
+        const capHtml = caps.length
+          ? caps.map(c => `<div class="row"><div><div class="id">${c.capability_id}</div><div class="hint">${[c.service_id, c.group].filter(Boolean).join(" · ")}${c.schedulable ? "" : " · 当前不可调度"}</div></div>${switchHtml(c.enabled, false, `data-kind="capability" data-id="${c.capability_id}" data-pid="${n.participant_id}"`)}</div>`).join("")
+          : '<div class="muted">没有 Runtime capability</div>';
+        const title = n.display_name || n.participant_id;
+        return `<article class="card" data-pid="${n.participant_id}">
+          <div class="head">
+            <div>
+              <div class="name">${title}</div>
+              <div class="meta">@${n.participant_id}${n.device_type ? " · " + n.device_type : ""}${n.location ? " · " + n.location : ""}</div>
+              <div class="meta">最后活跃 ${fmtTime(n.last_active_at)}</div>
+            </div>
+            ${statusPill(n)}
+          </div>
+          <div class="section"><h2>参与身份 Role</h2>${roles}</div>
+          <div class="section"><h2>Runtime 能力</h2>${capHtml}</div>
+        </article>`;
+      }).join("");
+    }
+
+    async function toggle(input) {
+      const body = {
+        participant_id: input.getAttribute("data-pid"),
+        target_kind: input.getAttribute("data-kind"),
+        target_id: input.getAttribute("data-id"),
+        enabled: input.checked,
+      };
+      input.disabled = true;
+      try {
+        const res = await fetch("/api/v1/admin/policy", {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          input.checked = !input.checked;
+          alert(data.error || "保存失败");
+          return;
+        }
+        await load();
+      } catch (e) {
+        input.checked = !input.checked;
+        alert(String(e));
+      }
+    }
+
+    document.getElementById("list").addEventListener("change", (ev) => {
+      const input = ev.target.closest("input[type=checkbox]");
+      if (!input || !input.getAttribute("data-kind")) return;
+      toggle(input);
+    });
+    document.getElementById("reload").addEventListener("click", () => {
+      localStorage.setItem("brain_admin_token", tokenEl.value.trim());
+      load();
+    });
+    tokenEl.addEventListener("change", () => localStorage.setItem("brain_admin_token", tokenEl.value.trim()));
+    load();
+    setInterval(load, 5000);
+  </script>
+</body>
+</html>

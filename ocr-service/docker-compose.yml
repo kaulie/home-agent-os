@@ -1,0 +1,23 @@
+# Cloud: /root/chat-gateway/ocr-service
+# Bind loopback only — Brain on the same host calls http://127.0.0.1:9188
+# Do not publish to LAN or the public internet.
+services:
+  ocr:
+    build: .
+    container_name: home-agent-ocr
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9188:9188"
+    environment:
+      OCR_HOST: "0.0.0.0"
+      OCR_PORT: "9188"
+      OCR_CACHE_DIR: /data/ocr-cache
+      OCR_MODEL_VERSION: PP-OCRv5
+    volumes:
+      - ocr-cache:/data/ocr-cache
+      - ocr-models:/root/.paddleocr
+    mem_limit: 4g
+
+volumes:
+  ocr-cache:
+  ocr-models:

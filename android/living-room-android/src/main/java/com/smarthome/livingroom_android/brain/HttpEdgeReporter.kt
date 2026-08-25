@@ -19,7 +19,13 @@ class HttpEdgeReporter(
     private val enabled: Boolean = true,
     private val client: OkHttpClient = defaultClient(),
 ) {
-    private val root = baseURL.trimEnd('/')
+    @Volatile
+    var baseURL: String = baseURL.trimEnd('/')
+        set(value) {
+            field = value.trim().trimEnd('/')
+        }
+
+    private val root: String get() = baseURL
 
     val defaultRegisterURL: String get() = "$root/api/v1/edge-register"
     val defaultHeartbeatURL: String get() = "$root/api/v1/edge-heartbeat"
@@ -90,9 +96,11 @@ class HttpEdgeReporter(
 
         private fun defaultClient(): OkHttpClient =
             OkHttpClient.Builder()
-                .connectTimeout(20, TimeUnit.SECONDS)
-                .readTimeout(20, TimeUnit.SECONDS)
-                .writeTimeout(20, TimeUnit.SECONDS)
+                .connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(8, TimeUnit.SECONDS)
+                .writeTimeout(8, TimeUnit.SECONDS)
+                .callTimeout(8, TimeUnit.SECONDS)
+                .retryOnConnectionFailure(false)
                 .build()
 
         private fun applyBrainTimeFromHeartbeat(body: String) {

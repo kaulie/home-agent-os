@@ -22,8 +22,11 @@ from mac_edge.executor import (
 from mac_edge.intranet_ping_monitor import IntranetPingMonitor
 from mac_edge.local_ledger import LocalLedger, bind as bind_ledger
 from mac_edge.scheduler import IntentScheduler
+from mac_edge.services import voice_stream_enabled
 from mac_edge.state import clear_edge_id, load_edge_id, save_edge_id
 from mac_edge.timing_beats import set_beat_listener
+from mac_edge.voice_supervisor import VoiceSupervisor
+from mac_edge.plugins.video_live_ingest import VideoLiveIngestServer
 
 log = logging.getLogger("mac_edge.agent")
 
@@ -74,12 +77,27 @@ class EdgeAgent:
         # thread so a long query.content cannot leave the next intent stuck
         # at intent_parsed.
         self._scheduler = IntentScheduler()
+        # Voice may POST /voice/wake only after Brain knows this id (heartbeat OK).
+        # Cached edge_id from another Brain would 401 until re-register.
+        self._heartbeat_ok_edge_id: str | None = None
+        self._voice = VoiceSupervisor(
+            mac_root=config.data_dir.parent,
+            edge_id_path=config.edge_id_path,
+            brain_url=config.brain_base_url,
+            client_hint=config.identity.client_hint,
+            enabled=voice_stream_enabled(),
+            get_edge_id=self._get_voice_edge_id,
+        )
+        self._video_ingest = VideoLiveIngestServer.from_env(config.data_dir)
 
     def request_stop(self, *_args: Any) -> None:
         log.info("stop requested")
         self._stop = True
         self._work_wake.set()
         self._intranet_ping.stop()
+        self._voice.stop()
+        if self._video_ingest is not None:
+            self._video_ingest.stop()
 
     def run(self) -> None:
         signal.signal(signal.SIGINT, self.request_stop)
@@ -99,6 +117,13 @@ class EdgeAgent:
             self.config.intranet_ping.mode,
         )
         self._intranet_ping.start()
+        self._voice.start()
+        if self._video_ingest is not None:
+            try:
+                self._video_ingest.start()
+            except OSError:
+                log.exception("video live ingest failed to bind; continuing without it")
+                self._video_ingest = None
         self._ensure_channel_threads()
 
         try:
@@ -191,14 +216,24 @@ class EdgeAgent:
         with self._edge_id_lock:
             return self._edge_id
 
+    def _get_voice_edge_id(self) -> str | None:
+        """Identity Brain has accepted via heartbeat — not a cached file id."""
+        with self._edge_id_lock:
+            return self._heartbeat_ok_edge_id
+
     def _set_edge_id(self, edge_id: str) -> None:
         with self._edge_id_lock:
             self._edge_id = edge_id
+
+    def _set_heartbeat_ok(self, edge_id: str | None) -> None:
+        with self._edge_id_lock:
+            self._heartbeat_ok_edge_id = (edge_id or "").strip() or None
 
     def _clear_edge_id(self) -> None:
         clear_edge_id(self.config.edge_id_path)
         with self._edge_id_lock:
             self._edge_id = None
+            self._heartbeat_ok_edge_id = None
 
     # --- channel 1: heartbeat ---
 
@@ -215,6 +250,7 @@ class EdgeAgent:
                         if eid:
                             try:
                                 brain.heartbeat(eid)
+                                self._set_heartbeat_ok(eid)
                             except BrainError as e:
                                 if e.is_unauthorized:
                                     log.warning(
@@ -223,6 +259,7 @@ class EdgeAgent:
                                     self._clear_edge_id()
                                 else:
                                     self._note_brain_problem(e)
+                                    self._set_heartbeat_ok(None)
                             except Exception:
                                 log.exception("heartbeat failed")
                         elapsed = time.monotonic() - started
@@ -378,6 +415,15 @@ class EdgeAgent:
         result = brain.register()
         self._set_edge_id(result.edge_id)
         save_edge_id(self.config.edge_id_path, result.edge_id)
+        try:
+            brain.heartbeat(result.edge_id)
+            self._set_heartbeat_ok(result.edge_id)
+        except BrainError as e:
+            if e.is_unauthorized:
+                log.warning("heartbeat after register 401 — clearing edge_id")
+                self._clear_edge_id()
+            else:
+                self._note_brain_problem(e)
 
     def _note_brain_problem(self, err: BaseException) -> None:
         """Throttle Brain-down warnings: one line / minute, never full traceback."""
@@ -433,7 +479,6 @@ def _merge_intent_detail(
         "context",
         "outputs",
         "step_outputs",
-        "scheduler_node",
         "step_log",
     ):
         if key not in detail or detail[key] is None:

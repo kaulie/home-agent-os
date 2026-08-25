@@ -476,6 +476,7 @@ class MainActivity : AppCompatActivity(), EdgeAgent.Listener {
         val assignedLabel = assigned ?: "未签发（启动后会先 /edge-register）"
         edgeInfoText.text =
             "hint=${app.clientHint} · edgeId=$assignedLabel · " +
+                "roles=${app.participant.enabledRoles().joinToString(",")} · " +
                 "enabled=${settings.agentEnabled} · boot=${settings.autoStartOnBoot} · " +
                 "brain=${BuildConfig.DEFAULT_BRAIN_BASE_URL} · hb=${BuildConfig.HEARTBEAT_INTERVAL_MS}ms"
     }

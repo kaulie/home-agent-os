@@ -155,7 +155,7 @@ class VisionAskTests(unittest.TestCase):
         ):
             msg, outputs = ask_from_params(
                 {
-                    "image_ref": json.dumps(
+                    "asset_ref": json.dumps(
                         {"asset_id": "asset_x", "type": "image"}
                     ),
                     "query": "这个字读啥",
@@ -165,7 +165,7 @@ class VisionAskTests(unittest.TestCase):
         self.assertIn("喵", msg)
         self.assertEqual(outputs["answer_text"], "这个字是「喵」，读 miāo。")
 
-    def test_from_params_missing_image_ref_fails(self) -> None:
+    def test_from_params_missing_asset_ref_fails(self) -> None:
         from unittest.mock import MagicMock
 
         from mac_edge.asset.sdk import CapAsset
@@ -173,7 +173,7 @@ class VisionAskTests(unittest.TestCase):
         asset = CapAsset(manager=MagicMock(), intent_id="1", step_num=2)
         with self.assertRaises(VisionAskError) as ctx:
             ask_from_params({"query": "这个字读啥"}, asset=asset)
-        self.assertIn("image_ref", str(ctx.exception))
+        self.assertIn("asset_ref", str(ctx.exception))
         self.assertNotIn("photo_url", str(ctx.exception))
 
     def test_provider_error_is_ask_error(self) -> None:

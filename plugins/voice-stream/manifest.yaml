@@ -1,0 +1,19 @@
+id: voice-stream
+service_id: local.voice
+group: voice
+version: "0.1.0"
+display_name: Local Voice Stream
+description: 常驻语音输入（kind=input）；自管理生命周期；可 POST /intent
+
+capabilities:
+  - capability_id: voice.stream
+    kind: input
+    description: >
+      按自身策略收音并转写，将用户口语变成系统意图。
+      不作为计划逐步执行。
+
+entry:
+  mac: mac/src/mac_edge/plugins/voice_stream.py
+config:
+  - MAC_EDGE_VOICE
+  - MAC_VOICE_LISTEN_MODE

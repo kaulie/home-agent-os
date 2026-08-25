@@ -7,7 +7,7 @@ if [ -d "$ROOT/src/mac_edge" ]; then
 elif [ -d "$(cd "$(dirname "$0")" && pwd)/src/mac_edge" ]; then
   ROOT="$(cd "$(dirname "$0")" && pwd)"
 fi
-export MAC_EDGE_BRAIN_URL="http://115.190.153.53:9527"
+export MAC_EDGE_BRAIN_URL="http://192.168.3.73:9527"
 export MAC_EDGE_INTERVAL_SEC="3"
 export MAC_EDGE_CLIENT_HINT="home-server-mac"
 export MAC_EDGE_DISPLAY_NAME="Home Server · Mac Edge"
@@ -26,7 +26,7 @@ if [[ -f "$ROOT/.env" ]]; then
 fi
 # GoPro + living-room ceiling light stay here. query/speak/vision/Cast register on the laptop.
 export MAC_EDGE_ROLE="${MAC_EDGE_ROLE:-home-server}"
-export MAC_EDGE_SERVICE_WHITELIST="${MAC_EDGE_SERVICE_WHITELIST:-gopro.camera,livingroom.ceiling_light}"
+export MAC_EDGE_SERVICE_WHITELIST="${MAC_EDGE_SERVICE_WHITELIST:-gopro.camera,livingroom.ceiling_light,local.asset}"
 # camera.capture default: lan (home img-server). cloud only when user asks.
 export MAC_EDGE_PHOTO_UPLOAD_DEST="${MAC_EDGE_PHOTO_UPLOAD_DEST:-lan}"
 cd "$ROOT"

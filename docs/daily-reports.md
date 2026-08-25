@@ -26,7 +26,70 @@
 
 | 日期 | coordinator | brain | runtime | intent | capability | quality | dba | 备注 |
 |------|-------------|-------|---------|--------|------------|---------|-----|------|
+| 2026-08-19 | 已写入本文 | 缺交（代汇总） | 缺交（代汇总） | 缺交（代汇总） | 缺交（代汇总） | 缺交（代汇总） | 缺交（代汇总） | 22:50 催办 loop 中断；23:42 补催+代汇总 |
 | 2026-08-18 | 已写入本文 | 缺交（代汇总） | 缺交（代汇总） | 缺交（代汇总） | 缺交（代汇总） | 缺交（代汇总） | 缺交（代汇总） | 制度当日建立，已过 23:00；从信箱代填 |
+
+---
+
+## 2026-08-19
+
+当日无人交主题 `日报`（22:50 催办 loop 曾中断）。下列由 `@coordinator` 从 chat #40–#119 完工/交卷/对齐代汇总。**不结案**。
+
+### @coordinator
+
+- **完成：** 现场管理页拆到本机 `admin/serve.py`（8788，不上云）；默认 `BRAIN_URL` 指云 `115.190.153.53:9527`。9527 崩溃（`load_control_policy_index`）修复并上云；admin 列表 fallback（无 `list_participants` 也能列节点）。chat `@all` 调度口径 #103/#105。23:42 补催 brain/runtime/intent/quality/dba + 本汇总。
+- **阻塞：** 云库仍 v12，管理页策略开关写库待 014 迁移；多 handle 长时间未 pull。
+- **明日：** 盯 dba 云迁移、quality 验收；补 arm 22:50 日报 loop。
+- **待验收：** 无本层实现。
+
+### @brain
+
+- **完成：** AssetRef presentation/planner 上云（#43/#102）；sanitize `$asset_ref`、禁 image_url；GET `/assets/{id}/content`、storage.url 优先 cloud；admin 调度三条 + `can_participate`（本地，部分上云）。116 endpoint asset stream 已上云请 quality 验。配合 9527 重启多次。
+- **阻塞：** 云 db 缺 013–015；117/118 feedback API 待确认+上云；D5 Endpoint 拉 stream 仍等 @intent。
+- **明日：** 配合 @dba 迁移后 rsync+restart；确认 intent_feedback 路由。
+- **待验收：** stream（#116）、asset_ref 全链路、admin policy（迁移后）。
+
+### @runtime
+
+- **完成：** Asset 对齐：CapAsset SDK、LAN→cloud mirror、planner repair 认 asset_ref（#97）。110/113：Brain 全 step terminal 自动 succeeded/failed；iOS RuntimeLoop 防重复拍。111 laptop 已重启。
+- **阻塞：** home-server 离线致 N9–11/N17 空 plan；115 light.set 音频待同步 home-server。
+- **明日：** 同步 home-server + 重启；确认 110/113 Brain 改动已上云。
+- **待验收：** intent 155/158 类单步收口（Brain 已改，iOS 待编）。
+
+### @intent
+
+- **完成：** presentation 只认 asset_ref；取图优先 storage.url/cloud（#104/#106）。117/118 草案：015 intent_user_feedback 表+API+iOS IntentFeedbackStrip。
+- **阻塞：** 110/113/114/112 均需重编 iOS（finalize、stream 取图、light.set、feedback）；50 所列 intents 列表 API 未点名不改 Brain。
+- **明日：** 合并 capability 改动发版；联调 feedback API（等云迁移）。
+- **待验收：** Endpoint stream 取图、light.set 真机。
+
+### @capability
+
+- **完成：** 全线切 asset_ref（#96）；query.content want_image + 拒答仍出图（#91–92）；112 light.set 注册到 iPhone（livingroom.ceiling_light）；114 iPhone 改 stream 取图；115 预录音频 wake/on/off。
+- **阻塞：** N7/N9 无拍照是 home-server 离线非 plugin；Cast 503 未在本层闭环。
+- **明日：** 等 iPhone App 重装验证 light.set；Android/iOS 仍缺 CapAsset SDK。
+- **待验收：** light.set、query 出图投屏（Edge 重启后）。
+
+### @quality
+
+- **完成：** #107–108 N1–N20 复测交卷（intent 130–149）：**13 通过 / 6 部分 / 1 不符**（相对 23:00 的 14/4/2）。材料 `tests/blackbox/report.md` · `log.md` · `run_results_n20_round4*.json`。#109 事实：N7 空 plan、N13 music.play、N9–11/N17 home-server offline、N12 Cast 503。
+- **阻塞：** 116 stream、119 迁移后 admin/feedback 未验；brain/runtime 长闲置。
+- **明日：** 黑盒 stream；云迁移 013–015 后验 admin nodes + intent_feedback。
+- **待验收：** 本层是验收方；N1–N20 仍不结案。
+
+### @dba
+
+- **完成：** 014 edge_control_policy 本地 v14；#119 确认 015 intent_user_feedback 无异议（CHECK/UNIQUE 对齐）；本地 init→v15，test 通过。
+- **阻塞：** **云 Brain 生产库仍 v12**（缺 013/014/015）。
+- **明日：** rsync `db.py`+`sql/013–015` → 云 `python3 db.py init` + restart；014 解锁管理页写策略。
+- **待验收：** 迁移后 @quality 验 admin + feedback。
+
+### 跨层未结
+
+1. 云库 013–015 迁移（admin 开关、feedback、intent_id INTEGER）。
+2. iOS 重编：finalize / stream / light.set / feedback UI。
+3. N1–N20：N7 query、N13 music、home-server 离线、Cast 503。
+4. Asset 全链路验收（stream、旧图无 cloud mirror 需重拍）。
 
 ---
 

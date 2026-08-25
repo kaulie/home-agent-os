@@ -21,12 +21,17 @@ import java.util.concurrent.TimeUnit
  *   `{ step_status, edge_node_id, ts [, outputs] [, msg] }`
  *
  * Requeue: POST `/api/v1/devices/living-room/intents`
- *   `{ id, intent_status, execution_plan, skip_routing, scheduler_node?, ctx_param? }`
+ *   `{ id, intent_status, execution_plan, skip_routing, ctx_param? }`
  */
 class IntentStatusClient(
-    private val intentBaseURL: String,
+    intentBaseURL: String,
     private val client: OkHttpClient = defaultClient(),
 ) {
+    @Volatile
+    var intentBaseURL: String = intentBaseURL
+        set(value) {
+            field = value.trim().trimEnd('/')
+        }
     suspend fun reportStatus(
         intentId: String,
         status: String,
@@ -90,7 +95,6 @@ class IntentStatusClient(
         status: String,
         executionPlan: JSONArray,
         ctxParam: Map<String, String>? = null,
-        schedulerNode: String? = null,
     ): Boolean = withContext(Dispatchers.IO) {
         val trimmedId = intentId.trim()
         if (trimmedId.isEmpty() || executionPlan.length() == 0) return@withContext false
@@ -101,7 +105,6 @@ class IntentStatusClient(
             put("intent_status", status)
             put("execution_plan", executionPlan)
             put("skip_routing", true)
-            if (!schedulerNode.isNullOrBlank()) put("scheduler_node", schedulerNode.trim())
             putStringMap("ctx_param", ctxParam)
         }
         postJson(url, payload, "intent-requeue")

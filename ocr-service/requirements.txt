@@ -1,0 +1,2 @@
+# Runtime image installs paddlepaddle + paddleocr (see Dockerfile).
+# Local unit tests only need the stdlib + this tree.

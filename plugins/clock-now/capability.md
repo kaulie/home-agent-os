@@ -9,7 +9,14 @@
 
 ## 规划自描述
 
-心跳 `description`（planner 只看这段）：能读墙上时钟产出 `now_iso`/`time_text`；不能 LLM 编时刻、不能用 `query.content`/`notify.speak` 顶替、不 TTS。
+心跳结构化字段（planner 契约；`description` 非权威）：
+
+| 字段 | 值 |
+|------|-----|
+| role | 本机时钟读取器 |
+| planner_recognize | 读取当前时间 |
+| typical_triggers | `现在几点了`、`今天几号` |
+| do_not_dispatch | 知识问答、计算、看图 |
 
 ## 标识
 
@@ -26,7 +33,7 @@
 | 方向 | 内容 |
 |------|------|
 | **输入** | `timezone`（可选，IANA 如 `Asia/Shanghai`；缺省=本机本地时区） |
-| **输出** | `now_iso`（必填，ISO-8601 含偏移）；`time_text`（必填，人类可读，含时区） |
+| **输出** | `now_iso`（必填，ISO-8601 含偏移）；`time_text`（必填，给人听/看的中文时刻，如「现在是2026年8月23日上午9点25分」。不要写 IANA 名、斜杠、`HH:MM:SS` 或 `UTC+08:00`；时区只放 `now_iso`） |
 
 本能力 **只看本步入参**。未知 `timezone` → 失败。  
 **禁止** LLM、禁止猜测。  

@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home Agent Display Receiver</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+      overflow: hidden;
+    }
+    #app {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    #stage {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    #stage img,
+    #stage video {
+      max-width: 95vw;
+      max-height: 90vh;
+      object-fit: contain;
+      display: none;
+    }
+    #stage img.visible,
+    #stage video.visible { display: block; }
+    #textPane {
+      display: none;
+      max-width: 86vw;
+      padding: 4vh 5vw;
+      font-size: clamp(28px, 4.5vw, 64px);
+      line-height: 1.35;
+      text-align: center;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    #textPane.visible { display: block; }
+    #status {
+      position: fixed;
+      left: 50%;
+      bottom: 28px;
+      transform: translateX(-50%);
+      font-size: 16px;
+      opacity: 0.65;
+      pointer-events: none;
+      text-align: center;
+      max-width: 90vw;
+    }
+    #status.error { opacity: 0.95; color: #ffb4b4; }
+    #brand {
+      position: fixed;
+      top: 18px;
+      right: 24px;
+      font-size: 14px;
+      opacity: 0.45;
+      letter-spacing: 0.04em;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="brand">home agent</div>
+    <div id="stage">
+      <img id="pic" alt="">
+      <video id="vid" playsinline></video>
+      <div id="textPane"></div>
+    </div>
+    <div id="status">connecting…</div>
+  </div>
+
+  <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  <script>
+(function () {
+  "use strict";
+
+  var NAMESPACE = "urn:x-cast:local.image";
+  var RECEIVER_VERSION = "1.1.0";
+  var HEARTBEAT_MS = 25000;
+
+  var ctx = cast.framework.CastReceiverContext.getInstance();
+  var pic = document.getElementById("pic");
+  var vid = document.getElementById("vid");
+  var textPane = document.getElementById("textPane");
+  var statusEl = document.getElementById("status");
+
+  var lastCommandIds = [];
+  var MAX_CMD_CACHE = 64;
+  var current = {
+    commandId: null,
+    presentationId: null,
+    contentType: null,
+    status: "idle"
+  };
+
+  function setStatus(text, isError) {
+    statusEl.textContent = text || "";
+    statusEl.className = isError ? "error" : "";
+  }
+
+  function parseMessage(raw) {
+    if (raw == null) return null;
+    if (typeof raw === "object") return raw;
+    if (typeof raw === "string") {
+      try { return JSON.parse(raw); } catch (e) { return null; }
+    }
+    return null;
+  }
+
+  function seenCommand(commandId) {
+    if (!commandId) return false;
+    return lastCommandIds.indexOf(commandId) >= 0;
+  }
+
+  function rememberCommand(commandId) {
+    if (!commandId) return;
+    if (lastCommandIds.indexOf(commandId) >= 0) return;
+    lastCommandIds.push(commandId);
+    if (lastCommandIds.length > MAX_CMD_CACHE) {
+      lastCommandIds.splice(0, lastCommandIds.length - MAX_CMD_CACHE);
+    }
+  }
+
+  function emit(eventName, extra) {
+    var body = {
+      type: "event",
+      event: eventName,
+      protocol_version: 1
+    };
+    if (extra) {
+      Object.keys(extra).forEach(function (k) {
+        if (extra[k] !== undefined && extra[k] !== null) body[k] = extra[k];
+      });
+    }
+    try {
+      // undefined senderId → broadcast to all connected senders
+      ctx.sendCustomMessage(NAMESPACE, undefined, body);
+    } catch (e) {
+      // Older CAF builds may require empty string
+      try { ctx.sendCustomMessage(NAMESPACE, "", body); } catch (e2) {}
+    }
+  }
+
+  function hideAll() {
+    pic.classList.remove("visible");
+    vid.classList.remove("visible");
+    textPane.classList.remove("visible");
+    pic.removeAttribute("src");
+    pic.onload = null;
+    pic.onerror = null;
+    try { vid.pause(); } catch (e) {}
+    vid.removeAttribute("src");
+    vid.onloadeddata = null;
+    vid.onerror = null;
+    vid.load();
+    textPane.textContent = "";
+  }
+
+  function applyOptions(options) {
+    options = options || {};
+    var bg = options.background || "black";
+    document.body.style.background = bg;
+    var fit = options.fit || "contain";
+    pic.style.objectFit = fit;
+    vid.style.objectFit = fit;
+  }
+
+  function clearStage(commandId) {
+    hideAll();
+    current = {
+      commandId: commandId || null,
+      presentationId: null,
+      contentType: null,
+      status: "idle"
+    };
+    setStatus("ready");
+    emit("presentation.cleared", { command_id: commandId || undefined });
+  }
+
+  function presentImage(url, commandId, presentationId, options) {
+    if (!url) {
+      emit("presentation.error", {
+        command_id: commandId,
+        presentation_id: presentationId,
+        error: { code: "MISSING_URL", message: "image url empty" }
+      });
+      setStatus("missing image url", true);
+      return;
+    }
+    applyOptions(options);
+    hideAll();
+    current = {
+      commandId: commandId,
+      presentationId: presentationId,
+      contentType: "image",
+      status: "loading"
+    };
+    setStatus("图片正在下载中，请稍等");
+
+    pic.onload = function () {
+      pic.classList.add("visible");
+      current.status = "presenting";
+      setStatus("");
+      emit("presentation.started", {
+        command_id: commandId,
+        presentation_id: presentationId
+      });
+    };
+    pic.onerror = function () {
+      current.status = "error";
+      setStatus("图片加载失败，请重试", true);
+      emit("presentation.error", {
+        command_id: commandId,
+        presentation_id: presentationId,
+        error: { code: "ASSET_LOAD_FAILED", message: "image load failed: " + url }
+      });
+    };
+    pic.src = url;
+  }
+
+  function presentText(text, commandId, presentationId, options) {
+    var body = (text || "").toString();
+    if (!body.trim()) {
+      emit("presentation.error", {
+        command_id: commandId,
+        presentation_id: presentationId,
+        error: { code: "EMPTY_TEXT", message: "text empty" }
+      });
+      return;
+    }
+    applyOptions(options);
+    hideAll();
+    textPane.textContent = body;
+    textPane.classList.add("visible");
+    current = {
+      commandId: commandId,
+      presentationId: presentationId,
+      contentType: "text",
+      status: "presenting"
+    };
+    setStatus("");
+    emit("presentation.started", {
+      command_id: commandId,
+      presentation_id: presentationId
+    });
+  }
+
+  function presentVideo(url, commandId, presentationId, options) {
+    if (!url) {
+      emit("presentation.error", {
+        command_id: commandId,
+        presentation_id: presentationId,
+        error: { code: "MISSING_URL", message: "video url empty" }
+      });
+      return;
+    }
+    options = options || {};
+    applyOptions(options);
+    hideAll();
+    current = {
+      commandId: commandId,
+      presentationId: presentationId,
+      contentType: "video",
+      status: "loading"
+    };
+    setStatus("视频加载中…");
+    vid.onloadeddata = function () {
+      vid.classList.add("visible");
+      current.status = "presenting";
+      setStatus("");
+      emit("presentation.started", {
+        command_id: commandId,
+        presentation_id: presentationId
+      });
+      if (options.autoplay !== false) {
+        var p = vid.play();
+        if (p && typeof p.catch === "function") {
+          p.catch(function () {
+            // Autoplay may be blocked; still report started after decode.
+          });
+        }
+      }
+    };
+    vid.onerror = function () {
+      current.status = "error";
+      setStatus("视频加载失败", true);
+      emit("presentation.error", {
+        command_id: commandId,
+        presentation_id: presentationId,
+        error: { code: "ASSET_LOAD_FAILED", message: "video load failed: " + url }
+      });
+    };
+    vid.loop = !!options.loop;
+    vid.muted = !!options.muted;
+    vid.src = url;
+    vid.load();
+  }
+
+  function handlePresent(commandId, presentationId, payload) {
+    payload = payload || {};
+    var content = payload.content || {};
+    var options = payload.options || payload.presentation || {};
+    var ctype = (content.type || "image").toLowerCase();
+    var asset = content.asset || {};
+    var access = asset.access || {};
+    var url = access.url || content.url || "";
+
+    if (ctype === "image") {
+      presentImage(url, commandId, presentationId, options);
+    } else if (ctype === "text") {
+      presentText(content.text || "", commandId, presentationId, options);
+    } else if (ctype === "video") {
+      presentVideo(url, commandId, presentationId, options);
+    } else {
+      emit("presentation.error", {
+        command_id: commandId,
+        presentation_id: presentationId,
+        error: { code: "UNSUPPORTED_TYPE", message: "unsupported content.type=" + ctype }
+      });
+      setStatus("unsupported type: " + ctype, true);
+    }
+  }
+
+  function handleCommand(msg) {
+    var action = (msg.action || "present").toLowerCase();
+    var commandId = msg.command_id || null;
+    var payload = msg.payload || {};
+    var presentationId = payload.presentation_id || msg.presentation_id || null;
+
+    if (commandId && seenCommand(commandId)) {
+      // Idempotent: report current status, do not re-render.
+      emit("presentation.started", {
+        command_id: commandId,
+        presentation_id: current.presentationId || presentationId,
+        note: "duplicate_command_ignored",
+        cast_status: current.status
+      });
+      return;
+    }
+    rememberCommand(commandId);
+
+    if (action === "clear" || action === "stop") {
+      if (action === "stop" && current.contentType === "video") {
+        try { vid.pause(); } catch (e) {}
+      }
+      clearStage(commandId);
+      return;
+    }
+    if (action === "pause") {
+      try { vid.pause(); } catch (e) {}
+      return;
+    }
+    if (action === "resume") {
+      try { vid.play(); } catch (e) {}
+      return;
+    }
+    if (action === "present") {
+      handlePresent(commandId, presentationId, payload);
+      return;
+    }
+    emit("presentation.error", {
+      command_id: commandId,
+      presentation_id: presentationId,
+      error: { code: "UNKNOWN_ACTION", message: "unknown action=" + action }
+    });
+  }
+
+  function handleIncoming(raw) {
+    var msg = parseMessage(raw);
+    if (!msg) return;
+
+    // V1 command
+    if (msg.type === "command" && Number(msg.protocol_version || 0) >= 1) {
+      handleCommand(msg);
+      return;
+    }
+
+    // Legacy: {"url":"..."} or dual-write top-level url without type=command
+    var legacyUrl = msg.url || (msg.payload && msg.payload.url) || "";
+    if (legacyUrl) {
+      var commandId = msg.command_id || null;
+      var presentationId =
+        (msg.payload && msg.payload.presentation_id) || msg.presentation_id || null;
+      if (commandId && seenCommand(commandId)) {
+        emit("presentation.started", {
+          command_id: commandId,
+          presentation_id: presentationId,
+          note: "duplicate_command_ignored"
+        });
+        return;
+      }
+      rememberCommand(commandId);
+      presentImage(legacyUrl, commandId, presentationId, {});
+      return;
+    }
+  }
+
+  ctx.addCustomMessageListener(NAMESPACE, function (event) {
+    // CAF: event.data is usually already an object when sender sent JSON text
+    handleIncoming(event && event.data);
+  });
+
+  ctx.addEventListener(cast.framework.system.EventType.READY, function () {
+    setStatus("ready");
+    emit("receiver.ready", {
+      receiver: { version: RECEIVER_VERSION },
+      capabilities: ["present.image", "present.text", "present.video", "clear", "stop"]
+    });
+  });
+
+  ctx.addEventListener(cast.framework.system.EventType.SENDER_CONNECTED, function () {
+    emit("receiver.ready", {
+      receiver: { version: RECEIVER_VERSION },
+      capabilities: ["present.image", "present.text", "present.video", "clear", "stop"]
+    });
+  });
+
+  setInterval(function () {
+    emit("receiver.heartbeat", {
+      ts: Date.now(),
+      state: {
+        status: current.status,
+        presentation_id: current.presentationId,
+        content_type: current.contentType
+      }
+    });
+  }, HEARTBEAT_MS);
+
+  // Keep receiver alive; no media playback queue required for custom messages.
+  ctx.start({
+    disableIdleTimeout: true
+  });
+  setStatus("ready");
+})();
+  </script>
+</body>
+</html>

@@ -1,0 +1,260 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0CC9FE015B324E7FBFAC25A0 /* NetworkAddressProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9AF3BF540D0435B979BDD0F /* NetworkAddressProvider.swift */; };
+		1EC3D884B0B746D192E11016 /* HTTPRequestParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41413FA7D2304B68AC8F84C1 /* HTTPRequestParser.swift */; };
+		2FEE79662DB544AFB0322567 /* RelayServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED3D836460494995B421C2B0 /* RelayServer.swift */; };
+		47C9549A87A142A593A420B1 /* WebSocketServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D228B88B7F47E88F2953F2 /* WebSocketServer.swift */; };
+		888E094A885C4C74A210B20D /* HTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FA3E487A5314284BB9A9D39 /* HTTPServer.swift */; };
+		C62F12CD8A83416FA89C693E /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D085B82AAFEB4086846F1B0C /* ContentView.swift */; };
+		D3DC2C2EE42343C4A25A8CEF /* HomeAgentRelayApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73202640BDEC4921A734F12C /* HomeAgentRelayApp.swift */; };
+		DC412CF577C441B6A0148917 /* RelayLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7F9EA18C57F4AD1B5E860B2 /* RelayLog.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		2D0ED399680E43C3B5F5F19C /* HomeAgentRelay.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomeAgentRelay.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		41413FA7D2304B68AC8F84C1 /* HTTPRequestParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPRequestParser.swift; sourceTree = "<group>"; };
+		73202640BDEC4921A734F12C /* HomeAgentRelayApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAgentRelayApp.swift; sourceTree = "<group>"; };
+		8FA3E487A5314284BB9A9D39 /* HTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPServer.swift; sourceTree = "<group>"; };
+		C9AF3BF540D0435B979BDD0F /* NetworkAddressProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkAddressProvider.swift; sourceTree = "<group>"; };
+		D085B82AAFEB4086846F1B0C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		E1D228B88B7F47E88F2953F2 /* WebSocketServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketServer.swift; sourceTree = "<group>"; };
+		E7F9EA18C57F4AD1B5E860B2 /* RelayLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayLog.swift; sourceTree = "<group>"; };
+		ED3D836460494995B421C2B0 /* RelayServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayServer.swift; sourceTree = "<group>"; };
+		F7FA608596BD4E7F9C15398D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		52DAE509E01F49F89EAEBDFB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		04E628C752AE4E238A0736DC = {
+			isa = PBXGroup;
+			children = (
+				09E465080AB04F0689220A05 /* HomeAgentRelay */,
+				27220EB04835429996DA716C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		09E465080AB04F0689220A05 /* HomeAgentRelay */ = {
+			isa = PBXGroup;
+			children = (
+				D085B82AAFEB4086846F1B0C /* ContentView.swift */,
+				41413FA7D2304B68AC8F84C1 /* HTTPRequestParser.swift */,
+				8FA3E487A5314284BB9A9D39 /* HTTPServer.swift */,
+				73202640BDEC4921A734F12C /* HomeAgentRelayApp.swift */,
+				C9AF3BF540D0435B979BDD0F /* NetworkAddressProvider.swift */,
+				E7F9EA18C57F4AD1B5E860B2 /* RelayLog.swift */,
+				ED3D836460494995B421C2B0 /* RelayServer.swift */,
+				E1D228B88B7F47E88F2953F2 /* WebSocketServer.swift */,
+				F7FA608596BD4E7F9C15398D /* Info.plist */,
+			);
+			path = HomeAgentRelay;
+			sourceTree = "<group>";
+		};
+		27220EB04835429996DA716C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2D0ED399680E43C3B5F5F19C /* HomeAgentRelay.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6379D6017CEC4092994E0FA4 /* HomeAgentRelay */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2F20BFBD27094D21A5575C0A /* Build configuration list for PBXNativeTarget "HomeAgentRelay" */;
+			buildPhases = (
+				6044451EC2B446B884426C5E /* Sources */,
+				52DAE509E01F49F89EAEBDFB /* Frameworks */,
+				A5CA8FD53774496E8B8B6853 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HomeAgentRelay;
+			packageProductDependencies = (
+			);
+			productName = HomeAgentRelay;
+			productReference = 2D0ED399680E43C3B5F5F19C /* HomeAgentRelay.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		170133D16F0A47B3AA513506 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = 43EA37D622A5419FA776588D /* Build configuration list for PBXProject "HomeAgentRelay" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 04E628C752AE4E238A0736DC;
+			packageReferences = (
+			);
+			productRefGroup = 27220EB04835429996DA716C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6379D6017CEC4092994E0FA4 /* HomeAgentRelay */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A5CA8FD53774496E8B8B6853 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6044451EC2B446B884426C5E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C62F12CD8A83416FA89C693E /* ContentView.swift in Sources */,
+				1EC3D884B0B746D192E11016 /* HTTPRequestParser.swift in Sources */,
+				888E094A885C4C74A210B20D /* HTTPServer.swift in Sources */,
+				D3DC2C2EE42343C4A25A8CEF /* HomeAgentRelayApp.swift in Sources */,
+				0CC9FE015B324E7FBFAC25A0 /* NetworkAddressProvider.swift in Sources */,
+				DC412CF577C441B6A0148917 /* RelayLog.swift in Sources */,
+				2FEE79662DB544AFB0322567 /* RelayServer.swift in Sources */,
+				47C9549A87A142A593A420B1 /* WebSocketServer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3D13763F1C0640478ACDA600 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JD4B775BJ5;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HomeAgentRelay/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.homeagent.relay;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		5F029FEB842C4597A14211BE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		AE9C673423FB47E0BD8F4501 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JD4B775BJ5;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HomeAgentRelay/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.homeagent.relay;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		DB5E9F2E3B7748A5831D3780 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2F20BFBD27094D21A5575C0A /* Build configuration list for PBXNativeTarget "HomeAgentRelay" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3D13763F1C0640478ACDA600 /* Debug */,
+				AE9C673423FB47E0BD8F4501 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		43EA37D622A5419FA776588D /* Build configuration list for PBXProject "HomeAgentRelay" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DB5E9F2E3B7748A5831D3780 /* Debug */,
+				5F029FEB842C4597A14211BE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 170133D16F0A47B3AA513506 /* Project object */;
+}

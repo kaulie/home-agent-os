@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>奥特曼打小怪兽</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #070b18;
+      overflow: hidden;
+      font-family: "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+<canvas id="g"></canvas>
+<script>
+(function () {
+  const canvas = document.getElementById("g");
+  const ctx = canvas.getContext("2d");
+
+  const LIVES = 3;
+  const PUNCH_COOLDOWN_MS = 380;
+  const SPAWN_GAP_MS = 650;
+  const MIN_WINDOW_MS = 700;
+  const START_WINDOW_MS = 1150;
+
+  const params = new URLSearchParams(location.search);
+  const POLL_MS = Math.max(500, Number(params.get("interval")) || 5000);
+  const demo = params.get("demo") === "1";
+  const stream = params.get("stream") === "1";
+  const wsUrl = params.get("ws") || "";
+  const sseUrl = params.get("sse") || "";
+  const pollUrl = params.get("poll") || params.get("api") || "";
+
+  let W = 1920;
+  let H = 1080;
+  let dpr = 1;
+
+  let mode = "title";
+  let score = 0;
+  let lives = LIVES;
+  let lastPunchAt = 0;
+  let punchAnim = 0;
+  let flashHit = 0;
+  let flashWhiff = 0;
+  let flashHurt = 0;
+  let heroHurtT = 0;
+  let hurtShock = 0;
+  let hurtSparks = [];
+  let hitSparks = [];
+  let hitBurstT = 0;
+  let hitBurstX = 0;
+  let hitBurstY = 0;
+  let screenShake = 0;
+  let banner = "";
+  let bannerT = 0;
+  let spawnAt = 0;
+  let monster = null;
+  let demoArmed = false;
+  let link = "本机点击或空格";
+  let startedAt = 0;
+  let lastTs = 0;
+
+  function loadImg(src) {
+    const im = new Image();
+    im.src = src;
+    return im;
+  }
+  const SPRITES = {
+    heroIdle: loadImg("hero-idle.png?v=2"),
+    heroPunch: loadImg("hero-punch.png?v=2"),
+    monsters: [loadImg("monster-a.png?v=2"), loadImg("monster-b.png?v=2")],
+    burst: loadImg("hit-burst.png?v=2"),
+  };
+
+  function spriteReady(im) {
+    return !!(im && im.complete && im.naturalWidth > 0);
+  }
+
+  function drawSprite(im, cx, bottom, height) {
+    const w = height * (im.naturalWidth / im.naturalHeight);
+    ctx.drawImage(im, cx - w / 2, bottom - height, w, height);
+    return w;
+  }
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(640, window.innerWidth);
+    H = Math.max(360, window.innerHeight);
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  function nowMs() {
+    return performance.now();
+  }
+
+  function windowMsForScore(s) {
+    return Math.max(MIN_WINDOW_MS, START_WINDOW_MS - s * 18);
+  }
+
+  function hpForScore(s) {
+    if (s >= 18) return 3;
+    if (s >= 8) return 2;
+    return 1;
+  }
+
+  function ring() {
+    const cx = W * 0.40;
+    const r = Math.min(W, H) * 0.11;
+    return { cx: cx, r: r, left: cx - r, right: cx + r };
+  }
+
+  function spawnMonster() {
+    const hp = hpForScore(score);
+    const win = windowMsForScore(score);
+    const R = ring();
+    const travel = W * 0.72;
+    const speed = (R.r * 2) / (win / 1000);
+    monster = {
+      x: W + 80,
+      y: H * 0.62,
+      hp: hp,
+      maxHp: hp,
+      speed: Math.max(speed, travel / 4.2),
+      hue: 110 + (score * 17) % 80,
+      skin: score % 2,
+      inWindow: false,
+      entered: false,
+      hitFlash: 0,
+      knock: 0,
+    };
+    demoArmed = false;
+  }
+
+  function startGame() {
+    mode = "play";
+    score = 0;
+    lives = LIVES;
+    monster = null;
+    spawnAt = nowMs() + 500;
+    startedAt = nowMs();
+    banner = "";
+    flashHurt = 0;
+    heroHurtT = 0;
+    hurtShock = 0;
+    hurtSparks = [];
+    hitSparks = [];
+    hitBurstT = 0;
+    screenShake = 0;
+  }
+
+  function setBanner(text) {
+    banner = text;
+    bannerT = 1;
+  }
+
+  function triggerHurt() {
+    flashHurt = 1;
+    heroHurtT = 1;
+    hurtShock = 1;
+    const cx = W * 0.22;
+    const cy = H * 0.52;
+    hurtSparks = [];
+    for (let i = 0; i < 26; i++) {
+      const a = (-Math.PI * 0.15) + Math.random() * Math.PI * 1.3;
+      const sp = 220 + Math.random() * 520;
+      hurtSparks.push({
+        x: cx,
+        y: cy,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 120,
+        life: 1,
+        size: 8 + Math.random() * 16,
+      });
+    }
+    setBanner("被撞到了");
+  }
+
+  function triggerHit(x, y) {
+    hitBurstX = x;
+    hitBurstY = y;
+    hitBurstT = 1;
+    flashHit = 1;
+    screenShake = 1;
+    punchAnim = 1;
+    hitSparks = [];
+    for (let i = 0; i < 48; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 260 + Math.random() * 820;
+      hitSparks.push({
+        x: x,
+        y: y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 90,
+        life: 0.65 + Math.random() * 0.5,
+        size: 5 + Math.random() * 16,
+        hot: Math.random() > 0.4,
+      });
+    }
+  }
+
+  function applyPunch() {
+    const t = nowMs();
+    if (t - lastPunchAt < PUNCH_COOLDOWN_MS) return;
+    lastPunchAt = t;
+    punchAnim = 1;
+
+    if (mode === "title" || mode === "over") {
+      startGame();
+      return;
+    }
+    if (mode !== "play") return;
+
+    if (monster && monster.inWindow) {
+      triggerHit(monster.x, H * 0.58);
+      monster.hp -= 1;
+      monster.hitFlash = 1;
+      monster.knock = 220;
+      if (monster.hp <= 0) {
+        score += 1;
+        setBanner("打倒！");
+        monster = null;
+        spawnAt = t + SPAWN_GAP_MS;
+      } else {
+        setBanner("再来一拳");
+      }
+    } else {
+      flashWhiff = 0.7;
+      setBanner("空拳");
+    }
+  }
+
+  function receiveAction(raw) {
+    let data = raw;
+    if (typeof raw === "string") {
+      try { data = JSON.parse(raw); } catch (e) { return; }
+    }
+    if (!data || typeof data !== "object") return;
+    const type = String(data.type || data.action || "").toLowerCase();
+    if (type === "punch" || type === "hit" || type === "fist") {
+      applyPunch();
+    }
+  }
+
+  window.receiveAction = receiveAction;
+  window.punch = applyPunch;
+
+  function connectSse(url) {
+    try {
+      const es = new EventSource(url);
+      es.onopen = function () { link = "实时流"; };
+      es.onerror = function () { link = "流重连中"; };
+      es.onmessage = function (ev) { receiveAction(ev.data); };
+    } catch (e) {
+      link = "通道失败";
+    }
+  }
+
+  function connectWs(url) {
+    let retry = 800;
+    function open() {
+      let sock;
+      try { sock = new WebSocket(url); } catch (e) { return; }
+      sock.onopen = function () { link = "实时流"; retry = 800; };
+      sock.onclose = function () {
+        link = "流重连中";
+        setTimeout(open, retry);
+        retry = Math.min(retry * 1.5, 5000);
+      };
+      sock.onmessage = function (ev) { receiveAction(ev.data); };
+    }
+    open();
+  }
+
+  function startPoll(url) {
+    let since = null;
+    let inflight = false;
+    const sep = url.indexOf("?") >= 0 ? "&" : "?";
+    function tick() {
+      if (inflight) return;
+      inflight = true;
+      const u = since == null ? url : url + sep + "since=" + since;
+      fetch(u, { cache: "no-store" })
+        .then(function (r) {
+          if (!r.ok) throw new Error("poll " + r.status);
+          return r.json();
+        })
+        .then(function (j) {
+          const latest = Number(j && j.latest_id);
+          const items = Array.isArray(j) ? j : ((j && j.events) || (j && j.type ? [j] : []));
+          if (since == null) {
+            since = Number.isFinite(latest) ? latest : 0;
+            items.forEach(function (item) {
+              if (item && item.id) since = Math.max(since, Number(item.id) || 0);
+            });
+            link = "每" + (POLL_MS / 1000) + "秒拉取";
+            return;
+          }
+          items.forEach(function (item) {
+            if (item && item.id) since = Math.max(since, Number(item.id) || 0);
+            receiveAction(item);
+          });
+          if (Number.isFinite(latest)) since = Math.max(since, latest);
+          link = "每" + (POLL_MS / 1000) + "秒拉取";
+        })
+        .catch(function () { link = "拉取失败"; })
+        .then(function () { inflight = false; });
+    }
+    tick();
+    setInterval(tick, POLL_MS);
+  }
+
+  window.addEventListener("message", function (ev) {
+    receiveAction(ev.data);
+  });
+
+  if (wsUrl) {
+    connectWs(wsUrl);
+  } else if (sseUrl) {
+    connectSse(sseUrl);
+  } else if (stream && (location.protocol === "http:" || location.protocol === "https:")) {
+    connectSse(location.origin + "/events/stream");
+  } else if (pollUrl) {
+    startPoll(pollUrl);
+  } else if (location.protocol === "http:" || location.protocol === "https:") {
+    startPoll(location.origin + "/events");
+  } else {
+    link = "本机点击或空格";
+  }
+
+  function onInput(ev) {
+    if (ev && ev.preventDefault) ev.preventDefault();
+    applyPunch();
+  }
+  window.addEventListener("keydown", function (ev) {
+    if (ev.code === "Space" || ev.key === " " || ev.key === "Enter") onInput(ev);
+  });
+  canvas.addEventListener("pointerdown", onInput);
+
+  function update(dt) {
+    const t = nowMs();
+    punchAnim = Math.max(0, punchAnim - dt * (hitBurstT > 0 ? 1.6 : 3.6));
+    flashHit = Math.max(0, flashHit - dt * 2.0);
+    flashWhiff = Math.max(0, flashWhiff - dt * 2.2);
+    flashHurt = Math.max(0, flashHurt - dt * 1.35);
+    heroHurtT = Math.max(0, heroHurtT - dt * 1.3);
+    hurtShock = Math.max(0, hurtShock - dt * 1.55);
+    hitBurstT = Math.max(0, hitBurstT - dt * 1.85);
+    screenShake = Math.max(0, screenShake - dt * 4.2);
+    bannerT = Math.max(0, bannerT - dt * 1.1);
+    if (monster) monster.hitFlash = Math.max(0, monster.hitFlash - dt * 2.2);
+    for (let i = hurtSparks.length - 1; i >= 0; i--) {
+      const p = hurtSparks[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 720 * dt;
+      p.life -= dt * 1.35;
+      if (p.life <= 0) hurtSparks.splice(i, 1);
+    }
+    for (let i = hitSparks.length - 1; i >= 0; i--) {
+      const p = hitSparks[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 980 * dt;
+      p.life -= dt * 1.7;
+      if (p.life <= 0) hitSparks.splice(i, 1);
+    }
+
+    if (mode !== "play") return;
+
+    if (!monster && t >= spawnAt) spawnMonster();
+    if (!monster) return;
+
+    monster.x -= monster.speed * dt;
+    if (monster.knock > 0) {
+      monster.x += monster.knock * dt;
+      monster.knock = Math.max(0, monster.knock - 680 * dt);
+    }
+    const R = ring();
+    const was = monster.inWindow;
+    monster.inWindow = monster.x >= R.left && monster.x <= R.right;
+    if (monster.inWindow && !monster.entered) monster.entered = true;
+
+    if (demo && monster.inWindow && !demoArmed) {
+      demoArmed = true;
+      setTimeout(applyPunch, 280);
+    }
+
+    if (!was && monster.inWindow) setBanner("打！");
+
+    if (monster.x < R.left - 8 && monster.hp > 0) {
+      lives -= 1;
+      triggerHurt();
+      monster = null;
+      if (lives <= 0) {
+        mode = "over";
+      } else {
+        spawnAt = t + 900;
+      }
+    }
+  }
+
+  function fillRound(x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawSky() {
+    ctx.fillStyle = "#08101f";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#101a33";
+    ctx.fillRect(0, 0, W, H * 0.22);
+    ctx.fillStyle = "#0c1428";
+    ctx.fillRect(0, H * 0.72, W, H * 0.28);
+    ctx.fillStyle = "#17233f";
+    ctx.fillRect(0, H * 0.78, W, 8);
+    if (flashHit > 0) {
+      ctx.fillStyle = "rgba(255,140,40," + (0.18 * flashHit) + ")";
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  function drawHero() {
+    const punch = punchAnim;
+    const im = punch > 0.12 && spriteReady(SPRITES.heroPunch)
+      ? SPRITES.heroPunch
+      : SPRITES.heroIdle;
+    if (spriteReady(im)) {
+      const bottom = H * 0.86;
+      const height = H * 0.72;
+      const shake = heroHurtT > 0 ? Math.sin(nowMs() / 28) * 26 * heroHurtT : 0;
+      const knock = heroHurtT * -36;
+      ctx.save();
+      if (heroHurtT > 0.15 && Math.floor(nowMs() / 70) % 2 === 0) {
+        ctx.globalAlpha = 0.35;
+      }
+      if (punch > 0.2 && heroHurtT <= 0) ctx.filter = "brightness(1.12)";
+      drawSprite(im, W * 0.20 + shake + knock, bottom, height);
+      ctx.filter = "none";
+      ctx.restore();
+      return;
+    }
+    const gx = W * 0.18;
+    const gy = H * 0.80;
+    const u = H * 0.001;
+    ctx.save();
+    ctx.translate(gx, gy);
+
+    ctx.fillStyle = "#8e9aab";
+    fillRound(-56 * u, 8 * u, 40 * u, 118 * u, 10 * u);
+    fillRound(16 * u, 8 * u, 40 * u, 118 * u, 10 * u);
+
+    ctx.fillStyle = "#d7dee8";
+    fillRound(-70 * u, -250 * u, 140 * u, 270 * u, 22 * u);
+    ctx.fillStyle = "#d0242a";
+    ctx.beginPath();
+    ctx.moveTo(0, -228 * u);
+    ctx.lineTo(46 * u, -90 * u);
+    ctx.lineTo(0, -36 * u);
+    ctx.lineTo(-46 * u, -90 * u);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#f1c40f";
+    ctx.beginPath();
+    ctx.arc(0, -112 * u, 20 * u, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#cfd6e0";
+    ctx.beginPath();
+    ctx.ellipse(0, -300 * u, 52 * u, 58 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f4d03f";
+    ctx.beginPath();
+    ctx.ellipse(-20 * u, -304 * u, 12 * u, 8 * u, -0.2, 0, Math.PI * 2);
+    ctx.ellipse(20 * u, -304 * u, 12 * u, 8 * u, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#d0242a";
+    fillRound(-8 * u, -372 * u, 16 * u, 36 * u, 4 * u);
+
+    ctx.save();
+    ctx.translate(72 * u, -180 * u);
+    ctx.rotate(-0.12 - punch * 1.05);
+    ctx.fillStyle = "#d7dee8";
+    fillRound(0, -18 * u, (150 + punch * 90) * u, 36 * u, 18 * u);
+    ctx.fillStyle = "#c0392b";
+    ctx.beginPath();
+    ctx.arc((150 + punch * 90) * u, 0, 24 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-70 * u, -170 * u);
+    ctx.rotate(0.62);
+    ctx.fillStyle = "#b7c0cc";
+    fillRound(-120 * u, -16 * u, 120 * u, 32 * u, 16 * u);
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function drawRing() {
+    const R = ring();
+    const active = !!(monster && monster.inWindow && mode === "play");
+    ctx.save();
+    ctx.strokeStyle = active ? "#f4d03f" : "rgba(255,255,255,0.22)";
+    ctx.lineWidth = active ? 14 : 8;
+    ctx.beginPath();
+    ctx.ellipse(R.cx, H * 0.62, R.r, R.r * 0.72, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    if (active) {
+      ctx.fillStyle = "rgba(244,208,63,0.10)";
+      ctx.fill();
+      ctx.fillStyle = "#f7e27a";
+      ctx.font = "bold " + Math.floor(H * 0.09) + "px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("打！", R.cx, H * 0.40);
+    }
+    ctx.restore();
+  }
+
+  function drawMonster(m) {
+    const shake = m.hitFlash * 12;
+    const x = m.x + shake;
+    const im = SPRITES.monsters[(m.skin || 0) % SPRITES.monsters.length];
+    if (spriteReady(im)) {
+      const height = H * 0.48;
+      ctx.save();
+      if (m.hitFlash > 0) ctx.filter = "brightness(1.8) saturate(1.8) hue-rotate(-20deg)";
+      drawSprite(im, x, H * 0.86, height);
+      ctx.filter = "none";
+      ctx.restore();
+      if (m.maxHp > 1) {
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
+        fillRound(x - 54, H * 0.86 - height - 22, 108, 16, 8);
+        ctx.fillStyle = "#e74c3c";
+        fillRound(x - 54, H * 0.86 - height - 22, 108 * (m.hp / m.maxHp), 16, 8);
+      }
+      return;
+    }
+    const y = m.y;
+    const u = H * 0.00115;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = "hsl(" + m.hue + ",55%,42%)";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 120 * u, 98 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "hsl(" + m.hue + ",45%,28%)";
+    ctx.beginPath();
+    ctx.moveTo(-58 * u, -88 * u);
+    ctx.lineTo(-16 * u, -150 * u);
+    ctx.lineTo(6 * u, -72 * u);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(58 * u, -88 * u);
+    ctx.lineTo(16 * u, -150 * u);
+    ctx.lineTo(-6 * u, -72 * u);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#faf6e6";
+    ctx.beginPath();
+    ctx.arc(-34 * u, -12 * u, 22 * u, 0, Math.PI * 2);
+    ctx.arc(34 * u, -12 * u, 22 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#1a1a1a";
+    ctx.beginPath();
+    ctx.arc(-34 * u, -12 * u, 10 * u, 0, Math.PI * 2);
+    ctx.arc(34 * u, -12 * u, 10 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#2b1a22";
+    ctx.beginPath();
+    ctx.ellipse(0, 40 * u, 36 * u, 12 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    if (m.maxHp > 1) {
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      fillRound(x - 54, y - 150 * u, 108, 16, 8);
+      ctx.fillStyle = "#e74c3c";
+      fillRound(x - 54, y - 150 * u, 108 * (m.hp / m.maxHp), 16, 8);
+    }
+  }
+
+  function drawHitFx() {
+    if (hitBurstT <= 0 && hitSparks.length === 0) return;
+    const cx = hitBurstX;
+    const cy = hitBurstY;
+    if (hitBurstT > 0 && spriteReady(SPRITES.burst)) {
+      const s = Math.min(W, H) * (0.55 + (1 - hitBurstT) * 0.55);
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = Math.min(1, hitBurstT * 1.45);
+      ctx.drawImage(SPRITES.burst, cx - s / 2, cy - s / 2, s, s);
+      ctx.restore();
+    }
+    if (hitBurstT > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(255,240,180," + (0.35 * hitBurstT) + ")";
+      ctx.beginPath();
+      ctx.arc(cx, cy, 36 + (1 - hitBurstT) * 50, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,150,40," + (0.85 * hitBurstT) + ")";
+      ctx.lineWidth = 12 * hitBurstT + 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, (1 - hitBurstT) * Math.min(W, H) * 0.22 + 24, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = 0; i < hitSparks.length; i++) {
+      const p = hitSparks[i];
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.hot ? "#fff6c8" : "#ff7a20";
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      const ang = Math.atan2(p.vy, p.vx);
+      ctx.rotate(ang);
+      ctx.fillRect(-p.size * 0.15, -p.size * 0.18, p.size * 1.6, p.size * 0.36);
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  function drawHurtFx() {
+    if (hurtShock <= 0 && hurtSparks.length === 0 && flashHurt <= 0 && heroHurtT <= 0) return;
+    const cx = W * 0.22;
+    const cy = H * 0.52;
+    if (hurtShock > 0) {
+      const r = (1 - hurtShock) * Math.min(W, H) * 0.62 + 20;
+      ctx.strokeStyle = "rgba(255,48,40," + (0.9 * hurtShock) + ")";
+      ctx.lineWidth = 16 * hurtShock + 5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,230,140," + (0.55 * hurtShock) + ")";
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.68, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (let i = 0; i < hurtSparks.length; i++) {
+      const p = hurtSparks[i];
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.life > 0.55 ? "#fff3c0" : "#ff3b32";
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.life * 7);
+      ctx.fillRect(-p.size * 0.5, -p.size * 0.16, p.size, p.size * 0.32);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    if (flashHurt > 0) {
+      ctx.fillStyle = "rgba(170,8,18," + (0.32 * flashHurt) + ")";
+      ctx.fillRect(0, 0, W, H);
+      const edge = Math.max(28, 70 * flashHurt);
+      ctx.fillStyle = "rgba(255,36,28," + (0.55 * flashHurt) + ")";
+      ctx.fillRect(0, 0, W, edge);
+      ctx.fillRect(0, H - edge, W, edge);
+      ctx.fillRect(0, 0, edge, H);
+      ctx.fillRect(W - edge, 0, edge, H);
+    }
+    if (heroHurtT > 0) {
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(255,70,60," + Math.min(1, heroHurtT * 1.4) + ")";
+      ctx.font = "bold " + Math.floor(H * 0.08) + "px sans-serif";
+      ctx.fillText("-1", cx, cy - (1 - heroHurtT) * H * 0.12 - H * 0.08);
+    }
+  }
+
+  function drawHud() {
+    ctx.fillStyle = "#f4f7fb";
+    ctx.font = "bold " + Math.floor(H * 0.055) + "px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("得分  " + score, W * 0.04, H * 0.09);
+    ctx.textAlign = "right";
+    if (heroHurtT > 0.2 && Math.floor(nowMs() / 80) % 2 === 0) ctx.fillStyle = "#ff4a40";
+    let hearts = "";
+    for (let i = 0; i < LIVES; i++) hearts += i < lives ? "● " : "○ ";
+    ctx.fillText("生命力  " + hearts.trim(), W * 0.96, H * 0.09);
+
+    ctx.textAlign = "left";
+    ctx.font = Math.floor(H * 0.026) + "px sans-serif";
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.fillText(link + (demo ? "  ·  演示" : ""), W * 0.04, H * 0.96);
+
+    if (banner && bannerT > 0) {
+      ctx.globalAlpha = Math.min(1, bannerT * 1.4);
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#fff4c4";
+      ctx.font = "bold " + Math.floor(H * 0.07) + "px sans-serif";
+      ctx.fillText(banner, W * 0.62, H * 0.16);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawTitle() {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#f4f7fb";
+    ctx.font = "bold " + Math.floor(H * 0.09) + "px sans-serif";
+    ctx.fillText("奥特曼打小怪兽", W * 0.58, H * 0.28);
+    ctx.fillStyle = "#f4d03f";
+    ctx.font = "bold " + Math.floor(H * 0.055) + "px sans-serif";
+    ctx.fillText("挥拳开始", W * 0.58, H * 0.40);
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.font = Math.floor(H * 0.032) + "px sans-serif";
+    ctx.fillText("怪兽冲进金圈时，朝电视挥一拳", W * 0.58, H * 0.50);
+  }
+
+  function drawOver() {
+    ctx.fillStyle = "rgba(7,11,24,0.55)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#f4f7fb";
+    ctx.font = "bold " + Math.floor(H * 0.08) + "px sans-serif";
+    ctx.fillText("怪兽赢了这一轮", W * 0.5, H * 0.36);
+    ctx.fillStyle = "#f4d03f";
+    ctx.font = "bold " + Math.floor(H * 0.06) + "px sans-serif";
+    ctx.fillText("得分  " + score, W * 0.5, H * 0.48);
+    ctx.fillStyle = "#fff";
+    ctx.font = Math.floor(H * 0.04) + "px sans-serif";
+    ctx.fillText("再挥一拳，重新开始", W * 0.5, H * 0.60);
+  }
+
+  function frame(ts) {
+    if (!lastTs) lastTs = ts;
+    let dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    if (dt > 0.05) dt = 0.05;
+    update(dt);
+    ctx.save();
+    if (screenShake > 0) {
+      const mag = 20 * screenShake;
+      ctx.translate((Math.random() - 0.5) * mag * 2, (Math.random() - 0.5) * mag * 2);
+    }
+    drawSky();
+    drawRing();
+    drawHero();
+    if (monster) drawMonster(monster);
+    drawHitFx();
+    drawHurtFx();
+    ctx.restore();
+    drawHud();
+    if (mode === "title") drawTitle();
+    if (mode === "over") drawOver();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

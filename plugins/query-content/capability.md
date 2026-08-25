@@ -6,9 +6,11 @@
 
 **与 `vision-perceive` 完全独立**：禁止互相 import；不共享 provider、prompt、schema、config helper。同一台机器可以各自读 `ARK_API_KEY`，代码路径零共享。
 
+**与 `search.images`（文搜图）独立**：本能力可 **AI 文生图**（画一张 / 生成一张 / 来张图）。搜网上实拍图不要派本能力，不要 import `search_images`。
+
 ## 规划自描述
 
-心跳 `description`：能按本步 `query` 文字问答产出 `answer_text`；自带文生图（要图、投屏/电视展示、或示意/步骤/笔顺时产出 `image_ref`；简单事实默认不生图）。不能报时、看已有图、拍照、自己投电视、TTS、开灯、放歌。缺能力不要用本能力顶替。
+心跳 `description`：能按本步 `query` 文字问答产出 `answer_text`；自带文生图（要图、投屏/电视展示、或示意/步骤/笔顺时产出 `asset_ref`；简单事实默认不生图）。不能报时、看已有图、拍照、自己投电视、TTS、开灯、放歌。缺能力不要用本能力顶替。
 
 ## 标识
 
@@ -40,10 +42,11 @@
   1. 简单知识类默认不出图。
   2. 静态/动态图更能协助解释（外观、结构、步骤、笔顺等）则出图。
   3. 用户明确要求出图则尽量出图。
-  4. 用户要把结果投屏 / 投到电视 / 电视上展示：出图（适合电视的清晰大字卡片）。
-  模型 `want_image=true` 时出图；问句含「出图/画一张/长什么样子/笔顺/投屏/投到电视/电视上」等时，即使模型漏标也会出图。未给 `image_prompt` 时用原问题作画面描述。
+  4. 用户要把结果投屏 / 投到电视 / 来张图片：出图。
+  5. 入参 `want_image=true`：必须出图（planner 在出图/投屏计划里可显式传）。
+  模型 `want_image=true` 时出图；问句含「出图/画一张/来张/图片/长什么样子/笔顺/投屏/投到电视/电视上」等时，即使模型漏标或拒答知识也会出图。汉字笔顺无字典依据仍不生图。未给 `image_prompt` 时用原问题作画面描述。
 - 闲聊 / 家居 / 故事走 `general`，不强制 citations，仍适用「不知道就说不知道」。
-- 配图只做示意，不是诊疗依据。拒答不生图。
+- 配图只做示意，不是诊疗依据。用户只要图时，不要因为不确定百科而拒答不配图。
 
 v1 **不核验**引用 URL 是否真实存在。专业域 `refused=false` 却无 `citations` → 能力失败（模型违约，改提示词，不补假引用）。
 
@@ -51,8 +54,8 @@ v1 **不核验**引用 URL 是否真实存在。专业域 `refused=false` 却无
 
 | 方向 | 内容 |
 |------|------|
-| **输入** | `query`（必填）：一句话 / prompt。可选 `upload_dest`（默认 lan） |
-| **输出** | `answer_text`（必填）；`image_ref`（可选，仅生图成功，AssetRef）；`citations`（JSON 数组字符串） |
+| **输入** | `query`（必填）：用户原话。可选 `want_image`（true 必出图）、`upload_dest`（默认 lan） |
+| **输出** | `answer_text`（必填）；`asset_ref`（可选，仅生图成功，AssetRef）；`citations`（JSON 数组字符串） |
 
 本能力 **只看本步入参**。缺 `query` 则失败，禁止从前序 step 补。  
 Plugin 内部上传仍把 blob 交给 Runtime；对外契约禁止 `photo_url`。  
@@ -60,7 +63,7 @@ Plugin 内部上传仍把 blob 交给 Runtime；对外契约禁止 `photo_url`�
 
 ```text
 query.content  →  Brain finalize → presentation
-               →  display.photo(image_ref=$image_ref)   # 仅用户要看电视时由 Brain 排步
+               →  display.photo(asset_ref=$asset_ref)   # 仅用户要看电视时由 Brain 排步
 delay          →  notify.speak(text=该喝水了)            # 纯提醒，不用 present
 ```
 
@@ -74,7 +77,7 @@ delay          →  notify.speak(text=该喝水了)            # 纯提醒，不
   "input_constrict": { "query": "今天天气适合散步吗" },
   "output_constrict": {
     "answer_text": { "type": "string", "data_dest": "context" },
-    "image_ref": { "type": "string", "data_dest": "context" },
+    "asset_ref": { "type": "string", "data_dest": "context" },
     "citations": { "type": "string", "data_dest": "context" }
   }
 }
