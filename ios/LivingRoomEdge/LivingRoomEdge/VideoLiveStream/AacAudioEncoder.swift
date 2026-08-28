@@ -1,304 +1,247 @@
-import AudioToolbox
 import AVFoundation
 import CoreMedia
 import Foundation
 
-private struct AacEncodeInputContext {
-    var bytes: UnsafePointer<UInt8>?
-    var byteCount: Int = 0
-    var consumed = false
-}
-
-private func aacInputDataProc(
-    _ converter: AudioConverterRef,
-    _ ioNumberDataPackets: UnsafeMutablePointer<UInt32>,
-    _ ioData: UnsafeMutablePointer<AudioBufferList>,
-    _ outDataPacketDescription: UnsafeMutablePointer<UnsafeMutablePointer<AudioStreamPacketDescription>?>?,
-    _ inUserData: UnsafeMutableRawPointer?
-) -> OSStatus {
-    guard let inUserData else {
-        ioNumberDataPackets.pointee = 0
-        return -1
-    }
-    let ctx = inUserData.assumingMemoryBound(to: AacEncodeInputContext.self)
-    guard !ctx.pointee.consumed,
-          let bytes = ctx.pointee.bytes,
-          ctx.pointee.byteCount > 0 else {
-        ioNumberDataPackets.pointee = 0
-        return noErr
-    }
-    ioData.pointee.mNumberBuffers = 1
-    ioData.pointee.mBuffers.mNumberChannels = 1
-    ioData.pointee.mBuffers.mDataByteSize = UInt32(ctx.pointee.byteCount)
-    ioData.pointee.mBuffers.mData = UnsafeMutableRawPointer(mutating: bytes)
-    ioNumberDataPackets.pointee = 1024
-    ctx.pointee.consumed = true
-    return noErr
-}
-
 /// PCM (from AVCapture) → AAC-LC ADTS for MPEG-TS (PID 0x0101).
 final class AacAudioEncoder {
     struct Config {
-        var channels: UInt32 = 1
-        var bitrate: UInt32 = 64_000
+        var channels: AVAudioChannelCount = 1
+        var bitrate: Int = 64_000
     }
 
     var onAccessUnit: ((Data, CMTime) -> Void)?
 
     private let config: Config
-    private var converter: AudioConverterRef?
+    private var pcmConverter: AVAudioConverter?
+    private var aacConverter: AVAudioConverter?
+    private var pcmFormat: AVAudioFormat?
+    private var aacFormat: AVAudioFormat?
     private var sampleRate: Double = 48_000
-    private var pcmFifo = Data()
+    private var pendingPCM: AVAudioPCMBuffer?
     private var nextPts: CMTime?
-    private let framesPerPacket: UInt32 = 1024
-    private let bytesPerChunk: Int
+    private let framesPerPacket: AVAudioFrameCount = 1024
 
     init(config: Config = Config()) {
         self.config = config
-        bytesPerChunk = Int(framesPerPacket) * Int(config.channels) * MemoryLayout<Int16>.size
-    }
-
-    deinit {
-        stop()
     }
 
     func stop() {
-        if let converter {
-            AudioConverterDispose(converter)
-        }
-        converter = nil
-        pcmFifo.removeAll(keepingCapacity: false)
+        pcmConverter = nil
+        aacConverter = nil
+        pcmFormat = nil
+        aacFormat = nil
+        pendingPCM = nil
         nextPts = nil
     }
 
     func encode(sample: CMSampleBuffer) {
         guard CMSampleBufferDataIsReady(sample),
               let formatDesc = CMSampleBufferGetFormatDescription(sample) else { return }
-        if converter == nil, !setupConverter(formatDescription: formatDesc) {
+        if aacConverter == nil, !setupConverter(formatDescription: formatDesc) {
             return
         }
-        guard let converter else { return }
+        guard let pcmFormat else { return }
 
-        guard let pcm = extractMonoInt16PCM(sample) else { return }
-        pcmFifo.append(pcm)
+        let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(sample))
+        guard frameCount > 0,
+              let captureFormat = captureFormat(from: formatDesc),
+              let chunk = AVAudioPCMBuffer(pcmFormat: captureFormat, frameCapacity: frameCount) else { return }
+        chunk.frameLength = frameCount
+        let copyStatus = CMSampleBufferCopyPCMDataIntoAudioBufferList(
+            sample,
+            at: 0,
+            frameCount: Int32(frameCount),
+            into: chunk.mutableAudioBufferList
+        )
+        guard copyStatus == noErr else { return }
 
-        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-        if nextPts == nil {
-            nextPts = pts
+        let monoChunk: AVAudioPCMBuffer
+        if let pcmConverter {
+            guard let converted = convertToMono(chunk, converter: pcmConverter, format: pcmFormat) else { return }
+            monoChunk = converted
+        } else {
+            monoChunk = chunk
         }
 
-        while pcmFifo.count >= bytesPerChunk {
-            let chunk = Data(pcmFifo.prefix(bytesPerChunk))
-            pcmFifo.removeFirst(bytesPerChunk)
-            let framePts = nextPts ?? pts
-            if let adts = encodeChunk(chunk, converter: converter) {
-                onAccessUnit?(adts, framePts)
+        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+        if nextPts == nil { nextPts = pts }
+        appendAndEncode(monoChunk, basePts: pts)
+    }
+
+    private var cachedCaptureFormat: AVAudioFormat?
+
+    private func captureFormat(from formatDesc: CMFormatDescription) -> AVAudioFormat? {
+        if let cachedCaptureFormat { return cachedCaptureFormat }
+        guard var asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)?.pointee else { return nil }
+        cachedCaptureFormat = AVAudioFormat(streamDescription: &asbd)
+        return cachedCaptureFormat
+    }
+
+    private func convertToMono(
+        _ input: AVAudioPCMBuffer,
+        converter: AVAudioConverter,
+        format: AVAudioFormat
+    ) -> AVAudioPCMBuffer? {
+        guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: input.frameLength) else { return nil }
+        var error: NSError?
+        var supplied = false
+        let status = converter.convert(to: output, error: &error) { _, outStatus in
+            if supplied {
+                outStatus.pointee = .noDataNow
+                return nil
             }
-            let frameDuration = CMTime(
-                value: CMTimeValue(framesPerPacket),
-                timescale: CMTimeScale(sampleRate.rounded())
-            )
-            nextPts = CMTimeAdd(framePts, frameDuration)
+            supplied = true
+            outStatus.pointee = .haveData
+            return input
+        }
+        guard status != .error, output.frameLength > 0 else { return nil }
+        return output
+    }
+
+    private func appendAndEncode(_ buffer: AVAudioPCMBuffer, basePts: CMTime) {
+        guard let pcmFormat, let aacConverter, let aacFormat else { return }
+        if pendingPCM == nil {
+            pendingPCM = AVAudioPCMBuffer(pcmFormat: pcmFormat, frameCapacity: framesPerPacket)
+        }
+        guard let pending = pendingPCM else { return }
+
+        var sourceOffset: AVAudioFrameCount = 0
+        while sourceOffset < buffer.frameLength {
+            let pendingSpace = framesPerPacket - pending.frameLength
+            if pendingSpace == 0 {
+                flushPending(converter: aacConverter, outputFormat: aacFormat, pts: nextPts ?? basePts)
+                continue
+            }
+            let toCopy = min(pendingSpace, buffer.frameLength - sourceOffset)
+            copyPCMFrames(from: buffer, sourceOffset: sourceOffset, to: pending, destOffset: pending.frameLength, count: toCopy)
+            pending.frameLength += toCopy
+            sourceOffset += toCopy
+            if pending.frameLength == framesPerPacket {
+                flushPending(converter: aacConverter, outputFormat: aacFormat, pts: nextPts ?? basePts)
+            }
         }
     }
 
-    private func encodeChunk(_ pcm: Data, converter: AudioConverterRef) -> Data? {
-        let outCapacity = 768
-        let outPtr = UnsafeMutablePointer<UInt8>.allocate(capacity: outCapacity)
-        defer { outPtr.deallocate() }
+    private func flushPending(converter: AVAudioConverter, outputFormat: AVAudioFormat, pts: CMTime) {
+        guard let pending = pendingPCM,
+              pending.frameLength == framesPerPacket,
+              let encoded = encodePCM(pending, converter: converter, outputFormat: outputFormat) else {
+            return
+        }
+        let adts = Self.wrapADTS(
+            aacPayload: encoded,
+            sampleRate: sampleRate,
+            channels: UInt32(config.channels)
+        )
+        onAccessUnit?(adts, nextPts ?? pts)
+        let frameDuration = CMTime(
+            value: CMTimeValue(framesPerPacket),
+            timescale: CMTimeScale(sampleRate.rounded())
+        )
+        nextPts = CMTimeAdd(nextPts ?? pts, frameDuration)
+        pending.frameLength = 0
+    }
 
-        return pcm.withUnsafeBytes { raw -> Data? in
-            guard let base = raw.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return nil }
-            var inputCtx = AacEncodeInputContext(bytes: base, byteCount: pcm.count, consumed: false)
-            var outPackets: UInt32 = 1
-            var packetDesc = AudioStreamPacketDescription()
-            var outABL = AudioBufferList(
-                mNumberBuffers: 1,
-                mBuffers: AudioBuffer(
-                    mNumberChannels: config.channels,
-                    mDataByteSize: UInt32(outCapacity),
-                    mData: outPtr
-                )
-            )
-            let encSt = withUnsafeMutablePointer(to: &inputCtx) { ctxPtr in
-                AudioConverterFillComplexBuffer(
-                    converter,
-                    aacInputDataProc,
-                    ctxPtr,
-                    &outPackets,
-                    &outABL,
-                    &packetDesc
+    private func encodePCM(
+        _ input: AVAudioPCMBuffer,
+        converter: AVAudioConverter,
+        outputFormat: AVAudioFormat
+    ) -> Data? {
+        let maxPacketSize = converter.maximumOutputPacketSize
+        let output = AVAudioCompressedBuffer(
+            format: outputFormat,
+            packetCapacity: 1,
+            maximumPacketSize: maxPacketSize
+        )
+
+        var supplied = false
+        var error: NSError?
+        let status = converter.convert(to: output, error: &error) { _, outStatus in
+            if supplied {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            supplied = true
+            outStatus.pointee = .haveData
+            return input
+        }
+        guard status != .error, output.byteLength > 0 else { return nil }
+        return Data(bytes: output.data, count: Int(output.byteLength))
+    }
+
+    private func copyPCMFrames(
+        from source: AVAudioPCMBuffer,
+        sourceOffset: AVAudioFrameCount,
+        to dest: AVAudioPCMBuffer,
+        destOffset: AVAudioFrameCount,
+        count: AVAudioFrameCount
+    ) {
+        guard let pcmFormat else { return }
+        let channels = Int(pcmFormat.channelCount)
+        if pcmFormat.commonFormat == .pcmFormatFloat32 {
+            guard let src = source.floatChannelData, let dst = dest.floatChannelData else { return }
+            for ch in 0..<channels {
+                memcpy(
+                    dst[ch].advanced(by: Int(destOffset)),
+                    src[ch].advanced(by: Int(sourceOffset)),
+                    Int(count) * MemoryLayout<Float>.size
                 )
             }
-            guard encSt == noErr, outPackets > 0 else { return nil }
-            let aacLen = Int(packetDesc.mDataByteSize > 0 ? packetDesc.mDataByteSize : outABL.mBuffers.mDataByteSize)
-            guard aacLen > 0, aacLen <= outCapacity else { return nil }
-            let rawAAC = Data(bytes: outPtr, count: aacLen)
-            return Self.wrapADTS(
-                aacPayload: rawAAC,
-                sampleRate: sampleRate,
-                channels: config.channels
-            )
+        } else if pcmFormat.commonFormat == .pcmFormatInt16 {
+            guard let src = source.int16ChannelData, let dst = dest.int16ChannelData else { return }
+            for ch in 0..<channels {
+                memcpy(
+                    dst[ch].advanced(by: Int(destOffset)),
+                    src[ch].advanced(by: Int(sourceOffset)),
+                    Int(count) * MemoryLayout<Int16>.size
+                )
+            }
         }
     }
 
     private func setupConverter(formatDescription: CMFormatDescription) -> Bool {
-        guard let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription) else {
+        guard var captureASBD = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription)?.pointee,
+              let captureFormat = AVAudioFormat(streamDescription: &captureASBD) else {
             return false
         }
-        let inputASBD = asbdPtr.pointee
-        sampleRate = inputASBD.mSampleRate > 0 ? inputASBD.mSampleRate : 48_000
+        cachedCaptureFormat = captureFormat
+        sampleRate = captureFormat.sampleRate
 
-        var inFmt = AudioStreamBasicDescription()
-        inFmt.mSampleRate = sampleRate
-        inFmt.mFormatID = kAudioFormatLinearPCM
-        inFmt.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked
-        inFmt.mBytesPerPacket = 2 * config.channels
-        inFmt.mFramesPerPacket = 1
-        inFmt.mBytesPerFrame = 2 * config.channels
-        inFmt.mChannelsPerFrame = config.channels
-        inFmt.mBitsPerChannel = 16
-        inFmt.mReserved = 0
+        guard let monoPCM = AVAudioFormat(
+            commonFormat: .pcmFormatInt16,
+            sampleRate: sampleRate,
+            channels: config.channels,
+            interleaved: false
+        ) else { return false }
 
-        var out = AudioStreamBasicDescription()
-        out.mSampleRate = sampleRate
-        out.mFormatID = kAudioFormatMPEG4AAC
-        out.mFormatFlags = UInt32(MPEG4ObjectID.AAC_LC.rawValue) << 2
-        out.mBytesPerPacket = 0
-        out.mFramesPerPacket = framesPerPacket
-        out.mBytesPerFrame = 0
-        out.mChannelsPerFrame = config.channels
-        out.mBitsPerChannel = 0
-        out.mReserved = 0
-
-        var conv: AudioConverterRef?
-        var st = AudioConverterNew(&inFmt, &out, &conv)
-        guard st == noErr, let conv else { return false }
-        var bitrate = config.bitrate
-        st = AudioConverterSetProperty(
-            conv,
-            kAudioConverterEncodeBitRate,
-            UInt32(MemoryLayout.size(ofValue: bitrate)),
-            &bitrate
+        var outASBD = AudioStreamBasicDescription(
+            mSampleRate: sampleRate,
+            mFormatID: kAudioFormatMPEG4AAC,
+            mFormatFlags: UInt32(MPEG4ObjectID.AAC_LC.rawValue) << 2,
+            mBytesPerPacket: 0,
+            mFramesPerPacket: 1024,
+            mBytesPerFrame: 0,
+            mChannelsPerFrame: config.channels,
+            mBitsPerChannel: 0,
+            mReserved: 0
         )
-        if st != noErr {
-            AudioConverterDispose(conv)
-            return false
-        }
-        converter = conv
-        return true
-    }
+        guard let aacFmt = AVAudioFormat(streamDescription: &outASBD) else { return false }
+        guard let aacConv = AVAudioConverter(from: monoPCM, to: aacFmt) else { return false }
+        aacConv.bitRate = config.bitrate
 
-    private func extractMonoInt16PCM(_ sample: CMSampleBuffer) -> Data? {
-        guard let formatDesc = CMSampleBufferGetFormatDescription(sample),
-              let asbdPtr = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) else {
-            return nil
-        }
-        let asbd = asbdPtr.pointee
-        let frames = Int(CMSampleBufferGetNumSamples(sample))
-        guard frames > 0 else { return nil }
-
-        var needed = 0
-        CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sample,
-            bufferListSizeNeededOut: &needed,
-            bufferListOut: nil,
-            bufferListSize: 0,
-            blockBufferAllocator: nil,
-            blockBufferMemoryAllocator: nil,
-            flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
-            blockBufferOut: nil
-        )
-        guard needed > 0 else { return nil }
-
-        let ablRaw = UnsafeMutableRawPointer.allocate(byteCount: needed, alignment: MemoryLayout<AudioBufferList>.alignment)
-        defer { ablRaw.deallocate() }
-        let abl = ablRaw.assumingMemoryBound(to: AudioBufferList.self)
-        var blockBuffer: CMBlockBuffer?
-        let listSt = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
-            sample,
-            bufferListSizeNeededOut: nil,
-            bufferListOut: abl,
-            bufferListSize: needed,
-            blockBufferAllocator: nil,
-            blockBufferMemoryAllocator: nil,
-            flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
-            blockBufferOut: &blockBuffer
-        )
-        guard listSt == noErr else { return nil }
-
-        let buffers = UnsafeMutableAudioBufferListPointer(abl)
-        guard !buffers.isEmpty else { return nil }
-
-        let isFloat = asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0
-        let isNonInterleaved = asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0
-        let channels: Int = {
-            if isNonInterleaved { return max(1, buffers.count) }
-            return max(1, Int(asbd.mChannelsPerFrame))
-        }()
-        var mono = [Int16](repeating: 0, count: frames)
-        var extracted = false
-
-        if isFloat {
-            extracted = true
-            if isNonInterleaved {
-                let channelCount = min(buffers.count, channels)
-                for i in 0..<frames {
-                    var sum: Float = 0
-                    for ch in 0..<channelCount {
-                        guard let data = buffers[ch].mData else { continue }
-                        let ptr = data.assumingMemoryBound(to: Float.self)
-                        sum += ptr[i]
-                    }
-                    mono[i] = Self.floatToInt16(sum / Float(channelCount))
-                }
-            } else {
-                guard let data = buffers[0].mData else { return nil }
-                let ptr = data.assumingMemoryBound(to: Float.self)
-                for i in 0..<frames {
-                    var sum: Float = 0
-                    for ch in 0..<channels {
-                        sum += ptr[i * channels + ch]
-                    }
-                    mono[i] = Self.floatToInt16(sum / Float(channels))
-                }
-            }
+        if captureFormat == monoPCM {
+            pcmConverter = nil
+            pcmFormat = monoPCM
         } else {
-            let bits = Int(asbd.mBitsPerChannel)
-            if bits == 16 {
-                extracted = true
-                if isNonInterleaved {
-                    let channelCount = min(buffers.count, channels)
-                    for i in 0..<frames {
-                        var sum = 0
-                        for ch in 0..<channelCount {
-                            guard let data = buffers[ch].mData else { continue }
-                            let ptr = data.assumingMemoryBound(to: Int16.self)
-                            sum += Int(ptr[i])
-                        }
-                        mono[i] = Int16(clamping: sum / channelCount)
-                    }
-                } else {
-                    guard let data = buffers[0].mData else { return nil }
-                    let ptr = data.assumingMemoryBound(to: Int16.self)
-                    for i in 0..<frames {
-                        var sum = 0
-                        for ch in 0..<channels {
-                            sum += Int(ptr[i * channels + ch])
-                        }
-                        mono[i] = Int16(clamping: sum / channels)
-                    }
-                }
-            }
+            guard let pcmConv = AVAudioConverter(from: captureFormat, to: monoPCM) else { return false }
+            pcmConverter = pcmConv
+            pcmFormat = monoPCM
         }
 
-        guard extracted else { return nil }
-        return mono.withUnsafeBufferPointer { Data(buffer: $0) }
-    }
-
-    private static func floatToInt16(_ sample: Float) -> Int16 {
-        let clipped = max(-1, min(1, sample))
-        return Int16(clipped * 32767)
+        aacConverter = aacConv
+        aacFormat = aacFmt
+        pendingPCM = AVAudioPCMBuffer(pcmFormat: monoPCM, frameCapacity: framesPerPacket)
+        return true
     }
 
     private static func wrapADTS(aacPayload: Data, sampleRate: Double, channels: UInt32) -> Data {
