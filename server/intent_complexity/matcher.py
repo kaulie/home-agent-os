@@ -35,6 +35,7 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "vision.perceive": ("看看客厅", "现在怎样"),
     "notify.speak": ("告诉我", "念给我听"),
     "clock.now": ("几点了", "现在时间", "今天日期", "几月几号", "几号了"),
+    "map.route.estimate": ("开车多久", "多远", "多久能到", "坐地铁", "导航", "路线"),
     "climate.set": ("空调", "制冷", "制热"),
     "phone.call": ("打电话", "打给", "拨打", "打个电话"),
     "asset.inventory": ("刚才的照片", "最后一张照片", "最后一张", "最近一张照片"),

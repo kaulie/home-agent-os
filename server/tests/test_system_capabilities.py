@@ -208,7 +208,14 @@ class CatalogRowsTests(unittest.TestCase):
         rows = catalog_rows()
         ids = {r["capability_id"] for r in rows}
         self.assertEqual(
-            ids, {"capabilities.summary", "asset.inventory", "image.ocr", "clock.now"}
+            ids,
+            {
+                "capabilities.summary",
+                "asset.inventory",
+                "image.ocr",
+                "clock.now",
+                "map.route.estimate",
+            },
         )
         for row in rows:
             self.assertEqual(row["kind"], "system")

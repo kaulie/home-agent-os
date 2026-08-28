@@ -18,7 +18,13 @@ log = logging.getLogger("system_capabilities")
 
 SYSTEM_EDGE_ID = "system"
 SYSTEM_CAPABILITY_IDS = frozenset(
-    {"capabilities.summary", "asset.inventory", "image.ocr", "clock.now"}
+    {
+        "capabilities.summary",
+        "asset.inventory",
+        "image.ocr",
+        "clock.now",
+        "map.route.estimate",
+    }
 )
 
 _SKIP_SUMMARY_IDS = frozenset({"capabilities.summary", "voice_test.run_trial"})
@@ -36,6 +42,7 @@ _GROUP_ORDER = (
     "music",
     "asset",
     "meta",
+    "map",
 )
 _MAX_PHRASES = 7
 _CAP_ID_RE = re.compile(r"\b[a-z][a-z0-9_]*\.[a-z0-9_.]+\b", re.I)
@@ -193,6 +200,60 @@ _CLOCK_OUTPUT = {
         "description": "给人听/看的当前时间中文，如「现在是 22 点 30 分」",
     },
 }
+_ROUTE_INPUT: dict[str, Any] = {
+    "origin": {
+        "type": "string",
+        "required": True,
+        "description": "起点地名或地址，如「望新花园」",
+    },
+    "destination": {
+        "type": "string",
+        "required": True,
+        "description": "终点地名或地址，如「顺义建邦顺颐府」",
+    },
+    "mode": {
+        "type": "string",
+        "required": False,
+        "description": "出行方式：driving（驾车，默认）| transit（公交地铁）| walking（步行）",
+    },
+    "city": {
+        "type": "string",
+        "required": False,
+        "description": "城市名，用于地址消歧与公交规划，默认北京",
+    },
+}
+_ROUTE_OUTPUT = {
+    "answer_text": {
+        "type": "string",
+        "required": True,
+        "description": "给人听/看的路线距离与耗时摘要",
+    },
+    "distance_km": {
+        "type": "string",
+        "required": True,
+        "description": "路线距离（公里，小数）",
+    },
+    "distance_m": {
+        "type": "string",
+        "required": False,
+        "description": "路线距离（米）",
+    },
+    "duration_min": {
+        "type": "string",
+        "required": True,
+        "description": "预计耗时（分钟，向上取整）",
+    },
+    "duration_sec": {
+        "type": "string",
+        "required": False,
+        "description": "预计耗时（秒）",
+    },
+    "mode": {
+        "type": "string",
+        "required": False,
+        "description": "实际使用的出行方式 driving | transit | walking",
+    },
+}
 _INVENTORY_OUTPUT = {
     "count": {
         "type": "string",
@@ -247,6 +308,11 @@ def catalog_rows() -> list[dict[str, Any]]:
         input_schema=_CLOCK_INPUT,
         output_schema=_CLOCK_OUTPUT,
     )
+    route = attach(
+        "map.route.estimate",
+        input_schema=_ROUTE_INPUT,
+        output_schema=_ROUTE_OUTPUT,
+    )
     return [
         _as_schedulable_row(
             summary,
@@ -267,6 +333,11 @@ def catalog_rows() -> list[dict[str, Any]]:
             clock,
             service_id="system.clock",
             group="clock",
+        ),
+        _as_schedulable_row(
+            route,
+            service_id="system.map",
+            group="map",
         ),
     ]
 
@@ -313,6 +384,8 @@ def run_system_step(
         return ocr_from_params(params)
     if cid == "clock.now":
         return clock_from_params(params)
+    if cid == "map.route.estimate":
+        return route_from_params(params)
     raise SystemCapabilityError(f"unknown system capability {cid}")
 
 
@@ -454,6 +527,15 @@ def clock_from_params(params: dict[str, Any] | None) -> tuple[str, dict[str, Any
     outputs = {"now_iso": now_iso, "time_text": time_text}
     log.info("clock.now iso=%s text=%s", now_iso, time_text)
     return f"clock.now {now_iso}", outputs
+
+
+def route_from_params(params: dict[str, Any] | None) -> tuple[str, dict[str, Any]]:
+    from map_route import MapRouteError, route_from_params as _route
+
+    try:
+        return _route(params)
+    except MapRouteError as e:
+        raise SystemCapabilityError(str(e)) from e
 
 
 def _opt_str(raw: Any) -> str | None:

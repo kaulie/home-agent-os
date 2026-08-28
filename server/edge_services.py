@@ -591,6 +591,11 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             '找真实照片',
             'Openverse检索',
             '必应检索',
+            '从哪到哪',
+            '开车多久',
+            '导航',
+            '路线',
+            '坐地铁',
         ],
         'input_schema': {
             'query': {
@@ -733,6 +738,54 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
                 'type': 'string',
                 'required': True,
                 'description': '给人听/看的中文时刻（现在是…点…分）；时区在 now_iso，不要念 IANA 名或 UTC+08:00',
+            },
+        },
+    },
+    'map.route.estimate': {
+        'kind': 'system',
+        'group': 'map',
+        'service_id': 'system.map',
+        'role': '路线距离与耗时查询器',
+        'planner_recognize': '高德地图查两地驾车/公交/步行距离与预计耗时；assigned_edge_id=system',
+        'typical_triggers': ['从哪开车多久', '多远', '坐地铁多久', '导航', '路线'],
+        'do_not_dispatch': ['知识百科', '看图', '拍照', '投屏', '报时'],
+        'input_schema': {
+            'origin': {
+                'type': 'string',
+                'required': True,
+                'description': '起点地名或地址',
+            },
+            'destination': {
+                'type': 'string',
+                'required': True,
+                'description': '终点地名或地址',
+            },
+            'mode': {
+                'type': 'string',
+                'required': False,
+                'description': 'driving | transit | walking，默认 driving',
+            },
+            'city': {
+                'type': 'string',
+                'required': False,
+                'description': '城市，用于消歧与公交规划，默认北京',
+            },
+        },
+        'output_schema': {
+            'answer_text': {
+                'type': 'string',
+                'required': True,
+                'description': '口语化距离与耗时摘要',
+            },
+            'distance_km': {
+                'type': 'string',
+                'required': True,
+                'description': '距离（公里）',
+            },
+            'duration_min': {
+                'type': 'string',
+                'required': True,
+                'description': '预计耗时（分钟）',
             },
         },
     },

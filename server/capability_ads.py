@@ -158,6 +158,12 @@ ADS: dict[str, dict[str, Any]] = {
             "必应检索",
             "OCR",
             "读图上的字",
+            "从哪到哪",
+            "开车多久",
+            "多远",
+            "导航",
+            "路线",
+            "坐地铁",
         ],
     ),
     "search.images": _ad(
@@ -301,6 +307,27 @@ ADS: dict[str, dict[str, Any]] = {
         planner_recognize="Brain 就地读本机墙上钟，回答「现在几点了」「今天几号」。一次性读取，应当排进计划，assigned_edge_id=system。产出 now_iso 和给人听的 time_text。不要用文本问答编时刻",
         typical_triggers=["现在几点了", "几点了", "现在时间", "今天几号", "今天日期", "几月几号", "几号了"],
         do_not_dispatch=["知识问答", "计算", "看图", "编一个时刻"],
+    ),
+    "map.route.estimate": _ad(
+        kind="system",
+        role="路线距离与耗时查询器",
+        planner_recognize=(
+            "查两地之间的驾车/公交地铁/步行距离与预计耗时，基于高德地图实时路网。"
+            "入参 origin、destination 必填；mode 可选 driving|transit|walking（默认 driving）。"
+            "assigned_edge_id=system。产出 answer_text、distance_km、duration_min。"
+            "用户问从 A 到 B 多远、多久、开车/坐地铁要多少时间时用本步，不要用 query.content 编造距离。"
+        ),
+        typical_triggers=[
+            "从哪到哪开车多久",
+            "开车要多远",
+            "坐地铁需要多久",
+            "多远",
+            "多久能到",
+            "导航",
+            "路线",
+            "通勤时间",
+        ],
+        do_not_dispatch=["知识百科", "看图", "拍照", "投屏", "报时", "闲聊"],
     ),
     "asset.inventory": _ad(
         kind="system",
