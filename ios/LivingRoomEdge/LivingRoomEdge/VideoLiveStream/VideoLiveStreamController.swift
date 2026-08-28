@@ -9,7 +9,9 @@ final class LivePushPipeline {
     var audioEncoder: AacAudioEncoder?
     private let queue = DispatchQueue(label: "homeagent.video.live.mux")
     private var frameIndex: UInt64 = 0
+    private var audioPacketIndex: UInt64 = 0
     private let ticksPerFrame: UInt64
+    private let audioTicksPerPacket: UInt64 = 1024 * 90_000 / 48_000
 
     init(fps: Int) {
         let rate = max(1, fps)
@@ -27,9 +29,8 @@ final class LivePushPipeline {
 
     func sendAudio(aacAdts: Data, pts: CMTime) {
         queue.async { [self] in
-            let sec = CMTimeGetSeconds(pts)
-            guard sec.isFinite, sec >= 0 else { return }
-            let pts90 = UInt64(sec * 90_000.0)
+            let pts90 = audioPacketIndex * audioTicksPerPacket
+            audioPacketIndex += 1
             let ts = muxer.muxAudio(aacAdts: aacAdts, pts90k: pts90)
             transport.send(ts)
         }
@@ -44,6 +45,7 @@ final class LivePushPipeline {
             transport.close()
             muxer.reset()
             frameIndex = 0
+            audioPacketIndex = 0
         }
     }
 }
