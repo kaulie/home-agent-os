@@ -1,0 +1,368 @@
+{
+  "brain": "http://115.190.153.53:9527",
+  "participant_id": "edge-node-JzvEe287",
+  "text": "扫描一下这个小票",
+  "ts_cst": "2026-08-28 14:23:38",
+  "context": "brain #512 deploy fix retest; prior 1506/1508 orphaned",
+  "poll": [
+    {
+      "t": 0.1,
+      "status": "intent_received",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 4.1,
+      "status": "intent_received",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 8.1,
+      "status": "intent_received",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 12.6,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 17.0,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 21.5,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 26.0,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 30.9,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 35.8,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 40.7,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 45.4,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 50.3,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 55.1,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 59.9,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 64.6,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 69.5,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 74.4,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 79.2,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 84.0,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 88.9,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 93.8,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 98.6,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 103.4,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 108.3,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 113.2,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 118.3,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 123.1,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 128.0,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 132.8,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 137.7,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 142.4,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 147.2,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    }
+  ],
+  "health": {
+    "code": 200,
+    "body": {
+      "app": "brain",
+      "brain_origin": "cloud",
+      "db": "/root/chat-gateway/data/brain.sqlite3",
+      "jobs": 1508,
+      "ok": true,
+      "pending_intents": 2,
+      "registered": 20
+    }
+  },
+  "post_intent": {
+    "code": 200,
+    "body": {
+      "asset_ref": null,
+      "edge_id": "edge-node-JzvEe287",
+      "intent_id": 1509,
+      "intent_origin": "cloud",
+      "intent_status": "intent_received",
+      "ok": true,
+      "reply": "已收到指令（text）：扫描一下这个小票",
+      "source": "text",
+      "text": "扫描一下这个小票"
+    }
+  },
+  "intent_id": 1509,
+  "intent_detail_final": {
+    "base_time": 1787898219040,
+    "better_capabilities": [],
+    "context": {
+      "output_affinity": {
+        "participant_id": "edge-node-JzvEe287",
+        "reason": "input_source"
+      },
+      "source_context": {
+        "capability_id": "text.input",
+        "device_id": "edge-node-JzvEe287",
+        "endpoint_id": "keyboard"
+      }
+    },
+    "created_at": 1787898219.051514,
+    "ctx_param": {
+      "output_affinity": {
+        "participant_id": "edge-node-JzvEe287",
+        "reason": "input_source"
+      },
+      "source_context": {
+        "capability_id": "text.input",
+        "device_id": "edge-node-JzvEe287",
+        "endpoint_id": "keyboard"
+      }
+    },
+    "edge_id": "edge-node-JzvEe287",
+    "execution_plan": [
+      {
+        "assigned_edge_id": "edge-node-JzvEe287",
+        "capability": "document.scan",
+        "execution_timing": {
+          "mode": "immediate"
+        },
+        "input_constrict": {
+          "appliance": "Document Scanner",
+          "mode": "document"
+        },
+        "output_constrict": {
+          "asset_ref": {
+            "data_dest": "context",
+            "type": "string"
+          },
+          "status": {
+            "data_dest": "context",
+            "type": "string"
+          }
+        },
+        "step": 1
+      }
+    ],
+    "id": 1509,
+    "intent_base_time": 1787898219040,
+    "intent_id": 1509,
+    "intent_origin": "cloud",
+    "intent_status": "intent_parsed",
+    "job_id": "1509",
+    "missing_capabilities": [],
+    "output_affinity": {
+      "participant_id": "edge-node-JzvEe287",
+      "reason": "input_source"
+    },
+    "planner_cost_ms": 8165,
+    "planner_has_request_payload": true,
+    "presentation": {
+      "channel": "iphone",
+      "endpoint": "edge-node-JzvEe287",
+      "endpoint_id": "iphone.display",
+      "from": "asset_ref",
+      "type": "image"
+    },
+    "source": "text",
+    "source_context": {
+      "capability_id": "text.input",
+      "device_id": "edge-node-JzvEe287",
+      "endpoint_id": "keyboard"
+    },
+    "status": "intent_parsed",
+    "status_log": [
+      {
+        "status": "intent_received",
+        "ts": 1787898219051
+      },
+      {
+        "status": "intent_parsed",
+        "ts": 1787898229038
+      }
+    ],
+    "step_log": [],
+    "steps": [
+      {
+        "at": 1787898219.0515466,
+        "detail": "扫描一下这个小票",
+        "intent_status": "intent_received",
+        "status": "intent_received"
+      },
+      {
+        "at": 1787898229.038927,
+        "detail": "",
+        "intent_status": "intent_parsed",
+        "status": "intent_parsed"
+      }
+    ],
+    "text": "扫描一下这个小票",
+    "updated_at": 1787898229.038928
+  },
+  "intent_path_code": 200,
+  "analysis": {
+    "final_status": "intent_parsed",
+    "capabilities": [
+      "document.scan"
+    ],
+    "step": {
+      "capability": "document.scan",
+      "status": null,
+      "msg": null,
+      "assigned_edge_id": "edge-node-JzvEe287"
+    },
+    "asset_ref": null,
+    "step_outputs": {},
+    "presentation": {
+      "channel": "iphone",
+      "endpoint": "edge-node-JzvEe287",
+      "endpoint_id": "iphone.display",
+      "from": "asset_ref",
+      "type": "image"
+    },
+    "status_log": [
+      {
+        "status": "intent_received",
+        "ts": 1787898219051
+      },
+      {
+        "status": "intent_parsed",
+        "ts": 1787898229038
+      }
+    ],
+    "left_parsed": true,
+    "has_asset_ref": false
+  }
+}

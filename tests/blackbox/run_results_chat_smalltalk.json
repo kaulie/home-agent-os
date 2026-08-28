@@ -1,0 +1,310 @@
+{
+  "brain": "http://115.190.153.53:9527",
+  "participant_id": "edge-node-IAtuhLSy",
+  "text": "早啊",
+  "ts_cst": "2026-08-28 13:00:56",
+  "steps": [
+    {
+      "t": 0.1,
+      "code": 200,
+      "status": "intent_received"
+    },
+    {
+      "t": 3.1,
+      "code": 200,
+      "status": "intent_received"
+    },
+    {
+      "t": 7.0,
+      "code": 200,
+      "status": "intent_received"
+    },
+    {
+      "t": 10.7,
+      "code": 200,
+      "status": "intent_parsed"
+    },
+    {
+      "t": 14.1,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 18.1,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 22.8,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 26.2,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 29.7,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 33.3,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 37.7,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 41.6,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 47.0,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 51.0,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 55.0,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 59.6,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 64.4,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 68.6,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 72.7,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 77.5,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 81.8,
+      "code": 200,
+      "status": "intent_dispatched"
+    },
+    {
+      "t": 87.7,
+      "code": 200,
+      "status": "intent_dispatched"
+    }
+  ],
+  "health": {
+    "code": 200,
+    "body": {
+      "app": "brain",
+      "brain_origin": "cloud",
+      "db": "/root/chat-gateway/server/data/brain.sqlite3",
+      "jobs": 1503,
+      "ok": true,
+      "pending_intents": 0,
+      "registered": 20
+    }
+  },
+  "post_intent": {
+    "code": 200,
+    "body": {
+      "asset_ref": null,
+      "edge_id": "edge-node-IAtuhLSy",
+      "intent_id": 1504,
+      "intent_origin": "cloud",
+      "intent_status": "intent_received",
+      "ok": true,
+      "reply": "已收到指令（text）：早啊",
+      "source": "text",
+      "text": "早啊"
+    }
+  },
+  "intent_id": 1504,
+  "intent_detail_final": {
+    "code": 200,
+    "body": {
+      "base_time": 1787893256363,
+      "better_capabilities": [],
+      "context": {
+        "output_affinity": {
+          "participant_id": "edge-node-IAtuhLSy",
+          "reason": "input_source"
+        },
+        "source_context": {
+          "capability_id": "text.input",
+          "device_id": "edge-node-IAtuhLSy",
+          "endpoint_id": "keyboard"
+        }
+      },
+      "created_at": 1787893256.3759239,
+      "ctx_param": {
+        "output_affinity": {
+          "participant_id": "edge-node-IAtuhLSy",
+          "reason": "input_source"
+        },
+        "source_context": {
+          "capability_id": "text.input",
+          "device_id": "edge-node-IAtuhLSy",
+          "endpoint_id": "keyboard"
+        }
+      },
+      "edge_id": "edge-node-IAtuhLSy",
+      "edge_node_id": "edge-node-IAtuhLSy",
+      "execution_plan": [
+        {
+          "assigned_edge_id": "edge-node-IAtuhLSy",
+          "capability": "chat.smalltalk",
+          "execution_timing": {
+            "mode": "immediate"
+          },
+          "input_constrict": {
+            "appliance": "Local Chat",
+            "text": "早啊"
+          },
+          "output_constrict": {
+            "reply": {
+              "data_dest": "context",
+              "type": "string"
+            }
+          },
+          "step": 1
+        }
+      ],
+      "exposed_outputs": {
+        "channel": "android",
+        "endpoint": "edge-node-EQMbCfwb",
+        "endpoint_id": "android.display",
+        "from": "reply",
+        "type": "text"
+      },
+      "id": 1504,
+      "intent_base_time": 1787893256363,
+      "intent_id": 1504,
+      "intent_origin": "cloud",
+      "intent_status": "intent_dispatched",
+      "job_id": "1504",
+      "missing_capabilities": [],
+      "output_affinity": {
+        "participant_id": "edge-node-IAtuhLSy",
+        "reason": "input_source"
+      },
+      "outputs": {
+        "channel": "android",
+        "endpoint": "edge-node-EQMbCfwb",
+        "endpoint_id": "android.display",
+        "from": "reply",
+        "type": "text"
+      },
+      "planner_cost_ms": 5376,
+      "planner_has_request_payload": true,
+      "presentation": {
+        "channel": "android",
+        "endpoint": "edge-node-EQMbCfwb",
+        "endpoint_id": "android.display",
+        "from": "reply",
+        "type": "text"
+      },
+      "source": "text",
+      "source_context": {
+        "capability_id": "text.input",
+        "device_id": "edge-node-IAtuhLSy",
+        "endpoint_id": "keyboard"
+      },
+      "status": "intent_dispatched",
+      "status_log": [
+        {
+          "status": "intent_received",
+          "ts": 1787893256375
+        },
+        {
+          "status": "intent_parsed",
+          "ts": 1787893264598
+        },
+        {
+          "status": "intent_scheduled",
+          "ts": 1787893265743
+        },
+        {
+          "status": "intent_dispatched",
+          "ts": 1787893267135
+        }
+      ],
+      "step_log": [],
+      "steps": [
+        {
+          "at": 1787893256.3759582,
+          "detail": "早啊",
+          "intent_status": "intent_received",
+          "status": "intent_received"
+        },
+        {
+          "at": 1787893264.598739,
+          "detail": "",
+          "intent_status": "intent_parsed",
+          "status": "intent_parsed"
+        },
+        {
+          "at": 1787893265.7430172,
+          "detail": "",
+          "intent_status": "intent_scheduled",
+          "status": "intent_scheduled"
+        },
+        {
+          "at": 1787893267.1357603,
+          "detail": "",
+          "intent_status": "intent_dispatched",
+          "status": "intent_dispatched"
+        }
+      ],
+      "text": "早啊",
+      "updated_at": 1787893267.8295648
+    }
+  },
+  "intent_path": {
+    "code": 200,
+    "same_as_detail": false
+  },
+  "analysis": {
+    "final_status": "intent_dispatched",
+    "capabilities": [
+      "chat.smalltalk"
+    ],
+    "has_chat_smalltalk": true,
+    "forbidden_query": true,
+    "step_outputs": null,
+    "presentation": {
+      "channel": "android",
+      "endpoint": "edge-node-EQMbCfwb",
+      "endpoint_id": "android.display",
+      "from": "reply",
+      "type": "text"
+    },
+    "smalltalk_step": {
+      "status": null,
+      "msg": null,
+      "assigned_edge_id": "edge-node-IAtuhLSy"
+    }
+  }
+}

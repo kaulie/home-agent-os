@@ -1,0 +1,322 @@
+{
+  "brain": "http://115.190.153.53:9527",
+  "participant_id": "edge-node-JzvEe287",
+  "text": "扫描一下这个小票",
+  "ts_cst": "2026-08-28 14:35:20",
+  "context": "coordinator #80: ui lock cloud + runtime dual URL; iphone domain=cloud on cloud /edges",
+  "poll": [
+    {
+      "t": 0.1,
+      "status": "intent_received",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 4.1,
+      "status": "intent_received",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 8.2,
+      "status": "intent_received",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 13.0,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 17.7,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 23.3,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 28.7,
+      "status": "running",
+      "step_status": 1,
+      "step_msg": "executing document.scan"
+    },
+    {
+      "t": 33.4,
+      "status": "intent_waiting",
+      "step_status": 1,
+      "step_msg": "executing document.scan"
+    },
+    {
+      "t": 38.2,
+      "status": "failed",
+      "step_status": 3,
+      "step_msg": "已取消"
+    }
+  ],
+  "health": {
+    "app": "brain",
+    "brain_origin": "cloud",
+    "db": "/root/chat-gateway/data/brain.sqlite3",
+    "jobs": 1509,
+    "ok": true,
+    "pending_intents": 0,
+    "registered": 20
+  },
+  "post_intent": {
+    "code": 200,
+    "body": {
+      "asset_ref": null,
+      "edge_id": "edge-node-JzvEe287",
+      "intent_id": 1510,
+      "intent_origin": "cloud",
+      "intent_status": "intent_received",
+      "ok": true,
+      "reply": "已收到指令（text）：扫描一下这个小票",
+      "source": "text",
+      "text": "扫描一下这个小票"
+    }
+  },
+  "intent_id": 1510,
+  "analysis": {
+    "final_status": "failed",
+    "step": {
+      "capability": "document.scan",
+      "status": 3,
+      "msg": "已取消",
+      "assigned_edge_id": "edge-node-JzvEe287"
+    },
+    "asset_ref": null,
+    "step_outputs": {
+      "1": {
+        "status": "cancelled"
+      }
+    },
+    "presentation": {
+      "channel": "iphone",
+      "endpoint": "edge-node-JzvEe287",
+      "endpoint_id": "iphone.display",
+      "from": "msg",
+      "text": "已取消",
+      "type": "text"
+    },
+    "status_log": [
+      {
+        "status": "intent_received",
+        "ts": 1787898920648
+      },
+      {
+        "status": "intent_parsed",
+        "ts": 1787898932186
+      },
+      {
+        "msg": "executing document.scan",
+        "status": "running",
+        "ts": 1787898945759
+      },
+      {
+        "msg": "document.scan: waiting for user",
+        "status": "intent_waiting",
+        "ts": 1787898949003
+      },
+      {
+        "msg": "已取消",
+        "status": "failed",
+        "ts": 1787898958016
+      }
+    ],
+    "pass_dispatch": true,
+    "pass_asset_ref": false,
+    "pass_success": false
+  },
+  "intent_detail_final": {
+    "base_time": 1787898920628,
+    "better_capabilities": [],
+    "context": {
+      "output_affinity": {
+        "participant_id": "edge-node-JzvEe287",
+        "reason": "input_source"
+      },
+      "source_context": {
+        "capability_id": "text.input",
+        "device_id": "edge-node-JzvEe287",
+        "endpoint_id": "keyboard"
+      },
+      "status": "cancelled"
+    },
+    "created_at": 1787898920.648661,
+    "ctx_param": {
+      "output_affinity": {
+        "participant_id": "edge-node-JzvEe287",
+        "reason": "input_source"
+      },
+      "source_context": {
+        "capability_id": "text.input",
+        "device_id": "edge-node-JzvEe287",
+        "endpoint_id": "keyboard"
+      },
+      "status": "cancelled"
+    },
+    "detail": "document.scan: waiting for user",
+    "edge_id": "edge-node-JzvEe287",
+    "edge_node_id": "edge-node-JzvEe287",
+    "error": "已取消",
+    "execution_plan": [
+      {
+        "assigned_edge_id": "edge-node-JzvEe287",
+        "capability": "document.scan",
+        "execution_timing": {
+          "mode": "immediate"
+        },
+        "input_constrict": {
+          "appliance": "Document Scanner",
+          "mode": "document"
+        },
+        "msg": "已取消",
+        "output_constrict": {
+          "asset_ref": {
+            "data_dest": "context",
+            "type": "string"
+          },
+          "status": {
+            "data_dest": "context",
+            "type": "string"
+          }
+        },
+        "status": 3,
+        "step": 1
+      }
+    ],
+    "exposed_outputs": {
+      "channel": "iphone",
+      "endpoint": "edge-node-JzvEe287",
+      "endpoint_id": "iphone.display",
+      "from": "msg",
+      "text": "已取消",
+      "type": "text"
+    },
+    "id": 1510,
+    "intent_base_time": 1787898920628,
+    "intent_id": 1510,
+    "intent_origin": "cloud",
+    "intent_status": "failed",
+    "job_id": "1510",
+    "missing_capabilities": [],
+    "msg": "已取消",
+    "output_affinity": {
+      "participant_id": "edge-node-JzvEe287",
+      "reason": "input_source"
+    },
+    "outputs": {
+      "channel": "iphone",
+      "endpoint": "edge-node-JzvEe287",
+      "endpoint_id": "iphone.display",
+      "from": "msg",
+      "text": "已取消",
+      "type": "text"
+    },
+    "planner_cost_ms": 7572,
+    "planner_has_request_payload": true,
+    "presentation": {
+      "channel": "iphone",
+      "endpoint": "edge-node-JzvEe287",
+      "endpoint_id": "iphone.display",
+      "from": "msg",
+      "text": "已取消",
+      "type": "text"
+    },
+    "source": "text",
+    "source_context": {
+      "capability_id": "text.input",
+      "device_id": "edge-node-JzvEe287",
+      "endpoint_id": "keyboard"
+    },
+    "status": "failed",
+    "status_log": [
+      {
+        "status": "intent_received",
+        "ts": 1787898920648
+      },
+      {
+        "status": "intent_parsed",
+        "ts": 1787898932186
+      },
+      {
+        "msg": "executing document.scan",
+        "status": "running",
+        "ts": 1787898945759
+      },
+      {
+        "msg": "document.scan: waiting for user",
+        "status": "intent_waiting",
+        "ts": 1787898949003
+      },
+      {
+        "msg": "已取消",
+        "status": "failed",
+        "ts": 1787898958016
+      }
+    ],
+    "step_log": [
+      {
+        "edge_id": "edge-node-JzvEe287",
+        "msg": "executing document.scan",
+        "status": 1,
+        "step": 1,
+        "ts": 1787898940231
+      },
+      {
+        "edge_id": "edge-node-JzvEe287",
+        "msg": "已取消",
+        "status": 3,
+        "step": 1,
+        "ts": 1787898956749
+      }
+    ],
+    "step_outputs": {
+      "1": {
+        "status": "cancelled"
+      }
+    },
+    "steps": [
+      {
+        "at": 1787898920.6487086,
+        "detail": "扫描一下这个小票",
+        "intent_status": "intent_received",
+        "status": "intent_received"
+      },
+      {
+        "at": 1787898932.1863787,
+        "detail": "",
+        "intent_status": "intent_parsed",
+        "status": "intent_parsed"
+      },
+      {
+        "at": 1787898945.7591846,
+        "detail": "executing document.scan",
+        "intent_status": "running",
+        "status": "running"
+      },
+      {
+        "at": 1787898949.0033112,
+        "detail": "document.scan: waiting for user",
+        "intent_status": "intent_waiting",
+        "status": "intent_waiting"
+      },
+      {
+        "at": 1787898958.0164678,
+        "detail": "已取消",
+        "intent_status": "failed",
+        "status": "failed"
+      }
+    ],
+    "text": "扫描一下这个小票",
+    "updated_at": 1787898958.0164692
+  }
+}

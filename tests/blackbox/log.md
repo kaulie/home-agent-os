@@ -360,3 +360,14 @@ Brain：`http://115.190.153.53:9527`
 - **规划**：单测符合 C10c 期望 plan；现场物流待 Runtime 心跳带上三条 cap 后再 POST
 - **结论**：Brain sanitize/选边/catalog **已验收（单测）**；现场终态 `presentation.type=image` + `asset_id` **未跑快门，不结案**
 
+---
+
+## 2026-08-28 VL1 — video.live_stream 含音频（@ui #91 / sha ce42234）
+
+- **前置**：Mac ingest `http://127.0.0.1:8790` 200；artifact `video_stream_258b158e.ts`（3889156 B，~12.5s，23:43）
+- **bytes_received**：停流后 stream 不在 registry；未现场 3s×poll；文件体积表明开流期间有写入
+- **ffprobe TS**：`codec_name=h264` + `codec_name=aac`（PID 0x101）；aac `channels=0` `sample_rate=0`；警告 *no TS found at start*
+- **TS 包计数**：PID 0x100 → 20661 包；**PID 0x101 → 0 包**（PMT 有 audio，payload 未 mux）
+- **mp4**：`ffmpeg -c copy` → video 3673 KiB，**audio 0 KiB**；mp4 无 audio stream
+- **结论**：**失败**（非 VL1 通过）；需 `@ui` 修 AAC 帧写入 mux 后重测。快照 [`run_results_video_live_vl1.json`](run_results_video_live_vl1.json)
+

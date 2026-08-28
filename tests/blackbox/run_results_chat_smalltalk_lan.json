@@ -1,0 +1,501 @@
+{
+  "brain": "http://127.0.0.1:9527",
+  "participant_id": "edge-node-IAtuhLSy",
+  "text": "早啊",
+  "ts_cst": "2026-08-28 13:04:40",
+  "poll": [
+    {
+      "t": 0.0,
+      "code": 200,
+      "status": "intent_received",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 3.6,
+      "code": 200,
+      "status": "intent_received",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 6.8,
+      "code": 200,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 10.7,
+      "code": 200,
+      "status": "intent_parsed",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 14.7,
+      "code": 200,
+      "status": "intent_dispatched",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 18.9,
+      "code": 200,
+      "status": "intent_dispatched",
+      "step_status": null,
+      "step_msg": null
+    },
+    {
+      "t": 23.7,
+      "code": 200,
+      "status": "intent_dispatched",
+      "step_status": 1,
+      "step_msg": null
+    },
+    {
+      "t": 28.0,
+      "code": 200,
+      "status": "running",
+      "step_status": 1,
+      "step_msg": null
+    },
+    {
+      "t": 34.1,
+      "code": 200,
+      "status": "succeeded",
+      "step_status": 2,
+      "step_msg": null
+    }
+  ],
+  "health": {
+    "code": 200,
+    "body": {
+      "app": "brain",
+      "brain_origin": "lan",
+      "db": "/Users/gaolei/Projects/smart_home_control/server/data/brain.sqlite3",
+      "jobs": 326,
+      "ok": true,
+      "pending_intents": 1,
+      "registered": 10
+    }
+  },
+  "post_intent": {
+    "code": 200,
+    "body": {
+      "asset_ref": null,
+      "edge_id": "edge-node-IAtuhLSy",
+      "intent_id": 327,
+      "intent_origin": "lan",
+      "intent_status": "intent_received",
+      "ok": true,
+      "reply": "已收到指令（text）：早啊",
+      "source": "text",
+      "text": "早啊"
+    }
+  },
+  "intent_id": 327,
+  "intent_detail_final": {
+    "code": 200,
+    "body": {
+      "base_time": 1787893481022,
+      "better_capabilities": [],
+      "context": {
+        "output_affinity": {
+          "participant_id": "edge-node-IAtuhLSy",
+          "reason": "input_source"
+        },
+        "reply": "早上好！",
+        "source_context": {
+          "capability_id": "text.input",
+          "device_id": "edge-node-IAtuhLSy",
+          "endpoint_id": "keyboard"
+        }
+      },
+      "created_at": 1787893481.1084218,
+      "ctx_param": {
+        "output_affinity": {
+          "participant_id": "edge-node-IAtuhLSy",
+          "reason": "input_source"
+        },
+        "reply": "早上好！",
+        "source_context": {
+          "capability_id": "text.input",
+          "device_id": "edge-node-IAtuhLSy",
+          "endpoint_id": "keyboard"
+        }
+      },
+      "edge_id": "edge-node-IAtuhLSy",
+      "edge_node_id": "edge-node-IAtuhLSy",
+      "execution_plan": [
+        {
+          "assigned_edge_id": "edge-node-IAtuhLSy",
+          "capability": "chat.smalltalk",
+          "execution_timing": {
+            "mode": "immediate"
+          },
+          "input_constrict": {
+            "appliance": "Local Chat",
+            "text": "早啊"
+          },
+          "output_constrict": {
+            "reply": {
+              "data_dest": "context",
+              "type": "string"
+            }
+          },
+          "status": 2,
+          "step": 1
+        }
+      ],
+      "exposed_outputs": {
+        "channel": "chromecast",
+        "endpoint": "edge-node-SJZ1SMuX",
+        "endpoint_id": "chromecast.display",
+        "from": "reply",
+        "text": "早上好！",
+        "type": "text"
+      },
+      "id": 327,
+      "intent_base_time": 1787893481022,
+      "intent_id": 327,
+      "intent_origin": "lan",
+      "intent_status": "succeeded",
+      "job_id": "327",
+      "missing_capabilities": [],
+      "output_affinity": {
+        "participant_id": "edge-node-IAtuhLSy",
+        "reason": "input_source"
+      },
+      "outputs": {
+        "channel": "chromecast",
+        "endpoint": "edge-node-SJZ1SMuX",
+        "endpoint_id": "chromecast.display",
+        "from": "reply",
+        "text": "早上好！",
+        "type": "text"
+      },
+      "planner_cost_ms": 0,
+      "planner_has_request_payload": false,
+      "presentation": {
+        "channel": "chromecast",
+        "endpoint": "edge-node-SJZ1SMuX",
+        "endpoint_id": "chromecast.display",
+        "from": "reply",
+        "text": "早上好！",
+        "type": "text"
+      },
+      "source": "text",
+      "source_context": {
+        "capability_id": "text.input",
+        "device_id": "edge-node-IAtuhLSy",
+        "endpoint_id": "keyboard"
+      },
+      "status": "succeeded",
+      "status_log": [
+        {
+          "status": "intent_received",
+          "ts": 1787893481097
+        },
+        {
+          "status": "intent_parsed",
+          "ts": 1787893484775
+        },
+        {
+          "status": "intent_scheduled",
+          "ts": 1787893491346
+        },
+        {
+          "status": "intent_dispatched",
+          "ts": 1787893493504
+        },
+        {
+          "status": "running",
+          "ts": 1787893504848
+        },
+        {
+          "status": "succeeded",
+          "ts": 1787893510060
+        }
+      ],
+      "step_log": [
+        {
+          "edge_id": "edge-node-IAtuhLSy",
+          "msg": null,
+          "status": 1,
+          "step": 1,
+          "ts": 1787893497765
+        },
+        {
+          "edge_id": "edge-node-IAtuhLSy",
+          "msg": null,
+          "status": 2,
+          "step": 1,
+          "ts": 1787893506848
+        }
+      ],
+      "step_outputs": {
+        "1": {
+          "reply": "早上好！"
+        }
+      },
+      "steps": [
+        {
+          "at": 1787893481.108799,
+          "detail": "早啊",
+          "intent_status": "intent_received",
+          "status": "intent_received"
+        },
+        {
+          "at": 1787893484.775425,
+          "detail": "",
+          "intent_status": "intent_parsed",
+          "status": "intent_parsed"
+        },
+        {
+          "at": 1787893491.3461561,
+          "detail": "",
+          "intent_status": "intent_scheduled",
+          "status": "intent_scheduled"
+        },
+        {
+          "at": 1787893493.50471,
+          "detail": "",
+          "intent_status": "intent_dispatched",
+          "status": "intent_dispatched"
+        },
+        {
+          "at": 1787893504.848901,
+          "detail": "",
+          "intent_status": "running",
+          "status": "running"
+        },
+        {
+          "at": 1787893510.060053,
+          "detail": "",
+          "intent_status": "succeeded",
+          "status": "succeeded"
+        }
+      ],
+      "text": "早啊",
+      "updated_at": 1787893512.082186
+    }
+  },
+  "intent_path": {
+    "code": 200,
+    "body": {
+      "base_time": 1787893481022,
+      "better_capabilities": [],
+      "context": {
+        "output_affinity": {
+          "participant_id": "edge-node-IAtuhLSy",
+          "reason": "input_source"
+        },
+        "reply": "早上好！",
+        "source_context": {
+          "capability_id": "text.input",
+          "device_id": "edge-node-IAtuhLSy",
+          "endpoint_id": "keyboard"
+        }
+      },
+      "created_at": 1787893481.1084218,
+      "ctx_param": {
+        "output_affinity": {
+          "participant_id": "edge-node-IAtuhLSy",
+          "reason": "input_source"
+        },
+        "reply": "早上好！",
+        "source_context": {
+          "capability_id": "text.input",
+          "device_id": "edge-node-IAtuhLSy",
+          "endpoint_id": "keyboard"
+        }
+      },
+      "edge_id": "edge-node-IAtuhLSy",
+      "edge_node_id": "edge-node-IAtuhLSy",
+      "execution_plan": [
+        {
+          "assigned_edge_id": "edge-node-IAtuhLSy",
+          "capability": "chat.smalltalk",
+          "execution_timing": {
+            "mode": "immediate"
+          },
+          "input_constrict": {
+            "appliance": "Local Chat",
+            "text": "早啊"
+          },
+          "output_constrict": {
+            "reply": {
+              "data_dest": "context",
+              "type": "string"
+            }
+          },
+          "status": 2,
+          "step": 1
+        }
+      ],
+      "exposed_outputs": {
+        "channel": "chromecast",
+        "endpoint": "edge-node-SJZ1SMuX",
+        "endpoint_id": "chromecast.display",
+        "from": "reply",
+        "text": "早上好！",
+        "type": "text"
+      },
+      "id": 327,
+      "intent_base_time": 1787893481022,
+      "intent_id": 327,
+      "intent_origin": "lan",
+      "intent_status": "succeeded",
+      "job_id": "327",
+      "missing_capabilities": [],
+      "output_affinity": {
+        "participant_id": "edge-node-IAtuhLSy",
+        "reason": "input_source"
+      },
+      "outputs": {
+        "channel": "chromecast",
+        "endpoint": "edge-node-SJZ1SMuX",
+        "endpoint_id": "chromecast.display",
+        "from": "reply",
+        "text": "早上好！",
+        "type": "text"
+      },
+      "planner_cost_ms": 0,
+      "planner_has_request_payload": false,
+      "presentation": {
+        "channel": "chromecast",
+        "endpoint": "edge-node-SJZ1SMuX",
+        "endpoint_id": "chromecast.display",
+        "from": "reply",
+        "text": "早上好！",
+        "type": "text"
+      },
+      "source": "text",
+      "source_context": {
+        "capability_id": "text.input",
+        "device_id": "edge-node-IAtuhLSy",
+        "endpoint_id": "keyboard"
+      },
+      "status": "succeeded",
+      "status_log": [
+        {
+          "status": "intent_received",
+          "ts": 1787893481097
+        },
+        {
+          "status": "intent_parsed",
+          "ts": 1787893484775
+        },
+        {
+          "status": "intent_scheduled",
+          "ts": 1787893491346
+        },
+        {
+          "status": "intent_dispatched",
+          "ts": 1787893493504
+        },
+        {
+          "status": "running",
+          "ts": 1787893504848
+        },
+        {
+          "status": "succeeded",
+          "ts": 1787893510060
+        }
+      ],
+      "step_log": [
+        {
+          "edge_id": "edge-node-IAtuhLSy",
+          "msg": null,
+          "status": 1,
+          "step": 1,
+          "ts": 1787893497765
+        },
+        {
+          "edge_id": "edge-node-IAtuhLSy",
+          "msg": null,
+          "status": 2,
+          "step": 1,
+          "ts": 1787893506848
+        }
+      ],
+      "step_outputs": {
+        "1": {
+          "reply": "早上好！"
+        }
+      },
+      "steps": [
+        {
+          "at": 1787893481.108799,
+          "detail": "早啊",
+          "intent_status": "intent_received",
+          "status": "intent_received"
+        },
+        {
+          "at": 1787893484.775425,
+          "detail": "",
+          "intent_status": "intent_parsed",
+          "status": "intent_parsed"
+        },
+        {
+          "at": 1787893491.3461561,
+          "detail": "",
+          "intent_status": "intent_scheduled",
+          "status": "intent_scheduled"
+        },
+        {
+          "at": 1787893493.50471,
+          "detail": "",
+          "intent_status": "intent_dispatched",
+          "status": "intent_dispatched"
+        },
+        {
+          "at": 1787893504.848901,
+          "detail": "",
+          "intent_status": "running",
+          "status": "running"
+        },
+        {
+          "at": 1787893510.060053,
+          "detail": "",
+          "intent_status": "succeeded",
+          "status": "succeeded"
+        }
+      ],
+      "text": "早啊",
+      "updated_at": 1787893512.082186
+    }
+  },
+  "analysis": {
+    "final_status": "succeeded",
+    "capabilities": [
+      "chat.smalltalk"
+    ],
+    "has_chat_smalltalk": true,
+    "forbidden_query": true,
+    "smalltalk_step": {
+      "status": 2,
+      "msg": null,
+      "assigned_edge_id": "edge-node-IAtuhLSy"
+    },
+    "reply_in_step_outputs": "早上好！",
+    "reply_in_presentation": "早上好！",
+    "presentation": {
+      "channel": "chromecast",
+      "endpoint": "edge-node-SJZ1SMuX",
+      "endpoint_id": "chromecast.display",
+      "from": "reply",
+      "text": "早上好！",
+      "type": "text"
+    },
+    "step_outputs": {
+      "1": {
+        "reply": "早上好！"
+      }
+    },
+    "pass_planner": true,
+    "pass_reply": true,
+    "pass_terminal": true
+  }
+}

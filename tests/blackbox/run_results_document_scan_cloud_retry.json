@@ -1,0 +1,52 @@
+{
+  "brain": "http://115.190.153.53:9527",
+  "ts_cst": "2026-08-28 14:21:07",
+  "note": "cloud retry after #451; need iPhone scan complete",
+  "health": {
+    "app": "brain",
+    "brain_origin": "cloud",
+    "db": "/root/chat-gateway/server/data/brain.sqlite3",
+    "jobs": 1507,
+    "ok": true,
+    "pending_intents": 1,
+    "registered": 20
+  },
+  "post_intent": {
+    "code": 200,
+    "body": {
+      "asset_ref": null,
+      "edge_id": "edge-node-JzvEe287",
+      "intent_id": 1508,
+      "intent_origin": "cloud",
+      "intent_status": "intent_received",
+      "ok": true,
+      "reply": "已收到指令（text）：扫描一下这个小票",
+      "source": "text",
+      "text": "扫描一下这个小票"
+    }
+  },
+  "intent_id": 1508,
+  "final": {
+    "status": "intent_parsed",
+    "step_status": null,
+    "step_msg": null,
+    "asset_ref": null,
+    "presentation": {
+      "channel": "iphone",
+      "endpoint": "edge-node-JzvEe287",
+      "endpoint_id": "iphone.display",
+      "from": "asset_ref",
+      "type": "image"
+    },
+    "status_log": [
+      {
+        "status": "intent_received",
+        "ts": 1787898068403
+      },
+      {
+        "status": "intent_parsed",
+        "ts": 1787898078141
+      }
+    ]
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "case_id": "VL1",
+  "date": "2026-08-28",
+  "sha": "ce42234",
+  "scope": "ios-living",
+  "verdict": "fail",
+  "verdict_detail": "partial_ts_probe_only",
+  "environment": {
+    "mac_ingest": "http://127.0.0.1:8790",
+    "mac_lan": "192.168.3.73",
+    "iphone_app": "com.gaolei.livingroom.edge.iphone",
+    "wifi": "same LAN (192.168.3.x)"
+  },
+  "stream_id": "video_stream_258b158e",
+  "artifact": {
+    "ts_path": "mac/data/video-live/video_stream_258b158e.ts",
+    "ts_bytes": 3889156,
+    "ts_mtime": "2026-08-28T23:43:00+08:00",
+    "duration_sec": 12.5
+  },
+  "steps": {
+    "baseline_status": {
+      "url": "http://127.0.0.1:8790/api/v1/video-live/status",
+      "status": "streaming",
+      "note": "Larix placeholder video_stream_36c4c6fc listening bytes_received=0"
+    },
+    "bytes_received_poll": {
+      "result": "not_observed_live",
+      "note": "stream_id not in active registry after stop; artifact size 3889156 implies growth during capture"
+    },
+    "ffprobe_ts": {
+      "cmd": "ffprobe -hide_banner -show_streams mac/data/video-live/video_stream_258b158e.ts",
+      "video": { "codec_type": "video", "codec_name": "h264", "pid": "0x100" },
+      "audio": {
+        "codec_type": "audio",
+        "codec_name": "aac",
+        "pid": "0x101",
+        "channels": 0,
+        "sample_rate": 0,
+        "warnings": [
+          "stream 1 : no TS found at start of file",
+          "Could not find codec parameters for stream 1 (0 channels)"
+        ]
+      }
+    },
+    "ts_packet_count": {
+      "pid_0x100_video_packets": 20661,
+      "pid_0x101_audio_packets": 0,
+      "note": "PMT declares audio PID 0x0101 but mux carried zero audio TS packets"
+    },
+    "ffmpeg_mp4": {
+      "cmd": "ffmpeg -y -i video_stream_258b158e.ts -c copy /tmp/video_stream_258b158e.mp4",
+      "video_kib": 3673,
+      "audio_kib": 0,
+      "mp4_has_audio_stream": false
+    },
+    "audio_listen": {
+      "result": "not_confirmed",
+      "note": "no playable audio in mp4; cannot confirm mic capture"
+    },
+    "comparison_old_video_only": {
+      "stream_id": "video_stream_0535d82e",
+      "duration_sec": 1562.97,
+      "ffprobe": "h264 only, no audio stream (pre-audio baseline)"
+    }
+  },
+  "conclusion": "FAIL VL1: video h264 OK; PMT/ffprobe list aac on 0x101 but zero audio TS packets and mp4 has no audio. @ui to fix AacAudioEncoder/MpegTsMuxer payload before retest."
+}
