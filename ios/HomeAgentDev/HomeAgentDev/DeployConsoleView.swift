@@ -82,7 +82,7 @@ struct DeployConsoleView: View {
                 Text("git 提交 → 测试 → 批准上线 → 部署")
                     .font(.system(size: 13, design: .rounded))
                     .foregroundStyle(DevTheme.mist)
-                Text("节点来自 Chatbox [release]；批准后唤醒 @deploy。后续接流水线管控。")
+                Text("点进流水线看阶段时间线；批准后唤醒 @deploy。")
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(DevTheme.dim)
                 HStack(spacing: 6) {
@@ -153,37 +153,50 @@ struct DeployConsoleView: View {
 
     private func releaseCard(_ release: DeployRelease) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(release.shaShort)
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(DevTheme.sand)
-                if !release.scope.isEmpty {
-                    Text(release.scope)
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+            NavigationLink {
+                DeployReleaseDetailView(releaseId: release.releaseId, seed: release)
+            } label: {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(release.shaShort)
+                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(DevTheme.sand)
+                        if !release.scope.isEmpty {
+                            Text(release.scope)
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(DevTheme.dim)
+                        }
+                        Spacer()
+                        Text(release.statusLabel)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(statusColor(release.status))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(DevTheme.dim)
+                    }
+                    if !release.summary.isEmpty {
+                        Text(release.summary)
+                            .font(.system(size: 13, design: .rounded))
+                            .foregroundStyle(DevTheme.mist)
+                            .lineLimit(3)
+                            .multilineTextAlignment(.leading)
+                    }
+                    Text(release.target)
+                        .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(DevTheme.dim)
+
+                    pipelineStrip(release.pipeline)
+
+                    if let updated = release.updatedAt {
+                        Text(updated.formatted(date: .abbreviated, time: .shortened))
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(DevTheme.dim)
+                    }
                 }
-                Spacer()
-                Text(release.statusLabel)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(statusColor(release.status))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            if !release.summary.isEmpty {
-                Text(release.summary)
-                    .font(.system(size: 13, design: .rounded))
-                    .foregroundStyle(DevTheme.mist)
-                    .lineLimit(3)
-            }
-            Text(release.target)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(DevTheme.dim)
-
-            pipelineStrip(release.pipeline)
-
-            if let updated = release.updatedAt {
-                Text(updated.formatted(date: .abbreviated, time: .shortened))
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(DevTheme.dim)
-            }
+            .buttonStyle(.plain)
 
             if release.canApprove || release.canReject {
                 HStack(spacing: 10) {

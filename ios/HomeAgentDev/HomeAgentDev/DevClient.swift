@@ -339,6 +339,28 @@ enum DevClient {
         return parsed
     }
 
+    static func fetchRelease(
+        brainURL: String,
+        token: String,
+        releaseId: Int
+    ) async throws -> DeployRelease {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/releases/\(releaseId)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 25
+        applyAuth(&request, token: token)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let parsed = try JSONDecoder().decode(DeployReleaseDetailResponse.self, from: data)
+        if parsed.ok == false {
+            throw DevClientError.server(parsed.error ?? "加载流水线详情失败")
+        }
+        guard let release = parsed.release else {
+            throw DevClientError.server("release not found")
+        }
+        return release
+    }
+
     static func approveRelease(
         brainURL: String,
         token: String,

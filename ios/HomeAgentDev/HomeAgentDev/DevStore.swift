@@ -327,28 +327,26 @@ final class DevStore: ObservableObject {
         }
     }
 
-    func approveDeployRelease(releaseId: Int, note: String = "") async {
-        isApprovingDeploy = true
-        defer { isApprovingDeploy = false }
+    /// Refresh one release for the detail page. On failure returns `seed` so UI can still show cached list data.
+    func loadDeployRelease(releaseId: Int, seed: DeployRelease? = nil) async -> (DeployRelease?, String?) {
         do {
-            _ = try await DevClient.approveRelease(
+            let release = try await DevClient.fetchRelease(
                 brainURL: activeBrainURL,
                 token: DevSettings.adminToken,
-                releaseId: releaseId,
-                note: note
+                releaseId: releaseId
             )
-            deployError = nil
-            await loadDeploy(showSpinner: false)
+            return (release, nil)
         } catch {
-            deployError = error.localizedDescription
+            return (seed, error.localizedDescription)
         }
     }
 
-    func rejectDeployRelease(releaseId: Int, note: String = "") async {
+    @discardableResult
+    func approveDeployRelease(releaseId: Int, note: String = "") async -> DeployRelease? {
         isApprovingDeploy = true
         defer { isApprovingDeploy = false }
         do {
-            _ = try await DevClient.rejectRelease(
+            let resp = try await DevClient.approveRelease(
                 brainURL: activeBrainURL,
                 token: DevSettings.adminToken,
                 releaseId: releaseId,
@@ -356,8 +354,30 @@ final class DevStore: ObservableObject {
             )
             deployError = nil
             await loadDeploy(showSpinner: false)
+            return resp.release ?? deploySnapshot?.releases.first(where: { $0.releaseId == releaseId })
         } catch {
             deployError = error.localizedDescription
+            return nil
+        }
+    }
+
+    @discardableResult
+    func rejectDeployRelease(releaseId: Int, note: String = "") async -> DeployRelease? {
+        isApprovingDeploy = true
+        defer { isApprovingDeploy = false }
+        do {
+            let resp = try await DevClient.rejectRelease(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken,
+                releaseId: releaseId,
+                note: note
+            )
+            deployError = nil
+            await loadDeploy(showSpinner: false)
+            return resp.release ?? deploySnapshot?.releases.first(where: { $0.releaseId == releaseId })
+        } catch {
+            deployError = error.localizedDescription
+            return nil
         }
     }
 
