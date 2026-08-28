@@ -1,4 +1,4 @@
-"""Notify open Cursor sessions via Agent Chatbox."""
+"""Notify controller IDE via Agent Chatbox."""
 
 from __future__ import annotations
 
@@ -18,9 +18,11 @@ except ImportError:  # pragma: no cover
     push_msg = None  # type: ignore
 
 
-def notify_dev_task(
+def notify_fleet(
     event: str,
     *,
+    handle: str = "controller",
+    tag: str = "fleet",
     run_id: str = "",
     intent_id: str = "",
     text: str = "",
@@ -29,7 +31,7 @@ def notify_dev_task(
 ) -> None:
     if push_msg is None:
         return
-    parts = ["@controller", "[dev-task]", event]
+    parts = ["@controller", f"[{tag}]", f"event={event}", f"handle={handle}"]
     if intent_id:
         parts.append(f"intent={intent_id}")
     if run_id:
@@ -44,3 +46,25 @@ def notify_dev_task(
     ok = push_msg("agent-bridge", body)
     if not ok:
         log.debug("chat notify skipped (chat server unreachable)")
+
+
+def notify_dev_task(
+    event: str,
+    *,
+    handle: str = "controller",
+    run_id: str = "",
+    intent_id: str = "",
+    text: str = "",
+    detail: str = "",
+    status: str = "",
+) -> None:
+    notify_fleet(
+        event,
+        handle=handle,
+        tag="dev-task",
+        run_id=run_id,
+        intent_id=intent_id,
+        text=text,
+        detail=detail,
+        status=status,
+    )

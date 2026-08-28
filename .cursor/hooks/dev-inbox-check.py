@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cursor hook: pull @controller [dev-task] messages and optionally wake the agent."""
+"""Cursor hook: pull @controller [dev-task] / [fleet] messages and optionally wake the agent."""
 
 from __future__ import annotations
 
@@ -54,24 +54,32 @@ def main() -> None:
     messages = data.get("messages") or []
     last_id = int(data.get("last_id") or since_id)
     lines: list[str] = []
+    fleet_done: list[str] = []
     for msg in messages:
         if not isinstance(msg, dict):
             continue
         body = str(msg.get("body") or "").strip()
-        if "[dev-task]" not in body:
+        if "[dev-task]" in body:
+            sender = str(msg.get("from") or msg.get("from_handle") or "").strip()
+            lines.append(f"- [{sender}] {body}")
             continue
-        sender = str(msg.get("from") or msg.get("from_handle") or "").strip()
-        lines.append(f"- [{sender}] {body}")
+        if "[fleet]" not in body:
+            continue
+        if "event=finished" in body or "event=failed" in body:
+            sender = str(msg.get("from") or msg.get("from_handle") or "").strip()
+            fleet_done.append(f"- [{sender}] {body}")
 
     _save_since(last_id)
+    if fleet_done:
+        lines.extend(fleet_done)
     if not lines:
         print("{}")
         return
 
     summary = "\n".join(lines)
     followup = (
-        "手机下发了开发任务，Agent Chatbox 有新进度。请阅读并简短同步给用户，"
-        "必要时在 smart_home_control 仓库里继续跟进：\n\n"
+        "Agent Chatbox 有新进度（dev-task 或 fleet 终态）。请阅读并简短同步给用户，"
+        "必要时在 smart_home_control 仓库里继续跟进或 wake 对应 Fleet handle：\n\n"
         f"{summary}"
     )
     print(json.dumps({"followup_message": followup}, ensure_ascii=False))

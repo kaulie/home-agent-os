@@ -23,7 +23,8 @@ open ios/HomeAgentDev/HomeAgentDev.xcodeproj
 | Tab | 做什么 |
 |-----|--------|
 | **Issue** | User Console 经 Debug Gateway 上报的问题；每 3 秒刷新进行中 Issue |
-| **Dev Task** | agent-bridge 开发任务列表 + 手动下发 |
+| **Dev Task** | agent-bridge 开发任务列表 + 手动下发（可指定 `target_handle`） |
+| **Fleet** | Agent Fleet 状态：各 handle 在线/运行中、最近 run、一键唤醒 |
 | **统计** | Dev Task token 消耗总览、按类别拆分、最近计量任务 |
 | **连接** | Brain URL + 管理员令牌 |
 
@@ -43,6 +44,8 @@ open ios/HomeAgentDev/HomeAgentDev.xcodeproj
 - `GET /api/v1/admin/dev_tasks`
 - `GET /api/v1/admin/dev_task/<task_id>`
 - `GET /api/v1/admin/dev_task/usage?days=7`
+- `GET /api/v1/admin/agent_fleet` — Fleet 状态（经 Brain 代理本机 bridge）
+- `POST /api/v1/admin/agent_fleet/<handle>/wake` — 唤醒 Fleet worker
 - 可选头 `X-Admin-Token`
 
 Mac 需运行 **agent-bridge**（`cd agent-bridge && ./run.sh`）。

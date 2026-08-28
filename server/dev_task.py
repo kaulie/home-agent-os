@@ -151,6 +151,7 @@ def task_to_api_view(task: AgentTask | dict[str, Any]) -> dict[str, Any]:
             "bridge_run_id": row.get("bridge_run_id") or "",
             "bridge_url": row.get("bridge_url") or "",
             "bridge_status": row.get("bridge_status") or "",
+            "target_handle": row.get("target_handle") or "",
             "queue_depth": row.get("queue_depth"),
             "events": row.get("events") or [],
             "result": result or None,
@@ -168,8 +169,11 @@ def submit_agent_task(
     thread_id: int | None = None,
     category: str | None = None,
     attachments: list[dict[str, str]] | None = None,
+    target_handle: str | None = None,
+    suggested_handle: str | None = None,
 ) -> dict[str, Any]:
     """Create an agent task and forward it to agent-bridge."""
+    fleet_handle = bridge.normalize_fleet_handle(target_handle or suggested_handle)
     store = get_store()
     normalized_attachments = normalize_dev_task_attachments(attachments)
     trimmed_text = str(text or "").strip()
@@ -219,6 +223,7 @@ def submit_agent_task(
             agent_text,
             attachments=normalized_attachments,
             task_id=task.task_id,
+            target_handle=fleet_handle,
         )
     except bridge.AgentBridgeError as err:
         log.warning("agent_task submit failed task=%s: %s", task.task_id, err)
@@ -236,6 +241,7 @@ def submit_agent_task(
         bridge_url=bridge.bridge_base_url(),
         bridge_status=bridge_status,
         queue_depth=queue_depth,
+        target_handle=fleet_handle or str(accepted.get("target_handle") or accepted.get("handle") or ""),
         status="running" if bridge_status == "running" else "queued",
     )
     store.append_status(

@@ -34,9 +34,14 @@ class MentionTests(unittest.TestCase):
 
     def test_specific_handles(self) -> None:
         self.assertEqual(parse_mentions("@brain 去看 intent 71"), ["brain"])
-        self.assertEqual(parse_mentions("@brain @intent 两步"), ["brain", "intent"])
+        self.assertEqual(parse_mentions("@brain @intent 两步"), ["brain", "ui"])
+        self.assertEqual(parse_mentions("@brain @endpoint Cast"), ["brain", "ui"])
         self.assertEqual(parse_mentions("@dev 非法"), [])
         self.assertEqual(parse_mentions("@observer 也算 coordinator"), ["coordinator"])
+
+    def test_handle_aliases(self) -> None:
+        self.assertEqual(normalize_handle("intent"), "ui")
+        self.assertEqual(normalize_handle("endpoint"), "ui")
 
     def test_all_wins_over_specific(self) -> None:
         self.assertEqual(parse_mentions("@brain @all 全员"), ["all"])
@@ -55,7 +60,8 @@ class MentionTests(unittest.TestCase):
         self.assertEqual(recipients_for("owner", []), ["boss"])
         self.assertEqual(recipients_for("boss", ["brain"]), ["brain"])
         self.assertEqual(recipients_for("boss", ["all"]), [
-            "coordinator", "brain", "runtime", "intent", "capability", "endpoint", "quality", "dba",
+            "coordinator", "controller", "brain", "runtime", "ui",
+            "capability", "quality", "deploy", "sre", "dba",
         ])
         recips = recipients_for("brain", ["all"])
         self.assertIn("boss", recips)
@@ -92,7 +98,11 @@ class DbPullTests(unittest.TestCase):
 
     def test_all_visible_to_every_handle(self) -> None:
         db.push_message(from_handle="boss", body="@all 对齐 Asset")
-        for handle in ("coordinator", "brain", "runtime", "intent", "capability", "endpoint", "quality", "dba"):
+        fleet_handles = (
+            "coordinator", "controller", "brain", "runtime", "ui",
+            "capability", "quality", "deploy", "sre", "dba",
+        )
+        for handle in fleet_handles:
             db.reset(path=Path(self.tmp.name) / "agent_chat.sqlite3")
             pulled = db.pull_messages(handle=handle)
             self.assertEqual(len(pulled["messages"]), 1, handle)

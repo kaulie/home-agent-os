@@ -30,6 +30,7 @@ class AgentTask:
     bridge_run_id: str = ""
     bridge_url: str = ""
     bridge_status: str = "queued"
+    target_handle: str = ""
     queue_depth: int | None = None
     events: list[dict[str, Any]] = field(default_factory=list)
     result: str = ""
@@ -55,6 +56,7 @@ class AgentTask:
             bridge_run_id=str(row.get("bridge_run_id") or ""),
             bridge_url=str(row.get("bridge_url") or ""),
             bridge_status=str(row.get("bridge_status") or ""),
+            target_handle=str(row.get("target_handle") or ""),
             queue_depth=row.get("queue_depth"),
             events=list(row.get("events") or []),
             result=str(row.get("result") or ""),

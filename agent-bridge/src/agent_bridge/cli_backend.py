@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import subprocess
 import time
 from typing import Any
@@ -11,6 +10,8 @@ from agent_bridge.cancel import clear_run, is_cancelled, register_proc
 from agent_bridge.token_usage import normalize_token_usage
 from agent_bridge.chat_notify import notify_dev_task
 from agent_bridge.config import BridgeConfig
+from agent_bridge.fleet_handles import DEFAULT_HANDLE
+from agent_bridge.fleet_state import FleetStateStore
 from agent_bridge.session_utils import is_stale_session_error
 from agent_bridge.state import StateStore
 
@@ -18,8 +19,9 @@ log = logging.getLogger(__name__)
 
 
 def _cli_env() -> dict[str, str]:
+    import os
+
     env = os.environ.copy()
-    # Invalid CURSOR_API_KEY blocks cursor-agent login auth.
     env.pop("CURSOR_API_KEY", None)
     return env
 
@@ -40,6 +42,8 @@ def _run_cli_process(
     *,
     config: BridgeConfig,
     store: StateStore,
+    fleet: FleetStateStore,
+    handle: str,
     text: str,
     session_id: str | None,
 ) -> tuple[str, str, bool, int]:
@@ -60,7 +64,7 @@ def _run_cli_process(
     if session_id:
         cmd.extend(["--resume", session_id])
 
-    log.info("cli run %s via %s (resume=%s)", run_id, bin_path, bool(session_id))
+    log.info("cli run %s handle=%s via %s (resume=%s)", run_id, handle, bin_path, bool(session_id))
     proc = subprocess.Popen(
         cmd,
         cwd=str(config.cwd),
@@ -87,7 +91,7 @@ def _run_cli_process(
 
             session = event.get("session_id")
             if isinstance(session, str) and session:
-                store.set_agent_id(session)
+                fleet.set_agent_id(handle, session)
                 store.update_run(run_id, agent_id=session)
 
             event_type = event.get("type")
@@ -104,6 +108,7 @@ def _run_cli_process(
                     store.append_event(run_id, payload)
                     notify_dev_task(
                         "progress",
+                        handle=handle,
                         run_id=run_id,
                         detail=text_chunk[:400],
                         status="running",
@@ -134,16 +139,20 @@ def execute_cli_run(
     *,
     config: BridgeConfig,
     store: StateStore,
+    fleet: FleetStateStore,
 ) -> None:
     record = store.get_run(run_id)
     if record is None:
         return
 
-    session_id = store.get_agent_id()
+    handle = record.target_handle or DEFAULT_HANDLE
+    session_id = fleet.get_agent_id(handle)
     final_result, final_error, was_cancelled, _exit_code = _run_cli_process(
         run_id,
         config=config,
         store=store,
+        fleet=fleet,
+        handle=handle,
         text=record.text,
         session_id=session_id,
     )
@@ -155,14 +164,17 @@ def execute_cli_run(
         and is_stale_session_error(final_error)
     ):
         log.warning(
-            "cli resume failed for session %s, retrying with a fresh session",
+            "cli resume failed for session %s handle=%s, retrying fresh",
             session_id,
+            handle,
         )
-        store.set_agent_id(None)
+        fleet.set_agent_id(handle, None)
         final_result, final_error, was_cancelled, _exit_code = _run_cli_process(
             run_id,
             config=config,
             store=store,
+            fleet=fleet,
+            handle=handle,
             text=record.text,
             session_id=None,
         )
@@ -170,6 +182,7 @@ def execute_cli_run(
     if was_cancelled:
         notify_dev_task(
             "cancelled",
+            handle=handle,
             run_id=run_id,
             status="cancelled",
             detail="cancelled by user",
@@ -186,6 +199,7 @@ def execute_cli_run(
     if final_error:
         notify_dev_task(
             "failed",
+            handle=handle,
             run_id=run_id,
             status="error",
             detail=final_error[:400],
@@ -201,6 +215,7 @@ def execute_cli_run(
 
     notify_dev_task(
         "finished",
+        handle=handle,
         run_id=run_id,
         status="finished",
         detail=final_result[:400],

@@ -5,6 +5,7 @@ import signal
 import sys
 
 from agent_bridge.config import load_config
+from agent_bridge.fleet_state import FleetStateStore
 from agent_bridge.runner import AgentRunner
 from agent_bridge.server import create_app
 from agent_bridge.state import StateStore
@@ -23,10 +24,11 @@ def main() -> None:
     config.data_dir.mkdir(parents=True, exist_ok=True)
 
     store = StateStore(config.data_dir)
-    runner = AgentRunner(config, store)
+    fleet = FleetStateStore(config.data_dir)
+    runner = AgentRunner(config, store, fleet)
     runner.start()
 
-    app = create_app(config, store, runner)
+    app = create_app(config, store, fleet, runner)
 
     def _shutdown(*_args: object) -> None:
         logging.getLogger(__name__).info("shutting down agent bridge")

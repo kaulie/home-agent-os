@@ -32,9 +32,15 @@ final class DevStore: ObservableObject {
     @Published var statsError: String?
     @Published var isLoadingStats = false
 
+    @Published private(set) var fleetSnapshot: FleetSnapshot?
+    @Published var fleetError: String?
+    @Published var isLoadingFleet = false
+    @Published var isWakingFleet = false
+
     private var issuesPollTask: Task<Void, Never>?
     private var devTaskPollTask: Task<Void, Never>?
     private var statsPollTask: Task<Void, Never>?
+    private var fleetPollTask: Task<Void, Never>?
     private var issuesNextBeforeId: Int?
     private var devTasksNextBeforeId: Int?
 
@@ -138,6 +144,7 @@ final class DevStore: ObservableObject {
         await loadIssues(reset: true, showSpinner: false)
         await loadDevTasks(reset: true, showSpinner: false)
         await loadStats(showSpinner: false)
+        await loadFleet(showSpinner: false)
     }
 
     private func startPathMonitor() {
@@ -218,6 +225,57 @@ final class DevStore: ObservableObject {
     func stopStatsPolling() {
         statsPollTask?.cancel()
         statsPollTask = nil
+    }
+
+    func startFleetPolling() {
+        stopFleetPolling()
+        fleetPollTask = Task { [weak self] in
+            await self?.resolveBrainEndpoint()
+            await self?.loadFleet(showSpinner: true)
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !Task.isCancelled else { return }
+                await self?.loadFleet(showSpinner: false)
+            }
+        }
+    }
+
+    func stopFleetPolling() {
+        fleetPollTask?.cancel()
+        fleetPollTask = nil
+    }
+
+    func loadFleet(showSpinner: Bool = true) async {
+        if showSpinner && fleetSnapshot == nil {
+            isLoadingFleet = true
+        }
+        defer { isLoadingFleet = false }
+        do {
+            fleetSnapshot = try await DevClient.fetchFleet(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken
+            )
+            fleetError = nil
+        } catch {
+            fleetError = error.localizedDescription
+        }
+    }
+
+    func wakeFleetAgent(handle: String, text: String = "") async {
+        isWakingFleet = true
+        defer { isWakingFleet = false }
+        do {
+            _ = try await DevClient.wakeFleetAgent(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken,
+                handle: handle,
+                text: text
+            )
+            fleetError = nil
+            await loadFleet(showSpinner: false)
+        } catch {
+            fleetError = error.localizedDescription
+        }
     }
 
     func loadStats(showSpinner: Bool = true) async {

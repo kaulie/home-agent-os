@@ -7,9 +7,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from agent_bridge.config import BridgeConfig
+from agent_bridge.fleet_state import FleetStateStore
 from agent_bridge.runner import AgentRunner
 from agent_bridge.server import create_app
 from agent_bridge.state import StateStore
+
+
+def _fleet(tmp: str) -> FleetStateStore:
+    return FleetStateStore(Path(tmp))
 
 
 class StateStoreTests(unittest.TestCase):
@@ -33,6 +38,7 @@ class ServerTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.store = StateStore(Path(self.tmp.name))
+        self.fleet = FleetStateStore(Path(self.tmp.name))
         self.config = BridgeConfig(
             host="127.0.0.1",
             port=9540,
@@ -45,6 +51,7 @@ class ServerTests(unittest.TestCase):
         )
         self.runner = MagicMock()
         self.runner.pending_queue_depth.return_value = 0
+        self.runner.fleet_status = MagicMock(return_value=[])
         self.runner.status.return_value = {
             "agent_id": None,
             "agent_connected": False,
@@ -53,7 +60,7 @@ class ServerTests(unittest.TestCase):
             "cwd": str(self.config.cwd),
             "model": self.config.model,
         }
-        self.app = create_app(self.config, self.store, self.runner)
+        self.app = create_app(self.config, self.store, self.fleet, self.runner)
         self.client = self.app.test_client()
 
     def _auth(self) -> dict[str, str]:
@@ -70,6 +77,23 @@ class ServerTests(unittest.TestCase):
             json={"text": "do something"},
         )
         self.assertEqual(resp.status_code, 401)
+
+    def test_list_agents(self) -> None:
+        self.runner.fleet_status.return_value = [{"handle": "brain", "agent_id": None}]
+        resp = self.client.get("/api/v1/agents", headers=self._auth())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.get_json()["agents"]), 1)
+
+    def test_wake_agent(self) -> None:
+        with patch("agent_bridge.server.wake_handle") as wake:
+            wake.return_value = {"handle": "brain", "run_id": "abc", "status": "queued"}
+            resp = self.client.post(
+                "/api/v1/agents/brain/wake",
+                headers=self._auth(),
+                json={"text": "fix planner"},
+            )
+            self.assertEqual(resp.status_code, 202)
+            wake.assert_called_once()
 
     def test_command_enqueues_run(self) -> None:
         resp = self.client.post(
@@ -131,6 +155,7 @@ class RunnerTests(unittest.TestCase):
                 auth_token=None,
                 cursor_agent_bin=None,
             )
+            fleet = _fleet(tmp)
             run = store.create_run("say hi")
 
             agent = MagicMock()
@@ -151,14 +176,14 @@ class RunnerTests(unittest.TestCase):
             )
             agent.send.return_value = sdk_run
 
-            runner = AgentRunner(config, store)
+            runner = AgentRunner(config, store, fleet)
             runner._execute_run(run.run_id)
 
             got = store.get_run(run.run_id)
             assert got is not None
             self.assertEqual(got.status, "finished")
             self.assertEqual(got.result, "done")
-            self.assertEqual(store.get_agent_id(), "agent-42")
+            self.assertEqual(fleet.get_agent_id("controller"), "agent-42")
             self.assertTrue(any(e.get("type") == "assistant" for e in got.events))
 
 
@@ -176,7 +201,8 @@ class RunnerCancelTests(unittest.TestCase):
                 auth_token=None,
                 cursor_agent_bin=None,
             )
-            runner = AgentRunner(config, store)
+            fleet = _fleet(tmp)
+            runner = AgentRunner(config, store, fleet)
             run = store.create_run("queued")
             runner.enqueue(run.run_id)
             result = runner.cancel_run(run.run_id)
@@ -199,8 +225,9 @@ class RunnerCancelTests(unittest.TestCase):
                 auth_token="secret",
                 cursor_agent_bin=None,
             )
-            runner = AgentRunner(config, store)
-            app = create_app(config, store, runner)
+            fleet = _fleet(tmp)
+            runner = AgentRunner(config, store, fleet)
+            app = create_app(config, store, fleet, runner)
             client = app.test_client()
             runner.start()
             try:
@@ -239,6 +266,7 @@ class CliBackendTests(unittest.TestCase):
                 auth_token=None,
                 cursor_agent_bin="/usr/bin/cursor-agent",
             )
+            fleet = _fleet(tmp)
             run = store.create_run("say hi")
 
             proc = MagicMock()
@@ -282,20 +310,21 @@ class CliBackendTests(unittest.TestCase):
 
             from agent_bridge.cli_backend import execute_cli_run
 
-            execute_cli_run(run.run_id, config=config, store=store)
+            execute_cli_run(run.run_id, config=config, store=store, fleet=fleet)
 
             got = store.get_run(run.run_id)
             assert got is not None
             self.assertEqual(got.status, "finished")
             self.assertEqual(got.result, "hello")
             self.assertEqual(got.usage.get("total_tokens"), 120)
-            self.assertEqual(store.get_agent_id(), "sess-1")
+            self.assertEqual(fleet.get_agent_id("controller"), "sess-1")
 
     @patch("agent_bridge.cli_backend.subprocess.Popen")
     def test_execute_cli_run_retries_when_resume_session_missing(self, popen_cls: MagicMock) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = StateStore(Path(tmp))
-            store.set_agent_id("stale-session")
+            fleet = _fleet(tmp)
+            fleet.set_agent_id("controller", "stale-session")
             config = BridgeConfig(
                 host="127.0.0.1",
                 port=9540,
@@ -335,13 +364,13 @@ class CliBackendTests(unittest.TestCase):
 
             from agent_bridge.cli_backend import execute_cli_run
 
-            execute_cli_run(run.run_id, config=config, store=store)
+            execute_cli_run(run.run_id, config=config, store=store, fleet=fleet)
 
             got = store.get_run(run.run_id)
             assert got is not None
             self.assertEqual(got.status, "finished")
             self.assertEqual(got.result, "ok")
-            self.assertEqual(store.get_agent_id(), "sess-2")
+            self.assertEqual(fleet.get_agent_id("controller"), "sess-2")
             self.assertEqual(popen_cls.call_count, 2)
 
 
@@ -362,7 +391,8 @@ class RunnerRecoveryTests(unittest.TestCase):
                 auth_token=None,
                 cursor_agent_bin="/usr/bin/cursor-agent",
             )
-            runner = AgentRunner(config, store)
+            fleet = _fleet(tmp)
+            runner = AgentRunner(config, store, fleet)
             runner._recover_after_restart()
             got_running = store.get_run(running.run_id)
             got_queued = store.get_run(queued.run_id)
@@ -388,7 +418,8 @@ class RunnerQueueTests(unittest.TestCase):
                 auth_token=None,
                 cursor_agent_bin=None,
             )
-            runner = AgentRunner(config, store)
+            fleet = _fleet(tmp)
+            runner = AgentRunner(config, store, fleet)
             order: list[str] = []
 
             def fake_execute(run_id: str) -> None:

@@ -9,6 +9,7 @@ struct RootTabView: View {
     enum DevTab: Hashable {
         case issues
         case tasks
+        case fleet
         case stats
         case connection
     }
@@ -26,6 +27,12 @@ struct RootTabView: View {
                     Label("Dev Task", systemImage: "terminal")
                 }
                 .tag(DevTab.tasks)
+
+            FleetConsoleView()
+                .tabItem {
+                    Label("Fleet", systemImage: "person.3")
+                }
+                .tag(DevTab.fleet)
 
             DevStatsView()
                 .tabItem {
@@ -53,6 +60,7 @@ struct RootTabView: View {
         .onDisappear {
             store.stopIssuesPolling()
             store.stopDevTaskPolling()
+            store.stopFleetPolling()
             store.stopStatsPolling()
         }
     }
@@ -60,6 +68,7 @@ struct RootTabView: View {
     private func syncPolling(phase: ScenePhase, tab: DevTab) {
         store.stopIssuesPolling()
         store.stopDevTaskPolling()
+        store.stopFleetPolling()
         store.stopStatsPolling()
         guard phase == .active else { return }
         switch tab {
@@ -67,6 +76,8 @@ struct RootTabView: View {
             store.startIssuesPolling()
         case .tasks:
             store.startDevTaskPolling()
+        case .fleet:
+            store.startFleetPolling()
         case .stats:
             store.startStatsPolling()
         case .connection:

@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from agent_bridge.fleet_handles import DEFAULT_HANDLE
+
 RunStatus = Literal["queued", "running", "finished", "error", "cancelled"]
 
 
@@ -26,6 +28,7 @@ class RunRecord:
     usage: dict[str, Any] = field(default_factory=dict)
     attachments: list[dict[str, str]] = field(default_factory=list)
     task_id: int | None = None
+    target_handle: str = DEFAULT_HANDLE
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -63,6 +66,7 @@ class BridgeState:
                     usage=dict(row.get("usage") or {}),
                     attachments=list(row.get("attachments") or []),
                     task_id=row.get("task_id"),
+                    target_handle=str(row.get("target_handle") or DEFAULT_HANDLE),
                 )
             )
         return cls(agent_id=data.get("agent_id"), runs=runs)
@@ -114,12 +118,14 @@ class StateStore:
         *,
         attachments: list[dict[str, str]] | None = None,
         task_id: int | None = None,
+        target_handle: str = DEFAULT_HANDLE,
     ) -> RunRecord:
         run = RunRecord(
             run_id=uuid.uuid4().hex,
             text=text,
             attachments=list(attachments or []),
             task_id=task_id,
+            target_handle=target_handle,
         )
         with self._lock:
             self._state.runs.append(run)
@@ -167,6 +173,13 @@ class StateStore:
         with self._lock:
             for run in reversed(self._state.runs):
                 if run.status == "running":
+                    return RunRecord(**run.to_dict())
+            return None
+
+    def running_run_for_handle(self, handle: str) -> RunRecord | None:
+        with self._lock:
+            for run in reversed(self._state.runs):
+                if run.status == "running" and run.target_handle == handle:
                     return RunRecord(**run.to_dict())
             return None
 

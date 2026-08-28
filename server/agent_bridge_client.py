@@ -78,12 +78,16 @@ def submit_command(
     *,
     attachments: list[dict[str, str]] | None = None,
     task_id: int | None = None,
+    target_handle: str | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"text": text}
     if attachments:
         body["attachments"] = attachments
     if task_id is not None:
         body["task_id"] = task_id
+    handle = normalize_fleet_handle(target_handle)
+    if handle:
+        body["target_handle"] = handle
     payload = _request("POST", "/api/v1/command", body=body)
     run_id = str(payload.get("run_id") or "").strip()
     if not run_id:
@@ -107,3 +111,50 @@ def cancel_run(run_id: str) -> dict[str, Any]:
 
 def bridge_status() -> dict[str, Any]:
     return _request("GET", "/api/v1/status")
+
+
+FLEET_HANDLES: tuple[str, ...] = (
+    "coordinator",
+    "controller",
+    "brain",
+    "runtime",
+    "ui",
+    "capability",
+    "quality",
+    "deploy",
+    "sre",
+    "dba",
+)
+
+_HANDLE_ALIASES: dict[str, str] = {
+    "intent": "ui",
+    "endpoint": "ui",
+    "observer": "coordinator",
+}
+
+
+def normalize_fleet_handle(raw: str | None) -> str | None:
+    key = (raw or "").strip().lower().lstrip("@")
+    if not key:
+        return None
+    mapped = _HANDLE_ALIASES.get(key, key)
+    if mapped in FLEET_HANDLES:
+        return mapped
+    return None
+
+
+def list_agents() -> dict[str, Any]:
+    return _request("GET", "/api/v1/agents")
+
+
+def wake_agent(handle: str, *, text: str = "", pull_chat: bool = False) -> dict[str, Any]:
+    normalized = normalize_fleet_handle(handle)
+    if normalized is None:
+        raise AgentBridgeError(f"unknown fleet handle: {handle}")
+    body: dict[str, Any] = {"text": text, "pull_chat": pull_chat}
+    return _request("POST", f"/api/v1/agents/{normalized}/wake", body=body)
+
+
+def list_runs(*, limit: int = 20) -> dict[str, Any]:
+    lim = max(1, min(int(limit), 100))
+    return _request("GET", f"/api/v1/runs?limit={lim}")

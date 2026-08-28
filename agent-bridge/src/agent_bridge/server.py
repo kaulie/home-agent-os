@@ -7,13 +7,21 @@ from typing import Any, Callable
 from flask import Flask, jsonify, request
 
 from agent_bridge.config import BridgeConfig
+from agent_bridge.fleet_handles import normalize_fleet_handle
+from agent_bridge.fleet_state import FleetStateStore
 from agent_bridge.runner import AgentRunner
 from agent_bridge.state import StateStore
+from agent_bridge.wake import wake_handle
 
 log = logging.getLogger(__name__)
 
 
-def create_app(config: BridgeConfig, store: StateStore, runner: AgentRunner) -> Flask:
+def create_app(
+    config: BridgeConfig,
+    store: StateStore,
+    fleet: FleetStateStore,
+    runner: AgentRunner,
+) -> Flask:
     app = Flask(__name__)
 
     def require_auth(handler: Callable[..., Any]) -> Callable[..., Any]:
@@ -36,6 +44,36 @@ def create_app(config: BridgeConfig, store: StateStore, runner: AgentRunner) -> 
     @require_auth
     def status() -> Any:
         return jsonify(runner.status())
+
+    @app.get("/api/v1/agents")
+    @require_auth
+    def list_agents() -> Any:
+        return jsonify({"agents": runner.fleet_status()})
+
+    @app.post("/api/v1/agents/<handle>/wake")
+    @require_auth
+    def wake_agent(handle: str) -> Any:
+        normalized = normalize_fleet_handle(handle)
+        if normalized is None:
+            return jsonify({"error": f"unknown handle: {handle}"}), 400
+        if not config.can_run():
+            return jsonify({"error": "agent backend is not configured"}), 503
+
+        body = request.get_json(silent=True) or {}
+        task_text = str(body.get("text") or body.get("task") or "").strip()
+        pull_chat = bool(body.get("pull_chat", True))
+        try:
+            result = wake_handle(
+                normalized,
+                store=store,
+                fleet=fleet,
+                runner=runner,
+                task_text=task_text,
+                pull_chat=pull_chat,
+            )
+        except ValueError as err:
+            return jsonify({"error": str(err)}), 400
+        return jsonify(result), 202
 
     @app.post("/api/v1/command")
     @require_auth
@@ -68,13 +106,38 @@ def create_app(config: BridgeConfig, store: StateStore, runner: AgentRunner) -> 
                 task_id = int(task_id_raw)
             except (TypeError, ValueError):
                 return jsonify({"error": "task_id must be an integer"}), 400
+
+        target_raw = body.get("target_handle") or body.get("handle")
+        target_handle = normalize_fleet_handle(str(target_raw) if target_raw else None)
+
         if not text and not attachments:
             return jsonify({"error": "text or attachments required"}), 400
 
         if not config.can_run():
             return jsonify({"error": "agent backend is not configured"}), 503
 
-        run = store.create_run(text, attachments=attachments, task_id=task_id)
+        if target_handle and (text or attachments):
+            try:
+                result = wake_handle(
+                    target_handle,
+                    store=store,
+                    fleet=fleet,
+                    runner=runner,
+                    task_text=text,
+                    pull_chat=bool(body.get("pull_chat", False)),
+                    attachments=attachments or None,
+                    task_id=task_id,
+                )
+            except ValueError as err:
+                return jsonify({"error": str(err)}), 400
+            return jsonify(result), 202
+
+        run = store.create_run(
+            text,
+            attachments=attachments,
+            task_id=task_id,
+            target_handle=target_handle or "controller",
+        )
         runner.enqueue(run.run_id)
         queue_depth = runner.pending_queue_depth()
         return (
@@ -83,6 +146,7 @@ def create_app(config: BridgeConfig, store: StateStore, runner: AgentRunner) -> 
                     "run_id": run.run_id,
                     "status": run.status,
                     "text": run.text,
+                    "target_handle": run.target_handle,
                     "queue_depth": queue_depth,
                 }
             ),

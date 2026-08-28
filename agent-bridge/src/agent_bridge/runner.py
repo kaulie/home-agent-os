@@ -12,6 +12,8 @@ from agent_bridge.cancel import clear_run, is_cancelled, mark_cancelled
 from agent_bridge.chat_notify import notify_dev_task
 from agent_bridge.cli_backend import execute_cli_run
 from agent_bridge.config import BridgeConfig
+from agent_bridge.fleet_handles import DEFAULT_HANDLE, FLEET_HANDLES
+from agent_bridge.fleet_state import FleetStateStore
 from agent_bridge.state import RunRecord, StateStore
 
 from agent_bridge.session_utils import is_agent_not_found
@@ -36,25 +38,31 @@ def _sdk_message_event(message: Any) -> dict[str, Any] | None:
 
 
 class AgentRunner:
-    """Owns the Cursor SDK agent lifecycle and serializes run execution."""
+    """Owns Cursor agent lifecycle; one session pool per Fleet handle (CLI or SDK)."""
 
-    def __init__(self, config: BridgeConfig, store: StateStore) -> None:
+    def __init__(
+        self,
+        config: BridgeConfig,
+        store: StateStore,
+        fleet: FleetStateStore,
+    ) -> None:
         self._config = config
         self._store = store
-        self._agent: Agent | None = None
+        self._fleet = fleet
+        self._agents: dict[str, Agent] = {}
         self._agent_lock = threading.Lock()
         self._run_lock = threading.Lock()
         self._worker = threading.Thread(target=self._worker_loop, daemon=True)
         self._queue: list[str] = []
         self._queue_cv = threading.Condition()
         self._shutdown = False
+        self._fleet.migrate_legacy_agent_id(self._store.get_agent_id())
 
     def start(self) -> None:
         self._recover_after_restart()
         self._worker.start()
 
     def _recover_after_restart(self) -> None:
-        """Mark orphaned in-flight runs and re-queue persisted queued runs."""
         snapshot = self._store.snapshot()
         requeue: list[str] = []
         for run in snapshot.runs:
@@ -65,6 +73,7 @@ class AgentRunner:
                 )
                 notify_dev_task(
                     "failed",
+                    handle=run.target_handle,
                     run_id=run.run_id,
                     status="error",
                     detail="bridge restarted while run was active",
@@ -86,7 +95,7 @@ class AgentRunner:
             self._shutdown = True
             self._queue_cv.notify_all()
         self._worker.join(timeout=5)
-        self._close_agent()
+        self._close_all_agents()
 
     def enqueue(self, run_id: str) -> None:
         with self._queue_cv:
@@ -121,6 +130,7 @@ class AgentRunner:
             if current is not None and current.status == "queued":
                 notify_dev_task(
                     "cancelled",
+                    handle=current.target_handle,
                     run_id=run_id,
                     status="cancelled",
                     detail="cancelled by user",
@@ -139,7 +149,7 @@ class AgentRunner:
 
         if status == "running":
             mark_cancelled(run_id)
-            self._close_agent()
+            self._close_all_agents()
             return {
                 "run_id": run_id,
                 "status": "running",
@@ -154,15 +164,29 @@ class AgentRunner:
             "reason": "not_active",
         }
 
+    def fleet_status(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for state in self._fleet.list_handles():
+            running = self._store.running_run_for_handle(state.handle)
+            rows.append(
+                {
+                    "handle": state.handle,
+                    "agent_id": state.agent_id,
+                    "last_wake_at": state.last_wake_at,
+                    "running_run_id": None if running is None else running.run_id,
+                    "running_status": None if running is None else running.status,
+                }
+            )
+        return rows
+
     def status(self) -> dict[str, Any]:
         running = self._store.running_run()
         active = self._store.active_run()
+        controller_id = self._fleet.get_agent_id(DEFAULT_HANDLE)
         return {
-            "agent_id": self._store.get_agent_id(),
-            "agent_connected": self._agent is not None
-            or (
-                self._config.backend == "cli"
-                and self._store.get_agent_id() is not None
+            "agent_id": controller_id,
+            "agent_connected": bool(self._agents) or (
+                self._config.backend == "cli" and controller_id is not None
             ),
             "active_run_id": None if active is None else active.run_id,
             "active_status": None if active is None else active.status,
@@ -172,6 +196,8 @@ class AgentRunner:
             "cwd": str(self._config.cwd),
             "model": self._config.model,
             "backend": self._config.backend,
+            "fleet_handles": list(FLEET_HANDLES),
+            "agents": self.fleet_status(),
         }
 
     def _worker_loop(self) -> None:
@@ -189,6 +215,7 @@ class AgentRunner:
             record = self._store.get_run(run_id)
             if record is None:
                 return
+            handle = record.target_handle or DEFAULT_HANDLE
             self._store.update_run(
                 run_id,
                 status="running",
@@ -196,8 +223,9 @@ class AgentRunner:
             )
             notify_dev_task(
                 "started",
+                handle=handle,
                 run_id=run_id,
-                text=record.text,
+                text=record.text[:200],
                 status="running",
             )
             try:
@@ -206,10 +234,11 @@ class AgentRunner:
                         run_id,
                         config=self._config,
                         store=self._store,
+                        fleet=self._fleet,
                     )
                     return
 
-                agent = self._ensure_agent()
+                agent = self._ensure_agent(handle)
                 prompt_text = record.text
                 if record.attachments:
                     prompt_text, _paths = materialize_dev_task_attachments(
@@ -222,7 +251,7 @@ class AgentRunner:
                     )
                 run = agent.send(prompt_text)
                 self._store.update_run(run_id, agent_id=agent.agent_id)
-                self._store.set_agent_id(agent.agent_id)
+                self._fleet.set_agent_id(handle, agent.agent_id)
 
                 for message in run.messages():
                     if is_cancelled(run_id):
@@ -233,6 +262,7 @@ class AgentRunner:
                         if event.get("type") == "assistant" and event.get("text"):
                             notify_dev_task(
                                 "progress",
+                                handle=handle,
                                 run_id=run_id,
                                 detail=str(event.get("text") or "")[:400],
                                 status="running",
@@ -241,6 +271,7 @@ class AgentRunner:
                 if is_cancelled(run_id):
                     notify_dev_task(
                         "cancelled",
+                        handle=handle,
                         run_id=run_id,
                         status="cancelled",
                         detail="cancelled by user",
@@ -258,6 +289,7 @@ class AgentRunner:
                 if result.status == "error":
                     notify_dev_task(
                         "failed",
+                        handle=handle,
                         run_id=run_id,
                         status="error",
                         detail=str(result.result or "run failed")[:400],
@@ -272,6 +304,7 @@ class AgentRunner:
                 else:
                     notify_dev_task(
                         "finished",
+                        handle=handle,
                         run_id=run_id,
                         status="finished",
                         detail=str(result.result or "")[:400],
@@ -286,6 +319,7 @@ class AgentRunner:
                 log.exception("cursor startup failed for run %s", run_id)
                 notify_dev_task(
                     "failed",
+                    handle=handle,
                     run_id=run_id,
                     status="error",
                     detail=f"{err.message} (retryable={err.is_retryable})",
@@ -296,9 +330,16 @@ class AgentRunner:
                     finished_at=time.time(),
                     error=f"{err.message} (retryable={err.is_retryable})",
                 )
-                self._close_agent()
-            except Exception as err:  # pragma: no cover - safety net
+                self._close_agent(handle)
+            except Exception as err:  # pragma: no cover
                 log.exception("run %s failed", run_id)
+                notify_dev_task(
+                    "failed",
+                    handle=handle,
+                    run_id=run_id,
+                    status="error",
+                    detail=str(err)[:400],
+                )
                 self._store.update_run(
                     run_id,
                     status="error",
@@ -306,10 +347,11 @@ class AgentRunner:
                     error=str(err),
                 )
 
-    def _ensure_agent(self) -> Agent:
+    def _ensure_agent(self, handle: str) -> Agent:
         with self._agent_lock:
-            if self._agent is not None:
-                return self._agent
+            cached = self._agents.get(handle)
+            if cached is not None:
+                return cached
 
             if not self._config.api_key:
                 raise CursorAgentError(
@@ -322,34 +364,41 @@ class AgentRunner:
                 model=self._config.model,
                 local=LocalAgentOptions(cwd=str(self._config.cwd)),
             )
-            saved_id = self._store.get_agent_id()
+            saved_id = self._fleet.get_agent_id(handle)
             if saved_id:
-                log.info("resuming agent %s", saved_id)
+                log.info("resuming agent %s for handle %s", saved_id, handle)
                 try:
-                    self._agent = Agent.resume(saved_id, options)
+                    agent = Agent.resume(saved_id, options)
                 except CursorAgentError as err:
                     if not is_agent_not_found(err):
                         raise
                     log.warning(
-                        "stale agent %s (%s), creating a new session",
+                        "stale agent %s for %s (%s), creating new session",
                         saved_id,
+                        handle,
                         getattr(err, "message", err),
                     )
-                    self._store.set_agent_id(None)
-                    self._agent = Agent.create(options)
+                    self._fleet.set_agent_id(handle, None)
+                    agent = Agent.create(options)
             else:
-                log.info("creating new local agent in %s", self._config.cwd)
-                self._agent = Agent.create(options)
-            self._store.set_agent_id(self._agent.agent_id)
-            return self._agent
+                log.info("creating new agent for handle %s in %s", handle, self._config.cwd)
+                agent = Agent.create(options)
+            self._fleet.set_agent_id(handle, agent.agent_id)
+            self._agents[handle] = agent
+            return agent
 
-    def _close_agent(self) -> None:
+    def _close_agent(self, handle: str) -> None:
         with self._agent_lock:
-            if self._agent is None:
+            agent = self._agents.pop(handle, None)
+            if agent is None:
                 return
             try:
-                self._agent.close()
+                agent.close()
             except Exception:
-                log.exception("failed to close agent")
-            finally:
-                self._agent = None
+                log.exception("failed to close agent for %s", handle)
+
+    def _close_all_agents(self) -> None:
+        with self._agent_lock:
+            handles = list(self._agents.keys())
+        for handle in handles:
+            self._close_agent(handle)

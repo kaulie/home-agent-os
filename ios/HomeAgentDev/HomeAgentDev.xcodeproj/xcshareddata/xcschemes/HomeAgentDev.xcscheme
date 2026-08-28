@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "0D2205E035804A8EB6CB95E6"
+               BlueprintIdentifier = "9AB8F8761F6F42D2BD1AF1D5"
                BuildableName = "HomeAgentDev.app"
                BlueprintName = "HomeAgentDev"
                ReferencedContainer = "container:HomeAgentDev.xcodeproj">
@@ -43,7 +43,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "0D2205E035804A8EB6CB95E6"
+            BlueprintIdentifier = "9AB8F8761F6F42D2BD1AF1D5"
             BuildableName = "HomeAgentDev.app"
             BlueprintName = "HomeAgentDev"
             ReferencedContainer = "container:HomeAgentDev.xcodeproj">
@@ -60,7 +60,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "0D2205E035804A8EB6CB95E6"
+            BlueprintIdentifier = "9AB8F8761F6F42D2BD1AF1D5"
             BuildableName = "HomeAgentDev.app"
             BlueprintName = "HomeAgentDev"
             ReferencedContainer = "container:HomeAgentDev.xcodeproj">

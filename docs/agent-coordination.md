@@ -23,22 +23,28 @@ http://127.0.0.1:8787/
 
 旧 Markdown 信箱 [`docs/agent-mailbox.md`](agent-mailbox.md) **已停用**，不要再追加、不要再加文件锁。
 
-## 2. Handle
+## 2. Handle 与 Fleet
 
-Cursor **会话标题**必须与下表「全称」一致。对外只写短名 `@handle`。不要用旧称：`intent source dev agent`、`home agent testing agent`、`质检员`、`system observer agent`。
+**运行模式（定稿）：** 只维护 **1 个 Cursor IDE**（标题 `dev controller agent` / `@controller`）。其余 handle 由 **agent-bridge Fleet**（`cursor-agent` CLI）headless 唤醒，每 handle 独立会话状态。名册见 [`docs/agent-roster.md`](agent-roster.md)。
+
+Cursor **会话标题**（Fleet worker 或历史 IDE）须与下表「全称」一致。对外只写短名 `@handle`。不要用已废弃全称：`Intent dev agent`、`endpoint agent`、`intent source dev agent`、`home agent testing agent`、`质检员`、`system observer agent`。
 
 | 全称（会话标题） | handle | 职责 |
 |------|--------|------|
 | system coordinator agent | `@coordinator` | 协调、仲裁、催办、架构/需求/文档汇总、质检看板。不写产品代码。用户交代的越界事项 `@` 到对应 handle。其他 agent 的预期外情况 `@coordinator`。旧称 `@observer` 仅历史信箱有效；chat 里 `@observer` 视为 `@coordinator`。 |
+| dev controller agent | `@controller` | **唯一常驻 IDE**；分析任务、调用 bridge wake Fleet、汇总进度；手机 Dev Task 入口。见 `.cursor/rules/controller-orchestration.mdc`。 |
 | brain agent | `@brain` | 组件注册（Edge `services[]`/`capabilities[]`）；意图 / 事件 / 定时路由；选边、`execution_timing`、每步 `assigned_edge_id`；对外 API。入口 `server/home_brain.py`。规划与控制面。不改 plugin / 发出 UI / 未经点名的 schema。 |
 | runtime dev agent | `@runtime` | 调度 / hydrate / 前序门；失败 `msg` |
-| Intent dev agent | `@intent` | 发出窗口与物流 UI（产品层仍叫 Intent Source，agent 不叫这个） |
-| capability dev agent | `@capability` | Plugin 契约与实现（非 Endpoint 呈现面） |
-| endpoint agent | `@endpoint` | Endpoint 契约与呈现面：Chromecast Receiver / Cast Presentation Protocol、display 投递、Endpoint Registry 对齐。见 [`endpoint-contract.md`](endpoint-contract.md)、[`chromecast-cast-protocol.md`](chromecast-cast-protocol.md)。不改 Brain 规划 / Runtime hydrate（除非点名）。 |
+| UI dev agent | `@ui` | **全部用户交互面**：发出窗口与物流 UI（产品层仍叫 Intent Source）、Endpoint/Cast 呈现、Chromecast Receiver、管理端/Dev 端用户可见 UI。合并原 `@intent` + `@endpoint`。 |
+| capability dev agent | `@capability` | Plugin 契约与实现（非 UI 呈现面） |
 | quality agent | `@quality` | 黑盒：只打对外 API，不改代码 |
+| deploy agent | `@deploy` | 云 Brain 部署（rsync + restart）；见 `cloud-deploy.mdc` |
+| sre agent | `@sre` | 本机/边缘运维、双 Brain、local-rt、架构 runbook |
 | dba agent | `@dba` | schema / SQL。Brain 一期 SQLite：`server/data/brain.sqlite3`。Edge JSON 未经用户点名不要改。 |
 
-未列入上表不得自造 handle。要加人，由 `@coordinator` 改本表并在 chat server 注册。
+**Chatbox 别名：** `@intent` → `@ui`；`@endpoint` → `@ui`。
+
+未列入上表不得自造 handle。要加人，由 `@coordinator` 改本表、`chat/mentions.py` 与 [`docs/agent-roster.md`](agent-roster.md)。
 
 页面发件人是 `@boss`（不是 Cursor handle）。旧称 `@owner` / `@user` 视为 `@boss`。
 
@@ -46,7 +52,7 @@ Cursor **会话标题**必须与下表「全称」一致。对外只写短名 `@
 
 Asset 公约（资源层，未点名不改代码）：[`docs/asset-contract.md`](asset-contract.md)。Capability 传 `asset_id`，不传 path/永久 URL；存储与授权归 Runtime Asset Manager。
 
-产品层「Intent Source」≠ agent 名。agent 是 **Intent dev agent** / `@intent`。
+产品层「Intent Source」≠ agent 名。实现者是 **UI dev agent** / `@ui`（`@intent` 为别名）。
 
 ## 3. 水位
 
@@ -86,21 +92,21 @@ Asset 公约（资源层，未点名不改代码）：[`docs/asset-contract.md`]
 3. 用户未 @ 的笔记不会出现在 pull 结果里，不要处理。
 4. 没有新消息则本轮结束，不要为了「表明还活着」给 `@all` 发空聊。
 
-Cursor 停会话不会被 HTTP 叫醒；用户仍须打开闲置会话。
+Cursor 停会话不会被 HTTP 叫醒；**Fleet worker** 由 agent-bridge `POST /api/v1/agents/{handle}/wake` 唤醒。**Controller IDE** 由 hook（`sessionStart` / `stop`）或用户发消息时 pull `[dev-task]` / `[fleet]` 跟进。
 
 ## 6. 说话
 
 催办、仲裁、派工、回告完成/阻塞，都走 `push_msg`，不要指望对方 Cursor 会话能听到本会话里的话。
 
-`@coordinator` 催办也写成 chat 消息（`@intent` 等），不要只写在质检看板里。
+`@coordinator` 催办也写成 chat 消息（`@ui` 等），不要只写在质检看板里。
 
 用户在 HTML 页面派活：必须 `@` 某个/某几个 agent 或 `@all`，否则无人处理。
 
 ## 7. 处理约定
 
 - 读到发给自己的消息：先回复，再做事；做不了或越层，再 `@` 发件人说明。
-- `@coordinator` 不写产品代码；需要实现时 `@runtime` / `@intent` / `@capability`；需要黑盒时 `@quality`。
-- 用户对 `@coordinator` 说的非协调事项：coordinator `@` 转到对应 handle（plugin→`@capability`；调度/hydrate/前序门/失败 msg→`@runtime`；发出窗口→`@intent`；Endpoint/Cast 呈现/Receiver→`@endpoint`；黑盒 API→`@quality`；规划/选边/入队/Brain API→`@brain`）。
+- `@coordinator` 不写产品代码；需要实现时 `@runtime` / `@ui` / `@capability`；需要黑盒时 `@quality`；部署 `@deploy`；运维 `@sre`。
+- 用户对 `@coordinator` 说的非协调事项：coordinator `@` 转到对应 handle（plugin→`@capability`；调度/hydrate/前序门/失败 msg→`@runtime`；发出窗口 / 物流 UI / Cast / Receiver→`@ui`；黑盒 API→`@quality`；规划/选边/入队/Brain API→`@brain`；云部署→`@deploy`；运维→`@sre`；schema→`@dba`）。
 - 预期外情况 **第一时间** `@coordinator`，由 coordinator 集中仲裁/拆单。不要自行跨层改。
 - `@quality` 只打对外 API。修复须验收：实现方报完工后 `@quality` 请验收；结果写入 `tests/blackbox/`。不得自报结案。
 - 不要在 chat 里贴密钥、`.env`、完整 token。

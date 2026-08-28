@@ -9,17 +9,24 @@ HANDLES: tuple[str, ...] = (
     "controller",
     "brain",
     "runtime",
-    "intent",
+    "ui",
     "capability",
-    "endpoint",
     "quality",
+    "deploy",
+    "sre",
     "dba",
 )
 
 HANDLE_SET = frozenset(HANDLES)
 
 ALL_ALIASES = frozenset({"all", "所有人", "everyone"})
-HANDLE_ALIASES = {"observer": "coordinator", "user": "boss", "owner": "boss"}
+HANDLE_ALIASES = {
+    "observer": "coordinator",
+    "user": "boss",
+    "owner": "boss",
+    "intent": "ui",
+    "endpoint": "ui",
+}
 OWNER = "boss"
 
 SENDERS = HANDLE_SET | {OWNER}
@@ -31,10 +38,11 @@ DISPLAY_NAMES = {
     "controller": "dev controller agent",
     "brain": "brain agent",
     "runtime": "runtime dev agent",
-    "intent": "Intent dev agent",
+    "ui": "UI dev agent",
     "capability": "capability dev agent",
-    "endpoint": "endpoint agent",
     "quality": "quality agent",
+    "deploy": "deploy agent",
+    "sre": "sre agent",
     "dba": "dba agent",
 }
 
@@ -68,7 +76,11 @@ def parse_mentions(body: str) -> list[str]:
         if handle == "all":
             saw_all = True
             continue
-        if handle in SENDERS and handle not in found:
+        if handle == OWNER:
+            if OWNER not in found:
+                found.append(OWNER)
+            continue
+        if handle in HANDLE_SET and handle not in found:
             found.append(handle)
     if saw_all:
         return ["all"]
@@ -107,7 +119,10 @@ def recipients_for(from_handle: str, audience: list[str]) -> list[str]:
     else:
         for item in audience:
             handle = normalize_handle(item)
-            if handle in SENDERS and handle not in recips:
+            if handle == OWNER:
+                if OWNER not in recips:
+                    recips.append(OWNER)
+            elif handle in HANDLE_SET and handle not in recips:
                 recips.append(handle)
     if sender != OWNER and OWNER not in recips:
         recips.append(OWNER)

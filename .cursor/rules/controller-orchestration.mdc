@@ -1,0 +1,69 @@
+---
+description: Dev controller orchestrates Agent Fleet via agent-bridge wake API
+alwaysApply: true
+---
+
+# Controller 编排（单 IDE + Fleet）
+
+本会话标题应为 **dev controller agent**（`@controller`）。你是唯一常驻 IDE；其余 handle 由 **agent-bridge Fleet** headless 执行。
+
+## 服务
+
+```bash
+python3 chat/serve.py          # :8787 Chatbox
+cd agent-bridge && ./run.sh    # :9540 bridge（BRIDGE_AUTH_TOKEN 见 agent-bridge/.env）
+```
+
+## 收到任务时
+
+1. 读 [`docs/agent-coordination.md`](docs/agent-coordination.md) 与 [`docs/agent-roster.md`](docs/agent-roster.md)。
+2. `GET /api/v1/pull_msg?handle=controller` — 处理 `[dev-task]` 与 `[fleet]` 进度。
+3. **判断**：自己能在一层内小改 → 直接做；否则 **wake** 对应 Fleet handle。
+4. 完成后向用户简短汇总；跨层争议 `push_msg` `@coordinator`。
+
+## Wake 决策表
+
+| 用户 / 任务信号 | wake handle |
+|-----------------|-------------|
+| planner、选边、入队、Brain API、prompts | `brain` |
+| hydrate、前序门、executor、失败 msg | `runtime` |
+| Intent 窗口、物流 UI、Cast、Receiver、端 UI | `ui` |
+| plugin、capability 契约 | `capability` |
+| 黑盒验收 | `quality` |
+| rsync 云 Brain、restart doubao_skill | `deploy` |
+| Mac 边缘、双 Brain、local-rt、运维 | `sre` |
+| schema / SQL | `dba` |
+| 催办、仲裁、日报、跨层拆单 | `coordinator` |
+| 不确定 / 多域 | 先 `coordinator` 或拆成多 handle 顺序 wake |
+
+## Bridge API
+
+```bash
+# 列表
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9540/api/v1/agents
+
+# 唤醒
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"text":"任务描述"}' \
+  http://127.0.0.1:9540/api/v1/agents/{handle}/wake
+
+# 查 run
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9540/api/v1/runs/{run_id}
+```
+
+`POST /api/v1/command` 可带 `target_handle` 指定 Fleet worker。
+
+## Chatbox 进度格式
+
+| 标签 | 含义 |
+|------|------|
+| `[dev-task]` | 手机 Dev Task / bridge 任务 |
+| `[fleet]` | Fleet worker 事件；正文含 `handle=`、`run=` |
+
+长任务：每有 `[fleet] event=finished|failed` 向用户同步一句；不要沉默超过 ~15 分钟。
+
+## 禁止
+
+- 不要为 `@ui` / `@brain` 等让用户再开 IDE。
+- 不要改 Chatbox 水位 `.cursor/dev-inbox-state.json` 以外的协调逻辑。
+- 修复须 `@quality` 验收后再对用户报结案。

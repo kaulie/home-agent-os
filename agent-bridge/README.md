@@ -4,10 +4,12 @@ Mac 本地 **Cursor Agent** HTTP 桥接服务：手机或 Brain 通过 HTTP 下�
 
 ## 能力
 
-- `POST /api/v1/command` — 下发任务（异步，立即返回 `run_id`；忙时自动排队，不再返回 `agent_busy`）
+- `POST /api/v1/command` — 下发任务（异步，立即返回 `run_id`；可选 `target_handle` 直达 Fleet worker）
 - `GET /api/v1/runs/<run_id>` — 查询任务状态与输出事件
-- `GET /api/v1/status` — 查看 Agent 连接状态
-- 持久化 `agent_id`，daemon 重启后 `Agent.resume()` 恢复上下文
+- `GET /api/v1/status` — 查看 Agent 连接状态与 Fleet 摘要
+- `GET /api/v1/agents` — 各 handle 的 `agent_id`、是否在跑、最近唤醒时间
+- `POST /api/v1/agents/<handle>/wake` — 唤醒指定 Fleet worker
+- 持久化每 handle 的 `agent_id`（`data/agents/{handle}.json`），daemon 重启后可恢复
 
 ## 快速开始
 

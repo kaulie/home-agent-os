@@ -280,6 +280,47 @@ enum DevClient {
         return task
     }
 
+    static func fetchFleet(
+        brainURL: String,
+        token: String
+    ) async throws -> FleetSnapshot {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/agent_fleet")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        applyAuth(&request, token: token)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let parsed = try JSONDecoder().decode(FleetSnapshot.self, from: data)
+        if parsed.ok == false {
+            throw DevClientError.server(parsed.error ?? "加载 Fleet 失败")
+        }
+        return parsed
+    }
+
+    static func wakeFleetAgent(
+        brainURL: String,
+        token: String,
+        handle: String,
+        text: String = ""
+    ) async throws -> FleetWakeResponse {
+        let encoded = handle.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? handle
+        let url = try endpoint(brainURL, path: "/api/v1/admin/agent_fleet/\(encoded)/wake")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        applyAuth(&request, token: token)
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["text": text])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let parsed = try JSONDecoder().decode(FleetWakeResponse.self, from: data)
+        if parsed.ok == false {
+            throw DevClientError.server(parsed.error ?? "唤醒失败")
+        }
+        return parsed
+    }
+
     static func fetchDevTaskUsage(
         brainURL: String,
         token: String,

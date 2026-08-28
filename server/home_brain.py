@@ -56,6 +56,7 @@ try:
         list_debug_issues,
         submit_debug_report,
     )
+    from agent_fleet import get_fleet_view, wake_fleet_agent
 except ImportError:  # pragma: no cover
     from server.dev_task import (  # type: ignore
         cancel_agent_task,
@@ -72,6 +73,7 @@ except ImportError:  # pragma: no cover
         list_debug_issues,
         submit_debug_report,
     )
+    from server.agent_fleet import get_fleet_view, wake_fleet_agent  # type: ignore
 
 try:
     from shortcut_mode import InterceptResult, apply_mode_event, intercept as shortcut_intercept
@@ -6155,14 +6157,44 @@ def admin_post_dev_task():
     category = None
     if category_raw not in (None, ""):
         category = str(category_raw).strip()
+    target_raw = data.get("target_handle") or data.get("suggested_handle")
+    target_handle = None
+    if target_raw not in (None, ""):
+        target_handle = str(target_raw).strip()
     view = submit_agent_task(
         text,
         parent_task_id=parent_task_id,
         thread_id=thread_id,
         category=category,
         attachments=attachments_raw,
+        target_handle=target_handle,
     )
     return jsonify(ok=True, **view)
+
+
+@app.route("/api/v1/admin/agent_fleet", methods=["GET"])
+def admin_get_agent_fleet():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    view = get_fleet_view()
+    status_code = 200 if view.get("ok") else 503
+    return jsonify(view), status_code
+
+
+@app.route("/api/v1/admin/agent_fleet/<handle>/wake", methods=["POST"])
+def admin_wake_agent_fleet(handle: str):
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error="JSON object required"), 400
+    text = str(data.get("text") or data.get("task") or "").strip()
+    result = wake_fleet_agent(handle, text=text)
+    if not result.get("ok"):
+        return jsonify(result), 400
+    return jsonify(result), 202
 
 
 @app.route("/api/v1/admin/dev_task/attachment/upload", methods=["POST"])

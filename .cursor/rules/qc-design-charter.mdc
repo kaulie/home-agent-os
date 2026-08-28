@@ -12,21 +12,21 @@ Home Agent OS：**异构设备上把家务贯通 感知 → 理解 → 规划 �
 - Plugin **只看本步已 resolve 的入参**。缺必填则失败，禁止从前序 step / `step_outputs` 自己去捡。
 - Vision / LLM：**原始 JSON 即为契约**；结构不对就失败，禁止拆包兜底。
 - 能力互相独立：`query.content` 不看图、不 TTS、不 Cast、不读墙上时钟；`clock.now` 只读本机钟；`vision.ask` 必须有图；`display.slideshow` 必须本步带 `photo_urls`。
-- 发出端（Intent Source 产品层）只发自然语言、只信 `intent_detail`；不注册 Edge、不执行能力。实现者是 **Intent dev agent**（`@intent`），不要叫 intent source agent。
+- 发出端（Intent Source 产品层）只发自然语言、只信 `intent_detail`；不注册 Edge、不执行能力。实现者是 **UI dev agent**（`@ui`）；`@intent` 为 Chatbox 别名。
 - 失败必须有可读 `msg`；空 plan 不得停在 `intent_parsed`。
 - 墙上时钟用独立 `clock` 能力（`clock.now`，读本机钟，禁止 LLM）。`query.content` 仍禁止编时刻；没有 clock 或未派 clock 时必须诚实拒答「我不知道（没有报时能力）」。成功步的必填产出必须出现在 `intent_detail`。`succeeded` 却无原文 / 物流 / 产出 = 不可验收。
 - 规划与控制面归 **brain agent**（`@brain`）：按步选边（允许多 edge）、`execution_timing`、入队、全部 capability 步完成后组装 `presentation`。问「现在几点了」应规划 `clock.now`，不要派 `query.content` 当钟。用户可见结果由 Brain `intent_detail.presentation` 交付；`notify.speak` 仅纯提醒或 voice TTS 交付钩；投电视仍 `display.photo` / `display.slideshow`。
 
-会话标题必须与下表全称一致：`system coordinator agent` `@coordinator`（旧称 `@observer` 仅历史信箱有效）；`brain agent` `@brain`；`runtime dev agent` `@runtime`；`Intent dev agent` `@intent`；`capability dev agent` `@capability`；`endpoint agent` `@endpoint`；`quality agent` `@quality`（黑盒，不是协调员）；`dba agent` `@dba`（schema / SQL；Brain 一期 SQLite，Edge JSON 未经点名不改）。
+会话标题见 [`docs/agent-roster.md`](docs/agent-roster.md)：`system coordinator agent` `@coordinator`；`dev controller agent` `@controller`（唯一常驻 IDE）；`brain agent` `@brain`；`runtime dev agent` `@runtime`；`UI dev agent` `@ui`；`capability dev agent` `@capability`；`quality agent` `@quality`；`deploy agent` `@deploy`；`sre agent` `@sre`；`dba agent` `@dba`。`@intent` / `@endpoint` 别名→`@ui`。
 
-- 分层：`@brain` 规划/选边/入队/对外 API；`@capability` 改 plugin；`@endpoint` 改 Endpoint/Cast 呈现与 Receiver 协议；`@runtime` 改调度/hydrate/前序门；`@intent` 改发出窗口；`@quality` 只打对外 API；`@dba` 管 schema/SQL。跨层争议 `@coordinator` 仲裁。协调走本机 Agent Chatbox `http://127.0.0.1:8787/`（`push_msg` / `pull_msg`）。**每次 pull 前先读一遍** `docs/agent-coordination.md`。旧 Markdown 信箱已停用。
+- 分层：`@brain` 规划/选边/入队/对外 API；`@capability` 改 plugin；`@ui` 改用户交互与 Endpoint/Cast 呈现；`@runtime` 改调度/hydrate/前序门；`@quality` 只打对外 API；`@deploy` 云部署；`@sre` 运维；`@dba` 管 schema/SQL；`@controller` 编排 Fleet。跨层争议 `@coordinator` 仲裁。协调走本机 Agent Chatbox `http://127.0.0.1:8787/`（`push_msg` / `pull_msg`）。**每次 pull 前先读一遍** `docs/agent-coordination.md`。旧 Markdown 信箱已停用。
 - **修复须验收：** 已报备问题实现方报完工后，必须经 `@quality` 打对外 API 验收，并更新 `tests/blackbox/` 测试报告。不得以自报结案。
 
 # @coordinator 职责边界
 
 `@coordinator` **不写产品代码**。做：协调与催办、争议仲裁、闲置检查、质检看板、架构/需求/文档汇总、日报催办与写入 [`docs/daily-reports.md`](docs/daily-reports.md)（每晚 22:50 催、23:00 截止）。催办写入 chat（`push_msg`），不要只写看板。
 
-**用户对 @coordinator 说的事，若不在上述职责内：不要自己做，也不要只回「不归我」。** 同一轮 `push_msg` `@` 转到对应 handle，并在本会话说明派给了谁。分层：plugin → `@capability`；调度 / hydrate / 前序门 / 失败 `msg` / runtime 文档 → `@runtime`；发出窗口 → `@intent`；Endpoint / Cast 呈现 / Receiver → `@endpoint`；对外黑盒 API → `@quality`；规划 / 选边 / 入队 / Brain API → `@brain`。跨层由 `@coordinator` 拆单后分派。
+**用户对 @coordinator 说的事，若不在上述职责内：不要自己做，也不要只回「不归我」。** 同一轮 `push_msg` `@` 转到对应 handle，并在本会话说明派给了谁。分层：plugin → `@capability`；调度 / hydrate / 前序门 / 失败 `msg` / runtime 文档 → `@runtime`；发出窗口 / 物流 UI / Cast / Receiver → `@ui`；对外黑盒 API → `@quality`；规划 / 选边 / 入队 / Brain API → `@brain`；云部署 → `@deploy`；运维 → `@sre`；schema → `@dba`。跨层由 `@coordinator` 拆单后分派。
 
 其他 agent 遇到预期外情况：**第一时间** chat `@coordinator`，由 `@coordinator` 集中处理；不要自行跨层改，也不要等下一轮轮询。
 
