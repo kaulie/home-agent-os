@@ -1,10 +1,11 @@
 import UIKit
 
 final class InteractionViewController: UIViewController {
-    private let segment = PillSegmentControl(titles: ["打字", "看书"])
+    private let segment = PillSegmentControl(titles: ["打字", "看书", "直播"])
     private let containerView = UIView()
     private let chatViewController = ChatViewController()
     private let readingViewController = ReadingModeViewController()
+    private let liveStreamViewController = LiveStreamViewController()
     private var segmentHeight: NSLayoutConstraint?
     private var containerTopToSegment: NSLayoutConstraint?
     private var containerTopToSafeArea: NSLayoutConstraint?
@@ -44,10 +45,15 @@ final class InteractionViewController: UIViewController {
         readingViewController.onCaptureSessionActive = { [weak self] active in
             self?.setCaptureChromeHidden(active)
         }
+        liveStreamViewController.onStreamActive = { [weak self] active in
+            self?.setCaptureChromeHidden(active)
+        }
 
         embed(chatViewController)
         embed(readingViewController)
+        embed(liveStreamViewController)
         readingViewController.view.isHidden = true
+        liveStreamViewController.view.isHidden = true
         showChild(at: 0)
     }
 
@@ -68,12 +74,19 @@ final class InteractionViewController: UIViewController {
     private func showChild(at index: Int) {
         chatViewController.dismissKeyboard()
         let showReading = index == 1
+        let showLive = index == 2
         readingViewController.view.isHidden = !showReading
-        chatViewController.view.isHidden = showReading
+        liveStreamViewController.view.isHidden = !showLive
+        chatViewController.view.isHidden = showReading || showLive
         if showReading {
             readingViewController.beginSessionIfNeeded()
+            liveStreamViewController.endSession()
+        } else if showLive {
+            readingViewController.endSession()
+            liveStreamViewController.beginSessionIfNeeded()
         } else {
             readingViewController.endSession()
+            liveStreamViewController.endSession()
             setCaptureChromeHidden(false)
         }
     }

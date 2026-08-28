@@ -10,8 +10,10 @@ enum ParticipantStore {
     private static let registeredAtKey = "legacy.registeredAt"
     private static let lastHeartbeatOkKey = "legacy.lastHeartbeatOk"
     private static let lastHeartbeatAtKey = "legacy.lastHeartbeatAt"
+    private static let macIngestKey = "legacy.macIngestURL"
 
     static let defaultBrainIntentURL = BrainEndpoint.homeIntentURL
+    static let defaultMacIngestURL = "http://192.168.3.73:8790"
 
     /// URL used for API calls (set after a successful register).
     private(set) static var activeIntentURL: String = BrainEndpoint.homeIntentURL
@@ -70,6 +72,21 @@ enum ParticipantStore {
     static var lastHeartbeatAt: TimeInterval {
         get { UserDefaults.standard.double(forKey: lastHeartbeatAtKey) }
         set { UserDefaults.standard.set(newValue, forKey: lastHeartbeatAtKey) }
+    }
+
+    /// Mac Edge video-live ingest (port 8790). Not Brain intent URL (:9527).
+    static var macIngestURL: String {
+        get {
+            let saved = UserDefaults.standard.string(forKey: macIngestKey)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return saved.isEmpty ? defaultMacIngestURL : saved
+        }
+        set {
+            UserDefaults.standard.set(
+                newValue.trimmingCharacters(in: .whitespacesAndNewlines),
+                forKey: macIngestKey
+            )
+        }
     }
 
     static func registrationBody() -> [String: Any] {

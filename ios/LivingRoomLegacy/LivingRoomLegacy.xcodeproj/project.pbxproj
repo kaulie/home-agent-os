@@ -6,73 +6,89 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		E73195DF87E640738FC624BD /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F63E2136524E8C84065C3F /* AppDelegate.swift */; };
-		6478B11222DA4DC7A7E174D8 /* ChatTurn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19E4289F7002464C910F74DF /* ChatTurn.swift */; };
-		9B8E8DC78B5B4EE9B2DC33A4 /* IntentTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56FA1B3CCDCE4BC69757B380 /* IntentTimeline.swift */; };
-		45BB1F0722CF4881BA9FC402 /* BrainAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42D38008169A4039945BEDDA /* BrainAPI.swift */; };
-		D3A6931CA3F649348F46FB8A /* BrainEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08F463C70E964E809BEB72B2 /* BrainEndpoint.swift */; };
-		5336D742578840D9B8FE6F74 /* BrainURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADB846692D5B4DBC8D86DB95 /* BrainURL.swift */; };
-		BBE56B55F2FE4C1B85A86203 /* ConnectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 666412F9D81543968195C898 /* ConnectionManager.swift */; };
-		76A31B80CA05453286B811F8 /* DebugReportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89DA634660CA43FF8344394D /* DebugReportStore.swift */; };
-		D956B7E4F1AE4818994522E7 /* HeartbeatLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C710D51B84C4D91A97E7EFF /* HeartbeatLog.swift */; };
-		939ED4F1647446D588670747 /* IntentPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1733495A95A748898BC75109 /* IntentPoller.swift */; };
-		165DCB108A2249DF8CEFDF44 /* ParticipantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AB951C7F1144809A7979BD6 /* ParticipantStore.swift */; };
-		DCF35D79B9974DD28D4AA0B1 /* ReadingCameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 930CCDB141A64ACC87EB7707 /* ReadingCameraService.swift */; };
-		8FE5A7D838B04375BB52A4C0 /* ReadingPhotoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 246C0A451010431B845D078D /* ReadingPhotoStore.swift */; };
-		DA14EAAFC3C843CA9B5986F6 /* ReadingSpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77CDF9AFE634B7B89D284B7 /* ReadingSpeechService.swift */; };
-		87D3BE1B96CA4F0EBF798543 /* VoiceTraceLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81B944ED8F0B47E393D795BB /* VoiceTraceLog.swift */; };
-		C1E8592E85474EA0A5522B71 /* ChatViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B566CE23165447496633CFC /* ChatViewController.swift */; };
-		B5E0AC05CAF948FEB768AA5C /* InteractionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D4B3FC6664405790C1C604 /* InteractionViewController.swift */; };
-		4BDDD656F4E742FAB529DA0D /* MainTabBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8536D02A10349B4A65773AB /* MainTabBarController.swift */; };
-		67874D2564074F0599A4002B /* ReadingCaptureViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29EE4C1504C4463B9329F38A /* ReadingCaptureViewController.swift */; };
-		1F3DD2E599094417BBCAF0AA /* ReadingHubViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16D96D69627948A7926AFD87 /* ReadingHubViewController.swift */; };
-		3495018E864D4273BA6D0EF0 /* ReadingModeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D49D34322DFD4A99BD62677A /* ReadingModeViewController.swift */; };
-		C033C247899545BAB3EEBEFF /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9712197104DA4321B56F1BA5 /* SettingsViewController.swift */; };
-		2A271E3685844A5F846CBA6A /* ChatMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F8FE63EE294F2F917A8073 /* ChatMessageCell.swift */; };
-		F818A6D5B2ED45CE9B170B28 /* FeedbackStripCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20D098886B74ED3ADFAE59F /* FeedbackStripCell.swift */; };
-		87839F154F1A43ADB0BBA745 /* IntentIdCaption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6942A96E0CAF4CCC8691B60A /* IntentIdCaption.swift */; };
-		7BBEF39BCA6E4D3BA515ABEA /* JourneyTimelineCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 680B95529C714D69BECD71B9 /* JourneyTimelineCell.swift */; };
-		89934ADE5BC04FECA96FAEE7 /* LegacyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BE97851F9F64D8CBFD24AA0 /* LegacyTheme.swift */; };
-		53338F1C282F4A5091E42924 /* PillSegmentControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27DD8D879D264F87BFDEF336 /* PillSegmentControl.swift */; };
-		E12373DFF9714C6A91A0190B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9198E832BDE54FA1B9AD5225 /* Assets.xcassets */; };
+		C8487D6D16484FCDA8904B46 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBB573D72168499DAB3F75BC /* AppDelegate.swift */; };
+		D092DBF1C45B4617B56C8A06 /* ChatTurn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 678D36274E0346F6A5C5228C /* ChatTurn.swift */; };
+		2B7DF1D2A0994712A043942C /* IntentTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC2E1B1DB6164770A9484994 /* IntentTimeline.swift */; };
+		48BF7877520946D4880DD4B1 /* BrainAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6234CECD93094183A54DEA54 /* BrainAPI.swift */; };
+		D458B783F6BA4BC6AFD86BCE /* BrainEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A660F305474464D880FC506 /* BrainEndpoint.swift */; };
+		B69AA4501BED439CBF6BDED6 /* BrainURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = F17AC86A3D42429A919EF1EC /* BrainURL.swift */; };
+		FFBCBF11A3BC4A44B86A4CA9 /* ConnectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C49DF17E2DD4CB483ACFDDB /* ConnectionManager.swift */; };
+		D4433293478D495CA44250BC /* DebugReportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F396498FB6BE408AA4FF51A9 /* DebugReportStore.swift */; };
+		986F4CE6D5FD42E7BFEB0768 /* HeartbeatLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4C3535BDA740778B9BF1F1 /* HeartbeatLog.swift */; };
+		E79F91D4CA3840BF866A3243 /* IntentPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F0256C79F2C4790BD5C606C /* IntentPoller.swift */; };
+		D536068DADD54B0EB8A07CA4 /* ParticipantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A74B06C095F4C5BB7779418 /* ParticipantStore.swift */; };
+		5CB4F775CFF548EC901AFFF8 /* ReadingCameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35A057672E5A4D06B5446576 /* ReadingCameraService.swift */; };
+		9668B071B5C14DB1A69FC038 /* ReadingPhotoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F29D10221D774549891B4BD0 /* ReadingPhotoStore.swift */; };
+		FCE27228F0C745918F616EDC /* ReadingSpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E37133D48A244A78E242B4F /* ReadingSpeechService.swift */; };
+		E555084B39E846B48AAC18D9 /* VoiceTraceLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65B560F686384644A97369E9 /* VoiceTraceLog.swift */; };
+		EAECDC904DDA4E6B8B3B30FB /* H264VideoEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F63C7C23DFC4019B08D74B0 /* H264VideoEncoder.swift */; };
+		A21CB3998F8E42E49147CDBC /* LegacyLiveStreamController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BD836D8E45C458A9D1A4C9C /* LegacyLiveStreamController.swift */; };
+		2DAB98F572B04F83AFD3732E /* LivePushPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B4433A5BDFA46EFA2F8E468 /* LivePushPipeline.swift */; };
+		3080B90701924FE3A58506FF /* MpegTsMuxer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3462F349FC24B77BFB28C47 /* MpegTsMuxer.swift */; };
+		92F34B462E1D4F45825130BB /* MpegTsTcpTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9697B89568954CB795E5828C /* MpegTsTcpTransport.swift */; };
+		ADBB872CBC394453881845FF /* VideoLiveCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84CCE573C0F48FAB4516445 /* VideoLiveCapture.swift */; };
+		F017A1C7F8F949C5B1A9A958 /* VideoLiveError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E5BC769789B4E20B43F574E /* VideoLiveError.swift */; };
+		7826F44E13F8461DB2CA8C87 /* ChatViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 074E7C273E7041C8881E4042 /* ChatViewController.swift */; };
+		0024397DEB86446CA553EB2C /* InteractionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034E3D969C934C308661FD59 /* InteractionViewController.swift */; };
+		382D8E1E08D1426D930A26D4 /* LiveStreamViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A721F88C100F45D4AA3D7B98 /* LiveStreamViewController.swift */; };
+		D503A02F46E04F72A1562E8F /* MainTabBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BDD1F5CB8AE4A75A31C8237 /* MainTabBarController.swift */; };
+		A7701790308D49768D20FD5E /* ReadingCaptureViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9703317C025F4AAE8CE8EE95 /* ReadingCaptureViewController.swift */; };
+		8F0FB426A3B944FF9C5668A9 /* ReadingHubViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAF20561192043CEBC5A4EA6 /* ReadingHubViewController.swift */; };
+		E1496EA42E834908873D9F04 /* ReadingModeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB184F4D2E3A43818035D90E /* ReadingModeViewController.swift */; };
+		AD1414A8B8804AB5823A8A28 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C5A0297A1946EBA190E2D3 /* SettingsViewController.swift */; };
+		BC21977F5C6F42F98F48E882 /* ChatMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3309213C52474CC788CDA0D9 /* ChatMessageCell.swift */; };
+		EC8E8A65089C4EAD87417167 /* FeedbackStripCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54C046A2B8214A958DF13323 /* FeedbackStripCell.swift */; };
+		C1D9FFC55D0E490D918143CA /* IntentIdCaption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2348A957FDC447C2A6D07BCA /* IntentIdCaption.swift */; };
+		CE6992F4D6B949A680A0ABEA /* JourneyTimelineCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AFC2A3DAEA4C6388BE42C3 /* JourneyTimelineCell.swift */; };
+		F7F7B615B7F6497989D7B1B7 /* LegacyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F753F88B26F1462BAEE15945 /* LegacyTheme.swift */; };
+		E384C17B2DA247F6B95F4F8C /* PillSegmentControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB86E1FE2AD14509BB43BC17 /* PillSegmentControl.swift */; };
+		590572BC2734459B83305639 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B8C36801DD8F4FDCB3577079 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		E8E926DABBBE4CE4B1C3A79D /* LivingRoomLegacy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LivingRoomLegacy.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		A8F63E2136524E8C84065C3F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		19E4289F7002464C910F74DF /* ChatTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTurn.swift; sourceTree = "<group>"; };
-		56FA1B3CCDCE4BC69757B380 /* IntentTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentTimeline.swift; sourceTree = "<group>"; };
-		42D38008169A4039945BEDDA /* BrainAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainAPI.swift; sourceTree = "<group>"; };
-		08F463C70E964E809BEB72B2 /* BrainEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainEndpoint.swift; sourceTree = "<group>"; };
-		ADB846692D5B4DBC8D86DB95 /* BrainURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainURL.swift; sourceTree = "<group>"; };
-		666412F9D81543968195C898 /* ConnectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionManager.swift; sourceTree = "<group>"; };
-		89DA634660CA43FF8344394D /* DebugReportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugReportStore.swift; sourceTree = "<group>"; };
-		9C710D51B84C4D91A97E7EFF /* HeartbeatLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartbeatLog.swift; sourceTree = "<group>"; };
-		1733495A95A748898BC75109 /* IntentPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentPoller.swift; sourceTree = "<group>"; };
-		8AB951C7F1144809A7979BD6 /* ParticipantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticipantStore.swift; sourceTree = "<group>"; };
-		930CCDB141A64ACC87EB7707 /* ReadingCameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingCameraService.swift; sourceTree = "<group>"; };
-		246C0A451010431B845D078D /* ReadingPhotoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingPhotoStore.swift; sourceTree = "<group>"; };
-		D77CDF9AFE634B7B89D284B7 /* ReadingSpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingSpeechService.swift; sourceTree = "<group>"; };
-		81B944ED8F0B47E393D795BB /* VoiceTraceLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTraceLog.swift; sourceTree = "<group>"; };
-		9B566CE23165447496633CFC /* ChatViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewController.swift; sourceTree = "<group>"; };
-		C1D4B3FC6664405790C1C604 /* InteractionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractionViewController.swift; sourceTree = "<group>"; };
-		D8536D02A10349B4A65773AB /* MainTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabBarController.swift; sourceTree = "<group>"; };
-		29EE4C1504C4463B9329F38A /* ReadingCaptureViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingCaptureViewController.swift; sourceTree = "<group>"; };
-		16D96D69627948A7926AFD87 /* ReadingHubViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingHubViewController.swift; sourceTree = "<group>"; };
-		D49D34322DFD4A99BD62677A /* ReadingModeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingModeViewController.swift; sourceTree = "<group>"; };
-		9712197104DA4321B56F1BA5 /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
-		48F8FE63EE294F2F917A8073 /* ChatMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageCell.swift; sourceTree = "<group>"; };
-		C20D098886B74ED3ADFAE59F /* FeedbackStripCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackStripCell.swift; sourceTree = "<group>"; };
-		6942A96E0CAF4CCC8691B60A /* IntentIdCaption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentIdCaption.swift; sourceTree = "<group>"; };
-		680B95529C714D69BECD71B9 /* JourneyTimelineCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyTimelineCell.swift; sourceTree = "<group>"; };
-		1BE97851F9F64D8CBFD24AA0 /* LegacyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTheme.swift; sourceTree = "<group>"; };
-		27DD8D879D264F87BFDEF336 /* PillSegmentControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillSegmentControl.swift; sourceTree = "<group>"; };
-		98F0F84EAC264D9B8393DEF5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		9198E832BDE54FA1B9AD5225 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		125B7C1B0ED04D748FAAF9AC /* LivingRoomLegacy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LivingRoomLegacy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FBB573D72168499DAB3F75BC /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		678D36274E0346F6A5C5228C /* ChatTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTurn.swift; sourceTree = "<group>"; };
+		EC2E1B1DB6164770A9484994 /* IntentTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentTimeline.swift; sourceTree = "<group>"; };
+		6234CECD93094183A54DEA54 /* BrainAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainAPI.swift; sourceTree = "<group>"; };
+		5A660F305474464D880FC506 /* BrainEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainEndpoint.swift; sourceTree = "<group>"; };
+		F17AC86A3D42429A919EF1EC /* BrainURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainURL.swift; sourceTree = "<group>"; };
+		8C49DF17E2DD4CB483ACFDDB /* ConnectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionManager.swift; sourceTree = "<group>"; };
+		F396498FB6BE408AA4FF51A9 /* DebugReportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugReportStore.swift; sourceTree = "<group>"; };
+		DA4C3535BDA740778B9BF1F1 /* HeartbeatLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartbeatLog.swift; sourceTree = "<group>"; };
+		9F0256C79F2C4790BD5C606C /* IntentPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentPoller.swift; sourceTree = "<group>"; };
+		1A74B06C095F4C5BB7779418 /* ParticipantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticipantStore.swift; sourceTree = "<group>"; };
+		35A057672E5A4D06B5446576 /* ReadingCameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingCameraService.swift; sourceTree = "<group>"; };
+		F29D10221D774549891B4BD0 /* ReadingPhotoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingPhotoStore.swift; sourceTree = "<group>"; };
+		9E37133D48A244A78E242B4F /* ReadingSpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingSpeechService.swift; sourceTree = "<group>"; };
+		65B560F686384644A97369E9 /* VoiceTraceLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTraceLog.swift; sourceTree = "<group>"; };
+		6F63C7C23DFC4019B08D74B0 /* H264VideoEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H264VideoEncoder.swift; sourceTree = "<group>"; };
+		8BD836D8E45C458A9D1A4C9C /* LegacyLiveStreamController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyLiveStreamController.swift; sourceTree = "<group>"; };
+		4B4433A5BDFA46EFA2F8E468 /* LivePushPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePushPipeline.swift; sourceTree = "<group>"; };
+		A3462F349FC24B77BFB28C47 /* MpegTsMuxer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpegTsMuxer.swift; sourceTree = "<group>"; };
+		9697B89568954CB795E5828C /* MpegTsTcpTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpegTsTcpTransport.swift; sourceTree = "<group>"; };
+		B84CCE573C0F48FAB4516445 /* VideoLiveCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoLiveCapture.swift; sourceTree = "<group>"; };
+		4E5BC769789B4E20B43F574E /* VideoLiveError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoLiveError.swift; sourceTree = "<group>"; };
+		074E7C273E7041C8881E4042 /* ChatViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewController.swift; sourceTree = "<group>"; };
+		034E3D969C934C308661FD59 /* InteractionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractionViewController.swift; sourceTree = "<group>"; };
+		A721F88C100F45D4AA3D7B98 /* LiveStreamViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveStreamViewController.swift; sourceTree = "<group>"; };
+		9BDD1F5CB8AE4A75A31C8237 /* MainTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabBarController.swift; sourceTree = "<group>"; };
+		9703317C025F4AAE8CE8EE95 /* ReadingCaptureViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingCaptureViewController.swift; sourceTree = "<group>"; };
+		FAF20561192043CEBC5A4EA6 /* ReadingHubViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingHubViewController.swift; sourceTree = "<group>"; };
+		AB184F4D2E3A43818035D90E /* ReadingModeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingModeViewController.swift; sourceTree = "<group>"; };
+		A1C5A0297A1946EBA190E2D3 /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
+		3309213C52474CC788CDA0D9 /* ChatMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageCell.swift; sourceTree = "<group>"; };
+		54C046A2B8214A958DF13323 /* FeedbackStripCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackStripCell.swift; sourceTree = "<group>"; };
+		2348A957FDC447C2A6D07BCA /* IntentIdCaption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentIdCaption.swift; sourceTree = "<group>"; };
+		C0AFC2A3DAEA4C6388BE42C3 /* JourneyTimelineCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyTimelineCell.swift; sourceTree = "<group>"; };
+		F753F88B26F1462BAEE15945 /* LegacyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTheme.swift; sourceTree = "<group>"; };
+		DB86E1FE2AD14509BB43BC17 /* PillSegmentControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillSegmentControl.swift; sourceTree = "<group>"; };
+		0DAAAE8D1D0C4AB793B17E3B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B8C36801DD8F4FDCB3577079 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		899DC8785B584035850960FB /* Frameworks */ = {
+		14BAB9D8F76A46A4AEC3C462 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -82,87 +98,103 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		DBB759E715544F169D446E08 = {
+		FD90C73CD169424C907E1DEF = {
 			isa = PBXGroup;
 			children = (
-				9C94C05F42084A9FA22FAEB9 /* LivingRoomLegacy */,
-				FD09BCC1D2654123975FBF23 /* Products */,
+				1EE4414FBD4045A48CED3316 /* LivingRoomLegacy */,
+				3F781EDF5EE04A5393E22357 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		FD09BCC1D2654123975FBF23 /* Products */ = {
+		3F781EDF5EE04A5393E22357 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				E8E926DABBBE4CE4B1C3A79D /* LivingRoomLegacy.app */,
+				125B7C1B0ED04D748FAAF9AC /* LivingRoomLegacy.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		9C94C05F42084A9FA22FAEB9 /* LivingRoomLegacy */ = {
+		1EE4414FBD4045A48CED3316 /* LivingRoomLegacy */ = {
 			isa = PBXGroup;
 			children = (
-				0AA84DDBBD304C92A66A321E,
-				75160ECA0D424EE69213C7D4,
-				DEA75D51B0B14FC999D80E4F,
-				868DDE79DCC74E08BFCB7C70,
-				A8F63E2136524E8C84065C3F,
-				98F0F84EAC264D9B8393DEF5,
-				9198E832BDE54FA1B9AD5225,
+				2B4513BEDB1E4E31AF924AA5,
+				1C8756FD60824BCCBE13176D,
+				F33CDC44D82F41C982E4EC50,
+				C58B6FDD3E65415FA20C3B44,
+				083E2070A08E44EEA411CCD1,
+				FBB573D72168499DAB3F75BC,
+				0DAAAE8D1D0C4AB793B17E3B,
+				B8C36801DD8F4FDCB3577079,
 			);
 			path = LivingRoomLegacy;
 			sourceTree = "<group>";
 		};
-		0AA84DDBBD304C92A66A321E /* Models */ = {
+		2B4513BEDB1E4E31AF924AA5 /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				19E4289F7002464C910F74DF,
-				56FA1B3CCDCE4BC69757B380,
+				678D36274E0346F6A5C5228C,
+				EC2E1B1DB6164770A9484994,
 			);
 			path = Models;
 			sourceTree = "<group>";
 		};
-		75160ECA0D424EE69213C7D4 /* Services */ = {
+		1C8756FD60824BCCBE13176D /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				42D38008169A4039945BEDDA,
-				08F463C70E964E809BEB72B2,
-				ADB846692D5B4DBC8D86DB95,
-				666412F9D81543968195C898,
-				89DA634660CA43FF8344394D,
-				9C710D51B84C4D91A97E7EFF,
-				1733495A95A748898BC75109,
-				8AB951C7F1144809A7979BD6,
-				930CCDB141A64ACC87EB7707,
-				246C0A451010431B845D078D,
-				D77CDF9AFE634B7B89D284B7,
-				81B944ED8F0B47E393D795BB,
+				6234CECD93094183A54DEA54,
+				5A660F305474464D880FC506,
+				F17AC86A3D42429A919EF1EC,
+				8C49DF17E2DD4CB483ACFDDB,
+				F396498FB6BE408AA4FF51A9,
+				DA4C3535BDA740778B9BF1F1,
+				9F0256C79F2C4790BD5C606C,
+				1A74B06C095F4C5BB7779418,
+				35A057672E5A4D06B5446576,
+				F29D10221D774549891B4BD0,
+				9E37133D48A244A78E242B4F,
+				65B560F686384644A97369E9,
 			);
 			path = Services;
 			sourceTree = "<group>";
 		};
-		DEA75D51B0B14FC999D80E4F /* ViewControllers */ = {
+		F33CDC44D82F41C982E4EC50 /* VideoLiveStream */ = {
 			isa = PBXGroup;
 			children = (
-				9B566CE23165447496633CFC,
-				C1D4B3FC6664405790C1C604,
-				D8536D02A10349B4A65773AB,
-				29EE4C1504C4463B9329F38A,
-				16D96D69627948A7926AFD87,
-				D49D34322DFD4A99BD62677A,
-				9712197104DA4321B56F1BA5,
+				6F63C7C23DFC4019B08D74B0,
+				8BD836D8E45C458A9D1A4C9C,
+				4B4433A5BDFA46EFA2F8E468,
+				A3462F349FC24B77BFB28C47,
+				9697B89568954CB795E5828C,
+				B84CCE573C0F48FAB4516445,
+				4E5BC769789B4E20B43F574E,
+			);
+			path = VideoLiveStream;
+			sourceTree = "<group>";
+		};
+		C58B6FDD3E65415FA20C3B44 /* ViewControllers */ = {
+			isa = PBXGroup;
+			children = (
+				074E7C273E7041C8881E4042,
+				034E3D969C934C308661FD59,
+				A721F88C100F45D4AA3D7B98,
+				9BDD1F5CB8AE4A75A31C8237,
+				9703317C025F4AAE8CE8EE95,
+				FAF20561192043CEBC5A4EA6,
+				AB184F4D2E3A43818035D90E,
+				A1C5A0297A1946EBA190E2D3,
 			);
 			path = ViewControllers;
 			sourceTree = "<group>";
 		};
-		868DDE79DCC74E08BFCB7C70 /* Views */ = {
+		083E2070A08E44EEA411CCD1 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				48F8FE63EE294F2F917A8073,
-				C20D098886B74ED3ADFAE59F,
-				6942A96E0CAF4CCC8691B60A,
-				680B95529C714D69BECD71B9,
-				1BE97851F9F64D8CBFD24AA0,
-				27DD8D879D264F87BFDEF336,
+				3309213C52474CC788CDA0D9,
+				54C046A2B8214A958DF13323,
+				2348A957FDC447C2A6D07BCA,
+				C0AFC2A3DAEA4C6388BE42C3,
+				F753F88B26F1462BAEE15945,
+				DB86E1FE2AD14509BB43BC17,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -170,13 +202,13 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		2EE80419D6474A67ACCDE69D /* LivingRoomLegacy */ = {
+		002DE5F53C9340D79D58987A /* LivingRoomLegacy */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A1C29DB86361480EB6294B7B /* Build configuration list for PBXNativeTarget "LivingRoomLegacy" */;
+			buildConfigurationList = E4415C1F362841CE9AC15A23 /* Build configuration list for PBXNativeTarget "LivingRoomLegacy" */;
 			buildPhases = (
-				D7948DA28ACC4CBF869D48D0 /* Sources */,
-				899DC8785B584035850960FB /* Frameworks */,
-				F1E742337CCF461CB406D2AD /* Resources */,
+				C8621A146A2B4B119F060BA6 /* Sources */,
+				14BAB9D8F76A46A4AEC3C462 /* Frameworks */,
+				223F8B0D3D5B440FBCED587C /* Resources */,
 			);
 			buildRules = (
 			);
@@ -186,20 +218,20 @@
 			packageProductDependencies = (
 			);
 			productName = LivingRoomLegacy;
-			productReference = E8E926DABBBE4CE4B1C3A79D /* LivingRoomLegacy.app */;
+			productReference = 125B7C1B0ED04D748FAAF9AC /* LivingRoomLegacy.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		65B2BED21BDC45E594EEC9D2 /* Project object */ = {
+		080B9674FDD8483F8F170F02 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1500;
 				LastUpgradeCheck = 1500;
 			};
-			buildConfigurationList = 356A5CE72D8E42F4B74B8F03 /* Build configuration list for PBXProject "LivingRoomLegacy" */;
+			buildConfigurationList = DF7672D066DD4F54A365B2BD /* Build configuration list for PBXProject "LivingRoomLegacy" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -207,69 +239,77 @@
 				en,
 				Base,
 			);
-			mainGroup = DBB759E715544F169D446E08;
+			mainGroup = FD90C73CD169424C907E1DEF;
 			packageReferences = (
 			);
-			productRefGroup = FD09BCC1D2654123975FBF23 /* Products */;
+			productRefGroup = 3F781EDF5EE04A5393E22357 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				2EE80419D6474A67ACCDE69D /* LivingRoomLegacy */,
+				002DE5F53C9340D79D58987A /* LivingRoomLegacy */,
 			);
 			};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		F1E742337CCF461CB406D2AD /* Resources */ = {
+		223F8B0D3D5B440FBCED587C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E12373DFF9714C6A91A0190B /* Assets.xcassets in Resources */,
+				590572BC2734459B83305639 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		D7948DA28ACC4CBF869D48D0 /* Sources */ = {
+		C8621A146A2B4B119F060BA6 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E73195DF87E640738FC624BD /* AppDelegate.swift in Sources */,
-				6478B11222DA4DC7A7E174D8 /* ChatTurn.swift in Sources */,
-				9B8E8DC78B5B4EE9B2DC33A4 /* IntentTimeline.swift in Sources */,
-				45BB1F0722CF4881BA9FC402 /* BrainAPI.swift in Sources */,
-				D3A6931CA3F649348F46FB8A /* BrainEndpoint.swift in Sources */,
-				5336D742578840D9B8FE6F74 /* BrainURL.swift in Sources */,
-				BBE56B55F2FE4C1B85A86203 /* ConnectionManager.swift in Sources */,
-				76A31B80CA05453286B811F8 /* DebugReportStore.swift in Sources */,
-				D956B7E4F1AE4818994522E7 /* HeartbeatLog.swift in Sources */,
-				939ED4F1647446D588670747 /* IntentPoller.swift in Sources */,
-				165DCB108A2249DF8CEFDF44 /* ParticipantStore.swift in Sources */,
-				DCF35D79B9974DD28D4AA0B1 /* ReadingCameraService.swift in Sources */,
-				8FE5A7D838B04375BB52A4C0 /* ReadingPhotoStore.swift in Sources */,
-				DA14EAAFC3C843CA9B5986F6 /* ReadingSpeechService.swift in Sources */,
-				87D3BE1B96CA4F0EBF798543 /* VoiceTraceLog.swift in Sources */,
-				C1E8592E85474EA0A5522B71 /* ChatViewController.swift in Sources */,
-				B5E0AC05CAF948FEB768AA5C /* InteractionViewController.swift in Sources */,
-				4BDDD656F4E742FAB529DA0D /* MainTabBarController.swift in Sources */,
-				67874D2564074F0599A4002B /* ReadingCaptureViewController.swift in Sources */,
-				1F3DD2E599094417BBCAF0AA /* ReadingHubViewController.swift in Sources */,
-				3495018E864D4273BA6D0EF0 /* ReadingModeViewController.swift in Sources */,
-				C033C247899545BAB3EEBEFF /* SettingsViewController.swift in Sources */,
-				2A271E3685844A5F846CBA6A /* ChatMessageCell.swift in Sources */,
-				F818A6D5B2ED45CE9B170B28 /* FeedbackStripCell.swift in Sources */,
-				87839F154F1A43ADB0BBA745 /* IntentIdCaption.swift in Sources */,
-				7BBEF39BCA6E4D3BA515ABEA /* JourneyTimelineCell.swift in Sources */,
-				89934ADE5BC04FECA96FAEE7 /* LegacyTheme.swift in Sources */,
-				53338F1C282F4A5091E42924 /* PillSegmentControl.swift in Sources */,
+				C8487D6D16484FCDA8904B46 /* AppDelegate.swift in Sources */,
+				D092DBF1C45B4617B56C8A06 /* ChatTurn.swift in Sources */,
+				2B7DF1D2A0994712A043942C /* IntentTimeline.swift in Sources */,
+				48BF7877520946D4880DD4B1 /* BrainAPI.swift in Sources */,
+				D458B783F6BA4BC6AFD86BCE /* BrainEndpoint.swift in Sources */,
+				B69AA4501BED439CBF6BDED6 /* BrainURL.swift in Sources */,
+				FFBCBF11A3BC4A44B86A4CA9 /* ConnectionManager.swift in Sources */,
+				D4433293478D495CA44250BC /* DebugReportStore.swift in Sources */,
+				986F4CE6D5FD42E7BFEB0768 /* HeartbeatLog.swift in Sources */,
+				E79F91D4CA3840BF866A3243 /* IntentPoller.swift in Sources */,
+				D536068DADD54B0EB8A07CA4 /* ParticipantStore.swift in Sources */,
+				5CB4F775CFF548EC901AFFF8 /* ReadingCameraService.swift in Sources */,
+				9668B071B5C14DB1A69FC038 /* ReadingPhotoStore.swift in Sources */,
+				FCE27228F0C745918F616EDC /* ReadingSpeechService.swift in Sources */,
+				E555084B39E846B48AAC18D9 /* VoiceTraceLog.swift in Sources */,
+				EAECDC904DDA4E6B8B3B30FB /* H264VideoEncoder.swift in Sources */,
+				A21CB3998F8E42E49147CDBC /* LegacyLiveStreamController.swift in Sources */,
+				2DAB98F572B04F83AFD3732E /* LivePushPipeline.swift in Sources */,
+				3080B90701924FE3A58506FF /* MpegTsMuxer.swift in Sources */,
+				92F34B462E1D4F45825130BB /* MpegTsTcpTransport.swift in Sources */,
+				ADBB872CBC394453881845FF /* VideoLiveCapture.swift in Sources */,
+				F017A1C7F8F949C5B1A9A958 /* VideoLiveError.swift in Sources */,
+				7826F44E13F8461DB2CA8C87 /* ChatViewController.swift in Sources */,
+				0024397DEB86446CA553EB2C /* InteractionViewController.swift in Sources */,
+				382D8E1E08D1426D930A26D4 /* LiveStreamViewController.swift in Sources */,
+				D503A02F46E04F72A1562E8F /* MainTabBarController.swift in Sources */,
+				A7701790308D49768D20FD5E /* ReadingCaptureViewController.swift in Sources */,
+				8F0FB426A3B944FF9C5668A9 /* ReadingHubViewController.swift in Sources */,
+				E1496EA42E834908873D9F04 /* ReadingModeViewController.swift in Sources */,
+				AD1414A8B8804AB5823A8A28 /* SettingsViewController.swift in Sources */,
+				BC21977F5C6F42F98F48E882 /* ChatMessageCell.swift in Sources */,
+				EC8E8A65089C4EAD87417167 /* FeedbackStripCell.swift in Sources */,
+				C1D9FFC55D0E490D918143CA /* IntentIdCaption.swift in Sources */,
+				CE6992F4D6B949A680A0ABEA /* JourneyTimelineCell.swift in Sources */,
+				F7F7B615B7F6497989D7B1B7 /* LegacyTheme.swift in Sources */,
+				E384C17B2DA247F6B95F4F8C /* PillSegmentControl.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		97C60E7AA2AB4477B04AF9BD /* Debug */ = {
+		756AB4091ED64D9682C237DA /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -288,7 +328,7 @@
 			};
 			name = Debug;
 		};
-		1E6D9E78F8AC487E9BB553AC /* Release */ = {
+		2F3BC99746A54298B683BAB2 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -302,7 +342,7 @@
 			};
 			name = Release;
 		};
-		C2A96816EC0F4D3994A21592 /* Debug */ = {
+		F5AABB488F3C46508BA1BCD3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -325,7 +365,7 @@
 			};
 			name = Debug;
 		};
-		2FF1C816A21E4694B5345071 /* Release */ = {
+		65EEA00CE768417D82EB0E0F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -351,25 +391,25 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		356A5CE72D8E42F4B74B8F03 /* Build configuration list for PBXProject "LivingRoomLegacy" */ = {
+		DF7672D066DD4F54A365B2BD /* Build configuration list for PBXProject "LivingRoomLegacy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				97C60E7AA2AB4477B04AF9BD /* Debug */,
-				1E6D9E78F8AC487E9BB553AC /* Release */,
+				756AB4091ED64D9682C237DA /* Debug */,
+				2F3BC99746A54298B683BAB2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A1C29DB86361480EB6294B7B /* Build configuration list for PBXNativeTarget "LivingRoomLegacy" */ = {
+		E4415C1F362841CE9AC15A23 /* Build configuration list for PBXNativeTarget "LivingRoomLegacy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				C2A96816EC0F4D3994A21592 /* Debug */,
-				2FF1C816A21E4694B5345071 /* Release */,
+				F5AABB488F3C46508BA1BCD3 /* Debug */,
+				65EEA00CE768417D82EB0E0F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = 65B2BED21BDC45E594EEC9D2 /* Project object */;
+	rootObject = 080B9674FDD8483F8F170F02 /* Project object */;
 }

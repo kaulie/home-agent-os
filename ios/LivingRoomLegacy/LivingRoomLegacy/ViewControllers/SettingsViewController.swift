@@ -9,6 +9,7 @@ final class SettingsViewController: UIViewController {
     private let reconnectButton = UIButton(type: .system)
     private let advancedToggle = UIButton(type: .system)
     private let advancedStack = UIStackView()
+    private let macIngestField = UITextField()
     private let participantLabel = LegacyUI.monoLabel(0)
     private let heartbeatHistoryLabel = LegacyUI.monoLabel(0)
     private var countdownTimer: Timer?
@@ -100,6 +101,25 @@ final class SettingsViewController: UIViewController {
     }
 
     private func setupAdvancedSection() {
+        let ingestTitle = LegacyUI.sectionTitle("Mac 直播 ingest")
+        let ingestHint = UILabel()
+        ingestHint.font = LegacyTheme.fontHint
+        ingestHint.textColor = LegacyTheme.textSecondary
+        ingestHint.numberOfLines = 0
+        ingestHint.text = "推流到 Mac Edge 的 video-live 端口（默认 :8790），不要填 Brain :9527。"
+
+        macIngestField.borderStyle = .roundedRect
+        macIngestField.font = UIFont(name: "Menlo-Regular", size: 15) ?? UIFont.systemFont(ofSize: 15)
+        macIngestField.autocapitalizationType = .none
+        macIngestField.autocorrectionType = .no
+        macIngestField.keyboardType = .URL
+        macIngestField.placeholder = ParticipantStore.defaultMacIngestURL
+        macIngestField.addTarget(self, action: #selector(macIngestChanged), for: .editingChanged)
+
+        advancedStack.addArrangedSubview(ingestTitle)
+        advancedStack.addArrangedSubview(ingestHint)
+        advancedStack.addArrangedSubview(macIngestField)
+
         let heartbeatTitle = LegacyUI.sectionTitle("心跳记录")
         advancedStack.addArrangedSubview(heartbeatTitle)
         advancedStack.addArrangedSubview(participantLabel)
@@ -119,6 +139,7 @@ final class SettingsViewController: UIViewController {
 
         let pid = ParticipantStore.participantId
         participantLabel.text = pid.isEmpty ? "participant: 未登记" : "participant: \(pid)"
+        macIngestField.text = ParticipantStore.macIngestURL
         refreshStatusLabel()
         refreshHeartbeatHistory()
     }
@@ -162,6 +183,10 @@ final class SettingsViewController: UIViewController {
 
     func refreshConnectionUI() {
         refreshValues()
+    }
+
+    @objc private func macIngestChanged() {
+        ParticipantStore.macIngestURL = macIngestField.text ?? ""
     }
 
     @objc private func reconnect() {

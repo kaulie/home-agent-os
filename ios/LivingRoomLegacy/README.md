@@ -1,36 +1,36 @@
 # HomeAgent Legacy（iOS 12）
 
-老 iPhone（**iOS 12.x**，例如 12.5.8）无法安装主 Console [`LivingRoomEdge`](../LivingRoomEdge/)（最低 **iOS 16**、SwiftUI）。本工程是独立的 **UIKit** 轻量版：仅 **文字发 Intent + 查看结果**。
+老 iPhone（**iOS 12.x**，例如 12.5.8）无法安装主 Console [`LivingRoomEdge`](../LivingRoomEdge/)（最低 **iOS 16**、SwiftUI）。本工程是独立的 **UIKit** 轻量版：文字发 Intent、看书拍照、**直播推流（P1 仅视频）**。
 
 可与主 Console **同时安装**（不同 Bundle ID、独立 UserDefaults）。
 
 ## 做什么
 
+### Intent（打字）
+
 ```text
-启动
-  │
-  ▼
-POST /api/v1/edge-register   roles: intent_source, services: []
-  │
-POST /api/v1/edge-heartbeat  立刻一次，之后每 45s
-  │
-用户输入文字
-  │
-  ▼
-POST /api/v1/intent
-  │
-  ▼
-GET /api/v1/intent_detail    每 5s 轮询，直到 succeeded / failed
+启动 → register + heartbeat → POST /api/v1/intent → 轮询 intent_detail
 ```
 
-- 默认连 **家里 WiFi**（`192.168.3.73:9527`）；连不上会自动试 **外面**（云 `115.190.153.53:9527`）
-- 「家长」页用 **家里 / 外面** 切换，无需手填 URL
-- `client_hint`：`living-room-legacy-iphone-<suffix>`
-- 发 Intent 前须心跳成功（Brain 硬性要求）
+- 默认连 **家里 WiFi** Brain（`192.168.3.73:9527`）；连不上会自动试 **外面**（云 `115.190.153.53:9527`）
+- 「家长」页用 **家里 / 外面** 切换 Brain，无需手填 URL
+
+### 直播（P1，仅视频）
+
+```text
+互动 → 直播 → Start Stream
+  → POST Mac :8790/api/v1/video-live/prepare
+  → MPEG-TS/H.264 over TCP（640×480 @ 15fps ~800kbps）
+  → Stop → POST .../stop
+```
+
+- **家长 → 更多** 填 **Mac ingest URL**（默认 `http://192.168.3.73:8790`），**不是** Brain `:9527`
+- P1 **无音频**；P2 预留 `includeAudio=false` 接口
+- 验收：`bytes_received` 增长 + `ffprobe` 见 `h264`（无 audio 也通过）
 
 ## 不包含
 
-- 语音、扫描、拍照、文件、录音、直播
+- 直播音频（P2）
 - Runtime（GoPro / 灯）、Cast、双 Brain 自动切换
 - Journey 物流浮窗、Issue 反馈、历史拉取
 
@@ -55,11 +55,13 @@ ios/LivingRoomLegacy/LivingRoomLegacy/
   AppDelegate.swift          iOS 12 UIWindow 入口（无 SceneDelegate）
   Services/
     BrainAPI.swift           URLSession 回调 HTTP
-    ParticipantStore.swift   UserDefaults
+    ParticipantStore.swift   UserDefaults（Brain + Mac ingest URL）
     ConnectionManager.swift  register + 45s heartbeat
     IntentPoller.swift       5s 轮询 intent_detail
+  VideoLiveStream/           P1 仅视频 MPEG-TS 推流
   ViewControllers/
     ChatViewController.swift
+    LiveStreamViewController.swift
     SettingsViewController.swift
   Views/
     ChatMessageCell.swift
