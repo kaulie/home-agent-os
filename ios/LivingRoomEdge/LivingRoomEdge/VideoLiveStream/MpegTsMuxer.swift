@@ -6,17 +6,40 @@ final class MpegTsMuxer {
     private static let patPid: UInt16 = 0x0000
     private static let pmtPid: UInt16 = 0x1000
     private static let videoPid: UInt16 = 0x0100
+    private static let audioPid: UInt16 = 0x0101
 
     private var patCc: UInt8 = 0
     private var pmtCc: UInt8 = 0
     private var videoCc: UInt8 = 0
+    private var audioCc: UInt8 = 0
     private var frameIndex = 0
+    var includesAudio = true
 
     func reset() {
         patCc = 0
         pmtCc = 0
         videoCc = 0
+        audioCc = 0
         frameIndex = 0
+    }
+
+    func muxAudio(aacAdts: Data, pts90k: UInt64) -> Data {
+        var out = Data()
+        if frameIndex % 30 == 0 {
+            out.append(patPacket())
+            out.append(pmtPacket())
+        }
+        let pes = Self.audioPesPacket(aacAdts: aacAdts, pts90k: pts90k)
+        out.append(
+            packetize(
+                pid: Self.audioPid,
+                payload: pes,
+                pcr90k: nil,
+                pusi: true,
+                cc: &audioCc
+            )
+        )
+        return out
     }
 
     func mux(annexB: Data, pts90k: UInt64, keyframe: Bool) -> Data {
@@ -67,10 +90,16 @@ final class MpegTsMuxer {
         section.append(0xE0 | UInt8((Self.videoPid >> 8) & 0x1F))
         section.append(UInt8(Self.videoPid & 0xFF))
         section.append(contentsOf: [0xF0, 0x00]) // program_info_length 0
-        section.append(0x1B) // H.264
+        section.append(0x1B) // H.264 video
         section.append(0xE0 | UInt8((Self.videoPid >> 8) & 0x1F))
         section.append(UInt8(Self.videoPid & 0xFF))
         section.append(contentsOf: [0xF0, 0x00]) // ES_info_length 0
+        if includesAudio {
+            section.append(0x0F) // AAC audio
+            section.append(0xE0 | UInt8((Self.audioPid >> 8) & 0x1F))
+            section.append(UInt8(Self.audioPid & 0xFF))
+            section.append(contentsOf: [0xF0, 0x00]) // ES_info_length 0
+        }
         let sectionLength = section.count - 3 + 4
         section[lengthIndex] = 0xB0 | UInt8((sectionLength >> 8) & 0x0F)
         section[lengthIndex + 1] = UInt8(sectionLength & 0xFF)
@@ -162,6 +191,23 @@ final class MpegTsMuxer {
         pes.append(0x05)
         pes.append(contentsOf: ptsBytes(pts90k))
         pes.append(annexB)
+        return pes
+    }
+
+    private static func audioPesPacket(aacAdts: Data, pts90k: UInt64) -> Data {
+        var pes = Data([0x00, 0x00, 0x01, 0xC0])
+        let len = aacAdts.count + 8
+        if len <= 0xFFFF {
+            pes.append(UInt8((len >> 8) & 0xFF))
+            pes.append(UInt8(len & 0xFF))
+        } else {
+            pes.append(contentsOf: [0x00, 0x00])
+        }
+        pes.append(0x80)
+        pes.append(0x80)
+        pes.append(0x05)
+        pes.append(contentsOf: ptsBytes(pts90k))
+        pes.append(aacAdts)
         return pes
     }
 

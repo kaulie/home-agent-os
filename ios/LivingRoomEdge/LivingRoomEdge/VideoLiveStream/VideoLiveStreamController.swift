@@ -6,6 +6,7 @@ final class LivePushPipeline {
     let transport = MpegTsTcpTransport()
     let muxer = MpegTsMuxer()
     var encoder: H264VideoEncoder?
+    var audioEncoder: AacAudioEncoder?
     private let queue = DispatchQueue(label: "homeagent.video.live.mux")
     private var frameIndex: UInt64 = 0
     private let ticksPerFrame: UInt64
@@ -24,9 +25,21 @@ final class LivePushPipeline {
         }
     }
 
+    func sendAudio(aacAdts: Data, pts: CMTime) {
+        queue.async { [self] in
+            let sec = CMTimeGetSeconds(pts)
+            guard sec.isFinite, sec >= 0 else { return }
+            let pts90 = UInt64(sec * 90_000.0)
+            let ts = muxer.muxAudio(aacAdts: aacAdts, pts90k: pts90)
+            transport.send(ts)
+        }
+    }
+
     func stop() {
         encoder?.stop()
         encoder = nil
+        audioEncoder?.stop()
+        audioEncoder = nil
         queue.sync {
             transport.close()
             muxer.reset()
@@ -53,6 +66,7 @@ final class VideoLiveStreamController: ObservableObject {
     @Published private(set) var bitrate = 4_000_000
     @Published private(set) var endpoint = ""
     @Published private(set) var errorMessage = ""
+    @Published private(set) var streamIncludesAudio = false
 
     let capture = VideoLiveCapture()
     private var pipeline: LivePushPipeline?
@@ -72,12 +86,18 @@ final class VideoLiveStreamController: ObservableObject {
         URL(string: endpoint)?.host ?? endpoint
     }
 
+    func setAudioCaptureEnabled(_ enabled: Bool) {
+        guard phase == .idle || phase == .error else { return }
+        capture.setAudioEnabled(enabled)
+    }
+
     func startPreview() {
         capture.start()
     }
 
     func stopPreview() {
         capture.onFrame = nil
+        capture.onAudioSample = nil
         if phase == .streaming || phase == .starting {
             Task { await stopStream(keepPreview: false) }
         } else {
@@ -87,18 +107,28 @@ final class VideoLiveStreamController: ObservableObject {
         }
     }
 
-    func startStream(ingestBaseURL: String) async {
+    func startStream(ingestBaseURL: String, includeAudio: Bool) async {
         let base = ingestBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !base.isEmpty else {
             phase = .error
             errorMessage = "请先在设置里填写 Mac ingest URL"
             return
         }
-        guard capture.authorization == .authorized, capture.hasDevice, capture.isRunning else {
+        guard capture.authorization == .authorized,
+              capture.hasDevice,
+              capture.isRunning else {
             phase = .error
             errorMessage = capture.statusMessage.isEmpty ? "相机未就绪" : capture.statusMessage
             return
         }
+        if includeAudio {
+            guard capture.audioAuthorization == .authorized else {
+                phase = .error
+                errorMessage = capture.statusMessage.isEmpty ? "麦克风未就绪" : capture.statusMessage
+                return
+            }
+        }
+        streamIncludesAudio = includeAudio
         phase = .starting
         errorMessage = ""
         lastIngestBase = base
@@ -111,6 +141,7 @@ final class VideoLiveStreamController: ObservableObject {
             let pipe = LivePushPipeline(fps: Int(rate))
             try await pipe.transport.connect(host: host, port: port)
             pipe.muxer.reset()
+            pipe.muxer.includesAudio = includeAudio
             let w = Int32(capture.width)
             let h = Int32(capture.height)
             let br: Int32 = (w >= 1920) ? 2_500_000 : 1_500_000
@@ -123,14 +154,29 @@ final class VideoLiveStreamController: ObservableObject {
                 pipe.send(annexB: annexB, keyframe: keyframe, pts: pts)
             }
             pipe.encoder = enc
+            if includeAudio {
+                let aenc = AacAudioEncoder()
+                aenc.onAccessUnit = { adts, pts in
+                    pipe.sendAudio(aacAdts: adts, pts: pts)
+                }
+                pipe.audioEncoder = aenc
+            }
             pipeline = pipe
             capture.onFrame = { sample in
                 pipe.encoder?.encode(sample: sample)
+            }
+            if includeAudio {
+                capture.onAudioSample = { sample in
+                    pipe.audioEncoder?.encode(sample: sample)
+                }
+            } else {
+                capture.onAudioSample = nil
             }
             startedAt = Date()
             phase = .streaming
         } catch {
             capture.onFrame = nil
+            capture.onAudioSample = nil
             pipeline?.stop()
             pipeline = nil
             phase = .error
@@ -145,6 +191,7 @@ final class VideoLiveStreamController: ObservableObject {
         }
         phase = .stopping
         capture.onFrame = nil
+        capture.onAudioSample = nil
         let sid = streamId
         let base = lastIngestBase
         pipeline?.stop()
@@ -156,6 +203,7 @@ final class VideoLiveStreamController: ObservableObject {
         streamId = ""
         endpoint = ""
         startedAt = nil
+        streamIncludesAudio = false
         phase = .idle
         errorMessage = ""
     }

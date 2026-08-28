@@ -1,6 +1,22 @@
 import SwiftUI
 import UIKit
 
+private enum LiveStreamMediaMode: String, CaseIterable, Identifiable {
+    case videoOnly
+    case videoAndAudio
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .videoOnly: return "仅视频"
+        case .videoAndAudio: return "视频+音频"
+        }
+    }
+
+    var includesAudio: Bool { self == .videoAndAudio }
+}
+
 /// Local Input: iPhone camera → MPEG-TS over TCP to Mac Edge (not Planner).
 struct LiveStreamWorkspaceView: View {
     @EnvironmentObject private var model: AppModel
@@ -9,6 +25,7 @@ struct LiveStreamWorkspaceView: View {
     var onClose: () -> Void
     @StateObject private var live = VideoLiveStreamController()
     @StateObject private var clicks = ClickGuard()
+    @State private var mediaMode: LiveStreamMediaMode = .videoAndAudio
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -54,6 +71,7 @@ struct LiveStreamWorkspaceView: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
+            live.setAudioCaptureEnabled(mediaMode.includesAudio)
             live.startPreview()
         }
         .onDisappear {
@@ -61,23 +79,36 @@ struct LiveStreamWorkspaceView: View {
         }
     }
 
+    private var previewReady: Bool {
+        guard live.capture.authorization == .authorized, live.capture.hasDevice else { return false }
+        if mediaMode.includesAudio {
+            return live.capture.audioAuthorization == .authorized
+        }
+        return true
+    }
+
     private var previewBlock: some View {
         ZStack {
             Color.black
-            if live.capture.authorization == .authorized, live.capture.hasDevice {
+            if previewReady {
                 LiveCameraPreviewView(session: live.capture.session)
             } else {
                 VStack(spacing: 10) {
-                    Image(systemName: "video")
+                    Image(systemName: mediaMode.includesAudio ? "video.badge.waveform" : "video")
                         .font(.system(size: 36, weight: .light))
                         .foregroundStyle(EdgeTheme.sand)
-                    Text(live.capture.authorization != .authorized ? "需要相机权限" : "本机没有可用摄像头")
+                    Text(live.capture.authorization != .authorized ? "需要相机权限"
+                        : mediaMode.includesAudio && live.capture.audioAuthorization != .authorized ? "需要麦克风权限"
+                        : "本机没有可用摄像头")
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundStyle(EdgeTheme.mist)
-                    Text(live.capture.authorization != .authorized ? "授权后即可取景推流。" : "模拟器无法预览，请用真机。")
+                    Text(live.capture.authorization != .authorized ? "授权后即可取景推流。"
+                        : mediaMode.includesAudio && live.capture.audioAuthorization != .authorized ? "「视频+音频」会采集环境音，请允许麦克风。"
+                        : "模拟器无法预览，请用真机。")
                         .font(.system(size: 13, weight: .regular, design: .rounded))
                         .foregroundStyle(EdgeTheme.dim)
-                    if live.capture.authorization == .denied || live.capture.authorization == .restricted {
+                    if live.capture.authorization == .denied || live.capture.authorization == .restricted
+                        || (mediaMode.includesAudio && (live.capture.audioAuthorization == .denied || live.capture.audioAuthorization == .restricted)) {
                         Button("去设置") {
                             if let url = URL(string: UIApplication.openSettingsURLString) {
                                 UIApplication.shared.open(url)
@@ -104,7 +135,7 @@ struct LiveStreamWorkspaceView: View {
             }
             Text(live.streamId)
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
-            Text("\(live.resolution) · \(live.fps)fps · \(bitrateLabel)")
+            Text("\(live.resolution) · \(live.fps)fps · \(bitrateLabel)\(live.streamIncludesAudio ? " · 音" : "")")
                 .font(.system(size: 12, weight: .medium, design: .rounded))
             HStack(spacing: 8) {
                 Text(live.connectedHost.isEmpty ? "—" : live.connectedHost)
@@ -126,6 +157,9 @@ struct LiveStreamWorkspaceView: View {
             Color.black
             VStack(spacing: 8) {
                 statusLine
+                if live.phase == .idle || live.phase == .error {
+                    mediaModePicker
+                }
                 if live.phase == .streaming || live.phase == .starting || live.phase == .stopping {
                     stopButton
                 } else {
@@ -133,7 +167,7 @@ struct LiveStreamWorkspaceView: View {
                 }
             }
         }
-        .frame(height: 118)
+        .frame(height: live.phase == .idle || live.phase == .error ? 158 : 118)
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity)
         .background(Color.black)
@@ -171,6 +205,21 @@ struct LiveStreamWorkspaceView: View {
         .padding(.horizontal, 20)
     }
 
+    private var mediaModePicker: some View {
+        Picker("推流内容", selection: $mediaMode) {
+            ForEach(LiveStreamMediaMode.allCases) { mode in
+                Text(mode.label).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 24)
+        .disabled(live.phase == .starting)
+        .onChange(of: mediaMode) { mode in
+            live.setAudioCaptureEnabled(mode.includesAudio)
+        }
+        .accessibilityLabel("推流内容")
+    }
+
     private var startButton: some View {
         let ingest = model.macIngestURL.trimmingCharacters(in: .whitespacesAndNewlines)
         return Button {
@@ -179,7 +228,7 @@ struct LiveStreamWorkspaceView: View {
                 openMacIngestSettings()
                 return
             }
-            Task { await live.startStream(ingestBaseURL: ingest) }
+            Task { await live.startStream(ingestBaseURL: ingest, includeAudio: mediaMode.includesAudio) }
         } label: {
             Text("Start Stream")
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
@@ -187,9 +236,17 @@ struct LiveStreamWorkspaceView: View {
                 .frame(width: 180, height: 48)
                 .background(Color.white, in: Capsule())
         }
-        .disabled(live.phase == .starting || (!ingest.isEmpty && !live.capture.isRunning))
-        .opacity(ingest.isEmpty || !live.capture.isRunning ? 0.4 : 1)
+        .disabled(live.phase == .starting || (!ingest.isEmpty && !canStartStream))
+        .opacity(ingest.isEmpty || !canStartStream ? 0.4 : 1)
         .accessibilityLabel("开始推流")
+    }
+
+    private var canStartStream: Bool {
+        guard live.capture.isRunning else { return false }
+        if mediaMode.includesAudio {
+            return live.capture.audioAuthorization == .authorized
+        }
+        return true
     }
 
     private var stopButton: some View {

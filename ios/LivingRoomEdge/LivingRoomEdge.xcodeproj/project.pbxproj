@@ -16,6 +16,7 @@
 		23AC1919D0384B32969CE4AC /* AudioPreviewStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 001EBEE8A9084E0B80D3E07C /* AudioPreviewStore.swift */; };
 		29CD2657DB2F41368E9A8FAA /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7874BF5F0F664EFAB5328106 /* AppModel.swift */; };
 		2E925E7C8AE1482E89BBAA04 /* VideoLiveCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7666B6BE46A473191A3B680 /* VideoLiveCapture.swift */; };
+		A1B2C3D4E5F64789A0B1C2D5 /* AacAudioEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A2C3D4E5F64789A0B1C2D3 /* AacAudioEncoder.swift */; };
 		2EC89FA6900449DC83CC8D70 /* GameControllerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C46366381BD48F19D0EA130 /* GameControllerView.swift */; };
 		3583617C8FBA4EE08E2425C1 /* EdgeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF0C9676FBF94205B7580307 /* EdgeTheme.swift */; };
 		3B3E64EFE4FF4179803E9387 /* BrainEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0B2E484D024E64899DA6B1 /* BrainEndpoint.swift */; };
@@ -113,6 +114,7 @@
 		A7ECAB77298B486D97673D34 /* IntentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentClient.swift; sourceTree = "<group>"; };
 		AC0B2E484D024E64899DA6B1 /* BrainEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainEndpoint.swift; sourceTree = "<group>"; };
 		AF500CC1D1EE419F97E647E2 /* MpegTsMuxer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpegTsMuxer.swift; sourceTree = "<group>"; };
+		B1A2C3D4E5F64789A0B1C2D3 /* AacAudioEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AacAudioEncoder.swift; sourceTree = "<group>"; };
 		B262D5C6F7124CE1945E6230 /* VideoLiveStreamController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoLiveStreamController.swift; sourceTree = "<group>"; };
 		B42FB946726E43CDA1B3F6E1 /* AudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
 		BA337C3954E547C9BF237269 /* IntentProgressOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentProgressOverlay.swift; sourceTree = "<group>"; };
@@ -288,6 +290,7 @@
 		6DDF602332954C1F9A7D3291 /* VideoLiveStream */ = {
 			isa = PBXGroup;
 			children = (
+				B1A2C3D4E5F64789A0B1C2D3 /* AacAudioEncoder.swift */,
 				C443AAAAD89F4E769EC95620 /* H264VideoEncoder.swift */,
 				AF500CC1D1EE419F97E647E2 /* MpegTsMuxer.swift */,
 				FF7EC0391C5F4B8CADC3FB2E /* MpegTsTcpTransport.swift */,
@@ -467,6 +470,7 @@
 				965998B669F04A73AE87777F /* AudioRecorder.swift in Sources */,
 				7D42614020F340CF890308AC /* SpeechRecognizer.swift in Sources */,
 				9033DC7728F146C7AE960649 /* H264VideoEncoder.swift in Sources */,
+				A1B2C3D4E5F64789A0B1C2D5 /* AacAudioEncoder.swift in Sources */,
 				E3F051FE4804412CA37827AD /* MpegTsMuxer.swift in Sources */,
 				59E27611C2E64977900D20EE /* MpegTsTcpTransport.swift in Sources */,
 				2E925E7C8AE1482E89BBAA04 /* VideoLiveCapture.swift in Sources */,
