@@ -155,6 +155,7 @@ class Handler(BaseHTTPRequestHandler):
                 result = detect_finger(
                     image,
                     return_crop=parse_bool(extra.get("return_crop"), False),
+                    language=language,
                 )
             elif stage == "ocr_at_finger":
                 result = ocr_at_finger(

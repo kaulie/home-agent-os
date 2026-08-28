@@ -54,9 +54,17 @@ CASES: list[tuple[str, Path, set[str], str]] = [
     ("intent277", IMG_SERVER / "57bb7cd2_photo_1787795714933.jpg", {"野"}, "Android 绘本 插图肤色干扰"),
     ("intent278", IMG_SERVER / "ad225ed3_photo_1787797386939.jpg", {"雕"}, "Android 绘本"),
 
-    # ── Known bad cases (expect non-ok) ──
+    # ── Recent reading photos (Legacy / console grip poses) ──
+    ("reading_math", IMG_SERVER / "8f729524_reading_1787879994.jpg", {"乘"}, "数学作业本拇指指乘"),
+    ("reading_misha", IMG_SERVER / "4cde3c4d_reading_1787879914.jpg", {"沙"}, "米沙不高兴食指/中指指沙"),
+    ("reading_misha_blur", IMG_SERVER / "8eb5151e_reading_1787879901.jpg", {"米"}, "米沙模糊图食指指米"),
     ("intent253", IMG_SERVER / "4f83b365_photo_1787757124.jpg", set(), "木桌面 no_hand（已知限制）"),
-    ("intent239", IMG_SERVER / "49ce8930_photo_1787751581950.jpg", set(), "五指全伸 ambiguous_finger"),
+    ("intent239", IMG_SERVER / "49ce8930_photo_1787751581950.jpg", {"缴"}, "握纸拇指指缴"),
+
+    # ── Multi-finger OCR selection (3+ extended) ──
+    # thumb/index/pinky all extended; reach wrongly favoured the splayed index.
+    # Stage-2 OCR proximity picks the thumb (central, pointing at the headword).
+    ("intent333", IMG_SERVER / "672301d8_photo_1787899311.jpg", {"珍"}, "多指：拇指指字典字头「珍」"),
 ]
 
 # Cases that are historically slow (>60s) — skipped in --quick mode.

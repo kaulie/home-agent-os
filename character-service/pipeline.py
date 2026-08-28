@@ -9,11 +9,18 @@ from typing import Any, Callable
 
 from geometry import (
     AMBIGUOUS_FINGER_MSG,
+    _joint_in_bounds,
+    clamp_finger_tip_to_image,
     decide,
     explode_blocks,
+    extended_fingers,
+    fallback_in_bounds_origin,
     has_cjk,
     pointing_fingers,
+    project_bottom_edge_grip,
     rank_characters,
+    resolve_digit_origin,
+    _all_tips_above_frame,
 )
 from hunyuan_ocr import HunyuanOcrError, recognize as hunyuan_recognize
 from ocr_client import OcrClientError, blocks_from_ocr, recognize as ocr_recognize
@@ -27,6 +34,10 @@ CROP_PAD = 0.18
 # the fingertip in the finger direction, where the pointed-at character sits.
 OCR_WINDOWS = ((600, 0), (600, 260))
 OCR_UPSCALE = 1.0
+# Stage-2 OCR selection overrides Stage 1 only when its best text-hit score is at
+# least this confident. Below it, Stage 1's geometry pick stands (grip/contact
+# poses where the glyph sits under the nail, not ahead of the ray).
+STAGE2_MIN_SCORE = 0.6
 # Half-size of the finger-region crop produced by detect_finger when the runtime
 # asks for return_crop. Sized to cover every OCR window (max shift 260 + half
 # 300 = 560 ahead of the fingertip), so ocr_at_finger's windows always fit
@@ -283,63 +294,171 @@ def detect_finger(
     detect_hand: Callable[[Any], Any] | None = None,
     decode: Callable[[bytes], Any] | None = None,
     return_crop: bool = False,
+    language: str = "zh",
+    ocr: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    """Detect the pointing finger.
+
+    Stage 1 (geometry): the proven ``pointing_fingers`` dominance logic —
+    reach, grip-pattern isolation, palm-forward cluster, thumb-lateral, and the
+    thumb-splay direction override. This handles the common cases (single
+    finger, index-vs-splayed-thumb, grip-on-book, thumb-pressing-beside) and
+    MUST stay authoritative for them.
+
+    Stage 2 (OCR proximity): only for the 3+-extended-finger case, where reach
+    alone is unreliable (a splayed edge finger can reach farthest without being
+    the pointer — intent 333). Crop a window around each candidate fingertip, run
+    OCR, and pick the finger whose ray most directly hits a character. This
+    overrides Stage 1 ONLY when its best text-hit score is confident
+    (>= STAGE2_MIN_SCORE); otherwise Stage 1's pick stands (grip/contact poses
+    where the glyph sits under the nail, not ahead of the ray).
+    """
     from hands import detect_hands_landmarks
 
     detect_fn = detect_hand or detect_hands_landmarks
     t0 = time.perf_counter()
     image = _decode_image(image_bytes, decode)
+    img_h, img_w = image.shape[:2]
     hands = _as_hands(detect_fn(image))
-    pointing: list[dict[str, Any]] = []
+    pointing: list[tuple[dict[str, Any], dict[int, tuple[float, float]]]] = []
+    all_extended: list[tuple[dict[str, Any], dict[int, tuple[float, float]]]] = []
     landmark_dump: dict[str, list[float]] = {}
     for hand_lm in hands:
-        found = pointing_fingers(hand_lm)
-        pointing.extend(found)
-        if not landmark_dump:
+        for item in pointing_fingers(hand_lm):
+            pointing.append((item, hand_lm))
+        for item in extended_fingers(hand_lm):
+            all_extended.append((item, hand_lm))
+        if not landmark_dump and hand_lm:
             landmark_dump = {
                 str(k): [round(v[0], 2), round(v[1], 2)] for k, v in hand_lm.items()
             }
     used_skin_fallback = False
-    if not pointing and detect_hand is None:
-        # MediaPipe (palm-first) misses when the palm is out of frame — only a
-        # fingertip is visible. Fall back to skin segmentation, which works on
-        # non-skin-colored backgrounds (white paper, dark surface). Wooden desk
-        # is a known bad case (see eval/ALGORITHM_CHANGELOG.md intent 253).
+    if not all_extended and detect_hand is None:
         try:
             from skin_detect import detect_hands_landmarks as skin_detect
+
             skin_hands = _as_hands(skin_detect(image))
             for hand_lm in skin_hands:
-                found = pointing_fingers(hand_lm)
-                pointing.extend(found)
-                if not landmark_dump:
+                for item in pointing_fingers(hand_lm):
+                    pointing.append((item, hand_lm))
+                for item in extended_fingers(hand_lm):
+                    all_extended.append((item, hand_lm))
+                if not landmark_dump and hand_lm:
                     landmark_dump = {
                         str(k): [round(v[0], 2), round(v[1], 2)] for k, v in hand_lm.items()
                     }
-            used_skin_fallback = bool(pointing)
+            used_skin_fallback = bool(all_extended)
         except Exception:
             pass
     elapsed = round(time.perf_counter() - t0, 4)
-    if not pointing:
+    if not all_extended:
         raise PipelineError(
             "no_hand",
             "图里没有检测到伸出的手指。请把手指指在书页或白纸上（不要指在桌面），"
             "让手指大部分进入画面，指尖对着那个字。",
         )
-    if len(pointing) > 1:
-        names = "、".join(str(p.get("name") or "") for p in pointing if p.get("name"))
+
+    # Resolve + clamp the Stage-1 pick (if any) — same logic as before.
+    stage1_finger: dict[str, Any] | None = None
+    stage1_digit = ""
+    stage1_signal = "ambiguous"
+    if len(pointing) == 1:
+        chosen, hand_lm = pointing[0]
+        stage1_signal = str(chosen.get("signal") or "single")
+        digit = str(chosen.get("name") or "").strip()
+        origin, direction = chosen["origin"], chosen["direction"]
+        if not _joint_in_bounds(origin, img_w, img_h):
+            resolved = resolve_digit_origin(hand_lm, digit, img_w, img_h) if digit else None
+            if resolved is not None:
+                origin, direction = resolved
+            if not _joint_in_bounds(origin, img_w, img_h):
+                fallback = fallback_in_bounds_origin(hand_lm, img_w, img_h)
+                if fallback is not None:
+                    origin, direction, digit = fallback
+        projected = project_bottom_edge_grip(hand_lm, digit, img_w, img_h)
+        if projected is not None:
+            origin, direction = projected
+        else:
+            origin, direction = clamp_finger_tip_to_image(origin, direction, img_w, img_h)
+        stage1_finger = finger_payload(origin, direction)
+        stage1_digit = digit
+
+    chosen_finger = stage1_finger
+    chosen_digit = stage1_digit
+    select_ocr_s = 0.0
+    multi_finger_select = False
+
+    # Stage 2: only when 3+ fingers are extended (reach unreliable). For the
+    # 2-finger case, Stage 1 (reach + splay override) is trusted as before.
+    # Even for 3+ fingers, Stage 2 overrides Stage 1 ONLY when Stage 1's pick was
+    # by the weak "reach" signal — the stronger grip / thumb-lateral / cluster
+    # signals are authoritative for grip & contact poses (the glyph sits under the
+    # nail, not ahead of the ray, so ray-based Stage 2 would misfire there).
+    if len(all_extended) >= 3 and stage1_signal == "reach":
+        candidates: list[dict[str, Any]] = []
+        for item, hand_lm in all_extended:
+            digit = str(item.get("name") or "").strip()
+            origin, direction = item["origin"], item["direction"]
+            if not _joint_in_bounds(origin, img_w, img_h):
+                resolved = resolve_digit_origin(hand_lm, digit, img_w, img_h) if digit else None
+                if resolved is not None:
+                    origin, direction = resolved
+                if not _joint_in_bounds(origin, img_w, img_h):
+                    fallback = fallback_in_bounds_origin(hand_lm, img_w, img_h)
+                    if fallback is not None:
+                        origin, direction, digit = fallback
+            projected = project_bottom_edge_grip(hand_lm, digit, img_w, img_h)
+            if projected is not None:
+                origin, direction = projected
+            else:
+                origin, direction = clamp_finger_tip_to_image(origin, direction, img_w, img_h)
+            candidates.append(
+                {
+                    "name": digit,
+                    "origin": origin,
+                    "direction": direction,
+                    "finger": finger_payload(origin, direction),
+                }
+            )
+        max_angle = _env_float("READING_MAX_ANGLE_DEG", DEFAULT_MAX_ANGLE)
+        max_dist = _env_float("READING_MAX_DIST_FRAC", DEFAULT_MAX_DIST_FRAC) * math.hypot(img_w, img_h)
+        chosen_cand, _chars, sel_info = select_finger_by_text(
+            image,
+            candidates,
+            language=language,
+            ocr=ocr,
+            max_angle_deg=max_angle,
+            max_distance=max_dist,
+        )
+        select_ocr_s = float(sel_info.get("ocr_vlm_s") or 0.0)
+        if chosen_cand is not None:
+            best_score = float(sel_info.get("best_score") or 0.0)
+            if best_score >= STAGE2_MIN_SCORE:
+                chosen_finger = chosen_cand["finger"]
+                chosen_digit = str(chosen_cand.get("name") or "").strip()
+                multi_finger_select = True
+
+    if chosen_finger is None:
+        names = "、".join(
+            str(p[0].get("name") or "") for p in all_extended if p[0].get("name")
+        )
         extra = f"（{names}）" if names else ""
         raise PipelineError("ambiguous_finger", AMBIGUOUS_FINGER_MSG + extra)
-    chosen = pointing[0]
-    origin, direction = chosen["origin"], chosen["direction"]
+
+    origin, direction = parse_finger(chosen_finger)
     payload = finger_payload(origin, direction)
-    digit = str(chosen.get("name") or "").strip()
-    if digit:
-        payload["digit"] = digit
+    if chosen_digit:
+        payload["digit"] = chosen_digit
     out: dict[str, Any] = {
         "status": "ok",
         "finger": payload,
         "landmarks": landmark_dump,
-        "timing": {"hand_detection_s": elapsed, "skin_fallback": used_skin_fallback},
+        "timing": {
+            "hand_detection_s": elapsed,
+            "skin_fallback": used_skin_fallback,
+            "multi_finger_select": multi_finger_select,
+            "ocr_vlm_s": round(select_ocr_s, 4),
+        },
     }
     if return_crop:
         import base64
@@ -557,6 +676,169 @@ def rank_pointed(
     return payload
 
 
+def _collect_finger_candidates(
+    image: Any,
+    *,
+    detect_hand: Callable[[Any], Any] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, list[float]], dict[str, Any]]:
+    """Detect hands and collect ALL extended digits as resolved+clamped
+    candidates (no dominance filtering). Returns (candidates, landmarks_dump,
+    timing). Used by detect_finger's multi-finger selection: when several
+    fingers are extended, reach alone is unreliable, so we gather every
+    candidate and let text proximity (Stage 2) pick the pointer.
+    """
+    from hands import detect_hands_landmarks
+
+    detect_fn = detect_hand or detect_hands_landmarks
+    t0 = time.perf_counter()
+    img_h, img_w = image.shape[:2]
+    hands = _as_hands(detect_fn(image))
+    raw: list[tuple[dict[str, Any], dict[int, tuple[float, float]]]] = []
+    landmark_dump: dict[str, list[float]] = {}
+    for hand_lm in hands:
+        for item in extended_fingers(hand_lm):
+            raw.append((item, hand_lm))
+        if not landmark_dump and hand_lm:
+            landmark_dump = {
+                str(k): [round(v[0], 2), round(v[1], 2)] for k, v in hand_lm.items()
+            }
+    used_skin_fallback = False
+    if not raw and detect_hand is None:
+        try:
+            from skin_detect import detect_hands_landmarks as skin_detect
+
+            skin_hands = _as_hands(skin_detect(image))
+            for hand_lm in skin_hands:
+                for item in extended_fingers(hand_lm):
+                    raw.append((item, hand_lm))
+                if not landmark_dump and hand_lm:
+                    landmark_dump = {
+                        str(k): [round(v[0], 2), round(v[1], 2)]
+                        for k, v in hand_lm.items()
+                    }
+            used_skin_fallback = bool(raw)
+        except Exception:
+            pass
+    elapsed = round(time.perf_counter() - t0, 4)
+    candidates: list[dict[str, Any]] = []
+    for item, hand_lm in raw:
+        digit = str(item.get("name") or "").strip()
+        origin, direction = item["origin"], item["direction"]
+        if not _joint_in_bounds(origin, img_w, img_h):
+            resolved = resolve_digit_origin(hand_lm, digit, img_w, img_h) if digit else None
+            if resolved is not None:
+                origin, direction = resolved
+            if not _joint_in_bounds(origin, img_w, img_h):
+                fallback = fallback_in_bounds_origin(hand_lm, img_w, img_h)
+                if fallback is not None:
+                    origin, direction, digit = fallback
+        projected = project_bottom_edge_grip(hand_lm, digit, img_w, img_h)
+        if projected is not None:
+            origin, direction = projected
+        else:
+            origin, direction = clamp_finger_tip_to_image(origin, direction, img_w, img_h)
+        candidates.append(
+            {
+                "name": digit,
+                "origin": origin,
+                "direction": direction,
+                "reach": float(item.get("reach") or 0.0),
+                "finger": finger_payload(origin, direction),
+            }
+        )
+    timing = {"hand_detection_s": elapsed, "skin_fallback": used_skin_fallback}
+    return candidates, landmark_dump, timing
+
+
+def detect_finger_candidates(
+    image_bytes: bytes,
+    *,
+    detect_hand: Callable[[Any], Any] | None = None,
+    decode: Callable[[bytes], Any] | None = None,
+) -> dict[str, Any]:
+    """HTTP/debug entry: decode image then collect all extended-finger
+    candidates. Raises no_hand when none are detected. (The dominance-based
+    single-finger pick lives in detect_finger.)
+    """
+    image = _decode_image(image_bytes, decode)
+    candidates, landmark_dump, timing = _collect_finger_candidates(image, detect_hand=detect_hand)
+    if not candidates:
+        raise PipelineError(
+            "no_hand",
+            "图里没有检测到伸出的手指。请把手指指在书页或白纸上（不要指在桌面），"
+            "让手指大部分进入画面，指尖对着那个字。",
+        )
+    return {
+        "status": "ok",
+        "candidates": candidates,
+        "landmarks": landmark_dump,
+        "timing": timing,
+    }
+
+
+def select_finger_by_text(
+    image: Any,
+    candidates: list[dict[str, Any]],
+    *,
+    language: str = "zh",
+    ocr: Callable[..., dict[str, Any]] | None = None,
+    max_angle_deg: float,
+    max_distance: float,
+    progress: Callable[[str, dict], None] | None = None,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]] | None, dict[str, Any]]:
+    """Stage 2 — OCR-guided multi-finger selection.
+
+    For each candidate finger, crop a 600px window around its (clamped) fingertip
+    and run the main OCR backend, then rank the found characters against that
+    finger's ray. The finger whose ray most directly hits a character (highest
+    top-1 score) is the pointer. Fingers pointing at empty space score ~0 and are
+    naturally eliminated — exactly the user's rule: "没有指字的自然就排除了".
+
+    Returns (chosen_candidate, chosen_chars, info). chosen_candidate/chars are
+    None when no finger hits any text (caller raises ambiguous_finger).
+    """
+    ocr_fn, ocr_errors = _ocr_fn(ocr)
+    scored: list[tuple[dict[str, Any], list[dict[str, Any]], float]] = []
+    ocr_elapsed = 0.0
+    for idx, cand in enumerate(candidates):
+        finger = cand["finger"]
+        origin, direction = parse_finger(finger)
+        window = finger_ocr_window(image, origin, direction, 600, shift=0)
+        if window is None:
+            scored.append((cand, [], 0.0))
+            continue
+        ocr_bytes, wxy, scale = window
+        t_call = time.perf_counter()
+        try:
+            part = ocr_fn(ocr_bytes, language=language)
+        except ocr_errors:
+            scored.append((cand, [], 0.0))
+            continue
+        ocr_elapsed += time.perf_counter() - t_call
+        part = shift_ocr_blocks(part, wxy[0], wxy[1], scale)
+        chars = explode_blocks(blocks_from_ocr(part))
+        if progress:
+            progress(
+                "multi_ocr",
+                {"finger": cand.get("name"), "n_chars": len(chars), "idx": idx + 1, "n": len(candidates)},
+            )
+        if not chars:
+            scored.append((cand, [], 0.0))
+            continue
+        ranked = rank_characters(
+            chars, origin, direction, max_angle_deg=max_angle_deg, max_distance=max_distance
+        )
+        top = float(ranked[0]["score"]) if ranked else 0.0
+        scored.append((cand, chars, top))
+    if not scored:
+        return None, None, {"ocr_vlm_s": round(ocr_elapsed, 4), "best_score": 0.0}
+    best = max(scored, key=lambda s: s[2])
+    chosen_cand, chosen_chars, chosen_score = best
+    if chosen_score <= 0.0 or not chosen_chars:
+        return None, None, {"ocr_vlm_s": round(ocr_elapsed, 4), "best_score": 0.0}
+    return chosen_cand, chosen_chars, {"ocr_vlm_s": round(ocr_elapsed, 4), "best_score": round(chosen_score, 4)}
+
+
 def run_still(
     image_bytes: bytes,
     *,
@@ -568,7 +850,9 @@ def run_still(
     progress: Callable[[str, dict], None] | None = None,
 ) -> dict[str, Any]:
     t_total_start = time.perf_counter()
-    hand = detect_finger(image_bytes, detect_hand=detect_hand, decode=decode)
+    hand = detect_finger(
+        image_bytes, detect_hand=detect_hand, decode=decode, language=language, ocr=ocr
+    )
     if progress:
         progress("detect_finger", {"status": hand.get("status"), "timing": hand.get("timing")})
     ocr_out = ocr_at_finger(
@@ -590,7 +874,8 @@ def run_still(
     timing = {
         "hand_detection_s": (hand.get("timing") or {}).get("hand_detection_s", 0.0),
         "ocr_vlm_s": round(
-            float((ocr_out.get("timing") or {}).get("ocr_vlm_s") or 0)
+            float((hand.get("timing") or {}).get("ocr_vlm_s") or 0)
+            + float((ocr_out.get("timing") or {}).get("ocr_vlm_s") or 0)
             + float((ranked.get("timing") or {}).get("ocr_vlm_s") or 0),
             4,
         ),
@@ -602,6 +887,8 @@ def run_still(
     payload["ocr_blocks"] = ocr_out.get("ocr_blocks")
     payload["char_boxes"] = ocr_out.get("char_boxes")
     payload["timing"] = timing
+    if (hand.get("timing") or {}).get("multi_finger_select"):
+        payload["multi_finger"] = True
     if return_debug:
         payload["replay"] = {
             "landmarks": hand.get("landmarks") or {},

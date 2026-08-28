@@ -6,7 +6,7 @@ import math
 from typing import Any
 
 WRIST = 0
-THUMB_MCP, THUMB_IP, THUMB_TIP = 2, 3, 4
+THUMB_CMC, THUMB_MCP, THUMB_IP, THUMB_TIP = 1, 2, 3, 4
 INDEX_MCP = 5
 INDEX_PIP = 6
 INDEX_DIP = 7
@@ -29,6 +29,18 @@ POINTING_FINGERS = (
 # point). 1.1: index tip ~400 vs middle ~352 (intent 8024) clears it; two
 # equally-extended fingers (~1.0) stay ambiguous.
 DOMINANT_TIP_RATIO = 1.1
+# Within the palm-forward cluster (fingers reaching toward the page), a modest
+# reach gap is enough to pick the pointer (8022 index vs middle).
+DOMINANT_REACH_CLUSTER_RATIO = 1.03
+PALM_FORWARD_CLUSTER_FRAC = 0.92
+# Spread-hand grip on a book: every digit passes is_extended_digit, but the
+# digit actually touching the target glyph is a spatial outlier from the fan.
+GRIP_PATTERN_MIN_DIGITS = 4
+DOMINANT_ISOLATION_RATIO = 1.25
+MIN_ISOLATION_PX = 35.0
+# Thumb pressing beside a fanned grip points across the palm (intent 239 缴).
+THUMB_LATERAL_RATIO = 1.35
+MIN_THUMB_LATERAL_PX = 80.0
 AMBIGUOUS_FINGER_MSG = "图里有多根手指，系统无法判断你指的是哪个字。"
 
 
@@ -158,6 +170,341 @@ def is_extended_digit(
     return True
 
 
+def _palm_axes(
+    landmarks: dict[int, tuple[float, float]],
+) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]] | None:
+    wrist = landmarks.get(WRIST)
+    mid = landmarks.get(MIDDLE_MCP)
+    if wrist is None or mid is None:
+        return None
+    fwd = vec_norm(mid[0] - wrist[0], mid[1] - wrist[1])
+    lat = (-fwd[1], fwd[0])
+    return wrist, fwd, lat
+
+
+def _enrich_digit_metrics(
+    landmarks: dict[int, tuple[float, float]],
+    candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    axes = _palm_axes(landmarks)
+    if axes is None:
+        return candidates
+    wrist, fwd, lat = axes
+    tips = [c["origin"] for c in candidates]
+    for cand in candidates:
+        tip = cand["origin"]
+        vx, vy = tip[0] - wrist[0], tip[1] - wrist[1]
+        cand["forward"] = dot(vx, vy, fwd[0], fwd[1])
+        cand["lateral"] = abs(dot(vx, vy, lat[0], lat[1]))
+        if len(tips) > 1:
+            cand["isolation"] = min(
+                vec_len(tip[0] - other[0], tip[1] - other[1])
+                for other in tips
+                if other != tip
+            )
+        else:
+            cand["isolation"] = 0.0
+    return candidates
+
+
+def _strip_digit_metrics(candidate: dict[str, Any]) -> dict[str, Any]:
+    out = dict(candidate)
+    for key in ("reach", "forward", "lateral", "isolation", "adj_isolation"):
+        out.pop(key, None)
+    return out
+
+
+def _thumb_index_splay_override(
+    chosen: dict[str, Any],
+    landmarks: dict[int, tuple[float, float]],
+) -> dict[str, Any]:
+    """Thumb reach can dominate a splayed grip even when the index is the pointer."""
+    if chosen.get("name") != "thumb":
+        return chosen
+    idx_tip = landmarks.get(INDEX_TIP)
+    idx_mcp = landmarks.get(INDEX_MCP)
+    if not idx_tip or not idx_mcp:
+        return chosen
+    origin = chosen["origin"]
+    dx = idx_tip[0] - origin[0]
+    dy = idx_tip[1] - origin[1]
+    if vec_len(dx, dy) >= 30:
+        return chosen
+    rdx, rdy = idx_tip[0] - idx_mcp[0], idx_tip[1] - idx_mcp[1]
+    if vec_len(rdx, rdy) <= 1e-9:
+        return chosen
+    ux, uy = vec_norm(rdx, rdy)
+    updated = dict(chosen)
+    updated["direction"] = (ux, uy)
+    return updated
+
+
+def _choose_pointing_digit(
+    landmarks: dict[int, tuple[float, float]],
+    candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if len(candidates) <= 1:
+        return candidates
+
+    enriched = _enrich_digit_metrics(landmarks, [dict(c) for c in candidates])
+
+    by_reach = sorted(enriched, key=lambda d: float(d.get("reach") or 0.0), reverse=True)
+    if float(by_reach[0]["reach"]) >= float(by_reach[1]["reach"]) * DOMINANT_TIP_RATIO:
+        chosen = _thumb_index_splay_override(by_reach[0], landmarks)
+        out = [_strip_digit_metrics(chosen)]
+        if out:
+            out[0]["signal"] = "reach"
+        return out
+
+    if len(enriched) >= GRIP_PATTERN_MIN_DIGITS:
+        max_forward = max(float(c.get("forward") or 0.0) for c in enriched)
+        if max_forward > 1e-6:
+            for cand in enriched:
+                fwd_frac = float(cand.get("forward") or 0.0) / max_forward
+                cand["adj_isolation"] = float(cand.get("isolation") or 0.0) * fwd_frac
+        else:
+            for cand in enriched:
+                cand["adj_isolation"] = float(cand.get("isolation") or 0.0)
+        by_iso = sorted(enriched, key=lambda d: float(d.get("adj_isolation") or 0.0), reverse=True)
+        top_iso = float(by_iso[0].get("adj_isolation") or 0.0)
+        second_iso = float(by_iso[1].get("adj_isolation") or 0.0)
+        if top_iso >= MIN_ISOLATION_PX and top_iso >= second_iso * DOMINANT_ISOLATION_RATIO:
+            out = [_strip_digit_metrics(by_iso[0])]
+            if out:
+                out[0]["signal"] = "grip"
+            return out
+
+    max_forward = max(float(c.get("forward") or 0.0) for c in enriched)
+    cluster = [
+        c
+        for c in enriched
+        if float(c.get("forward") or 0.0) >= max_forward * PALM_FORWARD_CLUSTER_FRAC
+    ]
+    if len(cluster) >= 2:
+        cluster.sort(key=lambda d: float(d.get("reach") or 0.0), reverse=True)
+        if float(cluster[0]["reach"]) >= float(cluster[1]["reach"]) * DOMINANT_REACH_CLUSTER_RATIO:
+            out = [_strip_digit_metrics(cluster[0])]
+            if out:
+                out[0]["signal"] = "cluster"
+            return out
+    elif len(cluster) == 1:
+        out = [_strip_digit_metrics(cluster[0])]
+        if out:
+            out[0]["signal"] = "cluster"
+        return out
+
+    thumb = next((c for c in enriched if c.get("name") == "thumb"), None)
+    if thumb is not None and len(enriched) >= GRIP_PATTERN_MIN_DIGITS:
+        others = [c for c in enriched if c.get("name") != "thumb"]
+        if others:
+            max_other_lat = max(float(c.get("lateral") or 0.0) for c in others)
+            thumb_lat = float(thumb.get("lateral") or 0.0)
+            if (
+                thumb_lat >= MIN_THUMB_LATERAL_PX
+                and thumb_lat >= max_other_lat * THUMB_LATERAL_RATIO
+            ):
+                out = [_strip_digit_metrics(thumb)]
+                if out:
+                    out[0]["signal"] = "thumb_lateral"
+                return out
+
+    out = [_strip_digit_metrics(c) for c in enriched]
+    for o in out:
+        o["signal"] = "ambiguous"
+    return out
+
+
+def _joint_in_bounds(
+    point: tuple[float, float],
+    width: int,
+    height: int,
+    *,
+    margin: float = 4.0,
+) -> bool:
+    x, y = point
+    return margin <= x <= width - margin and margin <= y <= height - margin
+
+
+def resolve_digit_origin(
+    landmarks: dict[int, tuple[float, float]],
+    digit_name: str,
+    width: int,
+    height: int,
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Use an in-bounds PIP/MCP when MediaPipe places TIP above the frame."""
+    for name, mcp, pip, dip, tip_idx in POINTING_FINGERS:
+        if name != digit_name:
+            continue
+        ray = _digit_ray(landmarks, mcp, dip, tip_idx)
+        if ray is None:
+            return None
+        origin, direction = ray
+        if _joint_in_bounds(origin, width, height):
+            return origin, direction
+        for idx in (pip, mcp):
+            pt = landmarks.get(idx)
+            if pt and _joint_in_bounds(pt, width, height):
+                return pt, direction
+        if name == "thumb":
+            cmc = landmarks.get(THUMB_CMC)
+            if cmc and _joint_in_bounds(cmc, width, height):
+                return cmc, direction
+        return origin, direction
+    return None
+
+
+def fallback_in_bounds_origin(
+    landmarks: dict[int, tuple[float, float]],
+    width: int,
+    height: int,
+) -> tuple[tuple[float, float], tuple[float, float], str] | None:
+    """Grip at the bottom edge: every TIP is off-frame — anchor on the highest joint still visible."""
+    best: tuple[tuple[float, float], tuple[float, float], str, float] | None = None
+    for name, mcp, pip, dip, tip_idx in POINTING_FINGERS:
+        ray = _digit_ray(landmarks, mcp, dip, tip_idx)
+        if ray is None:
+            continue
+        _, direction = ray
+        for idx in (pip, mcp):
+            pt = landmarks.get(idx)
+            if pt and _joint_in_bounds(pt, width, height):
+                score = pt[1]
+                if best is None or score < best[3]:
+                    best = (pt, direction, name, score)
+    if best is None:
+        return None
+    return best[0], best[1], best[2]
+
+
+def _all_tips_above_frame(
+    landmarks: dict[int, tuple[float, float]],
+    height: int,
+    *,
+    margin: float = 4.0,
+) -> bool:
+    """True when every fingertip sits above the top edge (bottom-of-photo grip)."""
+    saw_tip = False
+    for _, _, _, _, tip_idx in POINTING_FINGERS:
+        tip = landmarks.get(tip_idx)
+        if tip is None:
+            continue
+        saw_tip = True
+        if tip[1] >= margin:
+            return False
+    return saw_tip
+
+
+def project_bottom_edge_grip(
+    landmarks: dict[int, tuple[float, float]],
+    digit_name: str,
+    width: int,
+    height: int,
+    *,
+    margin: float = 4.0,
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Project from an in-bounds knuckle toward the page when tips are off-screen.
+
+    Tall phone photos often crop the hand at the bottom: MediaPipe still sees the
+    wrist and MCPs, but every TIP is above y=0. Clamping backward along the digit
+    ray lands on the top margin (empty area). Walk *forward* along the flipped
+    ray from the visible knuckle until we reach the book below the hand.
+    """
+    if not _all_tips_above_frame(landmarks, height, margin=margin):
+        return None
+    wrist = landmarks.get(WRIST)
+    min_y = (wrist[1] + 50.0) if wrist else 80.0
+    for name, mcp, pip, dip, tip_idx in POINTING_FINGERS:
+        if digit_name and name != digit_name:
+            continue
+        ray = _digit_ray(landmarks, mcp, dip, tip_idx)
+        if ray is None:
+            continue
+        _, direction = ray
+        flip = (-direction[0], -direction[1])
+        if vec_len(flip[0], flip[1]) < 1e-9:
+            continue
+        anchor = None
+        for idx in (mcp, pip):
+            pt = landmarks.get(idx)
+            if pt and _joint_in_bounds(pt, width, height):
+                anchor = pt
+                break
+        if anchor is None and name == "thumb":
+            cmc = landmarks.get(THUMB_CMC)
+            if cmc and _joint_in_bounds(cmc, width, height):
+                anchor = cmc
+        if anchor is None:
+            continue
+        for step in range(30, int(max(width, height)), 8):
+            px = anchor[0] + flip[0] * step
+            py = anchor[1] + flip[1] * step
+            if not (margin <= px <= width - margin and margin <= py <= height - margin):
+                continue
+            if py >= min_y:
+                return (px, py), flip
+    return None
+
+
+def clamp_finger_tip_to_image(
+    origin: tuple[float, float],
+    direction: tuple[float, float],
+    width: int,
+    height: int,
+    *,
+    margin: float = 4.0,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Pull an off-frame fingertip back along its ray into the image.
+
+    MediaPipe often places TIP above the top edge when the hand grips the
+    bottom of a tall photo. OCR windows are anchored on TIP, so we walk
+  backward along the finger direction until the point lands inside the frame.
+    """
+    x, y = origin
+    if margin <= x <= width - margin and margin <= y <= height - margin:
+        return origin, direction
+    dx, dy = direction
+    if vec_len(dx, dy) < 1e-9:
+        return origin, direction
+    max_step = int(max(width, height) * 2)
+    for step in range(1, max_step, 2):
+        px = x - dx * step
+        py = y - dy * step
+        if margin <= px <= width - margin and margin <= py <= height - margin:
+            return (px, py), direction
+    return origin, direction
+
+
+def extended_fingers(
+    landmarks: dict[int, tuple[float, float]],
+) -> list[dict[str, Any]]:
+    """All independent extended digits with origin/direction/reach — no dominance
+    filtering. Used by the multi-finger OCR-based selection (Stage 2): when 3+
+    fingers are extended, reach alone is unreliable, so the caller collects every
+    candidate and lets text proximity decide.
+    """
+    if not landmarks:
+        return []
+    full = all(i in landmarks for i in range(21))
+    if not full:
+        ray = finger_ray(landmarks)
+        if ray is None:
+            return []
+        origin, direction = ray
+        return [{"name": "index", "origin": origin, "direction": direction, "reach": 0.0}]
+    out: list[dict[str, Any]] = []
+    wrist = landmarks.get(WRIST)
+    for name, mcp, pip, dip, tip in POINTING_FINGERS:
+        if not is_extended_digit(landmarks, mcp, pip, tip):
+            continue
+        ray = _digit_ray(landmarks, mcp, dip, tip)
+        if ray is None:
+            continue
+        origin, direction = ray
+        reach = vec_len(origin[0] - wrist[0], origin[1] - wrist[1]) if wrist else 0.0
+        out.append({"name": name, "origin": origin, "direction": direction, "reach": reach})
+    return out
+
+
 def pointing_fingers(
     landmarks: dict[int, tuple[float, float]],
 ) -> list[dict[str, Any]]:
@@ -188,29 +535,28 @@ def pointing_fingers(
         wrist = landmarks.get(WRIST)
         reach = vec_len(origin[0] - wrist[0], origin[1] - wrist[1]) if wrist else 0.0
         out.append({"name": name, "origin": origin, "direction": direction, "reach": reach})
-    if len(out) > 1:
-        out.sort(key=lambda d: d["reach"], reverse=True)
-        if out[0]["reach"] >= out[1]["reach"] * DOMINANT_TIP_RATIO:
-            chosen = out[0]
-            # Thumb splay override: when thumb is dominant but the index
-            # tip is nearby (within 30px), the user is pointing with the
-            # index finger — replace the thumb's across-palm direction with
-            # the index MCP→TIP direction, which is the actual pointing ray.
-            if chosen["name"] == "thumb":
-                idx_tip = landmarks.get(INDEX_TIP)
-                idx_mcp = landmarks.get(INDEX_MCP)
-                if idx_tip and idx_mcp:
-                    dx = idx_tip[0] - chosen["origin"][0]
-                    dy = idx_tip[1] - chosen["origin"][1]
-                    if vec_len(dx, dy) < 30:
-                        rdx, rdy = idx_tip[0] - idx_mcp[0], idx_tip[1] - idx_mcp[1]
-                        if vec_len(rdx, rdy) > 1e-9:
-                            ux, uy = vec_norm(rdx, rdy)
-                            chosen["direction"] = (ux, uy)
-            return [chosen]
-    for d in out:
-        d.pop("reach", None)
-    return out
+    if not out:
+        return []
+    chosen_list = _choose_pointing_digit(landmarks, out)
+    if len(chosen_list) == 1:
+        item = chosen_list[0]
+        return [
+            {
+                "name": item["name"],
+                "origin": item["origin"],
+                "direction": item["direction"],
+                "signal": item.get("signal", "single"),
+            }
+        ]
+    return [
+        {
+            "name": item["name"],
+            "origin": item["origin"],
+            "direction": item["direction"],
+            "signal": item.get("signal", "ambiguous"),
+        }
+        for item in chosen_list
+    ]
 
 
 def ray_aabb_t(
@@ -427,8 +773,8 @@ def score_character(
     Two modes, in priority order:
     - "ray": the ray from the fingertip in the finger direction passes through
       the box ahead of the fingertip (within max_distance). The character the
-      ray enters FIRST (smallest entry_t) is the target — "the closest character
-      on the finger ray". This is the authoritative mode.
+      ray enters FIRST (smallest entry_t) is the target — the closest character
+      on the finger ray. This is the authoritative mode.
     - "cone": fallback when no box is directly on the ray. Ranks by perpendicular
       distance to the ray line, then by angular alignment.
     """
@@ -459,7 +805,6 @@ def score_character(
                 inter_len = hi - lo
                 inter_score = min(1.0, inter_len / max(char_size, 1.0))
                 entry_score = max(0.0, 1.0 - entry_t / max_distance)
-                # angle between finger direction and vector to box center
                 ang = angle_deg(direction[0], direction[1], vx, vy)
                 total = 0.55 * entry_score + 0.25 * inter_score + 0.10 * size_s + (0.10 if contains else 0.0)
                 return {
@@ -479,10 +824,6 @@ def score_character(
     if dot(vx, vy, direction[0], direction[1]) <= 0:
         return None
     ang = angle_deg(direction[0], direction[1], vx, vy)
-    # Cone mode uses a generous angle (3x the strict ray threshold) so that
-    # characters near the fingertip but off the narrow ray (e.g. a vertical
-    # column where the pointed glyph sits below the ray line) still enter as
-    # cone candidates. They rank below ray hits but can appear in top-3.
     cone_max = max_angle_deg * 3.0
     if ang > cone_max:
         return None

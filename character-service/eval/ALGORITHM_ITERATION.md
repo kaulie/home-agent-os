@@ -216,6 +216,22 @@
 
 ---
 
+### 第 14 轮：多指 OCR 邻近选择（intent 333，两阶段法）
+
+| 项 | 内容 |
+|---|---|
+| **目标 case** | LAN intent **333**「指字认字」。照片里大拇指最突出、其余手指也伸出，指向「珍」字 |
+| **asset_id** | `asset_b58aaf5f04a83fcf23ea2f0e` · [img-server/img/asset_b58aaf5f04a83fcf23ea2f0e.jpg](../../img-server/img/asset_b58aaf5f04a83fcf23ea2f0e.jpg) |
+| **修复前症状** | Stage 1 几何按 reach 选了伸得最远的食指，指尖落在「【」括号上，ranking 返回 **【**（非用户所指）。用户指出：多指是常态，不能靠「正好只伸一指」 |
+| **根因** | 3+ 手指伸出时「指尖离腕最远」不可靠——一根张开在边缘的手指可以伸得最远却不是指向手指（intent 333 即此）。几何 dominance 只看 reach，无法区分「伸得最远」与「指向字」 |
+| **算法调整**（用户两阶段法） | `geometry.py`：新增 `extended_fingers`（收集所有伸出指，不做 dominance 过滤）；`_choose_pointing_digit` 给每个返回项打 `signal` 标签（reach/grip/cluster/thumb_lateral/ambiguous），暴露 Stage 1 用了哪种信号。<br>`pipeline.py`：`detect_finger` 改两阶段——<br>• **Stage 1（几何）**：原 `pointing_fingers` dominance 逻辑（reach + grip-pattern + palm-forward cluster + thumb-lateral + thumb splay override）保持权威，处理握书/握纸/拇指侧压等 grip 姿态<br>• **Stage 2（OCR 邻近）**：仅当 **3+ 手指伸出 且 Stage 1 信号为弱 `reach`** 时触发。新增 `select_finger_by_text`——给每个候选指尖裁 600px 窗跑 OCR + ranking，选射线最直接命中字（top1 分最高）的手指。指向空白的手指得分≈0 自然排除（用户规则「没有指字的自然就排除」）。Stage 2 的 top1 分 ≥ `STAGE2_MIN_SCORE=0.6` 才覆盖 Stage 1 |
+| **修复后结果** | intent 333 → **珍** ✓（Stage 2 选拇指，top3: 珍 ...，15.1s，`multi_finger_select=true`）|
+| **回归影响** | 全 pipeline 回归 16 case top1 **13/16**。intent333 由 FAIL→PASS。**0 新增回归**：intent239（小）、reading_math（no_text）、IMG_8022（。）经 `git stash` 对比**原代码即已失败**（同 finger 同字），属 Q4 基线陈旧/历史问题，非本轮引入。`multi_finger_select=false` 确认这些 case Stage 2 未触发（signal 非 reach 或 <3 指），行为与原代码完全一致 |
+
+> **signal 门控的意义**：grip / thumb_lateral / cluster 是强几何信号（握姿、拇指侧压、掌前簇），这些姿态下字常在指甲下方而非射线前方，ray-based Stage 2 会误判。只有 Stage 1 靠弱 reach 信号选指时（多指张开、无 grip），Stage 2 OCR 邻近才允许覆盖。这保证握书/握纸等历史 PASS case 不被破坏。
+
+---
+
 ## 当前算法架构
 
 ```
@@ -244,7 +260,17 @@ pointing_fingers (geometry.py)
   ├─ 多根伸出：按指尖离腕距离排序，最长 ≥ 次长 ×1.1 → 只取最长（第 11 轮）
   │    thumb splay override: thumb 被选中时若 index tip 邻近则借用 index 方向（第 12 轮）
   ├─ 仍多根 → ambiguous_finger
-  └─ 部分 landmark（skin fallback）：finger_ray 用 TIP+PIP 算方向
+  ├─ _choose_pointing_digit 给选中项打 signal 标签（reach/grip/cluster/thumb_lateral）（第 14 轮）
+  ├─ 部分 landmark（skin fallback）：finger_ray 用 TIP+PIP 算方向
+  │
+  ▼
+detect_finger 两阶段（第 14 轮）
+  │
+  ├─ Stage 1（几何）：pointing_fingers dominance（reach+grip+cluster+thumb_lateral）= 默认选择
+  ├─ Stage 2（OCR 邻近）：仅当 3+ 指伸出 且 Stage 1 signal=reach 时触发
+  │    select_finger_by_text: 每候选指尖裁 600px 窗跑 OCR+ranking
+  │    选射线最直接命中字的手指；指向空白得分≈0 自然排除
+  │    top1 分 ≥ STAGE2_MIN_SCORE(0.6) 才覆盖 Stage 1
   │
   ▼
 ocr_at_finger (pipeline.py)
@@ -280,6 +306,7 @@ decide → top1 字 + top3 + 分数
 | **VLM 非确定性** | temperature>0 采样解码导致同一图不同结果 | temperature=0 贪婪解码 + 进程内 SHA-256 缓存（第 10 轮） |
 | **多指微曲误判** | 食指指字时中指/无名指微曲被 `is_extended_digit` 判为伸出 → ambiguous | DOMINANT_TIP_RATIO 1.3→1.1，单指微优即可判定（第 11 轮） |
 | **手指方向偏差** | `_digit_ray` 用 DIP→TIP（最后一节）方向与 MCP→TIP（整体）差异大；thumb 被选中时方向为横向非指向 | `_digit_ray` 改 MCP→TIP 优先；thumb splay override 借 index 方向（第 12 轮）|
+| **多指张开误选** | 3+ 手指伸出时「指尖离腕最远」不可靠，边缘张开指伸得最远却非指向指（intent 333）| 两阶段：Stage 1 几何 dominance + signal 门控，Stage 2 OCR 邻近仅在 reach 信号 + 3+ 指时覆盖（第 14 轮）|
 | **Q4 全 pipeline 基线不可靠** | Q4 dump 部分为假阳性（8022 误检页边）或旧代码产物（8024 只 4 landmark） | Q4 几何 replay 仍有效；全 pipeline 回归改用 `full_pipeline_regression.py` 原图 |
 | **YOLOv8-pose 不适用** | COCO 17 点无手指关节；hand-pose 变体训练数据同为全手构图 | 未采用 |
 | **自训指尖 CNN** | 唯一能根本解决「指尖-only + 任意背景」的路 | 未做（需标数据） |
@@ -320,4 +347,4 @@ cd character-service && local-rt/venv/bin/python3.11 eval/full_pipeline_regressi
 cd character-service && python -m unittest tests.test_geometry.PointingFingerTests tests.test_stages.StageTests
 ```
 
-**历次迭代的回归结论**：第 1-9 轮 Q4 几何 replay **30/30 无回归**。第 10-12 轮新增全 pipeline 回归：intent 6/6 PASS；8024 → **霸** ✓、7832 → **渊** ✓、8025 → **剧** ✓、8026 → **碾** ✓（均原图）；8022 Q4 为假阳性（测试用例需修正）。第 13 轮窗口级早退：`_full_photo_replay` 91 case PASS 81 / FAIL 10，失败集不变，0 新增回归。Q4 几何 replay 仍 0 回归。
+**历次迭代的回归结论**：第 1-9 轮 Q4 几何 replay **30/30 无回归**。第 10-12 轮新增全 pipeline 回归：intent 6/6 PASS；8024 → **霸** ✓、7832 → **渊** ✓、8025 → **剧** ✓、8026 → **碾** ✓（均原图）；8022 Q4 为假阳性（测试用例需修正）。第 13 轮窗口级早退：`_full_photo_replay` 91 case PASS 81 / FAIL 10，失败集不变，0 新增回归。Q4 几何 replay 仍 0 回归。第 14 轮多指 OCR 邻近：全 pipeline 16 case top1 **13/16**，intent333 由 FAIL→**珍** ✓，**0 新增回归**（intent239/reading_math/8022 经 `git stash` 对比原代码即已失败，属历史/Q4 基线问题，非本轮引入）。
