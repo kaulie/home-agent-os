@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+exec python3 "$ROOT/scripts/git/commit_scope_check.py" --commit-msg "${1:-}"

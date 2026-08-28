@@ -1,0 +1,33 @@
+{
+  "primary_scopes": [
+    { "name": "agent-bridge", "prefixes": ["agent-bridge/"] },
+    { "name": "chat", "prefixes": ["chat/"] },
+    { "name": "server", "prefixes": ["server/", "home_brain.py"] },
+    { "name": "ios-dev", "prefixes": ["ios/HomeAgentDev/"] },
+    { "name": "ios-admin", "prefixes": ["ios/HomeAgentAdmin/"] },
+    { "name": "ios-living", "prefixes": ["ios/LivingRoomEdge/", "ios/LivingRoomLegacy/"] },
+    { "name": "ios-other", "prefixes": ["ios/"] },
+    { "name": "android", "prefixes": ["android/"] },
+    { "name": "mac", "prefixes": ["mac/"] },
+    { "name": "plugins", "prefixes": ["plugins/"] },
+    { "name": "character-service", "prefixes": ["character-service/"] },
+    { "name": "ocr-service", "prefixes": ["ocr-service/"] },
+    { "name": "games", "prefixes": ["games/"] },
+    { "name": "admin", "prefixes": ["admin/"] },
+    { "name": "local-rt", "prefixes": ["local-rt/"] },
+    { "name": "kindle", "prefixes": ["kindle/"] },
+    { "name": "sql", "prefixes": ["sql/"] }
+  ],
+  "companion_scopes": [
+    { "name": "docs", "prefixes": ["docs/"] },
+    { "name": "cursor", "prefixes": [".cursor/"] },
+    { "name": "git-hooks", "prefixes": [".githooks/", "scripts/git/"] },
+    { "name": "repo-meta", "prefixes": ["README.md", ".gitignore", "Makefile"] }
+  ],
+  "linked_primary_groups": [
+    ["agent-bridge", "chat", "server"],
+    ["server", "ios-dev"],
+    ["server", "android"],
+    ["server", "mac"]
+  ]
+}

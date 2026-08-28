@@ -1,0 +1,11 @@
+# <type>(<scope>): <summary>
+#
+# type : feat | fix | docs | refactor | test | chore | deploy | perf
+# scope: agent-bridge | chat | server | ios-dev | android | mac | docs | repo | …
+# 详见 docs/git-commit-convention.md
+#
+# 正文（可选）：
+#
+#
+# Refs: #<issue>
+# Scopes: <scope-a>, <scope-b>   # 仅跨 primary 时填写
