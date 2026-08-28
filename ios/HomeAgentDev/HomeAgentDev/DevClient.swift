@@ -321,6 +321,197 @@ enum DevClient {
         return parsed
     }
 
+    static func fetchReleases(
+        brainURL: String,
+        token: String
+    ) async throws -> DeploySnapshot {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/releases")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 25
+        applyAuth(&request, token: token)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let parsed = try JSONDecoder().decode(DeploySnapshot.self, from: data)
+        if parsed.ok == false {
+            throw DevClientError.server(parsed.error ?? "加载 Deploy 失败")
+        }
+        return parsed
+    }
+
+    static func approveRelease(
+        brainURL: String,
+        token: String,
+        releaseId: Int,
+        note: String = ""
+    ) async throws -> DeployActionResponse {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/releases/\(releaseId)/approve")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 45
+        applyAuth(&request, token: token)
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["note": note])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let parsed = try JSONDecoder().decode(DeployActionResponse.self, from: data)
+        if parsed.ok == false {
+            throw DevClientError.server(parsed.error ?? "批准失败")
+        }
+        return parsed
+    }
+
+    static func rejectRelease(
+        brainURL: String,
+        token: String,
+        releaseId: Int,
+        note: String = ""
+    ) async throws -> DeployActionResponse {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/releases/\(releaseId)/reject")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        applyAuth(&request, token: token)
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["note": note])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let parsed = try JSONDecoder().decode(DeployActionResponse.self, from: data)
+        if parsed.ok == false {
+            throw DevClientError.server(parsed.error ?? "拒绝失败")
+        }
+        return parsed
+    }
+
+    static func fetchAgentChat(
+        brainURL: String,
+        token: String,
+        sinceId: Int = 0,
+        sinceAckAt: Double = 0
+    ) async throws -> AgentChatSnapshot {
+        var path = "/api/v1/admin/agent_chat?since_id=\(max(0, sinceId))"
+        if sinceAckAt > 0 {
+            path += "&since_ack_at=\(sinceAckAt)"
+        }
+        let url = try endpoint(brainURL, path: path)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        applyAuth(&request, token: token)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let parsed = try JSONDecoder().decode(AgentChatSnapshot.self, from: data)
+        if parsed.ok == false {
+            throw DevClientError.server(parsed.error ?? "加载 Chat 失败")
+        }
+        return parsed
+    }
+
+    static func sendAgentChatMessage(
+        brainURL: String,
+        token: String,
+        body: String
+    ) async throws -> AgentChatMessage {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/agent_chat/send")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 20
+        applyAuth(&request, token: token)
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["body": body])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        return try decodeAgentChatMessage(from: data)
+    }
+
+    static func ackAgentChatMessage(
+        brainURL: String,
+        token: String,
+        messageId: Int,
+        ackType: String = "ok"
+    ) async throws -> AgentChatMessage {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/agent_chat/ack")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 20
+        applyAuth(&request, token: token)
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "message_id": messageId,
+            "ack_type": ackType,
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        return try decodeAgentChatMessage(from: data)
+    }
+
+    static func unackAgentChatMessage(
+        brainURL: String,
+        token: String,
+        messageId: Int
+    ) async throws -> AgentChatMessage {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/agent_chat/unack")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 20
+        applyAuth(&request, token: token)
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "message_id": messageId,
+        ])
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        return try decodeAgentChatMessage(from: data)
+    }
+
+    static func promoteAgentChat(
+        brainURL: String,
+        token: String,
+        text: String,
+        targetHandle: String,
+        category: String,
+        anchorMessageId: Int?,
+        backgroundMessageIds: [Int]
+    ) async throws -> AgentChatPromoteResponse {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/agent_chat/promote")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 45
+        applyAuth(&request, token: token)
+        var payload: [String: Any] = [
+            "text": text,
+            "target_handle": targetHandle,
+            "category": category,
+            "background_message_ids": backgroundMessageIds,
+        ]
+        if let anchorMessageId {
+            payload["anchor_message_id"] = anchorMessageId
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let parsed = try JSONDecoder().decode(AgentChatPromoteResponse.self, from: data)
+        if parsed.ok == false {
+            throw DevClientError.server(parsed.error ?? "转为 Dev Task 失败")
+        }
+        return parsed
+    }
+
+    private static func decodeAgentChatMessage(from data: Data) throws -> AgentChatMessage {
+        if let wrapped = try? JSONDecoder().decode(AgentChatSendResponse.self, from: data),
+           let message = wrapped.message {
+            if wrapped.ok == false {
+                throw DevClientError.server(wrapped.error ?? "Chat 操作失败")
+            }
+            return message
+        }
+        if let message = try? JSONDecoder().decode(AgentChatMessage.self, from: data), message.id > 0 {
+            return message
+        }
+        throw DevClientError.decode
+    }
+
     static func fetchDevTaskUsage(
         brainURL: String,
         token: String,
@@ -370,6 +561,16 @@ enum DevClient {
             if let parsed = try? JSONDecoder().decode(DevPolicyResponse.self, from: data),
                let err = parsed.error, !err.isEmpty {
                 throw DevClientError.http(http.statusCode, err)
+            }
+            let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.lowercased().contains("<html") || trimmed.lowercased().contains("<!doctype") {
+                if http.statusCode == 404 {
+                    throw DevClientError.http(
+                        404,
+                        "接口不存在（404）。本机 Brain 可能未重启，Deploy/Chat 新路由未加载。"
+                    )
+                }
+                throw DevClientError.http(http.statusCode, "服务器返回了 HTML 错误页（HTTP \(http.statusCode)）")
             }
             throw DevClientError.http(http.statusCode, String(body.prefix(200)))
         }

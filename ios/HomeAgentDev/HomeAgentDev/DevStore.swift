@@ -37,10 +37,24 @@ final class DevStore: ObservableObject {
     @Published var isLoadingFleet = false
     @Published var isWakingFleet = false
 
+    @Published private(set) var deploySnapshot: DeploySnapshot?
+    @Published var deployError: String?
+    @Published var isLoadingDeploy = false
+    @Published var isApprovingDeploy = false
+
+    @Published private(set) var chatMessages: [AgentChatMessage] = []
+    @Published var chatError: String?
+    @Published var isLoadingChat = false
+    @Published var isSendingChat = false
+    private var chatSinceId = 0
+    private var chatSinceAckAt: Double = 0
+
     private var issuesPollTask: Task<Void, Never>?
     private var devTaskPollTask: Task<Void, Never>?
     private var statsPollTask: Task<Void, Never>?
     private var fleetPollTask: Task<Void, Never>?
+    private var deployPollTask: Task<Void, Never>?
+    private var chatPollTask: Task<Void, Never>?
     private var issuesNextBeforeId: Int?
     private var devTasksNextBeforeId: Int?
 
@@ -145,6 +159,8 @@ final class DevStore: ObservableObject {
         await loadDevTasks(reset: true, showSpinner: false)
         await loadStats(showSpinner: false)
         await loadFleet(showSpinner: false)
+        await loadDeploy(showSpinner: false)
+        await loadChat(reset: true, showSpinner: false)
     }
 
     private func startPathMonitor() {
@@ -276,6 +292,241 @@ final class DevStore: ObservableObject {
         } catch {
             fleetError = error.localizedDescription
         }
+    }
+
+    func startDeployPolling() {
+        stopDeployPolling()
+        deployPollTask = Task { [weak self] in
+            await self?.loadDeploy(showSpinner: true)
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
+                guard !Task.isCancelled else { return }
+                await self?.loadDeploy(showSpinner: false)
+            }
+        }
+    }
+
+    func stopDeployPolling() {
+        deployPollTask?.cancel()
+        deployPollTask = nil
+    }
+
+    func loadDeploy(showSpinner: Bool = true) async {
+        if showSpinner && deploySnapshot == nil {
+            isLoadingDeploy = true
+        }
+        defer { isLoadingDeploy = false }
+        do {
+            deploySnapshot = try await DevClient.fetchReleases(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken
+            )
+            deployError = nil
+        } catch {
+            deployError = error.localizedDescription
+        }
+    }
+
+    func approveDeployRelease(releaseId: Int, note: String = "") async {
+        isApprovingDeploy = true
+        defer { isApprovingDeploy = false }
+        do {
+            _ = try await DevClient.approveRelease(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken,
+                releaseId: releaseId,
+                note: note
+            )
+            deployError = nil
+            await loadDeploy(showSpinner: false)
+        } catch {
+            deployError = error.localizedDescription
+        }
+    }
+
+    func rejectDeployRelease(releaseId: Int, note: String = "") async {
+        isApprovingDeploy = true
+        defer { isApprovingDeploy = false }
+        do {
+            _ = try await DevClient.rejectRelease(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken,
+                releaseId: releaseId,
+                note: note
+            )
+            deployError = nil
+            await loadDeploy(showSpinner: false)
+        } catch {
+            deployError = error.localizedDescription
+        }
+    }
+
+    func startChatPolling() {
+        stopChatPolling()
+        chatPollTask = Task { [weak self] in
+            await self?.loadChat(reset: true, showSpinner: true)
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard !Task.isCancelled else { return }
+                await self?.loadChat(reset: false, showSpinner: false)
+            }
+        }
+    }
+
+    func stopChatPolling() {
+        chatPollTask?.cancel()
+        chatPollTask = nil
+    }
+
+    func loadChat(reset: Bool, showSpinner: Bool) async {
+        if showSpinner && chatMessages.isEmpty {
+            isLoadingChat = true
+        }
+        defer { isLoadingChat = false }
+        do {
+            if reset {
+                chatSinceId = 0
+            }
+            let snap = try await DevClient.fetchAgentChat(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken,
+                sinceId: chatSinceId,
+                sinceAckAt: chatSinceAckAt
+            )
+            if reset {
+                chatMessages = snap.messages.sorted { $0.id < $1.id }
+            } else {
+                mergeChatMessages(snap.messages)
+            }
+            applyAckPatches(snap.ackPatches)
+            if let last = chatMessages.map(\.id).max() {
+                chatSinceId = last
+            }
+            if let latest = snap.latestAckAt, latest > chatSinceAckAt {
+                chatSinceAckAt = latest
+            }
+            chatError = nil
+            if snap.chatOk == false, let err = snap.error, !err.isEmpty {
+                chatError = err
+            }
+        } catch {
+            chatError = error.localizedDescription
+        }
+    }
+
+    func sendChatMessage(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        isSendingChat = true
+        defer { isSendingChat = false }
+        let pendingId = -(Int(Date().timeIntervalSince1970 * 1000) % 1_000_000_000)
+        let pending = AgentChatMessage.pendingBoss(body: trimmed, id: pendingId)
+        chatMessages.append(pending)
+        do {
+            let sent = try await DevClient.sendAgentChatMessage(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken,
+                body: trimmed
+            )
+            chatMessages.removeAll { $0.id == pendingId }
+            mergeChatMessages([sent])
+            chatSinceId = max(chatSinceId, sent.id)
+            chatError = nil
+        } catch {
+            chatMessages.removeAll { $0.id == pendingId }
+            chatError = error.localizedDescription
+        }
+    }
+
+    func ackChatMessage(_ messageId: Int) async {
+        guard messageId > 0 else { return }
+        do {
+            let updated = try await DevClient.ackAgentChatMessage(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken,
+                messageId: messageId
+            )
+            mergeChatMessages([updated])
+            chatSinceAckAt = max(chatSinceAckAt, Date().timeIntervalSince1970)
+            chatError = nil
+        } catch {
+            chatError = error.localizedDescription
+        }
+    }
+
+    func unackChatMessage(_ messageId: Int) async {
+        guard messageId > 0 else { return }
+        do {
+            let updated = try await DevClient.unackAgentChatMessage(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken,
+                messageId: messageId
+            )
+            mergeChatMessages([updated])
+            chatSinceAckAt = max(chatSinceAckAt, Date().timeIntervalSince1970)
+            chatError = nil
+        } catch {
+            chatError = error.localizedDescription
+        }
+    }
+
+    func promoteChatToDevTask(
+        text: String,
+        targetHandle: String,
+        category: String,
+        anchorMessageId: Int,
+        backgroundMessageIds: [Int]
+    ) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            _ = try await DevClient.promoteAgentChat(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken,
+                text: trimmed,
+                targetHandle: targetHandle,
+                category: category,
+                anchorMessageId: anchorMessageId,
+                backgroundMessageIds: backgroundMessageIds
+            )
+            chatError = nil
+            await loadDevTasks(reset: true, showSpinner: false)
+        } catch {
+            chatError = error.localizedDescription
+        }
+    }
+
+    private func mergeChatMessages(_ incoming: [AgentChatMessage]) {
+        guard !incoming.isEmpty else { return }
+        var byId = Dictionary(uniqueKeysWithValues: chatMessages.map { ($0.id, $0) })
+        for row in incoming {
+            byId[row.id] = row
+        }
+        chatMessages = byId.values.sorted { $0.id < $1.id }
+    }
+
+    private func applyAckPatches(_ patches: [AgentChatAckPatch]) {
+        guard !patches.isEmpty else { return }
+        var byId = Dictionary(uniqueKeysWithValues: chatMessages.map { ($0.id, $0) })
+        for patch in patches {
+            guard var existing = byId[patch.id] else { continue }
+            existing = AgentChatMessage(
+                id: existing.id,
+                fromHandle: existing.fromHandle,
+                body: existing.body,
+                kind: existing.kind,
+                replyToId: existing.replyToId,
+                createdAt: existing.createdAt,
+                timestampLabel: existing.timestampLabel,
+                mentions: existing.mentions,
+                audience: existing.audience,
+                recalled: existing.recalled,
+                isPending: existing.isPending,
+                acks: patch.acks
+            )
+            byId[patch.id] = existing
+        }
+        chatMessages = byId.values.sorted { $0.id < $1.id }
     }
 
     func loadStats(showSpinner: Bool = true) async {

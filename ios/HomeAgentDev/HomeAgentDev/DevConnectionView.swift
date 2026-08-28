@@ -86,7 +86,7 @@ struct DevConnectionView: View {
                                 .foregroundStyle(DevTheme.off)
                         }
 
-                        Text("Dev Console：Issue、Dev Task。连接方式与 User Console（LivingRoomEdge）一致。")
+                        Text("Dev Console：Issue、Dev Task、Chat、Fleet、Deploy。连接方式与 User Console（LivingRoomEdge）一致。")
                             .font(.system(size: 13, design: .rounded))
                             .foregroundStyle(DevTheme.dim)
                     }

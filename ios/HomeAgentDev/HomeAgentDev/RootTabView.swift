@@ -9,7 +9,9 @@ struct RootTabView: View {
     enum DevTab: Hashable {
         case issues
         case tasks
+        case chat
         case fleet
+        case deploy
         case stats
         case connection
     }
@@ -28,11 +30,23 @@ struct RootTabView: View {
                 }
                 .tag(DevTab.tasks)
 
+            ChatConsoleView()
+                .tabItem {
+                    Label("Chat", systemImage: "bubble.left.and.bubble.right")
+                }
+                .tag(DevTab.chat)
+
             FleetConsoleView()
                 .tabItem {
                     Label("Fleet", systemImage: "person.3")
                 }
                 .tag(DevTab.fleet)
+
+            DeployConsoleView()
+                .tabItem {
+                    Label("Deploy", systemImage: "arrow.up.circle")
+                }
+                .tag(DevTab.deploy)
 
             DevStatsView()
                 .tabItem {
@@ -60,7 +74,9 @@ struct RootTabView: View {
         .onDisappear {
             store.stopIssuesPolling()
             store.stopDevTaskPolling()
+            store.stopChatPolling()
             store.stopFleetPolling()
+            store.stopDeployPolling()
             store.stopStatsPolling()
         }
     }
@@ -68,7 +84,9 @@ struct RootTabView: View {
     private func syncPolling(phase: ScenePhase, tab: DevTab) {
         store.stopIssuesPolling()
         store.stopDevTaskPolling()
+        store.stopChatPolling()
         store.stopFleetPolling()
+        store.stopDeployPolling()
         store.stopStatsPolling()
         guard phase == .active else { return }
         switch tab {
@@ -76,8 +94,12 @@ struct RootTabView: View {
             store.startIssuesPolling()
         case .tasks:
             store.startDevTaskPolling()
+        case .chat:
+            store.startChatPolling()
         case .fleet:
             store.startFleetPolling()
+        case .deploy:
+            store.startDeployPolling()
         case .stats:
             store.startStatsPolling()
         case .connection:
