@@ -106,7 +106,7 @@ struct ContentView: View {
                 BrainRoutingSwitcherSheet()
                     .environmentObject(model)
             }
-            .onChange(of: pane) { newValue in
+            .onChange(of: pane) { _, newValue in
                 if newValue != .chat {
                     dismissComposerKeyboard()
                     if speech.isRecording { speech.stop() }
@@ -166,17 +166,17 @@ struct ContentView: View {
                         dismissComposerKeyboard()
                     }
                 )
-                .onChange(of: model.conversationTurns.count) { _ in
+                .onChange(of: model.conversationTurns.count) { _, _ in
                     if model.consumeSkipScrollToLatest() { return }
                     scrollToLatest(proxy)
                 }
-                .onChange(of: model.conversationTurns.last?.journey.presentation?.copyText) { _ in
+                .onChange(of: model.conversationTurns.last?.journey.presentation?.copyText) { _, _ in
                     scrollToLatest(proxy)
                 }
-                .onChange(of: model.conversationTurns.last?.assistantText) { _ in
+                .onChange(of: model.conversationTurns.last?.assistantText) { _, _ in
                     scrollToLatest(proxy)
                 }
-                .onChange(of: model.conversationTurns.last?.awaitingTerminal) { _ in
+                .onChange(of: model.conversationTurns.last?.awaitingTerminal) { _, _ in
                     scrollToLatest(proxy)
                 }
             }
@@ -233,7 +233,7 @@ struct ContentView: View {
                     .textFieldStyle(.roundedBorder)
                     .focused($isComposerFocused)
                     .submitLabel(.send)
-                    .onChange(of: draft) { newValue in
+                    .onChange(of: draft) { _, newValue in
                         if !speech.isRecording,
                            intentSource == "voice",
                            !speech.transcript.isEmpty,
@@ -242,7 +242,7 @@ struct ContentView: View {
                             intentSource = "text"
                         }
                     }
-                    .onChange(of: speech.transcript) { newValue in
+                    .onChange(of: speech.transcript) { _, newValue in
                         guard acceptTranscript else { return }
                         if speech.isRecording || !newValue.isEmpty {
                             draft = newValue
@@ -649,7 +649,7 @@ private struct PresentationBubble: View {
                 ImageLightbox(image: ui)
             }
         }
-        .onChange(of: showFullImage) { open in
+        .onChange(of: showFullImage) { _, open in
             guard open, fullImageData == nil, !presentation.assetId.isEmpty else { return }
             Task {
                 let original = await AppModel.shared.intentClient.fetchAssetImageData(

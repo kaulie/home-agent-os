@@ -48,7 +48,7 @@ struct AudioWorkspaceView: View {
         .onDisappear {
             model.handleAudioPaneDisappear()
         }
-        .onChange(of: model.audioRecorder.isRecording) { recording in
+        .onChange(of: model.audioRecorder.isRecording) { _, recording in
             pulse = recording
         }
         .alert("重命名", isPresented: renamePresented) {

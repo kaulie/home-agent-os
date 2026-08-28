@@ -329,7 +329,7 @@ def main() -> None:
             lines.append("\t\t\t\tONLY_ACTIVE_ARCH = YES;")
             lines.append("\t\t\t\tSWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;")
             lines.append('\t\t\t\tSWIFT_OPTIMIZATION_LEVEL = "-Onone";')
-        lines.append("\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 16.0;")
+        lines.append("\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;")
         lines.append("\t\t\t\tSDKROOT = iphoneos;")
         lines.append("\t\t\t\tSWIFT_VERSION = 5.0;")
         lines.append("\t\t\t};")

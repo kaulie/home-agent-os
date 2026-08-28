@@ -214,7 +214,7 @@ struct LiveStreamWorkspaceView: View {
         .pickerStyle(.segmented)
         .padding(.horizontal, 24)
         .disabled(live.phase == .starting)
-        .onChange(of: mediaMode) { mode in
+        .onChange(of: mediaMode) { _, mode in
             live.setAudioCaptureEnabled(mode.includesAudio)
         }
         .accessibilityLabel("推流内容")

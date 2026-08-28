@@ -248,10 +248,10 @@ struct UserFeedbackSheet: View {
         }
         .presentationDetents([.height(sheetHeight)])
         .presentationDragIndicator(.visible)
-        .onChange(of: pickerItems) { items in
+        .onChange(of: pickerItems) { _, items in
             Task { await importPickerImages(items) }
         }
-        .onChange(of: selected) { next in
+        .onChange(of: selected) { _, next in
             if next == .other {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     otherDetailFocused = true

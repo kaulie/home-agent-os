@@ -56,7 +56,7 @@ struct RootTabView: View {
         }
         .tint(EdgeTheme.sand)
         .background(EdgeTheme.ink.ignoresSafeArea())
-        .onChange(of: scenePhase) { phase in
+        .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 model.onForeground()
             }
