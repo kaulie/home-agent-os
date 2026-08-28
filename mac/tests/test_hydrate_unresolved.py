@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import MagicMock, patch
 
+from mac_edge.capability_availability import Availability
 from mac_edge.executor import (
     STEP_RUNNING,
     STEP_SUCCEEDED,
@@ -144,6 +145,9 @@ class MixedAssignedEdgeTests(unittest.TestCase):
             ],
         }
         with patch("mac_edge.local_ledger.active", return_value=None), patch(
+            "mac_edge.executor.is_available",
+            return_value=Availability.available(),
+        ), patch(
             "mac_edge.executor._execute_capability",
             return_value=(True, "ok", {"photo_url": "http://x/a.jpg"}),
         ):

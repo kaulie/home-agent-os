@@ -38,7 +38,7 @@ class BrainDbTest(unittest.TestCase):
             )
         }
         self.assertTrue(
-            {"meta", "jobs", "participants", "intent_reviews", "intent_classification_events", "assets", "asset_grants", "edge_control_policy", "admin_op_log", "schema_migrations"} <= names
+            {"meta", "jobs", "participants", "intent_reviews", "intent_classification_events", "global_events", "assets", "asset_grants", "edge_control_policy", "admin_op_log", "schema_migrations"} <= names
         )
         self.assertNotIn("edges", names)
         self.assertNotIn("intent_queue", names)
@@ -55,12 +55,16 @@ class BrainDbTest(unittest.TestCase):
                 "SELECT version FROM schema_migrations ORDER BY version"
             )
         ]
-        self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21])
+        self.assertEqual(
+            versions,
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+        )
         job_cols = {
             row[1]: row[2]
             for row in conn.execute("PRAGMA table_info(jobs)")
         }
         self.assertEqual(job_cols["intent_id"], "INTEGER")
+        self.assertIn("available_capabilities", job_cols)
         pcols = {
             row[1] for row in conn.execute("PRAGMA table_info(participants)")
         }
@@ -174,7 +178,10 @@ class BrainDbTest(unittest.TestCase):
                     "SELECT version FROM schema_migrations ORDER BY version"
                 )
             ]
-            self.assertEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21])
+            self.assertEqual(
+                versions,
+                [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+            )
             brain_db.put_job(
                 {
                     "intent_id": 1,
@@ -227,6 +234,40 @@ class BrainDbTest(unittest.TestCase):
         jobs = brain_db.list_jobs()
         self.assertEqual(len(jobs), 1)
         self.assertEqual(jobs[0]["intent_id"], 1)
+
+    def test_put_job_roundtrips_available_capabilities(self) -> None:
+        catalog = [
+            {"capability_id": "clock.now", "edge_id": "sys", "composition": "atomic"},
+            {
+                "capability_id": "scanner.scan",
+                "edge_id": "mac-1",
+                "prefer_when": "scan docs",
+            },
+        ]
+        brain_db.put_job(
+            {
+                "intent_id": 1,
+                "status": "intent_parsed",
+                "available_capabilities": catalog,
+                "created_at": 1.0,
+                "updated_at": 1.0,
+            }
+        )
+        job = brain_db.get_job(1)
+        assert job is not None
+        self.assertEqual(job["available_capabilities"], catalog)
+        brain_db.put_job(
+            {
+                "intent_id": 1,
+                "status": "succeeded",
+                "created_at": 1.0,
+                "updated_at": 2.0,
+            }
+        )
+        kept = brain_db.get_job(1)
+        assert kept is not None
+        self.assertEqual(kept["available_capabilities"], catalog)
+        self.assertEqual(kept["status"], "succeeded")
 
     def test_list_jobs_page_newest_first(self) -> None:
         for i in range(1, 6):
@@ -984,6 +1025,44 @@ class BrainDbTest(unittest.TestCase):
                     "name": "红烧肉",
                 }
             )
+
+
+class GlobalEventsTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self._tmp.name) / "brain.sqlite3"
+        brain_db.reset(path=self.path)
+        brain_db.init_db()
+
+    def tearDown(self) -> None:
+        brain_db.reset()
+        self._tmp.cleanup()
+
+    def test_mode_activate_deactivate_and_switch(self) -> None:
+        self.assertIsNone(brain_db.resolve_active_mode())
+        brain_db.append_global_event(
+            {"kind": "mode", "action": "activate", "subject": "reading"}
+        )
+        self.assertEqual(brain_db.resolve_active_mode(), "reading")
+        brain_db.append_global_event(
+            {"kind": "mode", "action": "deactivate", "subject": "reading"}
+        )
+        self.assertIsNone(brain_db.resolve_active_mode())
+        brain_db.append_global_event(
+            {"kind": "mode", "action": "activate", "subject": "game"}
+        )
+        self.assertEqual(brain_db.resolve_active_mode(), "game")
+
+    def test_list_global_events_filters_kind(self) -> None:
+        brain_db.append_global_event(
+            {"kind": "mode", "action": "activate", "subject": "reading"}
+        )
+        brain_db.append_global_event(
+            {"kind": "scene", "action": "activate", "subject": "movie"}
+        )
+        mode_events = brain_db.list_global_events(kind="mode", limit=10)
+        self.assertEqual(len(mode_events), 1)
+        self.assertEqual(mode_events[0]["subject"], "reading")
 
 
 if __name__ == "__main__":

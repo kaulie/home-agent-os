@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Callable
+from typing import Any, Callable
 
 from mac_edge.config import Config
 
@@ -46,8 +46,37 @@ def _check_camera_capture(config: Config | None = None) -> Availability:
     return gopro_available(config=config)
 
 
+def _check_reading_stage(_config: Config | None = None) -> Availability:
+    from mac_edge.plugins.point_to_character import is_available as character_available
+
+    return character_available(_config)
+
+
+def _check_reading_point_to_character(config: Config | None = None) -> Availability:
+    for part in ("reading.detect_finger", "reading.ocr_at_finger", "reading.rank_pointed"):
+        avail = is_available(part, config=config)
+        if not avail.ok:
+            return avail
+    return Availability.available()
+
+
+def _check_camera_capture_and_upload(config: Config | None = None) -> Availability:
+    capture = is_available("camera.capture", config=config)
+    if not capture.ok:
+        return capture
+    upload = is_available("asset.upload", config=config)
+    if not upload.ok:
+        return upload
+    return Availability.available()
+
+
 _CHECKERS: dict[str, Checker] = {
     "camera.capture": _check_camera_capture,
+    "camera.capture_and_upload": _check_camera_capture_and_upload,
+    "reading.detect_finger": _check_reading_stage,
+    "reading.ocr_at_finger": _check_reading_stage,
+    "reading.rank_pointed": _check_reading_stage,
+    "reading.point_to_character": _check_reading_point_to_character,
 }
 
 
@@ -74,3 +103,41 @@ def register_checker(capability_id: str, checker: Checker) -> None:
     cid = str(capability_id or "").strip()
     if cid:
         _CHECKERS[cid] = checker
+
+
+def snapshot_services(
+    services: list[dict[str, Any]],
+    *,
+    config: Config | None = None,
+) -> list[dict[str, Any]]:
+    """Build a heartbeat availability snapshot over declared services.
+
+    For each declared capability, run is_available() and inject
+    {available: bool, observed_at: float}. DECLARED-but-unavailable caps
+    stay in the list (Brain keeps the Declaration) but carry available=false
+    so Brain's schedulable map filters them out (two-phase check, phase 1).
+    Unknown caps without a checker default to available (legacy compat).
+    """
+    import time
+    out: list[dict[str, Any]] = []
+    for svc in services or []:
+        if not isinstance(svc, dict):
+            continue
+        svc_out = dict(svc)
+        caps_out: list[dict[str, Any]] = []
+        for cap in svc.get("capabilities") or []:
+            if not isinstance(cap, dict):
+                caps_out.append(cap)
+                continue
+            cap_out = dict(cap)
+            cid = str(cap.get("capability_id") or "").strip()
+            if cid:
+                avail = is_available(cid, config=config)
+                cap_out["available"] = bool(avail.ok)
+                cap_out["observed_at"] = time.time()
+                if not avail.ok and avail.msg:
+                    cap_out.setdefault("unavailable_reason", avail.msg)
+            caps_out.append(cap_out)
+        svc_out["capabilities"] = caps_out
+        out.append(svc_out)
+    return out

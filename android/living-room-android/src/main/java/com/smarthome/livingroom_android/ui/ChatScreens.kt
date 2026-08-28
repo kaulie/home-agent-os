@@ -95,6 +95,15 @@ fun InteractTab(
     onOpenSettings: () -> Unit,
     pane: ChatPane,
     onPane: (ChatPane) -> Unit,
+    photoMicEnabled: Boolean,
+    photoMicStatus: String,
+    photoMicBusy: Boolean,
+    photoMicLevel: Float,
+    photoVoiceTrace: List<PhotoVoiceTraceLine>,
+    onTogglePhotoMic: () -> Unit,
+    onExitCaptureSession: () -> Unit,
+    photoCaptureSessionActive: Boolean,
+    onCaptureSessionActive: (Boolean) -> Unit,
 ) {
     var previousPane by remember { mutableStateOf(pane) }
     LaunchedEffect(pane) {
@@ -104,10 +113,11 @@ fun InteractTab(
         previousPane = pane
     }
     Column(Modifier.fillMaxSize().background(if (pane == ChatPane.Chat) EdgeTheme.chatBg else EdgeTheme.ink)) {
-        if (pane != ChatPane.Photo) {
+        if (pane != ChatPane.Photo || !photoCaptureSessionActive) {
             InteractTopBar(pane = pane, onPane = onPane, onOpenSettings = onOpenSettings)
         }
-        when (pane) {
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            when (pane) {
             ChatPane.Chat -> ChatList(
                 vm = vm,
                 speechListening = speechListening,
@@ -122,8 +132,15 @@ fun InteractTab(
             )
             ChatPane.Photo -> PhotoWorkspace(
                 vm = vm,
-                onClose = { onPane(ChatPane.Chat) },
                 onSettings = onOpenSettings,
+                photoMicEnabled = photoMicEnabled,
+                photoMicStatus = photoMicStatus,
+                photoMicBusy = photoMicBusy,
+                photoMicLevel = photoMicLevel,
+                photoVoiceTrace = photoVoiceTrace,
+                onTogglePhotoMic = onTogglePhotoMic,
+                onCaptureSessionActive = onCaptureSessionActive,
+                onExitCaptureSession = onExitCaptureSession,
             )
             ChatPane.File -> FileWorkspace(
                 vm = vm,
@@ -133,6 +150,7 @@ fun InteractTab(
                 vm = vm,
                 onSettings = onOpenSettings,
             )
+            }
         }
     }
 }
@@ -146,6 +164,7 @@ private fun InteractTopBar(
     Row(
         Modifier
             .fillMaxWidth()
+            .edgeSafeTop()
             .background(if (pane == ChatPane.Chat) EdgeTheme.chatBg else EdgeTheme.ink)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -452,15 +471,18 @@ private fun AssistantBubble(turn: ChatTurn, vm: ConsoleViewModel) {
     val failed = turn.journey.phase == IntentPhase.FAILED || turn.error != null && !turn.awaitingTerminal && turn.presentation == null
     when {
         failed && (turn.assistantText != null || turn.error != null) -> {
-            Text(
-                turn.assistantText ?: turn.error ?: "意图失败",
-                color = Color(0xFFFF6B6B),
-                modifier = Modifier
-                    .widthIn(max = 300.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(EdgeTheme.bubbleAssistant)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
+            Column(Modifier.widthIn(max = 300.dp)) {
+                Text(
+                    turn.assistantText ?: turn.error ?: "意图失败",
+                    color = Color(0xFFFF6B6B),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(EdgeTheme.bubbleAssistant)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+                BugReportStrip(turn = turn, vm = vm)
+            }
         }
         turn.presentation?.hasContent == true -> {
             PresentationBlock(turn, vm)
@@ -489,9 +511,6 @@ private fun AssistantBubble(turn: ChatTurn, vm: ConsoleViewModel) {
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             )
         }
-    }
-    if (!turn.awaitingTerminal && turn.intentId.toIntOrNull() != null && vm.feedbackDone[turn.intentId] != true) {
-        FeedbackStrip(intentId = turn.intentId, onSubmit = { u, s -> vm.submitFeedback(turn.intentId, u, s) })
     }
 }
 
@@ -585,29 +604,50 @@ private fun PresentationBlock(turn: ChatTurn, vm: ConsoleViewModel) {
 }
 
 @Composable
-private fun FeedbackStrip(intentId: String, onSubmit: (String, String) -> Unit) {
-    var understanding by remember(intentId) { mutableStateOf<String?>(null) }
-    var speed by remember(intentId) { mutableStateOf<String?>(null) }
-    LaunchedEffect(understanding, speed) {
-        val u = understanding
-        val s = speed
-        if (u != null && s != null) onSubmit(u, s)
-    }
-    Column(Modifier.padding(top = 6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("意图理解", color = EdgeTheme.dim, fontSize = 11.sp, modifier = Modifier.width(52.dp))
-            MiniChip("准确", understanding == "accurate") { understanding = "accurate" }
-            Spacer(Modifier.width(6.dp))
-            MiniChip("不准确", understanding == "inaccurate") { understanding = "inaccurate" }
+private fun BugReportStrip(turn: ChatTurn, vm: ConsoleViewModel) {
+    val busy = vm.devBugBusy[turn.id] == true
+    val submitted = vm.devBugSubmitted[turn.id] == true
+    val err = vm.devBugError[turn.id]
+    val canSubmit = turn.intentId.toIntOrNull() != null && !submitted
+    if (!canSubmit && err.isNullOrBlank()) {
+        if (submitted) {
+            Text(
+                "已提交问题，正在分析。",
+                color = EdgeTheme.mist,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 4.dp, start = 4.dp),
+            )
         }
-        Spacer(Modifier.height(4.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("响应速度", color = EdgeTheme.dim, fontSize = 11.sp, modifier = Modifier.width(52.dp))
-            MiniChip("快", speed == "fast") { speed = "fast" }
-            Spacer(Modifier.width(6.dp))
-            MiniChip("一般", speed == "normal") { speed = "normal" }
-            Spacer(Modifier.width(6.dp))
-            MiniChip("慢", speed == "slow") { speed = "slow" }
+        return
+    }
+    Column(Modifier.padding(top = 4.dp)) {
+        if (canSubmit) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = { vm.reportBug(turn.id) },
+                    enabled = !busy,
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 1.5.dp, color = EdgeTheme.sand)
+                        Spacer(Modifier.width(6.dp))
+                        Text("提交中…", color = EdgeTheme.sand, fontSize = 12.sp)
+                    } else {
+                        Text("一键报 Bug", color = EdgeTheme.sand, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+        if (!err.isNullOrBlank()) {
+            Text(
+                err,
+                color = Color(0xFFFFB347),
+                fontSize = 11.sp,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+            )
         }
     }
 }
@@ -702,7 +742,7 @@ fun IntentProgressOverlay(journey: IntentJourney, onClose: () -> Unit) {
                     PhaseVisual.PENDING -> EdgeTheme.dim
                 }
                 val dur = row.durationMs?.let { IntentJourney.formatDuration(it) } ?: "—"
-                Text("$mark  ${row.phase.label}  [$dur]", color = color, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                Text("$mark  ${row.phase.displayLabel(row.visual, journey.reportedWire)}  [$dur]", color = color, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
                 Spacer(Modifier.height(6.dp))
             }
             if (journey.planSteps.isNotEmpty()) {
@@ -835,6 +875,16 @@ private fun ScanTimelineRow(turn: ChatTurn, vm: ConsoleViewModel) {
             } else {
                 Icon(Icons.Filled.DocumentScanner, contentDescription = null, tint = EdgeTheme.dim, modifier = Modifier.size(36.dp))
             }
+        }
+        val hasAssetId = aid.isNotEmpty()
+        if (hasAssetId || turn.uploadState != PhotoUploadState.NONE) {
+            Spacer(Modifier.height(6.dp))
+            LocalMediaUploadStatusLine(
+                uploadState = turn.uploadState,
+                hasAssetId = hasAssetId,
+                error = turn.error,
+                noun = "扫描图",
+            )
         }
     }
     if (showFull && bytes != null) {

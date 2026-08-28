@@ -17,8 +17,20 @@ data class CapabilityDescriptor(
     /** Legacy; not the planning contract. Prefer structured fields above. */
     val description: String = "",
     val kind: String = "",
+    val composition: String = "atomic",
+    val decomposesTo: List<String> = emptyList(),
+    val preferWhen: String = "",
     val inputSchema: Map<String, SchemaField> = emptyMap(),
     val outputSchema: Map<String, SchemaField> = emptyMap(),
+    /**
+     * P0 Capability Availability: Runtime IsAvailable() probe result, reported
+     * in the heartbeat snapshot. null = not probed (legacy/declaration-only).
+     * DECLARED-but-unavailable caps stay advertised but carry available=false.
+     */
+    val available: Boolean? = null,
+    /** Epoch seconds of the availability probe. */
+    val observedAt: Double? = null,
+    val unavailableReason: String? = null,
 )
 
 /**
@@ -169,6 +181,10 @@ data class EdgeRegisterRequest(
     val intentSources: List<IntentSourceAd> = emptyList(),
     val endpoints: List<EndpointAd> = emptyList(),
     val participantId: String? = null,
+    /** P0: client-supplied stable Runtime Identity. */
+    val runtimeId: String? = null,
+    /** P0 Capability Exposure Policy: {lan:[cap...], cloud:[cap...]}. null = open. */
+    val exposurePolicy: Map<String, List<String>>? = null,
 )
 
 data class EdgeRegisterResponse(
@@ -201,4 +217,8 @@ data class EdgeNodeInfo(
     val intentSources: List<IntentSourceAd> = emptyList(),
     val endpoints: List<EndpointAd> = emptyList(),
     val participantId: String? = null,
+    /** P0: client-supplied stable Runtime Identity. */
+    val runtimeId: String? = null,
+    /** P0 Capability Exposure Policy: {lan:[cap...], cloud:[cap...]}. null = open. */
+    val exposurePolicy: Map<String, List<String>>? = null,
 )

@@ -5,10 +5,31 @@ from __future__ import annotations
 import math
 from typing import Any
 
+WRIST = 0
+THUMB_MCP, THUMB_IP, THUMB_TIP = 2, 3, 4
 INDEX_MCP = 5
 INDEX_PIP = 6
 INDEX_DIP = 7
 INDEX_TIP = 8
+MIDDLE_MCP, MIDDLE_PIP, MIDDLE_TIP = 9, 10, 12
+RING_MCP, RING_PIP, RING_TIP = 13, 14, 16
+PINKY_MCP, PINKY_PIP, PINKY_TIP = 17, 18, 20
+
+# (name, mcp, pip_or_ip, dip_or_ip, tip) — MediaPipe Hands indices.
+POINTING_FINGERS = (
+    ("thumb", THUMB_MCP, THUMB_IP, THUMB_IP, THUMB_TIP),
+    ("index", INDEX_MCP, INDEX_PIP, INDEX_DIP, INDEX_TIP),
+    ("middle", MIDDLE_MCP, MIDDLE_PIP, 11, MIDDLE_TIP),
+    ("ring", RING_MCP, RING_PIP, 15, RING_TIP),
+    ("pinky", PINKY_MCP, PINKY_PIP, 19, PINKY_TIP),
+)
+# When multiple digits are extended, the one whose tip reaches farthest from
+# the wrist is the pointer. Only call ambiguous when the top two are within
+# this ratio (e.g. index+middle both fully extended — a peace sign, not a
+# point). 1.1: index tip ~400 vs middle ~352 (intent 8024) clears it; two
+# equally-extended fingers (~1.0) stay ambiguous.
+DOMINANT_TIP_RATIO = 1.1
+AMBIGUOUS_FINGER_MSG = "图里有多根手指，系统无法判断你指的是哪个字。"
 
 
 def as_xyxy(bbox: Any) -> list[float]:
@@ -77,6 +98,119 @@ def finger_ray(
         ux, uy = vec_norm(dx, dy)
         return (tip, (ux, uy))
     return None
+
+
+def _digit_ray(
+    landmarks: dict[int, tuple[float, float]],
+    mcp: int,
+    dip: int,
+    tip: int,
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """Prefer MCP→TIP (overall finger direction); fall back to DIP→TIP.
+
+    MCP→TIP gives the stable knuckle-to-tip baseline that stays correct for
+    slightly bent fingers where the last phalanx (DIP→TIP) curls in a different
+    direction.  This matches finger_ray's behaviour for partial landmarks.
+    """
+    origin = landmarks.get(tip)
+    if origin is None:
+        return None
+    for base_idx in (mcp, dip):
+        base = landmarks.get(base_idx)
+        if base is None:
+            continue
+        dx, dy = origin[0] - base[0], origin[1] - base[1]
+        if vec_len(dx, dy) < 1e-9:
+            continue
+        ux, uy = vec_norm(dx, dy)
+        return (origin, (ux, uy))
+    return None
+
+
+def is_extended_digit(
+    landmarks: dict[int, tuple[float, float]],
+    mcp: int,
+    pip: int,
+    tip: int,
+) -> bool:
+    """True when this digit is stretched out (a pointing finger), not a fist curl."""
+    wrist = landmarks.get(WRIST)
+    p_mcp = landmarks.get(mcp)
+    p_pip = landmarks.get(pip)
+    p_tip = landmarks.get(tip)
+    if wrist is None or p_mcp is None or p_pip is None or p_tip is None:
+        return False
+    d_tip = vec_len(p_tip[0] - wrist[0], p_tip[1] - wrist[1])
+    d_pip = vec_len(p_pip[0] - wrist[0], p_pip[1] - wrist[1])
+    d_mcp = vec_len(p_mcp[0] - wrist[0], p_mcp[1] - wrist[1])
+    if d_tip < d_mcp * 1.12 or d_tip < d_pip * 1.02:
+        return False
+    span = vec_len(p_tip[0] - p_mcp[0], p_tip[1] - p_mcp[1])
+    chain = vec_len(p_pip[0] - p_mcp[0], p_pip[1] - p_mcp[1]) + vec_len(
+        p_tip[0] - p_pip[0], p_tip[1] - p_pip[1]
+    )
+    if chain < 1e-6 or span < 0.70 * chain:
+        return False
+    mid = landmarks.get(MIDDLE_MCP) or p_mcp
+    palm = vec_len(mid[0] - wrist[0], mid[1] - wrist[1])
+    if span < 0.28 * max(palm, d_mcp, 1.0):
+        return False
+    return True
+
+
+def pointing_fingers(
+    landmarks: dict[int, tuple[float, float]],
+) -> list[dict[str, Any]]:
+    """Independent extended digits on one hand. Partial (index-only) dumps fall back to finger_ray.
+
+    When multiple digits are extended, the one whose tip is farthest from the
+    wrist is the pointer (e.g. index pointing with thumb naturally splayed —
+    the index tip reaches much farther). Only fall back to ambiguous when no
+    single digit clearly dominates (ratio < DOMINANT_TIP_RATIO).
+    """
+    if not landmarks:
+        return []
+    full = all(i in landmarks for i in range(21))
+    if not full:
+        ray = finger_ray(landmarks)
+        if ray is None:
+            return []
+        origin, direction = ray
+        return [{"name": "index", "origin": origin, "direction": direction}]
+    out: list[dict[str, Any]] = []
+    for name, mcp, pip, dip, tip in POINTING_FINGERS:
+        if not is_extended_digit(landmarks, mcp, pip, tip):
+            continue
+        ray = _digit_ray(landmarks, mcp, dip, tip)
+        if ray is None:
+            continue
+        origin, direction = ray
+        wrist = landmarks.get(WRIST)
+        reach = vec_len(origin[0] - wrist[0], origin[1] - wrist[1]) if wrist else 0.0
+        out.append({"name": name, "origin": origin, "direction": direction, "reach": reach})
+    if len(out) > 1:
+        out.sort(key=lambda d: d["reach"], reverse=True)
+        if out[0]["reach"] >= out[1]["reach"] * DOMINANT_TIP_RATIO:
+            chosen = out[0]
+            # Thumb splay override: when thumb is dominant but the index
+            # tip is nearby (within 30px), the user is pointing with the
+            # index finger — replace the thumb's across-palm direction with
+            # the index MCP→TIP direction, which is the actual pointing ray.
+            if chosen["name"] == "thumb":
+                idx_tip = landmarks.get(INDEX_TIP)
+                idx_mcp = landmarks.get(INDEX_MCP)
+                if idx_tip and idx_mcp:
+                    dx = idx_tip[0] - chosen["origin"][0]
+                    dy = idx_tip[1] - chosen["origin"][1]
+                    if vec_len(dx, dy) < 30:
+                        rdx, rdy = idx_tip[0] - idx_mcp[0], idx_tip[1] - idx_mcp[1]
+                        if vec_len(rdx, rdy) > 1e-9:
+                            ux, uy = vec_norm(rdx, rdy)
+                            chosen["direction"] = (ux, uy)
+            return [chosen]
+    for d in out:
+        d.pop("reach", None)
+    return out
 
 
 def ray_aabb_t(
@@ -229,8 +363,55 @@ def explode_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 CONTACT_PAD_PX = 8.0
 CONTACT_NEAR_PX = 56.0
+# 0.4 of the 600px fingertip OCR window — a local neighborhood, not a page search.
+CONTACT_WINDOW_PAD_PX = 240.0
+CONTACT_GLYPH_FRAC = 1.35
+CONTACT_DIST_FRAC = 0.09
+CONTACT_SHAFT_PERP_FRAC = 0.40
 BODY_CHAR_PX = 48.0
 TITLE_CHAR_PX = 88.0
+
+
+def nearest_point_on_aabb(
+    point: tuple[float, float], bbox: list[float]
+) -> tuple[float, float]:
+    x1, y1, x2, y2 = as_xyxy(bbox)
+    px, py = point
+    return (min(max(px, x1), x2), min(max(py, y1), y2))
+
+
+def point_to_aabb_distance(point: tuple[float, float], bbox: list[float]) -> float:
+    qx, qy = nearest_point_on_aabb(point, bbox)
+    return vec_len(point[0] - qx, point[1] - qy)
+
+
+def contact_pad_px(body_size: float, max_distance: float) -> float:
+    """Scale-aware nail neighborhood.
+
+    CONTACT_PAD_PX=8 is a floor for tight photos; 2k–4k scans need a pad on the
+    order of a body glyph (nail just under the character). Cap with a fraction of
+    the ranking radius so small synthetic frames stay tight.
+    """
+    scale = max(body_size, 1.0)
+    glyph = CONTACT_GLYPH_FRAC * scale
+    near = CONTACT_NEAR_PX * scale / BODY_CHAR_PX
+    scaled = max(CONTACT_PAD_PX, glyph, near, CONTACT_WINDOW_PAD_PX)
+    cap = max(CONTACT_PAD_PX, CONTACT_DIST_FRAC * max(max_distance, 1.0))
+    return min(scaled, cap)
+
+
+def on_finger_shaft(
+    origin: tuple[float, float],
+    direction: tuple[float, float],
+    point: tuple[float, float],
+) -> bool:
+    """True when `point` lies on the finger body (behind the tip, along the ray)."""
+    vx, vy = point[0] - origin[0], point[1] - origin[1]
+    t_along = dot(vx, vy, direction[0], direction[1])
+    if t_along >= 0.0:
+        return False
+    perp = perpendicular_distance(origin, direction, point)
+    return perp < CONTACT_SHAFT_PERP_FRAC * max(-t_along, 1.0)
 
 
 def score_character(
@@ -408,6 +589,108 @@ def lateral_score(
     }
 
 
+def contact_covers_many_glyphs(
+    box: list[float], others: list[dict[str, Any]], body_size: float
+) -> bool:
+    """True when `box` contains the centers of two+ smaller body-sized glyphs.
+
+    Catches a misplaced OCR box that landed on top of a real line (e.g. 牵
+    covering 的+崭) without dropping a well-split character that only shares
+    an edge or a dual-window duplicate of itself.
+    """
+    x1, y1, x2, y2 = as_xyxy(box)
+    area = max((x2 - x1) * (y2 - y1), 1.0)
+    seen: set[str] = set()
+    for other in others:
+        ob = other.get("bbox")
+        if not ob:
+            continue
+        ob = as_xyxy(ob)
+        if ob == [x1, y1, x2, y2]:
+            continue
+        oa = max((ob[2] - ob[0]) * (ob[3] - ob[1]), 1.0)
+        if oa >= 0.9 * area:
+            continue
+        ow, oh = bbox_wh(ob)
+        if max(ow, oh) > 1.8 * max(body_size, 1.0):
+            continue
+        cx, cy = bbox_center(ob)
+        if not (x1 <= cx <= x2 and y1 <= cy <= y2):
+            continue
+        text = str(other.get("text") or "")
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        if len(seen) >= 2:
+            return True
+    return False
+
+
+def contact_score(
+    *,
+    origin: tuple[float, float],
+    direction: tuple[float, float],
+    bbox: list[float],
+    body_size: float,
+    max_distance: float,
+) -> dict[str, float] | None:
+    """Nail-adjacent score. First-class class alongside ray-ahead ranking.
+
+    Glyphs in a scale-aware pad around the TIP are kept even when
+    ``dot(center - TIP, direction) ≤ 0`` (the nail is pressing next to / just
+    under the glyph). Ahead-of-ray glyphs keep ray/lateral only — contact is the
+    behind-ray rescue, not a near-tip override of a high-band lateral neighbour.
+    Finger-shaft boxes (straight behind the tip toward the knuckle) are excluded.
+    """
+    box = as_xyxy(bbox)
+    if box[2] <= box[0] or box[3] <= box[1]:
+        return None
+    pad = contact_pad_px(body_size, max_distance)
+    edge_gap = point_to_aabb_distance(origin, box)
+    if edge_gap > pad:
+        return None
+    nearest = nearest_point_on_aabb(origin, box)
+    if on_finger_shaft(origin, direction, nearest):
+        return None
+    cx, cy = bbox_center(box)
+    vx, vy = cx - origin[0], cy - origin[1]
+    dist = vec_len(vx, vy)
+    pressing = bbox_contains(origin, box, pad=0.0)
+    behind = dist < 1e-6 or dot(vx, vy, direction[0], direction[1]) <= 0.0
+    if not pressing and not behind:
+        return None
+    # Contact is a placed-nail gesture (finger along the page). When the finger
+    # aims steeply up/down the ray, a box that merely clips the TIP is incidental
+    # — same 32° gate as lateral_score (渊 while the tip sits at 了/为).
+    horiz_deg = math.degrees(
+        math.atan2(abs(direction[1]), max(abs(direction[0]), 1e-6))
+    )
+    if horiz_deg > 32.0:
+        return None
+    w, h = bbox_wh(box)
+    char_size = max(w, h)
+    scale = max(body_size, 1.0)
+    edge_s = max(0.0, 1.0 - edge_gap / max(pad, 1.0))
+    dist_s = max(0.0, 1.0 - dist / max(pad + 0.5 * scale, 1.0))
+    size_s = min(1.0, BODY_CHAR_PX / char_size)
+    if pressing:
+        total = 0.72 + 0.18 * size_s + 0.08 * edge_s
+    else:
+        total = min(0.78, 0.50 + 0.16 * edge_s + 0.12 * dist_s + 0.08 * size_s)
+    ang = 0.0 if dist < 1e-6 else angle_deg(direction[0], direction[1], vx, vy)
+    return {
+        "score": total,
+        "mode": "contact",
+        "entry_t": float(edge_gap),
+        "intersection": 0.0,
+        "alignment": 1.0,
+        "distance": edge_s,
+        "center": dist_s,
+        "angle_deg": ang,
+        "pixel_distance": dist,
+    }
+
+
 def prefer_body_text(ranked: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Drop decorative title boxes when body-sized glyphs exist."""
     body = []
@@ -453,14 +736,26 @@ def rank_characters(
             max_distance=max_distance,
             body_size=body_size,
         )
-        # Take the better of the ray/cone score and the fingertip-neighbour score.
-        # The neighbour score rescues glyphs the finger points beside (ray misses
-        # them) without displacing cases where the ray already hits the target.
+        contact = contact_score(
+            origin=origin,
+            direction=direction,
+            bbox=ch["bbox"],
+            body_size=body_size,
+            max_distance=max_distance,
+        )
+        if contact is not None and contact_covers_many_glyphs(
+            ch["bbox"], chars, body_size
+        ):
+            contact = None
+        # Take the best of ray/cone, fingertip-neighbour, and nail-contact.
+        # Contact rescues glyphs the nail is pressing that sit behind a collapsed
+        # ray, without replacing ray-ahead ranking when the ray already hits.
         chosen = None
-        if metrics is not None and (lat is None or metrics["score"] >= lat["score"]):
-            chosen = metrics
-        elif lat is not None:
-            chosen = lat
+        for cand in (metrics, lat, contact):
+            if cand is None:
+                continue
+            if chosen is None or float(cand["score"]) > float(chosen["score"]):
+                chosen = cand
         if chosen is None:
             continue
         item = dict(ch)
@@ -497,10 +792,10 @@ def rank_characters(
 
     # Ray hits are what the finger actually points at — protect them from the
     # title-size filter (a large glyph the finger points at is a target, not a
-    # decorative header). Off-ray (lateral/cone) candidates get the title filter
-    # so headers don't crowd out body text. Then merge everything by score: a
-    # fingertip neighbour whose lateral score beats a ray hit's ray score ranks
-    # above it (the finger can point beside the glyph, not just down the ray).
+    # decorative header). Off-ray (lateral/cone/contact) candidates get the title
+    # filter so headers don't crowd out body text. Then merge everything by score:
+    # a fingertip neighbour or nail-contact whose score beats a ray hit ranks
+    # above it (the finger can press beside the glyph, not just down the ray).
     ray_hits = [r for r in ranked if r.get("mode") == "ray"]
     off_ray = [r for r in ranked if r.get("mode") != "ray"]
     off_ray = prefer_body_text(off_ray)

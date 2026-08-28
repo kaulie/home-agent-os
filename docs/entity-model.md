@@ -56,3 +56,7 @@ State / metadata / references **不做列展开**。
 ## 7. Schema
 
 见 [`docs/db-schema.md`](db-schema.md) `entities` 节；迁移 `server/sql/016_entities.sql`。
+
+## 8. 与 P0 双 Brain 的关系
+
+Entity Registry 与 Runtime Identity / Registration / Heartbeat（P0）正交：`references.participant_id` 指向承载节点的 Runtime Identity（`participant_id`），不随该 Runtime 在 Local/Cloud 哪个 domain 注册而改变。Entity 是 World Model 锚点，不参与 Availability / Exposure Policy。

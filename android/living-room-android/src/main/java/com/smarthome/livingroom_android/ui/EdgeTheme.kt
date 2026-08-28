@@ -5,10 +5,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +35,9 @@ object EdgeTheme {
     val bubbleUser = Color(0xFF3B6FE0)
     val bubbleAssistant = Color(0xFF252A35)
 }
+
+/** Status bar + display cutout — keep top controls tappable on notched devices. */
+fun Modifier.edgeSafeTop(): Modifier = statusBarsPadding().displayCutoutPadding()
 
 @Composable
 fun EdgeCanvas(modifier: Modifier = Modifier, content: @Composable () -> Unit) {

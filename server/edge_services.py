@@ -90,6 +90,39 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             },
         },
     },
+    'camera.capture_and_upload': {
+        'kind': 'action',
+        'group': 'camera',
+        'service_id': 'gopro.camera',
+        'role': '拍照并上传器',
+        'planner_recognize': '拍一张现场照并在同一台设备上上传成 Image Asset，产出 asset_ref。拍照后还要给人看、给视觉问、投电视时优先本步，不要再拆成拍照+上传两步。',
+        'typical_triggers': [
+            '拍张照片我看一下',
+            '拍张照片我看看',
+            '拍的给我看',
+            '拍照后上传',
+        ],
+        'do_not_dispatch': ['只上传已有图', '看图理解本身', '投屏本身'],
+        'input_schema': {
+            'dest': {
+                'type': 'string',
+                'required': False,
+                'description': 'img_server（默认）| cloud。传给内部 asset.upload。',
+            },
+        },
+        'output_schema': {
+            'asset_ref': {
+                'type': 'string',
+                'required': True,
+                'description': '上传后的 AssetRef JSON。禁止 photo_url / path / capture_ref 当用户可见 identity。',
+            },
+            'dest': {
+                'type': 'string',
+                'required': False,
+                'description': 'img_server 或 cloud',
+            },
+        },
+    },
     'document.scan': {
         'kind': 'input',
         'group': 'document',
@@ -199,6 +232,55 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         },
         'output_schema': {},
     },
+    'game.launch': {
+        'kind': 'output',
+        'group': 'game',
+        'service_id': 'chromecast.game',
+        'role': '电视互动游戏启动器',
+        'planner_recognize': '在 Chromecast 电视上启动互动游戏（接金币 MVP）。实时移动/暂停不要排 plan',
+        'typical_triggers': ['打开接金币游戏', '玩游戏', '打开电视游戏'],
+        'do_not_dispatch': ['向左', '向右', '暂停', '继续', '跳', '实时控制'],
+        'input_schema': {
+            'game_id': {
+                'type': 'string',
+                'required': True,
+                'description': '游戏 id，如 coin_catcher',
+            },
+            'game_url': {
+                'type': 'string',
+                'required': False,
+                'description': '可选 LAN 游戏页 URL；缺省由 Mac game host 解析',
+            },
+        },
+        'output_schema': {
+            'game_url': {
+                'type': 'string',
+                'required': True,
+                'description': '已加载的游戏 LAN URL',
+            },
+            'game_id': {
+                'type': 'string',
+                'required': True,
+                'description': '游戏 id',
+            },
+            'status': {
+                'type': 'string',
+                'required': True,
+                'description': 'ready',
+            },
+        },
+    },
+    'game.input': {
+        'kind': 'input',
+        'group': 'game',
+        'service_id': 'iphone.game.input',
+        'role': '游戏语音/手势输入',
+        'planner_recognize': 'iPhone 本地游戏输入，不排 plan',
+        'typical_triggers': ['游戏遥控器'],
+        'do_not_dispatch': ['作为计划逐步执行'],
+        'input_schema': {},
+        'output_schema': {},
+    },
     'bluetooth.connect': {
         'kind': 'action',
         'group': 'speaker',
@@ -240,6 +322,28 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
                 'type': 'string',
                 'required': False,
                 'description': '可选 edge-tts 音色，如 zh-CN-YunxiNeural（男）/ zh-CN-YunyangNeural',
+            },
+        },
+        'output_schema': {},
+    },
+    'xiaodu.speak': {
+        'kind': 'output',
+        'group': 'notify',
+        'service_id': 'xiaodu.speaker',
+        'role': '小度音箱播报器',
+        'planner_recognize': '经小度音箱播报指定文案',
+        'typical_triggers': ['用小度说', '小度播报', '客厅音箱说'],
+        'do_not_dispatch': ['Mac 本机播报', '知识问答', '放歌', '投屏'],
+        'input_schema': {
+            'text': {
+                'type': 'string',
+                'required': True,
+                'description': '要经小度音箱播报的原文',
+            },
+            'voice': {
+                'type': 'string',
+                'required': False,
+                'description': 'edge-tts 音色，默认 zh-CN-XiaoxiaoNeural',
             },
         },
         'output_schema': {},
@@ -322,6 +426,143 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
                 'type': 'string',
                 'required': True,
                 'description': '针对图+问句的中文回答；不确定时直说我不知道',
+            },
+        },
+    },
+    'reading.detect_finger': {
+        'kind': 'action',
+        'group': 'reading',
+        'service_id': 'local.character',
+        'role': '食指检测器',
+        'planner_recognize': '看一张已有 Image Asset，找出食指指尖位置和指向。入参 asset_ref。自己不拍照。',
+        'typical_triggers': ['检测图里的食指', '指尖在哪'],
+        'do_not_dispatch': ['拍照本身', '认字', '整页 OCR', '投屏', '无图知识问答'],
+        'input_schema': {
+            'asset_ref': {
+                'type': 'string',
+                'required': True,
+                'description': 'AssetRef JSON {asset_id, type, mime_type?}。手指指向某字的图片。禁止 photo_url / path。常为 $asset_ref。',
+            },
+        },
+        'output_schema': {
+            'finger': {
+                'type': 'object',
+                'required': True,
+                'description': '食指 {tip:[x,y], direction:[dx,dy]}',
+            },
+            'status': {
+                'type': 'string',
+                'required': False,
+                'description': '引擎状态',
+            },
+        },
+    },
+    'reading.ocr_at_finger': {
+        'kind': 'action',
+        'group': 'reading',
+        'service_id': 'local.character',
+        'role': '指尖附近文字识别器',
+        'planner_recognize': '在已有 Image Asset 上，按本步入参 finger 裁指尖附近窗口做 OCR。入参 asset_ref + finger。',
+        'typical_triggers': ['识别指尖附近的字'],
+        'do_not_dispatch': ['拍照本身', '整页 OCR', '投屏', '无图知识问答', '看图理解'],
+        'input_schema': {
+            'asset_ref': {
+                'type': 'string',
+                'required': True,
+                'description': 'AssetRef JSON {asset_id, type, mime_type?}。禁止 photo_url / path。常为 $asset_ref。',
+            },
+            'finger': {
+                'type': 'object',
+                'required': True,
+                'description': '食指 {tip:[x,y], direction:[dx,dy]}。由 reading.detect_finger 产出。',
+            },
+        },
+        'output_schema': {
+            'chars': {
+                'type': 'array',
+                'required': True,
+                'description': '指尖附近 OCR 字框列表',
+            },
+            'status': {
+                'type': 'string',
+                'required': False,
+                'description': '引擎状态',
+            },
+        },
+    },
+    'reading.rank_pointed': {
+        'kind': 'action',
+        'group': 'reading',
+        'service_id': 'local.character',
+        'role': '指字排序器',
+        'planner_recognize': '根据本步入参 finger 和 chars，选出食指指向的那一个汉字。入参 asset_ref + finger + chars。',
+        'typical_triggers': ['选出手指指向的字'],
+        'do_not_dispatch': ['拍照本身', '整页 OCR', '投屏', '无图知识问答', '检测手指'],
+        'input_schema': {
+            'asset_ref': {
+                'type': 'string',
+                'required': True,
+                'description': 'AssetRef JSON {asset_id, type, mime_type?}。禁止 photo_url / path。常为 $asset_ref。',
+            },
+            'finger': {
+                'type': 'object',
+                'required': True,
+                'description': '食指 {tip:[x,y], direction:[dx,dy]}。由 reading.detect_finger 产出。',
+            },
+            'chars': {
+                'type': 'array',
+                'required': True,
+                'description': '指尖附近 OCR 字框。由 reading.ocr_at_finger 产出。',
+            },
+        },
+        'output_schema': {
+            'character': {
+                'type': 'string',
+                'required': True,
+                'description': '指尖指向的汉字；认不出时为空串',
+            },
+            'answer_text': {
+                'type': 'string',
+                'required': True,
+                'description': '给人听/看的中文答案；认不出时直说不知道',
+            },
+            'status': {
+                'type': 'string',
+                'required': False,
+                'description': '引擎状态：ok / ok_with_alternatives / 其它失败状态',
+            },
+        },
+    },
+    'reading.point_to_character': {
+        'kind': 'action',
+        'group': 'reading',
+        'service_id': 'local.character',
+        'role': '指字认字器',
+        'planner_recognize': '看一张已排好的 Image Asset，识别手指指尖指向的那一个汉字。入参 asset_ref。自己不拍照。',
+        'typical_triggers': ['这个字读啥', '手指指的是什么字', '最新照片里手指指的字'],
+        'do_not_dispatch': ['拍照本身', '投屏', '整页 OCR', '无图知识问答', '看图理解'],
+        'input_schema': {
+            'asset_ref': {
+                'type': 'string',
+                'required': True,
+                'description': '已排好的 Image Asset。自己不拍照。禁止 photo_url / path。常为 $asset_ref。',
+            },
+        },
+        'output_schema': {
+            'character': {
+                'type': 'string',
+                'required': True,
+                'description': '指尖指向的汉字；认不出时为空串',
+            },
+            'answer_text': {
+                'type': 'string',
+                'required': True,
+                'description': '给人听/看的中文答案；认不出时直说不知道',
+            },
+            'status': {
+                'type': 'string',
+                'required': False,
+                'description': '引擎状态：ok / ok_with_alternatives / 其它失败状态',
             },
         },
     },
@@ -1034,6 +1275,91 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             },
         },
     },
+    'pronunciation.assess': {
+        'kind': 'action',
+        'group': 'pronunciation',
+        'service_id': 'local.pronunciation',
+        'role': '整段英文朗读评测器',
+        'planner_recognize': '给定标准朗读音频和小朋友跟读音频（均为音频 AssetRef），做整段→整段英文朗读评测，给出总分、发音准确度、流利度、完整度、韵律、重点问题单词/音素及时间位置。入参 reference_audio + student_audio。自己不录音、不上传音频、不 TTS、不投屏。两段音频须由上游上传步产出 Asset 并经 context 接进本步',
+        'typical_triggers': [
+            '评测这段跟读',
+            '给这次朗读打分',
+            '评估发音',
+            'assess my reading',
+            'pronunciation check',
+            '这次读得怎么样',
+        ],
+        'do_not_dispatch': ['录音本身', '上传音频', 'TTS', '投屏', '单句打分', '知识问答', '拍照'],
+        'input_schema': {
+            'reference_audio': {
+                'type': 'string',
+                'required': True,
+                'description': 'AssetRef JSON {asset_id, type:audio, mime_type?}。标准英文朗读音频。禁止 path / 永久 URL / base64。常为 $reference_audio。',
+            },
+            'student_audio': {
+                'type': 'string',
+                'required': True,
+                'description': 'AssetRef JSON {asset_id, type:audio, mime_type?}。小朋友跟读的整段英文音频。禁止 path / 永久 URL / base64。常为 $student_audio。',
+            },
+        },
+        'output_schema': {
+            'overall_score': {
+                'type': 'number',
+                'required': True,
+                'description': '整段朗读总体评分 0..100',
+            },
+            'accuracy_score': {
+                'type': 'number',
+                'required': True,
+                'description': '发音准确度 0..100',
+            },
+            'fluency_score': {
+                'type': 'number',
+                'required': True,
+                'description': '流利度 0..100',
+            },
+            'completeness_score': {
+                'type': 'number',
+                'required': True,
+                'description': '完整度 0..100',
+            },
+            'prosody_score': {
+                'type': 'number',
+                'required': True,
+                'description': '韵律/重音表现 0..100',
+            },
+            'duration': {
+                'type': 'object',
+                'required': True,
+                'description': '{reference, student} 两段音频时长（秒）',
+            },
+            'problem_words': {
+                'type': 'array',
+                'required': True,
+                'description': '重点问题单词 [{word, score, start, end, phoneme_errors, reason?}]',
+            },
+            'problem_phonemes': {
+                'type': 'array',
+                'required': True,
+                'description': '重点问题音素 [{phoneme, word, start, end}]',
+            },
+            'fluency': {
+                'type': 'object',
+                'required': True,
+                'description': '{speech_rate, pause_count, long_pause_count, repetition_count}',
+            },
+            'raw_alignment': {
+                'type': 'array',
+                'required': True,
+                'description': '逐词对齐明细，供调试/UI 展开',
+            },
+            'feedback_text': {
+                'type': 'string',
+                'required': True,
+                'description': '给人看的中文一句话总结，供 Brain 组装 presentation',
+            },
+        },
+    },
 }
 
 try:
@@ -1055,6 +1381,12 @@ for _cid, _spec in KNOWN_CAPABILITIES.items():
         _spec["typical_triggers"] = list(_ad["typical_triggers"])
     if _ad.get("do_not_dispatch"):
         _spec["do_not_dispatch"] = list(_ad["do_not_dispatch"])
+    if _ad.get("composition"):
+        _spec["composition"] = _ad["composition"]
+    if _ad.get("decomposes_to"):
+        _spec["decomposes_to"] = list(_ad["decomposes_to"])
+    if _ad.get("prefer_when"):
+        _spec["prefer_when"] = _ad["prefer_when"]
 
 
 LEGACY_CAPABILITIES = frozenset(

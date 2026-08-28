@@ -81,32 +81,19 @@ struct NodeInfoView: View {
             EdgeTheme.sectionLabel("心跳")
             EdgePanel {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    VStack(alignment: .leading, spacing: 12) {
-                        infoLine(
-                            label: "最近一次",
-                            value: Self.formatNodeTime(model.lastHeartbeatAt)
-                        )
-                        HStack(spacing: 8) {
-                            if model.lastHeartbeatAt != nil {
-                                Image(systemName: model.lastHeartbeatOk ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                    .foregroundStyle(model.lastHeartbeatOk ? Color.green : Color.red)
-                                    .accessibilityLabel(model.lastHeartbeatOk ? "心跳成功" : "心跳失败")
-                            }
-                            Text(model.lastHeartbeatOk ? "成功" : (model.lastHeartbeatAt == nil ? "尚未心跳" : "失败"))
-                                .font(.system(size: 13, weight: .medium, design: .rounded))
-                                .foregroundStyle(EdgeTheme.mist)
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach([model.lanHeartbeat, model.cloudHeartbeat], id: \.mode) { status in
+                            heartbeatRow(status)
                         }
-                        infoLine(
-                            label: "最近一次成功",
-                            value: Self.formatNodeTime(model.lastHeartbeatSuccessAt)
-                        )
+                        Divider()
+                            .background(EdgeTheme.dim.opacity(0.4))
                         if let nextAt = model.nextHeartbeatAt {
                             let sec = max(0, Int(ceil(nextAt.timeIntervalSince(context.date))))
-                            let sending = (model.heartbeatBusy || model.brainResolveBusy) && sec == 0
+                            let showSending = sec == 0
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Text(sending ? "本次心跳" : "距离下次")
+                                Text(showSending ? "本次心跳" : "距离下次")
                                     .foregroundStyle(EdgeTheme.dim)
-                                if sending {
+                                if showSending {
                                     ProgressView()
                                         .tint(EdgeTheme.sand)
                                         .controlSize(.small)
@@ -121,18 +108,84 @@ struct NodeInfoView: View {
                                         .foregroundStyle(EdgeTheme.sand.opacity(0.85))
                                 }
                             }
-                            .accessibilityLabel(sending ? "心跳发送中" : "距离下次心跳\(sec)秒")
-                        }
-                        if !model.lastHeartbeatOk, !model.lastHeartbeatError.isEmpty {
-                            Text(model.lastHeartbeatError)
-                                .font(.system(size: 12, weight: .regular, design: .monospaced))
-                                .foregroundStyle(Color.red.opacity(0.9))
-                                .textSelection(.enabled)
+                            .accessibilityLabel(showSending ? "心跳发送中" : "距离下次心跳\(sec)秒")
                         }
                     }
                 }
             }
         }
+    }
+
+    /// P0 dual-Brain: one row per Brain (LAN / Cloud). Active Brain is highlighted
+    /// and tagged「当前」; minimal fields: 成功/失败 + 最近一次 + 最近成功 + 注册 + 错误.
+    private func heartbeatRow(_ status: BrainHeartbeatStatus) -> some View {
+        let active = status.mode == model.brainEnvironment.mode
+        let baseURL = BrainEndpoint.displayBase(
+            from: status.mode == .lan ? model.lanBrainURL : model.cloudBrainURL
+        )
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                if status.hasAttempted {
+                    Image(systemName: status.lastOk ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        .foregroundStyle(status.lastOk ? Color.green : Color.red)
+                        .accessibilityLabel(status.lastOk ? "心跳成功" : "心跳失败")
+                } else {
+                    Circle()
+                        .fill(EdgeTheme.dim.opacity(0.5))
+                        .frame(width: 12, height: 12)
+                        .accessibilityLabel("尚未心跳")
+                }
+                Text(status.mode.displayName)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(EdgeTheme.mist)
+                if active {
+                    Text("当前")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(EdgeTheme.ink)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(EdgeTheme.sand)
+                        .clipShape(Capsule())
+                }
+                Spacer()
+                Text(status.registered ? "已注册" : "未注册")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(status.registered ? EdgeTheme.sand.opacity(0.9) : EdgeTheme.dim)
+            }
+            if let phaseLabel = status.phase.rowLabel {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .tint(EdgeTheme.sand)
+                        .controlSize(.small)
+                    Text(phaseLabel)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(EdgeTheme.sand)
+                }
+                .accessibilityLabel(phaseLabel)
+            }
+            Text(baseURL)
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(EdgeTheme.dim)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            infoLine(label: "最近一次", value: Self.formatNodeTime(status.lastAttemptAt))
+            infoLine(label: "最近一次成功", value: Self.formatNodeTime(status.lastSuccessAt))
+            if !status.lastOk, !status.lastError.isEmpty {
+                Text(status.lastError)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(Color.red.opacity(0.9))
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(active ? EdgeTheme.sand.opacity(0.08) : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(active ? EdgeTheme.sand.opacity(0.4) : Color.clear, lineWidth: 1)
+                )
+        )
     }
 
     private var clockSection: some View {
@@ -162,24 +215,33 @@ struct NodeInfoView: View {
                     .disabled(model.clockSyncBusy)
 
                     if let sample = model.clockSync {
-                        Text("【本地时间】\(Self.formatNodeTimeMs(sample.localAt))")
-                            .font(.system(size: 13, weight: .regular, design: .monospaced))
-                            .foregroundStyle(Color.white.opacity(0.9))
-                            .textSelection(.enabled)
-                        if let serverAt = sample.serverAt {
-                            Text("【服务端时间】\(Self.formatNodeTimeMs(serverAt))")
-                                .font(.system(size: 13, weight: .regular, design: .monospaced))
-                                .foregroundStyle(Color.white.opacity(0.9))
+                        clockTimeLine(label: "本地时间", value: Self.formatNodeTimeMs(sample.localAt))
+                        clockTimeLine(
+                            label: "LAN 服务器",
+                            value: Self.clockServerLine(
+                                at: sample.lanServerAt,
+                                skewMs: sample.lanSkewMs,
+                                busy: model.clockSyncBusy
+                            )
+                        )
+                        if !sample.lanError.isEmpty {
+                            Text(sample.lanError)
+                                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                .foregroundStyle(Color.red.opacity(0.9))
                                 .textSelection(.enabled)
-                        } else if model.clockSyncBusy {
-                            Text("【服务端时间】…")
-                                .font(.system(size: 13, weight: .regular, design: .monospaced))
-                                .foregroundStyle(EdgeTheme.dim)
                         }
-                        if let skewMs = sample.skewMs {
-                            Text("【时差】\(Self.formatSkew(skewMs))")
-                                .font(.system(size: 13, weight: .regular, design: .monospaced))
-                                .foregroundStyle(Color.white.opacity(0.9))
+                        clockTimeLine(
+                            label: "Cloud 服务器",
+                            value: Self.clockServerLine(
+                                at: sample.cloudServerAt,
+                                skewMs: sample.cloudSkewMs,
+                                busy: model.clockSyncBusy
+                            )
+                        )
+                        if !sample.cloudError.isEmpty {
+                            Text(sample.cloudError)
+                                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                .foregroundStyle(Color.red.opacity(0.9))
                                 .textSelection(.enabled)
                         }
                     }
@@ -199,9 +261,13 @@ struct NodeInfoView: View {
             EdgeTheme.sectionLabel("角色")
             EdgePanel {
                 VStack(alignment: .leading, spacing: 14) {
-                    infoLine(
-                        label: "上报 role",
-                        value: model.lastReportedRoles.isEmpty ? "—" : model.lastReportedRoles.joined(separator: ", ")
+                    reportedRolesRow(
+                        mode: .lan,
+                        roles: model.lanLastReportedRoles
+                    )
+                    reportedRolesRow(
+                        mode: .cloud,
+                        roles: model.cloudLastReportedRoles
                     )
                     Text("变更（下次心跳）")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -211,12 +277,55 @@ struct NodeInfoView: View {
                             roleChip(role)
                         }
                     }
-                    Text("点选只改下次心跳组包；上报 role 是上一次心跳请求里的 roles。")
+                    Text("点选只改下次心跳组包；上报 role 是各 Brain 上一次成功心跳请求里的 roles。")
                         .font(.system(size: 12, weight: .regular, design: .rounded))
                         .foregroundStyle(EdgeTheme.dim)
                 }
             }
         }
+    }
+
+    /// P0 dual-Brain: last roles actually sent to that Brain (LAN / Cloud).
+    /// Chip toggles stay shared; only the acked 上报 display is split.
+    private func reportedRolesRow(mode: BrainEndpoint.Mode, roles: [String]) -> some View {
+        let active = mode == model.brainEnvironment.mode
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(mode.displayName)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(EdgeTheme.mist)
+                if active {
+                    Text("当前")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(EdgeTheme.ink)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(EdgeTheme.sand)
+                        .clipShape(Capsule())
+                }
+            }
+            Text(roles.isEmpty ? "—" : roles.joined(separator: ", "))
+                .font(.system(size: 15, weight: .medium, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.92))
+                .textSelection(.enabled)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(active ? EdgeTheme.sand.opacity(0.08) : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(active ? EdgeTheme.sand.opacity(0.4) : Color.clear, lineWidth: 1)
+                )
+        )
+    }
+
+    private func clockTimeLine(label: String, value: String) -> some View {
+        Text("【\(label)】\(value)")
+            .font(.system(size: 13, weight: .regular, design: .monospaced))
+            .foregroundStyle(Color.white.opacity(0.9))
+            .textSelection(.enabled)
     }
 
     private func infoLine(label: String, value: String) -> some View {
@@ -266,13 +375,16 @@ struct NodeInfoView: View {
         return f.string(from: date)
     }
 
-    private static func formatSkew(_ skewMs: Int) -> String {
-        if skewMs == 0 { return "0ms" }
-        let absMs = abs(skewMs)
-        let who = skewMs > 0 ? "服务端快" : "本机快"
-        if absMs >= 1000 {
-            return String(format: "%@ %.2fs (%+dms)", who, Double(absMs) / 1000.0, skewMs)
-        }
-        return "\(who) \(absMs)ms (\(skewMs >= 0 ? "+" : "")\(skewMs)ms)"
+    /// `skew_ms` = server − local. Shown next to the server wall clock.
+    private static func clockServerLine(at: Date?, skewMs: Int?, busy: Bool) -> String {
+        guard let at else { return busy ? "…" : "—" }
+        let time = formatNodeTimeMs(at)
+        guard let skewMs else { return time }
+        return "\(time)  相对本地 \(formatSkewMs(skewMs))"
+    }
+
+    private static func formatSkewMs(_ ms: Int) -> String {
+        if ms == 0 { return "0 ms" }
+        return ms > 0 ? "+\(ms) ms" : "\(ms) ms"
     }
 }

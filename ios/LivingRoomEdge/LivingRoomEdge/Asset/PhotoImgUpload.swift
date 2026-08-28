@@ -14,9 +14,13 @@ enum PhotoImgUpload {
         let dest: String
     }
 
-    static func requireReachable(dest: String, phase: String) async throws {
-        let endpoints = try PhotoUploadDest.endpoints(dest)
-        let ok = await probe(dest: dest)
+    static func requireReachable(
+        dest: String,
+        phase: String,
+        primaryIntentURL: String? = nil
+    ) async throws {
+        let endpoints = try PhotoUploadDest.endpoints(dest, primaryIntentURL: primaryIntentURL)
+        let ok = await probe(dest: dest, primaryIntentURL: primaryIntentURL)
         if ok { return }
         throw uploadError(
             "卡在上传（\(phase)）：图床不通 \(endpoints.probe)。先确认图片服务器在线再拍。"
@@ -24,8 +28,8 @@ enum PhotoImgUpload {
     }
 
     /// TCP then optional GET. Any HTTP response (including 404) means the host is up.
-    static func probe(dest: String) async -> Bool {
-        guard let endpoints = try? PhotoUploadDest.endpoints(dest) else { return false }
+    static func probe(dest: String, primaryIntentURL: String? = nil) async -> Bool {
+        guard let endpoints = try? PhotoUploadDest.endpoints(dest, primaryIntentURL: primaryIntentURL) else { return false }
         let probeURL = endpoints.probe
         guard let hostPort = hostPort(from: probeURL) ?? hostPort(from: endpoints.upload) else {
             return false
@@ -39,7 +43,8 @@ enum PhotoImgUpload {
         path: URL,
         dest: String,
         phase: String,
-        skipProbe: Bool = false
+        skipProbe: Bool = false,
+        primaryIntentURL: String? = nil
     ) async throws -> Result {
         let data = try Data(contentsOf: path)
         return try await uploadData(
@@ -47,7 +52,8 @@ enum PhotoImgUpload {
             filename: path.lastPathComponent,
             dest: dest,
             phase: phase,
-            skipProbe: skipProbe
+            skipProbe: skipProbe,
+            primaryIntentURL: primaryIntentURL
         )
     }
 
@@ -56,12 +62,13 @@ enum PhotoImgUpload {
         filename: String,
         dest: String,
         phase: String,
-        skipProbe: Bool = false
+        skipProbe: Bool = false,
+        primaryIntentURL: String? = nil
     ) async throws -> Result {
         if !skipProbe {
-            try await requireReachable(dest: dest, phase: phase)
+            try await requireReachable(dest: dest, phase: phase, primaryIntentURL: primaryIntentURL)
         }
-        let endpoints = try PhotoUploadDest.endpoints(dest)
+        let endpoints = try PhotoUploadDest.endpoints(dest, primaryIntentURL: primaryIntentURL)
         guard !data.isEmpty else {
             throw uploadError("卡在上传（\(phase)）：文件为空。")
         }
@@ -196,7 +203,7 @@ enum PhotoImgUpload {
     }
 
     /// Never wait forever for a route (1417 hung on waitsForConnectivity).
-    private static let session: URLSession = {
+    static let session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.waitsForConnectivity = false
         config.allowsExpensiveNetworkAccess = true

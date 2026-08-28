@@ -28,7 +28,7 @@ struct ChatTurn: Identifiable, Equatable {
     var awaitingTerminal: Bool
     /// Visual Input asset (optional). iPhone photos carry a `ph_…` local id until uploaded.
     var inputAssetId: String? = nil
-    /// Per-photo background upload state (iphone.photo turns only).
+    /// Per-item background upload state (iphone.photo; document.scan is always uploaded when listed).
     var uploadStatus: LocalMediaUploadStatus? = nil
 
     var isDocumentScan: Bool { source == "document.scan" }
@@ -178,7 +178,7 @@ private enum ChatPersistence {
                     assistantText: turn.assistantText,
                     awaitingTerminal: false,
                     inputAssetId: aid,
-                    uploadStatus: turn.uploadStatus == .uploading
+                    uploadStatus: turn.isIPhonePhoto && turn.uploadStatus == .uploading
                         ? LocalMediaUploadStatus.pending.rawValue
                         : turn.uploadStatus?.rawValue
                 )
@@ -207,16 +207,26 @@ private enum ChatPersistence {
         JourneyLocalCache.clear()
     }
 
-    /// Only iphone.photo turns carry an upload state. `uploading` never survives a
-    /// relaunch (no upload is in flight), so it comes back as `pending` and the
-    /// bootstrap re-queues it. Records written before this field existed derive
+    /// iphone.photo and document.scan carry upload state. `uploading` never survives a
+    /// relaunch (no upload is in flight), so photos come back as `pending` and the
+    /// bootstrap re-queues them. Records written before this field existed derive
     /// from the id shape: local `ph_…` id → still pending, real asset_id → uploaded.
+    /// Scan rows in the list always finished upload before being shown.
     private static func restoredUploadStatus(source: String, raw: String?, assetId: String) -> LocalMediaUploadStatus? {
-        guard source == "iphone.photo" else { return nil }
-        if let raw, let value = LocalMediaUploadStatus(rawValue: raw) {
-            return value == .uploading ? .pending : value
+        switch source {
+        case "document.scan":
+            if let raw, let value = LocalMediaUploadStatus(rawValue: raw), value != .uploading {
+                return value
+            }
+            return .uploaded
+        case "iphone.photo":
+            if let raw, let value = LocalMediaUploadStatus(rawValue: raw) {
+                return value == .uploading ? .pending : value
+            }
+            return LocalPhotoStore.isLocalId(assetId) ? .pending : .uploaded
+        default:
+            return nil
         }
-        return LocalPhotoStore.isLocalId(assetId) ? .pending : .uploaded
     }
 
     private static func normalizedSource(_ raw: String) -> String {
@@ -232,10 +242,45 @@ private enum ChatPersistence {
     }
 }
 
+/// P0 dual-Brain: per-Brain heartbeat state so the app can show two distinguishable
+/// heartbeat records (LAN + Cloud) instead of one merged view.
+enum HeartbeatPhase: Equatable {
+    case idle
+    case sending
+    case retrying(attempt: Int)
+
+    var isActive: Bool {
+        switch self {
+        case .idle: return false
+        case .sending, .retrying: return true
+        }
+    }
+
+    var rowLabel: String? {
+        switch self {
+        case .idle: return nil
+        case .sending: return "发送中"
+        case .retrying(let n): return "重试 \(n)/3"
+        }
+    }
+}
+
+struct BrainHeartbeatStatus: Equatable {
+    let mode: BrainEndpoint.Mode
+    var registered: Bool = false
+    var registeredAt: Date?
+    var lastAttemptAt: Date?
+    var lastSuccessAt: Date?
+    var lastOk: Bool = false
+    var lastError: String = ""
+    var phase: HeartbeatPhase = .idle
+
+    var hasAttempted: Bool { lastAttemptAt != nil }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     static let shared = AppModel()
-
     static let defaultIntentURL = BrainEndpoint.defaultLanIntentURL
     static let defaultLanBrainURL = BrainEndpoint.defaultLanBase
     static let defaultCloudBrainURL = BrainEndpoint.defaultCloudBase
@@ -285,16 +330,24 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastHeartbeatOk = ParticipantStore.lastHeartbeatAt != nil
     @Published private(set) var lastHeartbeatError = ""
     @Published private(set) var registeredAt = ParticipantStore.registeredAt
+    /// P0 dual-Brain: per-Brain heartbeat status, shown as two distinguishable rows.
+    @Published private(set) var lanHeartbeat = BrainHeartbeatStatus(mode: .lan)
+    @Published private(set) var cloudHeartbeat = BrainHeartbeatStatus(mode: .cloud)
     /// Wall time of the most recent heartbeat *attempt* (success or fail).
     @Published private(set) var lastHeartbeatAt = ParticipantStore.lastHeartbeatAt
     /// Wall time of the most recent *successful* heartbeat (persisted).
     @Published private(set) var lastHeartbeatSuccessAt = ParticipantStore.lastHeartbeatAt
     @Published private(set) var enabledRoles = ParticipantStore.reportedRoles
     @Published private(set) var lastReportedRoles = ParticipantStore.lastReportedRoles
+    /// P0 dual-Brain: last roles actually sent on a successful heartbeat, per Brain.
+    @Published private(set) var lanLastReportedRoles = ParticipantStore.lastReportedRoles(for: .lan)
+    @Published private(set) var cloudLastReportedRoles = ParticipantStore.lastReportedRoles(for: .cloud)
     @Published private(set) var nextHeartbeatAt: Date?
     @Published private(set) var clockSync: ClockSyncSample?
     @Published private(set) var clockSyncBusy = false
     @Published private(set) var clockSyncError = ""
+    @Published private(set) var devBugBusyTurnIds: Set<UUID> = []
+    @Published private(set) var devBugErrors: [UUID: String] = [:]
     @Published private(set) var scanBusy = false
     @Published private(set) var scanHint = ""
     @Published private(set) var photoHint = ""
@@ -359,11 +412,17 @@ final class AppModel: ObservableObject {
     private var historyExhausted = false
     @Published private(set) var heartbeatBusy = false
     private var heartbeatLoop: Task<Void, Never>?
-    private var heartbeatInFlight = false
+    private var lanBeatInFlight = false
+    private var cloudBeatInFlight = false
+    private var lanBeatPending = false
+    private var cloudBeatPending = false
     /// Suppress duplicate foreground work while cold-start bootstrap is still running.
     private var coldBootstrapRunning = true
     /// Keep ≤ Brain `ONLINE_TTL_SEC / 2` (TTL is 2× heartbeat).
     static let heartbeatIntervalSeconds: TimeInterval = 30
+    static let heartbeatAttemptTimeout: TimeInterval = 3
+    static let heartbeatMaxAttempts = 3
+    static let heartbeatRetryGapSeconds: TimeInterval = 1
     /// Cap serial intent_detail refresh so a dead Brain cannot stall the UI for minutes.
     private static let maxStartupDetailRefresh = 8
 
@@ -373,6 +432,8 @@ final class AppModel: ObservableObject {
 
     private init() {
         ParticipantStore.applyGoProPreinstall()
+        // P0: ensure a stable Runtime Identity exists before first register.
+        ParticipantStore.ensureRuntimeId()
         enabledRoles = ParticipantStore.reportedRoles
         turns = ChatPersistence.load()
         lanBrainURL = BrainEndpoint.lanBaseURL
@@ -399,6 +460,7 @@ final class AppModel: ObservableObject {
             let url = intentServerURL
             await ensureRegistered(serverURL: url, force: true)
             _ = await heartbeatNow(serverURL: url)
+            enqueueBrainHeartbeat(mode: secondaryMode(for: url))
             startHeartbeatLoopIfNeeded()
             await loadOlderHistory(serverURL: url, silent: true)
             await refreshVisibleTurns(serverURL: url, onlyAwaiting: true)
@@ -553,7 +615,8 @@ final class AppModel: ObservableObject {
         nextHeartbeatAt = now.addingTimeInterval(interval)
         // Restart so a stale sleep from before suspend cannot also fire.
         restartHeartbeatLoop()
-        _ = await heartbeatNow(serverURL: intentServerURL)
+        enqueueBrainHeartbeat(mode: .lan)
+        enqueueBrainHeartbeat(mode: .cloud)
     }
 
     /// Pull latest logistics (step_log / action timings) before showing progress UI.
@@ -573,6 +636,146 @@ final class AppModel: ObservableObject {
         }
         if JourneyLocalCache.load(intentId) != nil {
             turns[idx].journey = JourneyLocalCache.enrich(turns[idx].journey)
+        }
+    }
+
+    func isDevBugBusy(turnId: UUID) -> Bool {
+        devBugBusyTurnIds.contains(turnId)
+    }
+
+    func isDevBugSubmitted(intentId: String) -> Bool {
+        DebugReportStore.isSubmitted(intentId: intentId)
+    }
+
+    func devBugError(for turnId: UUID) -> String? {
+        devBugErrors[turnId]
+    }
+
+    func submitUserFeedback(
+        turnId: UUID,
+        problemType: UserFeedbackProblemType,
+        detail: String = "",
+        attachments: [PendingFeedbackAttachment] = [],
+        completion: @escaping (Bool, String) -> Void
+    ) {
+        guard let turn = turns.first(where: { $0.id == turnId }) else {
+            completion(false, "找不到对话")
+            return
+        }
+        let intentId = turn.intentId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ChatTurn.isBrainIntentId(intentId) else {
+            completion(false, "invalid intent_id")
+            return
+        }
+        guard !isDevBugBusy(turnId: turnId), !isDevBugSubmitted(intentId: intentId) else {
+            completion(false, "已提交过反馈")
+            return
+        }
+
+        let pid = participantId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pid.isEmpty else {
+            completion(false, "participant_id is required")
+            return
+        }
+
+        devBugBusyTurnIds.insert(turnId)
+        devBugErrors.removeValue(forKey: turnId)
+
+        let snapshot = DebugClientSnapshot.build(
+            env: brainEnvironment,
+            intentServerURL: intentServerURL,
+            lanHeartbeat: lanHeartbeat,
+            cloudHeartbeat: cloudHeartbeat,
+            clientHint: clientHint,
+            journey: turn.journey,
+            intentId: intentId
+        )
+
+        let trimmedDetail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let userSummary: String
+        if problemType == .other {
+            userSummary = trimmedDetail
+        } else {
+            userSummary = problemType.label
+        }
+
+        Task {
+            var uploadedAttachments: [FeedbackAttachment] = []
+            if !attachments.isEmpty {
+                for (index, pending) in attachments.enumerated() {
+                    do {
+                        let uploaded = try await FeedbackAttachmentUpload.upload(
+                            pending,
+                            intentURL: intentServerURL,
+                            intentId: intentId
+                        )
+                        uploadedAttachments.append(uploaded)
+                    } catch {
+                        devBugBusyTurnIds.remove(turnId)
+                        let err = "附件 \(index + 1) 上传失败：\(error.localizedDescription)"
+                        devBugErrors[turnId] = err
+                        completion(false, err)
+                        return
+                    }
+                }
+            }
+
+            let result = await intentClient.submitDebugReport(
+                intentId: intentId,
+                participantId: pid,
+                intentURL: intentServerURL,
+                clientSnapshot: snapshot,
+                userSummary: userSummary,
+                problemType: problemType.rawValue,
+                attachments: uploadedAttachments
+            )
+            devBugBusyTurnIds.remove(turnId)
+            if result.ok {
+                DebugReportStore.markSubmitted(intentId: intentId)
+                devBugErrors.removeValue(forKey: turnId)
+                completion(true, result.message)
+            } else {
+                let err = result.error.isEmpty ? "提交失败" : result.error
+                devBugErrors[turnId] = err
+                completion(false, err)
+            }
+        }
+    }
+
+    func reportBug(turnId: UUID) {
+        guard let turn = turns.first(where: { $0.id == turnId }) else { return }
+        let intentId = turn.intentId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ChatTurn.isBrainIntentId(intentId) else { return }
+        guard !isDevBugBusy(turnId: turnId), !isDevBugSubmitted(intentId: intentId) else { return }
+
+        devBugBusyTurnIds.insert(turnId)
+        devBugErrors.removeValue(forKey: turnId)
+
+        let pid = participantId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let snapshot = DebugClientSnapshot.build(
+            env: brainEnvironment,
+            intentServerURL: intentServerURL,
+            lanHeartbeat: lanHeartbeat,
+            cloudHeartbeat: cloudHeartbeat,
+            clientHint: clientHint,
+            journey: turn.journey,
+            intentId: intentId
+        )
+
+        Task {
+            let result = await intentClient.submitDebugReport(
+                intentId: intentId,
+                participantId: pid,
+                intentURL: intentServerURL,
+                clientSnapshot: snapshot
+            )
+            devBugBusyTurnIds.remove(turnId)
+            if result.ok {
+                DebugReportStore.markSubmitted(intentId: intentId)
+                devBugErrors.removeValue(forKey: turnId)
+            } else {
+                devBugErrors[turnId] = result.error.isEmpty ? "提交失败" : result.error
+            }
         }
     }
 
@@ -597,7 +800,7 @@ final class AppModel: ObservableObject {
     }
 
     /// Fixed-cadence loop: next fire is always `now + interval` after the previous
-    /// *scheduled* tick, independent of success/fail and of ad-hoc heartbeats.
+    /// *scheduled* tick. HTTP runs on independent LAN / Cloud queues and is not awaited.
     private func startHeartbeatLoopIfNeeded() {
         guard heartbeatLoop == nil else { return }
         let interval = Self.heartbeatIntervalSeconds
@@ -611,13 +814,10 @@ final class AppModel: ObservableObject {
                 let delay = max(0, target.timeIntervalSinceNow)
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 guard !Task.isCancelled else { return }
-                // Advance schedule before awaiting HTTP so cadence does not drift
-                // with RTT or success/fail.
+                // Advance schedule before any HTTP so the countdown never sits at 0.
                 self.nextHeartbeatAt = Date().addingTimeInterval(interval)
-                // Do not resolve/probe on this cadence: LAN ping on GoPro Wi‑Fi
-                // can hang TCP connect far past the 30s slot and freeze the
-                // countdown at 0. Routing / path changes resolve separately.
-                await self.heartbeatNow(serverURL: self.intentServerURL)
+                self.enqueueBrainHeartbeat(mode: .lan)
+                self.enqueueBrainHeartbeat(mode: .cloud)
             }
         }
     }
@@ -628,34 +828,228 @@ final class AppModel: ObservableObject {
         startHeartbeatLoopIfNeeded()
     }
 
+    /// P0 dual-Brain: classify an intent URL as LAN or Cloud for per-Brain status.
+    private func brainMode(for url: String) -> BrainEndpoint.Mode {
+        let lan = BrainEndpoint.intentURL(from: lanBrainURL)
+        let cloud = BrainEndpoint.intentURL(from: cloudBrainURL)
+        if url == cloud { return .cloud }
+        return .lan
+    }
+
+    /// P0 dual-Brain: update the per-Brain heartbeat status (latest attempt +
+    /// success + error). Called from both LAN and Cloud heartbeat paths.
+    private func updateHeartbeatStatus(_ mode: BrainEndpoint.Mode, ok: Bool, at: Date, error: String) {
+        var s = mode == .lan ? lanHeartbeat : cloudHeartbeat
+        s.lastAttemptAt = at
+        s.lastOk = ok
+        s.lastError = ok ? "" : error
+        if ok { s.lastSuccessAt = at }
+        if mode == .lan { lanHeartbeat = s } else { cloudHeartbeat = s }
+    }
+
+    /// P0 dual-Brain: mark a Brain slot as registered (after a successful register).
+    private func markRegistered(_ mode: BrainEndpoint.Mode, at: Date) {
+        var s = mode == .lan ? lanHeartbeat : cloudHeartbeat
+        s.registered = true
+        s.registeredAt = at
+        if mode == .lan { lanHeartbeat = s } else { cloudHeartbeat = s }
+    }
+
+    private func setHeartbeatPhase(_ mode: BrainEndpoint.Mode, _ phase: HeartbeatPhase) {
+        if mode == .lan {
+            lanHeartbeat.phase = phase
+        } else {
+            cloudHeartbeat.phase = phase
+        }
+        heartbeatBusy = lanHeartbeat.phase.isActive || cloudHeartbeat.phase.isActive
+    }
+
+    private func secondaryMode(for primaryURL: String) -> BrainEndpoint.Mode {
+        brainMode(for: primaryURL) == .lan ? .cloud : .lan
+    }
+
+    private func intentURL(for mode: BrainEndpoint.Mode) -> String {
+        mode == .lan
+            ? BrainEndpoint.intentURL(from: lanBrainURL)
+            : BrainEndpoint.intentURL(from: cloudBrainURL)
+    }
+
+    /// Independent per-Brain serial queue. A tick while in-flight coalesces to one follow-up.
+    private func enqueueBrainHeartbeat(mode: BrainEndpoint.Mode) {
+        switch mode {
+        case .lan:
+            if lanBeatInFlight {
+                lanBeatPending = true
+                return
+            }
+            lanBeatInFlight = true
+        case .cloud:
+            if cloudBeatInFlight {
+                cloudBeatPending = true
+                return
+            }
+            cloudBeatInFlight = true
+        }
+        Task { @MainActor [weak self] in
+            await self?.runQueuedHeartbeat(mode: mode)
+        }
+    }
+
+    private func runQueuedHeartbeat(mode: BrainEndpoint.Mode) async {
+        defer {
+            switch mode {
+            case .lan:
+                lanBeatInFlight = false
+                if lanBeatPending {
+                    lanBeatPending = false
+                    enqueueBrainHeartbeat(mode: .lan)
+                }
+            case .cloud:
+                cloudBeatInFlight = false
+                if cloudBeatPending {
+                    cloudBeatPending = false
+                    enqueueBrainHeartbeat(mode: .cloud)
+                }
+            }
+        }
+        _ = await beatOneBrain(serverURL: intentURL(for: mode), mode: mode)
+    }
+
+    /// Beat one Brain only (3s × 3 attempts). Does not wait for the other Brain.
     @discardableResult
     func heartbeatNow(serverURL: String) async -> Bool {
-        if heartbeatInFlight {
-            return lastHeartbeatOk
+        let mode = brainMode(for: serverURL)
+        if beatInFlight(mode) {
+            while beatInFlight(mode) {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            return (mode == .lan ? lanHeartbeat : cloudHeartbeat).lastOk
         }
-        heartbeatInFlight = true
-        heartbeatBusy = true
+        markBeatInFlight(mode, true)
         defer {
-            heartbeatInFlight = false
-            heartbeatBusy = false
+            markBeatInFlight(mode, false)
+            drainPending(mode)
         }
-        await ensureRegistered(serverURL: serverURL)
+        return await beatOneBrain(serverURL: serverURL, mode: mode)
+    }
+
+    private func beatInFlight(_ mode: BrainEndpoint.Mode) -> Bool {
+        mode == .lan ? lanBeatInFlight : cloudBeatInFlight
+    }
+
+    private func markBeatInFlight(_ mode: BrainEndpoint.Mode, _ value: Bool) {
+        if mode == .lan { lanBeatInFlight = value } else { cloudBeatInFlight = value }
+    }
+
+    private func drainPending(_ mode: BrainEndpoint.Mode) {
+        switch mode {
+        case .lan:
+            if lanBeatPending {
+                lanBeatPending = false
+                enqueueBrainHeartbeat(mode: .lan)
+            }
+        case .cloud:
+            if cloudBeatPending {
+                cloudBeatPending = false
+                enqueueBrainHeartbeat(mode: .cloud)
+            }
+        }
+    }
+
+    private func beatOneBrain(serverURL: String, mode: BrainEndpoint.Mode) async -> Bool {
+        let trimmed = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isPrimary = trimmed == intentServerURL
         let pid = participantId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pid.isEmpty else {
-            applyHeartbeatResult(ok: false, at: Date(), error: "participant_id 为空，无法心跳", roles: nil)
+            let err = "participant_id 为空，无法心跳"
+            if isPrimary {
+                applyHeartbeatResult(ok: false, at: Date(), error: err)
+            }
+            updateHeartbeatStatus(mode, ok: false, at: Date(), error: err)
+            setHeartbeatPhase(mode, .idle)
             return false
         }
-        switch await intentClient.sendHeartbeat(
-            serverURL: serverURL,
-            participantId: pid
-        ) {
-        case let .ok(at, roles):
-            applyHeartbeatResult(ok: true, at: at, error: "", roles: roles)
-            await syncRuntimeLoop()
-            return true
-        case let .failed(detail):
-            applyHeartbeatResult(ok: false, at: Date(), error: detail, roles: nil)
+        setHeartbeatPhase(mode, .sending)
+        let prepared = await intentClient.prepareHeartbeatBody(participantId: pid)
+        guard let body = prepared.data else {
+            let detail = prepared.error ?? "心跳 JSON 无法序列化"
+            if isPrimary {
+                applyHeartbeatResult(ok: false, at: Date(), error: detail)
+            }
+            updateHeartbeatStatus(mode, ok: false, at: Date(), error: detail)
+            setHeartbeatPhase(mode, .idle)
             return false
+        }
+
+        var lastError = ""
+        for attempt in 1 ... Self.heartbeatMaxAttempts {
+            if attempt > 1 {
+                setHeartbeatPhase(mode, .retrying(attempt: attempt))
+                try? await Task.sleep(nanoseconds: UInt64(Self.heartbeatRetryGapSeconds * 1_000_000_000))
+            } else {
+                setHeartbeatPhase(mode, .sending)
+            }
+            let send = await intentClient.sendHeartbeat(
+                serverURL: trimmed,
+                participantId: pid,
+                body: body,
+                hardTimeout: Self.heartbeatAttemptTimeout
+            )
+            switch send {
+            case let .ok(at, roles):
+                finishHeartbeatSuccess(mode: mode, isPrimary: isPrimary, at: at, roles: roles)
+                return true
+            case let .failed(detail):
+                lastError = detail
+                let needsRegister = detail.contains("register first") || detail.contains("401")
+                guard needsRegister else { continue }
+                if let reg = await intentClient.registerParticipant(
+                    serverURL: trimmed,
+                    timeout: Self.heartbeatAttemptTimeout
+                ) {
+                    markRegistered(mode, at: reg.ts ?? Date())
+                    let retry = await intentClient.sendHeartbeat(
+                        serverURL: trimmed,
+                        participantId: pid,
+                        body: body,
+                        hardTimeout: Self.heartbeatAttemptTimeout
+                    )
+                    switch retry {
+                    case let .ok(at, roles):
+                        finishHeartbeatSuccess(mode: mode, isPrimary: isPrimary, at: at, roles: roles)
+                        return true
+                    case let .failed(detail2):
+                        lastError = detail2
+                    }
+                } else {
+                    lastError = "注册失败"
+                }
+            }
+        }
+        if isPrimary {
+            applyHeartbeatResult(ok: false, at: Date(), error: lastError)
+        }
+        updateHeartbeatStatus(mode, ok: false, at: Date(), error: lastError)
+        setHeartbeatPhase(mode, .idle)
+        return false
+    }
+
+    private func finishHeartbeatSuccess(
+        mode: BrainEndpoint.Mode,
+        isPrimary: Bool,
+        at: Date,
+        roles: [String]
+    ) {
+        if isPrimary {
+            applyHeartbeatResult(ok: true, at: at, error: "")
+        }
+        updateHeartbeatStatus(mode, ok: true, at: at, error: "")
+        applyReportedRoles(roles, for: mode, isPrimary: isPrimary)
+        setHeartbeatPhase(mode, .idle)
+        if isPrimary {
+            Task { @MainActor [weak self] in
+                await self?.syncRuntimeLoop()
+            }
         }
     }
 
@@ -663,8 +1057,7 @@ final class AppModel: ObservableObject {
     private func applyHeartbeatResult(
         ok: Bool,
         at: Date,
-        error: String,
-        roles: [String]?
+        error: String
     ) {
         lastHeartbeatOk = ok
         lastHeartbeatAt = at
@@ -672,34 +1065,60 @@ final class AppModel: ObservableObject {
         if ok {
             lastHeartbeatSuccessAt = at
             ParticipantStore.lastHeartbeatAt = at
-            if let roles {
-                ParticipantStore.lastReportedRoles = roles
-                lastReportedRoles = roles
-            }
         }
         if !ok {
             NSLog("[heartbeat] %@", error)
         }
     }
 
-    /// Click「对时」: show local time immediately, then fill server time + skew from ping.
+    /// Record roles from a heartbeat that this Brain actually accepted.
+    /// Failed heartbeats keep the previous list (UI shows — until the first success).
+    private func applyReportedRoles(_ roles: [String], for mode: BrainEndpoint.Mode, isPrimary: Bool) {
+        ParticipantStore.setLastReportedRoles(roles, for: mode)
+        if mode == .lan {
+            lanLastReportedRoles = roles
+        } else {
+            cloudLastReportedRoles = roles
+        }
+        if isPrimary {
+            ParticipantStore.lastReportedRoles = roles
+            lastReportedRoles = roles
+        }
+    }
+
+    /// Click「对时」: show local time immediately, then ping LAN and Cloud in parallel.
     /// Snapshot is static for that click; unrelated to heartbeat / other UI.
     func syncClock() async {
         guard !clockSyncBusy else { return }
         clockSyncBusy = true
         defer { clockSyncBusy = false }
         let local = Date()
-        clockSync = ClockSyncSample(localAt: local, serverAt: nil, skewMs: nil)
+        clockSync = ClockSyncSample(localAt: local)
         clockSyncError = ""
         // Let SwiftUI paint 【本地时间】 before the network await.
         await Task.yield()
-        switch await intentClient.ping(serverURL: intentServerURL, clientSentAt: local) {
+        let lanURL = BrainEndpoint.intentURL(from: lanBrainURL)
+        let cloudURL = BrainEndpoint.intentURL(from: cloudBrainURL)
+        async let lanPing = intentClient.ping(serverURL: lanURL, clientSentAt: local)
+        async let cloudPing = intentClient.ping(serverURL: cloudURL, clientSentAt: local)
+        let (lan, cloud) = await (lanPing, cloudPing)
+        var sample = ClockSyncSample(localAt: local)
+        switch lan {
         case let .ok(serverAt, skewMs):
-            clockSync = ClockSyncSample(localAt: local, serverAt: serverAt, skewMs: skewMs)
-            clockSyncError = ""
+            sample.lanServerAt = serverAt
+            sample.lanSkewMs = skewMs
         case let .failed(detail):
-            clockSyncError = detail
+            sample.lanError = detail
         }
+        switch cloud {
+        case let .ok(serverAt, skewMs):
+            sample.cloudServerAt = serverAt
+            sample.cloudSkewMs = skewMs
+        case let .failed(detail):
+            sample.cloudError = detail
+        }
+        clockSync = sample
+        clockSyncError = ""
     }
 
     func clearSession() {
@@ -746,12 +1165,37 @@ final class AppModel: ObservableObject {
         )
     }
 
+    /// Pronunciation assessment entry: both audio Assets already uploaded (their
+    /// asset_refs in hand) → submit an intent whose context carries the two named
+    /// audio refs so the Brain planner can wire $reference_audio / $student_audio
+    /// into the pronunciation.assess step. The actual recording/upload UI is owned
+    /// by the audio workspace; this just dispatches the assembled refs.
+    func sendPronunciationAssessment(
+        referenceAssetRef: [String: Any],
+        studentAssetRef: [String: Any],
+        serverURL: String,
+        prompt: String = "评测这段跟读"
+    ) async {
+        await sendIntent(
+            text: prompt,
+            source: "text",
+            serverURL: serverURL,
+            assetRef: nil,
+            previewAssetId: nil,
+            context: [
+                "reference_audio": referenceAssetRef,
+                "student_audio": studentAssetRef,
+            ]
+        )
+    }
+
     private func sendIntent(
         text: String,
         source: String,
         serverURL _: String,
         assetRef: [String: Any]?,
-        previewAssetId: String?
+        previewAssetId: String?,
+        context: [String: Any]? = nil
     ) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -806,7 +1250,8 @@ final class AppModel: ObservableObject {
             text: trimmed,
             source: source,
             serverURL: serverURL,
-            assetRef: assetRef
+            assetRef: assetRef,
+            context: context
         )
         lastResponse = result.message
 
@@ -865,7 +1310,8 @@ final class AppModel: ObservableObject {
                     ),
                     assistantText: "已上传扫描图 asset_id=\(aid)",
                     awaitingTerminal: false,
-                    inputAssetId: aid
+                    inputAssetId: aid,
+                    uploadStatus: .uploaded
                 )
             )
             persistTurns()
@@ -1337,6 +1783,8 @@ final class AppModel: ObservableObject {
             participantId = known
             clientHint = ParticipantStore.clientHint
             registeredAt = ParticipantStore.registeredAt
+            // P0 dual-Brain: keep the active Brain slot's registered flag in sync.
+            markRegistered(brainMode(for: url), at: ParticipantStore.registeredAt ?? Date())
             return
         }
         guard let result = await intentClient.registerParticipant(serverURL: url) else {
@@ -1353,5 +1801,7 @@ final class AppModel: ObservableObject {
         participantId = pid
         clientHint = ParticipantStore.clientHint
         registeredAt = ParticipantStore.registeredAt
+        // P0 dual-Brain: mark the active Brain slot as registered.
+        markRegistered(brainMode(for: url), at: ParticipantStore.registeredAt ?? Date())
     }
 }

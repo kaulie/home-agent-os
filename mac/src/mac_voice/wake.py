@@ -100,6 +100,17 @@ def looks_like_ack_echo(text: str) -> bool:
     return bool(_ACK_ECHO.match(compact))
 
 
+_LIGHT_COMMAND_ECHO = frozenset(
+    {normalize(x) for x in ("小书小书", "小书", "开灯", "关灯")}
+)
+
+
+def looks_like_light_command_echo(text: str) -> bool:
+    """Drop light.set speaker bleed (开灯/关灯/小书小书) from mac_voice STT."""
+    compact = normalize(text)
+    return bool(compact) and compact in _LIGHT_COMMAND_ECHO
+
+
 def contains_ack_echo(text: str) -> bool:
     """True when our spoken reply is in the transcript (alone or mixed)."""
     compact = _compact_ack_text(text)

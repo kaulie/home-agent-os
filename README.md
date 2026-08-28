@@ -57,6 +57,7 @@
 | [`android/living-room-android/`](android/living-room-android/) | Android 手机 Edge（意图入口 / 调试 Wi‑Fi） |
 | [`ios/LivingRoomEdge/`](ios/README.md) | iPhone 意图窗口（发 intent、轮询进度） |
 | [`mac/`](mac/README.md) | Mac Edge（Cast 转发、TTS、内网 ping） |
+| [`agent-bridge/`](agent-bridge/) | Cursor Agent 本地 bridge（手机 `source=dev` 开发任务） |
 | [`plugins/`](plugins/) | 跨端 Skill：`gopro-camera`、`chromecast-display`、`netease-music`、`runtime-agent-sdk` |
 
 ## 能力一览（当前主路径）

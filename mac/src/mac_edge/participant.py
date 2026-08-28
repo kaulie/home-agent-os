@@ -36,6 +36,8 @@ def registration_payload(
     health: dict[str, Any] | None = None,
     client_time_ms: int | None = None,
     intent_sources: list[dict[str, Any]] | None = None,
+    runtime_id: str | None = None,
+    exposure_policy: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
     """Build JSON body for POST /edge-register or /edge-heartbeat."""
     loc = (location or "living-room").strip() or "living-room"
@@ -52,10 +54,18 @@ def registration_payload(
         "role_intent_source": with_is,
         "reported_at": float(reported_at if reported_at is not None else time.time()),
     }
-    if client_hint:
-        body["client_hint"] = client_hint
+    # P0: Runtime Identity is client-supplied and stable across Brains.
+    # Send as both runtime_id and participant_id; Brain uses it as participant_id.
+    rid = str(runtime_id or "").strip()
+    if rid:
+        body["runtime_id"] = rid
+        body["participant_id"] = rid
     if edge_id:
         body["edge_id"] = edge_id
+    if client_hint:
+        body["client_hint"] = client_hint
+    if exposure_policy is not None:
+        body["exposure_policy"] = exposure_policy
     if online_status is not None:
         body["online_status"] = online_status
     if health is not None:

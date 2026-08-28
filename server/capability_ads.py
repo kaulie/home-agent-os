@@ -1,10 +1,12 @@
 """Planner-facing capability ads (structured; not 「能：/不能：」 prose).
 
 Wire fields (heartbeat / CAPABILITY_REGISTRY):
-  kind, role, planner_recognize, typical_triggers[], do_not_dispatch[]
+  kind, composition, role, planner_recognize, typical_triggers[], do_not_dispatch[]
 plus input_schema / output_schema (filled by services.py).
+Composite rows also carry decomposes_to[] and prefer_when.
 
 `kind` is system placement: input | action | output | system.
+`composition` is orthogonal: atomic | composite. Missing → atomic.
 `system` = Brain-side catalog / inventory (not bound to a Runtime).
 `description` is not the planning contract.
 """
@@ -15,6 +17,17 @@ from typing import Any, Literal
 
 Kind = Literal["input", "action", "output", "system"]
 VALID_KINDS = frozenset({"input", "action", "output", "system"})
+Composition = Literal["atomic", "composite"]
+VALID_COMPOSITIONS = frozenset({"atomic", "composite"})
+
+CAPTURE_AND_UPLOAD_PREFER_WHEN = (
+    "拍照后还有后续动作要消费这张照片（给人看、变成 Asset、vision、投屏）时，"
+    "优先本能力，不要把 decomposes_to 拆成多步"
+)
+POINT_TO_CHARACTER_PREFER_WHEN = (
+    "要认手指指的那个字时，优先本能力，"
+    "不要把 decomposes_to 拆成多步，也不要用整页 OCR"
+)
 
 
 def _ad(
@@ -24,17 +37,36 @@ def _ad(
     planner_recognize: str,
     typical_triggers: list[str],
     do_not_dispatch: list[str],
+    composition: Composition = "atomic",
+    decomposes_to: list[str] | None = None,
+    prefer_when: str | None = None,
 ) -> dict[str, Any]:
     k = str(kind or "").strip().lower()
     if k not in VALID_KINDS:
         raise ValueError(f"invalid capability kind={kind!r}; expected input|action|output|system")
-    return {
+    comp = str(composition or "atomic").strip().lower()
+    if comp not in VALID_COMPOSITIONS:
+        raise ValueError(
+            f"invalid capability composition={composition!r}; expected atomic|composite"
+        )
+    out: dict[str, Any] = {
         "kind": k,
         "role": role,
         "planner_recognize": planner_recognize,
         "typical_triggers": list(typical_triggers),
         "do_not_dispatch": list(do_not_dispatch),
+        "composition": comp,
     }
+    if comp == "composite":
+        parts = [str(x).strip() for x in (decomposes_to or []) if str(x).strip()]
+        if not parts:
+            raise ValueError("composite capability requires non-empty decomposes_to")
+        when = str(prefer_when or "").strip()
+        if not when:
+            raise ValueError("composite capability requires prefer_when")
+        out["decomposes_to"] = parts
+        out["prefer_when"] = when
+    return out
 
 
 # capability_id → planner fields (schemas attached in services.py / edge_services)
@@ -68,6 +100,20 @@ ADS: dict[str, dict[str, Any]] = {
         planner_recognize="把 iPhone 摄像头编成实时视频流推到 Mac。常驻推流，不是拍一张、不是看图问答、不要当 plan 逐步执行",
         typical_triggers=["开始直播", "推摄像头画面"],
         do_not_dispatch=["作为计划逐步执行", "看图理解", "抽帧上传", "投屏"],
+    ),
+    "game.launch": _ad(
+        kind="output",
+        role="电视互动游戏启动器",
+        planner_recognize="在电视上启动指定互动游戏（接金币等）。本步必填 game_id。启动后实时语音/手势控制不走 Brain，由 iPhone 本地 GameCommand 直送电视",
+        typical_triggers=["打开接金币游戏", "玩游戏", "打开电视游戏", "玩接金币", "启动游戏"],
+        do_not_dispatch=["向左", "向右", "暂停", "继续", "跳", "实时移动", "帧级控制"],
+    ),
+    "game.input": _ad(
+        kind="input",
+        role="游戏语音/手势输入",
+        planner_recognize="iPhone 游戏遥控器：本地 ASR + 人体姿态识别，转 GameCommand 直送电视。常驻输入，不是 plan 逐步执行",
+        typical_triggers=["游戏遥控器", "挥手玩游戏"],
+        do_not_dispatch=["作为计划逐步执行", "知识问答", "投屏单图"],
     ),
     "math.calculate": _ad(
         kind="action",
@@ -140,7 +186,7 @@ ADS: dict[str, dict[str, Any]] = {
     "image.ocr": _ad(
         kind="system",
         role="图片文字识别器",
-        planner_recognize="读已有 Image Asset 上印着的字（小票、说明书、手写），原样吐出文字和坐标，不解释、不总结、不教识字。入参必须是 asset_ref。自己不拍照",
+        planner_recognize="读已有 Image Asset 上整页/整段印着的字（小票、说明书、手写），原样吐出文字和坐标，不解释、不总结、不教识字。入参必须是 asset_ref。自己不拍照。手指指的单个字不要用本步，用 reading.point_to_character",
         typical_triggers=[
             "图上写了什么",
             "识别照片里的字",
@@ -156,6 +202,57 @@ ADS: dict[str, dict[str, Any]] = {
             "拍照本身",
             "搜图",
             "文生图",
+            "手指指的字",
+            "这个字读啥",
+            "这个字念什么",
+            "指字认字",
+        ],
+    ),
+    "reading.detect_finger": _ad(
+        kind="action",
+        role="食指检测器",
+        planner_recognize="看一张已有 Image Asset，找出食指指尖位置和指向。入参 asset_ref。自己不拍照、不认字、不 OCR。用户要认手指指的字时不要单独排本步，用 reading.point_to_character",
+        typical_triggers=["检测图里的食指", "指尖在哪"],
+        do_not_dispatch=["拍照本身", "认字", "整页 OCR", "投屏", "无图知识问答"],
+    ),
+    "reading.ocr_at_finger": _ad(
+        kind="action",
+        role="指尖附近文字识别器",
+        planner_recognize="在已有 Image Asset 上，按本步入参 finger 裁指尖附近窗口做 OCR，产出字框。入参 asset_ref + finger。不是整页 OCR（那是 image.ocr）。用户要认指向的那个字时不要单独排本步，用 reading.point_to_character",
+        typical_triggers=["识别指尖附近的字"],
+        do_not_dispatch=["拍照本身", "整页 OCR", "投屏", "无图知识问答", "看图理解"],
+    ),
+    "reading.rank_pointed": _ad(
+        kind="action",
+        role="指字排序器",
+        planner_recognize="根据本步入参 finger 和 chars，从候选汉字里选出食指指向的那一个。入参 asset_ref + finger + chars。自己不拍照、不检测手、不做 OCR。用户要认字时不要单独排本步，用 reading.point_to_character",
+        typical_triggers=["选出手指指向的字"],
+        do_not_dispatch=["拍照本身", "整页 OCR", "投屏", "无图知识问答", "检测手指"],
+    ),
+    "reading.point_to_character": _ad(
+        kind="action",
+        composition="composite",
+        decomposes_to=["reading.detect_finger", "reading.ocr_at_finger", "reading.rank_pointed"],
+        prefer_when=POINT_TO_CHARACTER_PREFER_WHEN,
+        role="指字认字器",
+        planner_recognize="看一张已排好的 Image Asset，识别手指指尖指向的那一个汉字，给出该字和读音。入参 asset_ref（常为 $asset_ref）。自己不拍照；现场图要先由拍照/上传步产出 Asset。不读整页文字（那是 OCR），不投屏",
+        typical_triggers=[
+            "这个字读啥",
+            "手指指的是什么字",
+            "指的这个字怎么读",
+            "这个字念什么",
+            "指着这个字",
+            "认一下这个字",
+            "最新照片里手指指的字",
+        ],
+        do_not_dispatch=[
+            "拍照本身",
+            "投屏",
+            "整页 OCR",
+            "原样读图上的字",
+            "无图知识问答",
+            "看图理解",
+            "认电视剧名",
         ],
     ),
     "chat.smalltalk": _ad(
@@ -199,9 +296,9 @@ ADS: dict[str, dict[str, Any]] = {
         ],
     ),
     "clock.now": _ad(
-        kind="input",
+        kind="system",
         role="本机时钟读取器",
-        planner_recognize="读执行边本机墙上钟，回答「现在几点了」「今天几号」。一次性读取，应当排进计划。产出 now_iso 和给人听的 time_text。不要用文本问答编时刻",
+        planner_recognize="Brain 就地读本机墙上钟，回答「现在几点了」「今天几号」。一次性读取，应当排进计划，assigned_edge_id=system。产出 now_iso 和给人听的 time_text。不要用文本问答编时刻",
         typical_triggers=["现在几点了", "几点了", "现在时间", "今天几号", "今天日期", "几月几号", "几号了"],
         do_not_dispatch=["知识问答", "计算", "看图", "编一个时刻"],
     ),
@@ -264,6 +361,22 @@ ADS: dict[str, dict[str, Any]] = {
         typical_triggers=["拍一张", "看看现在", "拍照", "拍张照", "拍的照片", "拍一下", "看看客厅电视画面", "拍一下电视屏幕"],
         do_not_dispatch=["上传", "传到图床", "传到云上", "单步作为最终给用户看的图", "放歌", "无拍照直接回答画面内容"],
     ),
+    "camera.capture_and_upload": _ad(
+        kind="action",
+        composition="composite",
+        decomposes_to=["camera.capture", "asset.upload"],
+        prefer_when=CAPTURE_AND_UPLOAD_PREFER_WHEN,
+        role="拍照并上传器",
+        planner_recognize="拍一张现场照并在同一台设备上上传成 Image Asset，产出 asset_ref。拍照后还要给人看、给视觉问、投电视时优先本步，不要再拆成拍照+上传两步（capture_ref 不能跨机）。本步不负责看图理解、不投屏",
+        typical_triggers=[
+            "拍张照片我看一下",
+            "拍张照片我看看",
+            "拍的给我看",
+            "拍照后上传",
+            "把刚拍的照片传到图床",
+        ],
+        do_not_dispatch=["只上传已有图", "看图理解本身", "投屏本身", "不再拍照只传旧图"],
+    ),
     "document.scan": _ad(
         kind="input",
         role="纸质文档扫描器",
@@ -313,6 +426,13 @@ ADS: dict[str, dict[str, Any]] = {
         planner_recognize="把用户指定的提醒/公告原文念出来，例如「五分钟后提醒萱萱关电视」「大声说该喝水了」。入参 text=要念的那句话。不要用来回读其它步骤的答案；那种情况用 presentation.type=audio，由控制面补播",
         typical_triggers=["大声念出来", "提醒我说", "一分钟后说", "提醒萱萱", "该喝水了"],
         do_not_dispatch=["知识生成", "拍照", "投图", "唤醒应答", "把答案用语音告诉我", "用语音播放结果", "念出执行结果"],
+    ),
+    "xiaodu.speak": _ad(
+        kind="output",
+        role="小度音箱播报器",
+        planner_recognize="把指定文案经客厅小度音箱播报出来。入参 text=要念的那句话。用户明确说「用小度说/播报」时用本步，不要用 Mac 本机 notify.speak",
+        typical_triggers=["用小度说", "小度播报", "客厅音箱说", "让小度念", "小度音箱播报"],
+        do_not_dispatch=["Mac 本机播报", "知识问答", "放歌", "投屏", "回读上一步答案"],
     ),
     "music.play": _ad(
         kind="action",
@@ -439,6 +559,20 @@ ADS: dict[str, dict[str, Any]] = {
         typical_triggers=["离开 GoPro 热点", "回到家里默认网络"],
         do_not_dispatch=["作为计划逐步执行", "拍照本身", "放歌", "断开蓝牙音箱", "开灯", "知识问答"],
     ),
+    "pronunciation.assess": _ad(
+        kind="action",
+        role="整段英文朗读评测器",
+        planner_recognize="给定标准朗读音频和小朋友跟读音频（均为音频 AssetRef），做整段→整段英文朗读评测，给出总分、发音准确度、流利度、完整度、韵律、重点问题单词/音素及时间位置。入参 reference_audio + student_audio。自己不录音、不上传音频、不 TTS、不投屏。两段音频须由上游上传步产出 Asset 并经 context 接进本步",
+        typical_triggers=[
+            "评测这段跟读",
+            "给这次朗读打分",
+            "评估发音",
+            "assess my reading",
+            "pronunciation check",
+            "这次读得怎么样",
+        ],
+        do_not_dispatch=["录音本身", "上传音频", "TTS", "投屏", "单句打分", "知识问答", "拍照"],
+    ),
 }
 
 
@@ -451,3 +585,17 @@ def attach(capability_id: str, *, input_schema: dict | None = None, output_schem
     out["input_schema"] = dict(input_schema or {})
     out["output_schema"] = dict(output_schema or {})
     return out
+
+
+def composition_of(capability_id: str) -> str:
+    ad = ADS.get(str(capability_id or "").strip()) or {}
+    c = str(ad.get("composition") or "atomic").strip().lower()
+    return c if c in VALID_COMPOSITIONS else "atomic"
+
+
+def decomposes_to(capability_id: str) -> list[str]:
+    ad = ADS.get(str(capability_id or "").strip()) or {}
+    raw = ad.get("decomposes_to") or []
+    if not isinstance(raw, list):
+        return []
+    return [str(x).strip() for x in raw if str(x).strip()]

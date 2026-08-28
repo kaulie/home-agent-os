@@ -10,6 +10,7 @@ from mac_edge.services import default_services
 
 REQUIRED_PLANNER_KEYS = (
     "kind",
+    "composition",
     "role",
     "planner_recognize",
     "typical_triggers",
@@ -69,6 +70,7 @@ class PlannerAdTests(unittest.TestCase):
             for key in REQUIRED_PLANNER_KEYS:
                 self.assertIn(key, cap, f"{cid} missing {key}")
             self.assertIn(cap["kind"], {"input", "action", "output"}, cid)
+            self.assertIn(cap["composition"], {"atomic", "composite"}, cid)
             self.assertTrue(str(cap["role"]).strip(), cid)
             self.assertTrue(str(cap["planner_recognize"]).strip(), cid)
             self.assertIsInstance(cap["typical_triggers"], list, cid)
@@ -160,7 +162,7 @@ class PlannerAdTests(unittest.TestCase):
             caps = _caps(default_services())
         ids = {c["capability_id"] for c in caps}
         self.assertEqual(
-            ids, {"camera.capture", "light.set", "asset.upload"}
+            ids, {"camera.capture", "camera.capture_and_upload", "light.set", "asset.upload"}
         )
         for cap in caps:
             for key in REQUIRED_PLANNER_KEYS:
@@ -177,6 +179,11 @@ class PlannerAdTests(unittest.TestCase):
         self.assertIn("capture_ref", capture.get("output_schema") or {})
         self.assertNotIn("asset_ref", capture.get("output_schema") or {})
         self.assertIn("capture_ref", capture["planner_recognize"])
+        composite = next(c for c in caps if c["capability_id"] == "camera.capture_and_upload")
+        self.assertEqual(composite["composition"], "composite")
+        self.assertEqual(composite["decomposes_to"], ["camera.capture", "asset.upload"])
+        self.assertTrue(str(composite.get("prefer_when") or "").strip())
+        self.assertIn("asset_ref", composite.get("output_schema") or {})
         upload = next(c for c in caps if c["capability_id"] == "asset.upload")
         self.assertIn("asset_ref", upload.get("input_schema") or {})
         self.assertTrue(
@@ -270,6 +277,44 @@ class PlannerAdTests(unittest.TestCase):
         by_id = {s["service_id"]: s for s in climate}
         self.assertEqual(by_id["climate.living_room"]["display_name"], "客厅空调")
         self.assertEqual(by_id["climate.kids_room"]["display_name"], "儿童房空调")
+
+    def test_character_service_ads_mark_point_to_character_composite(self) -> None:
+        env = {
+            "MAC_EDGE_ROLE": "laptop",
+            "MAC_EDGE_SERVICE_WHITELIST": "",
+            "MAC_EDGE_GOPRO_SSID": "",
+            "MAC_EDGE_ADVERTISE_CAST": "0",
+            "MAC_EDGE_HISENSE_USERNAME": "",
+            "MAC_EDGE_HISENSE_PASSWORD": "",
+            "MAC_EDGE_XIAOMI_USERNAME": "",
+            "MAC_EDGE_XIAOMI_PASSWORD": "",
+            "MAC_EDGE_DISPLAY_BACKEND": "",
+            "MAC_EDGE_XIAOMI_TV": "",
+        }
+        with patch.dict(os.environ, env, clear=False), patch(
+            "mac_edge.services._character_service_listening", return_value=True
+        ):
+            caps = {c["capability_id"]: c for c in _caps(default_services())}
+        composite = caps["reading.point_to_character"]
+        self.assertEqual(composite["composition"], "composite")
+        self.assertEqual(
+            composite["decomposes_to"],
+            ["reading.detect_finger", "reading.ocr_at_finger", "reading.rank_pointed"],
+        )
+        self.assertTrue(str(composite.get("prefer_when") or "").strip())
+        schema = composite.get("input_schema") or {}
+        self.assertIn("asset_ref", schema)
+        self.assertTrue((schema.get("asset_ref") or {}).get("required"))
+        self.assertNotIn("dest", schema)
+        for atomic_id in (
+            "reading.detect_finger",
+            "reading.ocr_at_finger",
+            "reading.rank_pointed",
+        ):
+            atomic = caps[atomic_id]
+            self.assertEqual(atomic["composition"], "atomic")
+            self.assertNotIn("decomposes_to", atomic)
+            self.assertIn("asset_ref", atomic.get("input_schema") or {})
 
 
 if __name__ == "__main__":

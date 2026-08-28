@@ -76,6 +76,18 @@ fun ChatSettingsSheet(vm: ConsoleViewModel, onDismiss: () -> Unit) {
             TextButton(onClick = { vm.applyPinnedBrainUrls() }) {
                 Text("应用地址", color = EdgeTheme.sand)
             }
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = vm.adminToken,
+                onValueChange = { vm.adminToken = it },
+                label = { Text("管理员令牌（dev_task）") },
+                placeholder = { Text("云端 Brain 需要时填写") },
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors(),
+            )
+            TextButton(onClick = { vm.applyAdminToken() }) {
+                Text("保存令牌", color = EdgeTheme.sand)
+            }
             Spacer(Modifier.height(20.dp))
             Text("本机", color = EdgeTheme.sand, fontSize = 12.sp)
             Spacer(Modifier.height(8.dp))

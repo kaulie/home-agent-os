@@ -113,6 +113,16 @@ object BrainEndpoint {
         return path
     }
 
+    fun destLabel(intentUrl: String, cloudBase: String = DEFAULT_CLOUD_BASE): String {
+        val given = displayBase(intentUrl)
+        val cloud = displayBase(cloudBase)
+        if (given.equals(cloud, ignoreCase = true)) return "cloud"
+        val givenHost = runCatching { java.net.URI(given).host }.getOrNull()?.lowercase().orEmpty()
+        val cloudHost = runCatching { java.net.URI(cloud).host }.getOrNull()?.lowercase().orEmpty()
+        if (givenHost.isNotEmpty() && givenHost == cloudHost) return "cloud"
+        return "img_server"
+    }
+
     fun pingUrl(fromIntentOrBase: String, clientTimeMs: Long): String {
         val base = apiUrl(fromIntentOrBase, "ping")
         val sep = if (base.contains("?")) "&" else "?"

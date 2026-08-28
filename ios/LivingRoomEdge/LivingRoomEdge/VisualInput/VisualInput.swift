@@ -10,6 +10,7 @@ enum VisualInput {
     static let uploadIntentIPhonePhoto = "iphone.photo"
     static let uploadIntentIPhoneFile = "iphone.file"
     static let uploadIntentIPhoneAudio = "iphone.audio"
+    static let uploadIntentFeedbackAttachment = "feedback.attachment"
 
     struct AssetResult {
         let assetId: String
@@ -181,7 +182,12 @@ enum VisualInput {
             appendField("intent_id", iid)
         }
 
-        let prefix = uploadIntent == uploadIntentIPhonePhoto ? "photo" : "scan"
+        let prefix: String
+        switch uploadIntent {
+        case uploadIntentIPhonePhoto: prefix = "photo"
+        case uploadIntentFeedbackAttachment: prefix = "feedback"
+        default: prefix = "scan"
+        }
         let filename = "\(prefix)_\(Int(Date().timeIntervalSince1970)).jpg"
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append(

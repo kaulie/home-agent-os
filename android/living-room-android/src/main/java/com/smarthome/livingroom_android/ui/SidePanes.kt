@@ -1,8 +1,10 @@
 package com.smarthome.livingroom_android.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,11 +21,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import com.smarthome.livingroom_android.brain.dto.CapabilityDescriptor
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
@@ -51,7 +56,6 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
 
@@ -88,11 +92,14 @@ fun SystemObserverPane() {
 @Composable
 fun RuntimeCapabilitiesPane(vm: ConsoleViewModel) {
     val runtimeOn = vm.enabledRoles.contains(ParticipantWire.ROLE_RUNTIME)
-    val rows = vm.advertisedServices().flatMap { svc ->
-        svc.capabilities.map { cap ->
-            Triple(svc, cap.capabilityId, cap)
-        }
+    LaunchedEffect(runtimeOn) {
+        if (runtimeOn) vm.ensureCapabilityAvailabilityLoaded()
     }
+    val services = vm.probedCapabilityServices
+    val rows = services.flatMap { svc ->
+        svc.capabilities.map { cap -> Triple(svc, cap.capabilityId, cap) }
+    }
+    val registryCount = vm.advertisedServices().sumOf { it.capabilities.size }
     EdgeCanvas {
         Column(
             Modifier
@@ -100,15 +107,39 @@ fun RuntimeCapabilitiesPane(vm: ConsoleViewModel) {
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp),
         ) {
-            EdgeHeroTitle("能力")
-            Spacer(Modifier.height(8.dp))
-            EdgeHeroSubtitle(
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    EdgeHeroTitle("能力")
+                    Spacer(Modifier.height(8.dp))
+                    EdgeHeroSubtitle(
+                        if (runtimeOn) {
+                            "展示本机 IsAvailable() 探测结果（与心跳上报给 Brain 的 available 一致）。点刷新可立即重探。"
+                        } else {
+                            "未启用 runtime role，当前不会向 Brain 广告任何能力。可在「节点」页开启。"
+                        },
+                    )
+                }
                 if (runtimeOn) {
-                    "本节点作为 Runtime 向下属能力做只读展示，不在此发起实质调用。"
-                } else {
-                    "未启用 runtime role，当前不会向 Brain 广告任何能力。可在「节点」页开启。"
-                },
-            )
+                    IconButton(
+                        onClick = { vm.refreshCapabilityAvailability() },
+                        enabled = !vm.capabilityProbeBusy,
+                    ) {
+                        if (vm.capabilityProbeBusy) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                color = EdgeTheme.sand,
+                                strokeWidth = 2.dp,
+                            )
+                        } else {
+                            Icon(
+                                Icons.Filled.Refresh,
+                                contentDescription = "重新探测可用性",
+                                tint = EdgeTheme.sand,
+                            )
+                        }
+                    }
+                }
+            }
             Spacer(Modifier.height(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.foundation.Canvas(Modifier.size(8.dp)) {
@@ -116,40 +147,115 @@ fun RuntimeCapabilitiesPane(vm: ConsoleViewModel) {
                 }
                 Spacer(Modifier.size(10.dp))
                 Text(
-                    if (runtimeOn) "runtime 已启用 · ${rows.size} 项能力" else "runtime 未启用",
+                    if (runtimeOn) {
+                        "runtime 已启用 · ${rows.size} 项能力（登记 $registryCount 项）"
+                    } else {
+                        "runtime 未启用"
+                    },
                     color = EdgeTheme.mist,
                     fontSize = 13.sp,
                 )
             }
+            if (runtimeOn && vm.capabilityProbeAtMs > 0L) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "探测时间：${formatNodeTime(vm.capabilityProbeAtMs)}",
+                    color = EdgeTheme.dim,
+                    fontSize = 12.sp,
+                )
+            }
+            if (vm.capabilityProbeError.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(vm.capabilityProbeError, color = Color(0xFFE57373), fontSize = 12.sp)
+            }
             Spacer(Modifier.height(20.dp))
-            if (rows.isEmpty()) {
+            if (!runtimeOn || rows.isEmpty()) {
                 EdgeEmptyPlaceholder(
-                    title = "暂无下属能力",
-                    detail = "开启 runtime 后，将列出本机广告的 capability（document.scan、phone.call、camera.capture）。本期不安装 light.set。",
+                    title = if (!runtimeOn) "runtime 未启用" else "暂无可用性数据",
+                    detail = when {
+                        !runtimeOn -> "开启 runtime 后，将列出本机能力及 IsAvailable 状态。"
+                        vm.capabilityProbeBusy -> "正在探测…"
+                        else -> "点右上角刷新，对本机各 Skill 执行 isAvailable()。"
+                    },
                 )
             } else {
                 EdgeSectionLabel("下属能力")
                 Spacer(Modifier.height(12.dp))
                 rows.forEach { (svc, cid, cap) ->
-                    EdgePanel(Modifier.padding(bottom = 12.dp)) {
-                        Row {
-                            Text(cid, color = Color.White, fontSize = 17.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.weight(1f))
-                            Text(svc.displayName, color = EdgeTheme.sand, fontSize = 12.sp)
-                        }
-                        if (cap.role.isNotBlank()) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(cap.role, color = EdgeTheme.mist, fontSize = 14.sp)
-                        }
-                        if (cap.plannerRecognize.isNotBlank()) {
-                            Spacer(Modifier.height(6.dp))
-                            Text(cap.plannerRecognize, color = EdgeTheme.dim, fontSize = 13.sp)
-                        }
-                    }
+                    CapabilityAvailabilityCard(svc.displayName, cid, cap)
+                    Spacer(Modifier.height(12.dp))
                 }
             }
         }
     }
+}
+
+@Composable
+private fun CapabilityAvailabilityCard(
+    serviceLabel: String,
+    capabilityId: String,
+    cap: CapabilityDescriptor,
+) {
+    EdgePanel {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                capabilityId,
+                color = Color.White,
+                fontSize = 17.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            CapabilityAvailabilityChip(cap.available)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(serviceLabel, color = EdgeTheme.sand, fontSize = 12.sp)
+        val observedMs = cap.observedAt?.let { (it * 1000).toLong() }
+        if (observedMs != null && observedMs > 0L) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "探测于 ${formatNodeTime(observedMs)}",
+                color = EdgeTheme.dim,
+                fontSize = 11.sp,
+            )
+        }
+        if (cap.available == false && !cap.unavailableReason.isNullOrBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                cap.unavailableReason.orEmpty(),
+                color = Color(0xFFE57373),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+            )
+        }
+        if (cap.role.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(cap.role, color = EdgeTheme.mist, fontSize = 14.sp)
+        }
+        if (cap.plannerRecognize.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(cap.plannerRecognize, color = EdgeTheme.dim, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun CapabilityAvailabilityChip(available: Boolean?) {
+    val (label, fg, bg) = when (available) {
+        true -> Triple("可用", Color(0xFF4CAF50), Color(0xFF4CAF50).copy(alpha = 0.18f))
+        false -> Triple("不可用", Color(0xFFE57373), Color(0xFFE57373).copy(alpha = 0.18f))
+        null -> Triple("未探测", EdgeTheme.mist, EdgeTheme.dim.copy(alpha = 0.35f))
+    }
+    Text(
+        label,
+        color = fg,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(bg)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }
 
 @Composable
@@ -264,30 +370,48 @@ fun NodeInfoPane(vm: ConsoleViewModel, onOpenSettings: () -> Unit) {
             EdgeSectionLabel("心跳")
             Spacer(Modifier.height(12.dp))
             EdgePanel {
-                InfoLine("最近一次", formatNodeTime(vm.lastHeartbeatAtMs))
-                Spacer(Modifier.height(12.dp))
-                HeartbeatOutcomeRow(
-                    attempted = vm.lastHeartbeatAtMs > 0L,
-                    ok = vm.lastHeartbeatOk,
+                HeartbeatBrainRow(
+                    status = vm.lanHeartbeat,
+                    baseUrl = BrainEndpoint.displayBase(vm.lanBrainUrl),
+                    active = vm.brainEnv.mode == BrainEndpoint.Mode.LAN,
                 )
-                Spacer(Modifier.height(12.dp))
-                InfoLine("最近一次成功", formatNodeTime(vm.lastHeartbeatSuccessAtMs))
-                if (vm.lastHeartbeatSuccessAtMs > 0L) {
-                    Spacer(Modifier.height(12.dp))
-                    HeartbeatOutcomeRow(attempted = true, ok = true)
-                }
+                Spacer(Modifier.height(10.dp))
+                HeartbeatBrainRow(
+                    status = vm.cloudHeartbeat,
+                    baseUrl = BrainEndpoint.displayBase(vm.cloudBrainUrl),
+                    active = vm.brainEnv.mode == BrainEndpoint.Mode.CLOUD,
+                )
                 if (vm.nextHeartbeatAtMs > 0L) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = EdgeTheme.dim.copy(alpha = 0.4f),
+                    )
                     val sec = max(0, ceil((vm.nextHeartbeatAtMs - now) / 1000.0).toInt())
-                    Spacer(Modifier.height(12.dp))
+                    val showSending = sec == 0
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Text("距离下次 ", color = EdgeTheme.dim, fontSize = 13.sp)
-                        Text("$sec", color = EdgeTheme.sand, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                        Text(" 秒", color = EdgeTheme.sand.copy(alpha = 0.85f), fontSize = 14.sp)
+                        Text(
+                            if (showSending) "本次心跳 " else "距离下次 ",
+                            color = EdgeTheme.dim,
+                            fontSize = 13.sp,
+                        )
+                        if (showSending) {
+                            CircularProgressIndicator(
+                                Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = EdgeTheme.sand,
+                            )
+                            Spacer(Modifier.size(8.dp))
+                            Text(
+                                "发送中",
+                                color = EdgeTheme.sand,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        } else {
+                            Text("$sec", color = EdgeTheme.sand, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                            Text(" 秒", color = EdgeTheme.sand.copy(alpha = 0.85f), fontSize = 14.sp)
+                        }
                     }
-                }
-                if (!vm.lastHeartbeatOk && vm.lastHeartbeatError.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(vm.lastHeartbeatError, color = Color.Red.copy(alpha = 0.9f), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
             }
             Spacer(Modifier.height(28.dp))
@@ -307,15 +431,28 @@ fun NodeInfoPane(vm: ConsoleViewModel, onOpenSettings: () -> Unit) {
                 }
                 vm.clockSync?.let { sample ->
                     Spacer(Modifier.height(12.dp))
-                    Text("【本地时间】${formatNodeTimeMs(sample.localAtMs)}", color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
-                    val server = sample.serverAtMs
-                    if (server != null) {
-                        Text("【服务端时间】${formatNodeTimeMs(server)}", color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
-                    } else if (vm.clockSyncBusy) {
-                        Text("【服务端时间】…", color = EdgeTheme.dim, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                    ClockTimeLine("本地时间", formatNodeTimeMs(sample.localAtMs))
+                    ClockTimeLine(
+                        "LAN 服务器",
+                        clockServerLine(
+                            atMs = sample.lanServerAtMs,
+                            skewMs = sample.lanSkewMs,
+                            busy = vm.clockSyncBusy,
+                        ),
+                    )
+                    if (sample.lanError.isNotEmpty()) {
+                        Text(sample.lanError, color = Color.Red.copy(alpha = 0.9f), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                     }
-                    sample.skewMs?.let { skew ->
-                        Text("【时差】${formatSkew(skew)}", color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+                    ClockTimeLine(
+                        "Cloud 服务器",
+                        clockServerLine(
+                            atMs = sample.cloudServerAtMs,
+                            skewMs = sample.cloudSkewMs,
+                            busy = vm.clockSyncBusy,
+                        ),
+                    )
+                    if (sample.cloudError.isNotEmpty()) {
+                        Text(sample.cloudError, color = Color.Red.copy(alpha = 0.9f), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                     }
                 }
                 if (vm.clockSyncError.isNotEmpty()) {
@@ -327,7 +464,17 @@ fun NodeInfoPane(vm: ConsoleViewModel, onOpenSettings: () -> Unit) {
             EdgeSectionLabel("角色")
             Spacer(Modifier.height(12.dp))
             EdgePanel {
-                InfoLine("上报 role", vm.lastReportedRoles.joinToString(", ").ifBlank { "—" })
+                ReportedRolesRow(
+                    mode = BrainEndpoint.Mode.LAN,
+                    roles = vm.lanLastReportedRoles,
+                    active = vm.brainEnv.mode == BrainEndpoint.Mode.LAN,
+                )
+                Spacer(Modifier.height(10.dp))
+                ReportedRolesRow(
+                    mode = BrainEndpoint.Mode.CLOUD,
+                    roles = vm.cloudLastReportedRoles,
+                    active = vm.brainEnv.mode == BrainEndpoint.Mode.CLOUD,
+                )
                 Spacer(Modifier.height(12.dp))
                 Text("变更（下次心跳）", color = EdgeTheme.dim, fontSize = 12.sp)
                 Spacer(Modifier.height(8.dp))
@@ -356,7 +503,7 @@ fun NodeInfoPane(vm: ConsoleViewModel, onOpenSettings: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                Text("点选只改下次心跳组包；上报 role 是上一次心跳请求里的 roles。", color = EdgeTheme.dim, fontSize = 12.sp)
+                Text("点选只改下次心跳组包；上报 role 是各 Brain 上一次成功心跳请求里的 roles。", color = EdgeTheme.dim, fontSize = 12.sp)
             }
             Spacer(Modifier.height(36.dp))
         }
@@ -554,29 +701,135 @@ private fun BrainRoutingSwitcherSheet(vm: ConsoleViewModel, onDismiss: () -> Uni
 }
 
 @Composable
-private fun HeartbeatOutcomeRow(attempted: Boolean, ok: Boolean) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (attempted) {
-            Icon(
-                imageVector = if (ok) Icons.Filled.CheckCircle else Icons.Filled.Cancel,
-                contentDescription = if (ok) "心跳成功" else "心跳失败",
-                tint = if (ok) Color(0xFF4CAF50) else Color.Red,
-                modifier = Modifier.size(18.dp),
+private fun ReportedRolesRow(
+    mode: BrainEndpoint.Mode,
+    roles: List<String>,
+    active: Boolean,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (active) EdgeTheme.sand.copy(alpha = 0.08f) else Color.Transparent)
+            .border(
+                width = 1.dp,
+                color = if (active) EdgeTheme.sand.copy(alpha = 0.4f) else Color.Transparent,
+                shape = RoundedCornerShape(10.dp),
             )
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(mode.label, color = EdgeTheme.mist, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            if (active) {
+                Text(
+                    "当前",
+                    color = EdgeTheme.ink,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(EdgeTheme.sand)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
         }
         Text(
-            text = when {
-                ok -> "成功"
-                !attempted -> "尚未心跳"
-                else -> "失败"
-            },
-            color = EdgeTheme.mist,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
+            roles.joinToString(", ").ifBlank { "—" },
+            color = Color.White.copy(alpha = 0.92f),
+            fontSize = 15.sp,
+            fontFamily = FontFamily.Monospace,
         )
+    }
+}
+
+@Composable
+private fun HeartbeatBrainRow(
+    status: BrainHeartbeatStatus,
+    baseUrl: String,
+    active: Boolean,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (active) EdgeTheme.sand.copy(alpha = 0.08f) else Color.Transparent)
+            .border(
+                width = 1.dp,
+                color = if (active) EdgeTheme.sand.copy(alpha = 0.4f) else Color.Transparent,
+                shape = RoundedCornerShape(10.dp),
+            )
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (status.hasAttempted) {
+                Icon(
+                    imageVector = if (status.lastOk) Icons.Filled.CheckCircle else Icons.Filled.Cancel,
+                    contentDescription = if (status.lastOk) "心跳成功" else "心跳失败",
+                    tint = if (status.lastOk) Color(0xFF4CAF50) else Color.Red,
+                    modifier = Modifier.size(16.dp),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(EdgeTheme.dim.copy(alpha = 0.5f)),
+                )
+            }
+            Text(status.mode.label, color = EdgeTheme.mist, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            if (active) {
+                Text(
+                    "当前",
+                    color = EdgeTheme.ink,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(EdgeTheme.sand)
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                if (status.registered) "已注册" else "未注册",
+                color = if (status.registered) EdgeTheme.sand.copy(alpha = 0.9f) else EdgeTheme.dim,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+        status.phaseLabel?.let { label ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                CircularProgressIndicator(
+                    Modifier.size(12.dp),
+                    strokeWidth = 2.dp,
+                    color = EdgeTheme.sand,
+                )
+                Text(label, color = EdgeTheme.sand, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Text(
+            baseUrl,
+            color = EdgeTheme.dim,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+        )
+        InfoLine("最近一次", formatNodeTime(status.lastAttemptAtMs))
+        InfoLine("最近一次成功", formatNodeTime(status.lastSuccessAtMs))
+        if (!status.lastOk && status.lastError.isNotEmpty()) {
+            Text(status.lastError, color = Color.Red.copy(alpha = 0.9f), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+        }
     }
 }
 
@@ -597,6 +850,30 @@ private fun StatusLine(label: String, value: String) {
     }
 }
 
+@Composable
+private fun ClockTimeLine(label: String, value: String) {
+    Text(
+        "【$label】$value",
+        color = Color.White.copy(alpha = 0.9f),
+        fontSize = 13.sp,
+        fontFamily = FontFamily.Monospace,
+    )
+}
+
+/** `skew_ms` = server − local. Shown next to the server wall clock. */
+private fun clockServerLine(atMs: Long?, skewMs: Int?, busy: Boolean): String {
+    val at = atMs ?: return if (busy) "…" else "—"
+    val time = formatNodeTimeMs(at)
+    val skew = skewMs ?: return time
+    return "$time  相对本地 ${formatSkewMs(skew)}"
+}
+
+private fun formatSkewMs(ms: Int): String = when {
+    ms == 0 -> "0 ms"
+    ms > 0 -> "+$ms ms"
+    else -> "$ms ms"
+}
+
 private fun formatNodeTime(ms: Long): String {
     if (ms <= 0L) return "—"
     val f = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA)
@@ -606,16 +883,4 @@ private fun formatNodeTime(ms: Long): String {
 private fun formatNodeTimeMs(ms: Long): String {
     val f = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.CHINA)
     return f.format(Date(ms))
-}
-
-private fun formatSkew(skewMs: Int): String {
-    if (skewMs == 0) return "0ms"
-    val absMs = abs(skewMs)
-    val who = if (skewMs > 0) "服务端快" else "本机快"
-    return if (absMs >= 1000) {
-        String.format(Locale.CHINA, "%s %.2fs (%+dms)", who, absMs / 1000.0, skewMs)
-    } else {
-        val sign = if (skewMs >= 0) "+" else ""
-        "$who ${absMs}ms ($sign${skewMs}ms)"
-    }
 }

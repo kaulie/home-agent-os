@@ -419,7 +419,7 @@ private struct ChatTurnView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     assistantBubble
                     if canRateFeedback {
-                        IntentFeedbackStrip(intentId: turn.intentId)
+                        DebugBugReportStrip(turn: turn)
                     }
                 }
                 Spacer(minLength: 56)
@@ -428,9 +428,7 @@ private struct ChatTurnView: View {
     }
 
     private var canRateFeedback: Bool {
-        let id = turn.intentId.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !id.isEmpty, id != "pending…", Int(id) != nil else { return false }
-        return !turn.awaitingTerminal
+        ChatTurn.isBrainIntentId(turn.intentId)
     }
 
     @ViewBuilder

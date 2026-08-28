@@ -6,6 +6,7 @@ import re
 
 HANDLES: tuple[str, ...] = (
     "coordinator",
+    "controller",
     "brain",
     "runtime",
     "intent",
@@ -27,6 +28,7 @@ DISPLAY_NAMES = {
     "boss": "boss",
     "owner": "boss",
     "coordinator": "system coordinator agent",
+    "controller": "dev controller agent",
     "brain": "brain agent",
     "runtime": "runtime dev agent",
     "intent": "Intent dev agent",

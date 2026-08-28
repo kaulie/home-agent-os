@@ -10,6 +10,7 @@ object Capabilities {
 
     // known but not executed here (tracked / skipped)
     const val CAMERA_CAPTURE = "camera.capture"
+    const val CAMERA_CAPTURE_AND_UPLOAD = "camera.capture_and_upload"
     const val TAKE_VIDEO = "take_video"
     const val DISPLAY_PHOTO = "display.photo"
     const val MUSIC_PLAY = "music.play"
@@ -26,7 +27,7 @@ object Capabilities {
     const val ASSET_UPLOAD = "asset.upload"
 
     val WIFI_ALL = setOf(WIFI_JOIN, WIFI_LEAVE)
-    val CAMERA_ALL = setOf(CAMERA_CAPTURE, TAKE_VIDEO)
+    val CAMERA_ALL = setOf(CAMERA_CAPTURE, TAKE_VIDEO, CAMERA_CAPTURE_AND_UPLOAD)
     val DISPLAY_ALL = setOf(DISPLAY_PHOTO)
     val MUSIC_ALL = setOf(MUSIC_PLAY, MUSIC_PAUSE, MUSIC_STOP, MUSIC_NEXT, MUSIC_PREVIOUS)
     val BLUETOOTH_ALL = setOf(BLUETOOTH_CONNECT, BLUETOOTH_DISCONNECT)

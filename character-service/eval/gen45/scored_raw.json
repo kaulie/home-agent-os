@@ -1,0 +1,422 @@
+[
+  {
+    "img": "IMG_8049",
+    "r": 1,
+    "top1": "零",
+    "top3": [
+      "零",
+      "七",
+      "样"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 5
+  },
+  {
+    "img": "IMG_8049",
+    "r": 2,
+    "top1": "零",
+    "top3": [
+      "零",
+      "七",
+      "样"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 5
+  },
+  {
+    "img": "IMG_8049",
+    "r": 3,
+    "top1": "零",
+    "top3": [
+      "零",
+      "七",
+      "样"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 5
+  },
+  {
+    "img": "IMG_8049",
+    "r": 4,
+    "top1": "零",
+    "top3": [
+      "零",
+      "七",
+      "样"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 5
+  },
+  {
+    "img": "IMG_8049",
+    "r": 5,
+    "top1": "零",
+    "top3": [
+      "零",
+      "七",
+      "样"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 5
+  },
+  {
+    "img": "IMG_8050",
+    "r": 1,
+    "top1": "的",
+    "top3": [
+      "的",
+      "之",
+      "患"
+    ],
+    "ok1": false,
+    "ok3": true,
+    "rank_correct": 2,
+    "n_ranked": 17
+  },
+  {
+    "img": "IMG_8050",
+    "r": 2,
+    "top1": "的",
+    "top3": [
+      "的",
+      "之",
+      "之"
+    ],
+    "ok1": false,
+    "ok3": true,
+    "rank_correct": 2,
+    "n_ranked": 17
+  },
+  {
+    "img": "IMG_8050",
+    "r": 3,
+    "top1": "的",
+    "top3": [
+      "的",
+      "之",
+      "之"
+    ],
+    "ok1": false,
+    "ok3": true,
+    "rank_correct": 2,
+    "n_ranked": 17
+  },
+  {
+    "img": "IMG_8050",
+    "r": 4,
+    "top1": "的",
+    "top3": [
+      "的",
+      "之",
+      "之"
+    ],
+    "ok1": false,
+    "ok3": true,
+    "rank_correct": 2,
+    "n_ranked": 16
+  },
+  {
+    "img": "IMG_8050",
+    "r": 5,
+    "top1": "患",
+    "top3": [
+      "患",
+      "之",
+      "而"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 15
+  },
+  {
+    "img": "IMG_8051",
+    "r": 1,
+    "top1": "辎",
+    "top3": [
+      "辎",
+      "带",
+      "重"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 7
+  },
+  {
+    "img": "IMG_8051",
+    "r": 2,
+    "top1": "辎",
+    "top3": [
+      "辎",
+      "带",
+      "重"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 7
+  },
+  {
+    "img": "IMG_8051",
+    "r": 3,
+    "top1": "辎",
+    "top3": [
+      "辎",
+      "带",
+      "重"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 7
+  },
+  {
+    "img": "IMG_8051",
+    "r": 4,
+    "top1": "辎",
+    "top3": [
+      "辎",
+      "带",
+      "重"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 7
+  },
+  {
+    "img": "IMG_8051",
+    "r": 5,
+    "top1": "辎",
+    "top3": [
+      "辎",
+      "带",
+      "重"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 7
+  },
+  {
+    "img": "IMG_8052",
+    "r": 1,
+    "top1": "柔",
+    "top3": [
+      "柔",
+      "然",
+      "军"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 3
+  },
+  {
+    "img": "IMG_8052",
+    "r": 2,
+    "top1": "柔",
+    "top3": [
+      "柔",
+      "然",
+      "军"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 3
+  },
+  {
+    "img": "IMG_8052",
+    "r": 3,
+    "top1": "柔",
+    "top3": [
+      "柔",
+      "然",
+      "军"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 3
+  },
+  {
+    "img": "IMG_8052",
+    "r": 4,
+    "top1": "柔",
+    "top3": [
+      "柔",
+      "然",
+      "军"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 3
+  },
+  {
+    "img": "IMG_8052",
+    "r": 5,
+    "top1": "柔",
+    "top3": [
+      "柔",
+      "然",
+      "军"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 3
+  },
+  {
+    "img": "IMG_8053",
+    "r": 1,
+    "top1": "一",
+    "top3": [
+      "一",
+      "统",
+      "到"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 10
+  },
+  {
+    "img": "IMG_8053",
+    "r": 2,
+    "top1": "一",
+    "top3": [
+      "一",
+      "统",
+      "到"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 10
+  },
+  {
+    "img": "IMG_8053",
+    "r": 3,
+    "top1": "一",
+    "top3": [
+      "一",
+      "统",
+      "到"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 10
+  },
+  {
+    "img": "IMG_8053",
+    "r": 4,
+    "top1": "一",
+    "top3": [
+      "一",
+      "统",
+      "到"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 10
+  },
+  {
+    "img": "IMG_8053",
+    "r": 5,
+    "top1": "一",
+    "top3": [
+      "一",
+      "统",
+      "到"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 10
+  },
+  {
+    "img": "IMG_8054",
+    "r": 1,
+    "top1": "代",
+    "top3": [
+      "代",
+      "迭",
+      "的"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 7
+  },
+  {
+    "img": "IMG_8054",
+    "r": 2,
+    "top1": "代",
+    "top3": [
+      "代",
+      "迭",
+      "的"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 7
+  },
+  {
+    "img": "IMG_8054",
+    "r": 3,
+    "top1": "代",
+    "top3": [
+      "代",
+      "迭",
+      "的"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 7
+  },
+  {
+    "img": "IMG_8054",
+    "r": 4,
+    "top1": "代",
+    "top3": [
+      "代",
+      "迭",
+      "的"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 7
+  },
+  {
+    "img": "IMG_8054",
+    "r": 5,
+    "top1": "代",
+    "top3": [
+      "代",
+      "迭",
+      "的"
+    ],
+    "ok1": true,
+    "ok3": true,
+    "rank_correct": 1,
+    "n_ranked": 7
+  }
+]

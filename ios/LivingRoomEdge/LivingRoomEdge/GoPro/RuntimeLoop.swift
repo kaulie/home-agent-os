@@ -180,6 +180,109 @@ actor RuntimeLoop {
                     }
                 )
                 result = (captureResult.message, captureResult.outputs)
+            case "camera.capture_and_upload":
+                NSLog(
+                    "[RuntimeLoop] camera.capture_and_upload intent=%@ step=%d params=%@",
+                    job.intentId,
+                    job.step,
+                    String(describing: job.params)
+                )
+                let probe = await GoProDriver().probeAvailable(timeoutSeconds: 2.0)
+                if !probe.ok {
+                    throw NSError(
+                        domain: "CapabilityAvailability",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: probe.message]
+                    )
+                }
+                let intentId = job.intentId
+                let step = job.step
+                _ = await client.postStepStatus(
+                    intentId: intentId,
+                    step: step,
+                    status: 1,
+                    edgeId: edgeId,
+                    outputs: nil,
+                    msg: "正在拍照（camera.capture）",
+                    intentURL: serverURL
+                )
+                let captureResult = try await GoProCapture.run(
+                    intentId: intentId,
+                    params: job.params,
+                    intentURL: serverURL,
+                    onActionBegin: { name in
+                        await RuntimeLoop.shared.postCaptureActionProgress(
+                            intentId: intentId,
+                            step: step,
+                            edgeId: edgeId,
+                            serverURL: serverURL,
+                            name: name,
+                            ms: 0,
+                            started: true
+                        )
+                    },
+                    onActionComplete: { name, ms in
+                        await RuntimeLoop.shared.postCaptureActionProgress(
+                            intentId: intentId,
+                            step: step,
+                            edgeId: edgeId,
+                            serverURL: serverURL,
+                            name: name,
+                            ms: ms
+                        )
+                    }
+                )
+                var uploadParams = job.params
+                if uploadParams["capture_ref"] == nil, let cref = captureResult.outputs["capture_ref"] {
+                    uploadParams["capture_ref"] = cref
+                }
+                _ = await client.postStepStatus(
+                    intentId: intentId,
+                    step: step,
+                    status: 1,
+                    edgeId: edgeId,
+                    outputs: nil,
+                    msg: "正在上传（asset.upload）",
+                    intentURL: serverURL
+                )
+                _ = await client.postIntentStatus(
+                    intentId: intentId,
+                    status: "running",
+                    edgeId: edgeId,
+                    message: "正在上传（asset.upload）",
+                    intentURL: serverURL
+                )
+                let uploadResult: AssetUpload.Result
+                do {
+                    uploadResult = try await AssetUpload.run(
+                        intentId: intentId,
+                        params: uploadParams,
+                        intentURL: serverURL
+                    )
+                } catch {
+                    let raw = error.localizedDescription
+                    let wrapped: String
+                    if raw.hasPrefix("拍照成功") {
+                        wrapped = raw
+                    } else if raw.contains("上传") || raw.lowercased().contains("upload") {
+                        wrapped = "拍照成功，照片已保存在本机；但\(raw)"
+                    } else {
+                        wrapped = "拍照成功，照片已保存在本机；但上传失败：\(raw)"
+                    }
+                    throw NSError(
+                        domain: "RuntimeLoop",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: wrapped]
+                    )
+                }
+                var compositeOut: [String: Any] = [:]
+                if let assetRef = uploadResult.outputs["asset_ref"] {
+                    compositeOut["asset_ref"] = assetRef
+                }
+                if let dest = uploadResult.outputs["dest"] {
+                    compositeOut["dest"] = dest
+                }
+                result = (uploadResult.message, compositeOut)
             case "asset.upload":
                 NSLog(
                     "[RuntimeLoop] asset.upload intent=%@ step=%d params=%@",
@@ -264,6 +367,8 @@ actor RuntimeLoop {
                     }
                 )
                 result = (scanResult.message, scanResult.outputs)
+            case "game.launch":
+                result = await TvGameLaunch.run(params: job.params, brainURL: serverURL)
             case "video.live_stream":
                 throw NSError(
                     domain: "RuntimeLoop",

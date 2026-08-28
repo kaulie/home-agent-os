@@ -18,6 +18,7 @@ import com.smarthome.livingroom_android.brain.BrainEndpoint
 import com.smarthome.livingroom_android.brain.BrainNetworkEnvironment
 import com.smarthome.livingroom_android.brain.dto.EdgeNodeInfo
 import com.smarthome.livingroom_android.brain.dto.ExecutionReport
+import com.smarthome.livingroom_android.brain.dto.ParticipantWire
 import com.smarthome.livingroom_android.brain.dto.ServiceDescriptor
 import com.smarthome.livingroom_android.capability.Capabilities
 import com.smarthome.livingroom_android.command.IntentsPullSnapshot
@@ -26,8 +27,10 @@ import com.smarthome.livingroom_android.data.HouseholdPerson
 import com.smarthome.livingroom_android.edge.EdgeAgent
 import com.smarthome.livingroom_android.intent.ClockSyncSample
 import android.net.Uri
-import com.smarthome.livingroom_android.intent.IntentApi
+import com.smarthome.livingroom_android.intent.DebugClientSnapshot
+import com.smarthome.livingroom_android.edge.IntentRuntimeLog
 import com.smarthome.livingroom_android.intent.IntentDetail
+import com.smarthome.livingroom_android.intent.IntentSubmitResult
 import com.smarthome.livingroom_android.intent.LocalUploads
 import com.smarthome.livingroom_android.media.AudioPreviewStore
 import com.smarthome.livingroom_android.media.LocalAudioPlayer
@@ -38,8 +41,7 @@ import java.util.Locale
 import com.smarthome.livingroom_android.intent.IntentJourney
 import com.smarthome.livingroom_android.intent.IntentPhase
 import com.smarthome.livingroom_android.intent.IntentPresentation
-import com.smarthome.livingroom_android.intent.PhaseRow
-import com.smarthome.livingroom_android.intent.PhaseVisual
+import com.smarthome.livingroom_android.camera.NativeCameraSession
 import com.smarthome.livingroom_android.scan.ScanCapture
 import com.smarthome.livingroom_android.scan.ScanPreviewStore
 import com.smarthome.livingroom_android.skill.CaptureStore
@@ -47,6 +49,7 @@ import com.smarthome.livingroom_android.skill.LocalCaptureAssets
 import com.smarthome.livingroom_android.service.EdgeAgentController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -55,7 +58,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
-import kotlin.math.max
 
 enum class PhotoUploadState {
     NONE,
@@ -87,6 +89,32 @@ data class ChatTurn(
         get() = isDocumentScan || isAndroidPhoto || isAndroidFile || isAndroidAudio
 }
 
+data class BrainHeartbeatStatus(
+    val mode: BrainEndpoint.Mode,
+    val registered: Boolean = false,
+    val registeredAtMs: Long = 0L,
+    val lastAttemptAtMs: Long = 0L,
+    val lastSuccessAtMs: Long = 0L,
+    val lastOk: Boolean = false,
+    val lastError: String = "",
+    val phase: HeartbeatPhase = HeartbeatPhase.IDLE,
+    val retryAttempt: Int = 0,
+) {
+    val hasAttempted: Boolean get() = lastAttemptAtMs > 0L
+    val phaseLabel: String?
+        get() = when (phase) {
+            HeartbeatPhase.IDLE -> null
+            HeartbeatPhase.SENDING -> "发送中"
+            HeartbeatPhase.RETRYING -> "重试 $retryAttempt/3"
+        }
+}
+
+enum class HeartbeatPhase {
+    IDLE,
+    SENDING,
+    RETRYING,
+}
+
 class ConsoleViewModel(application: Application) : AndroidViewModel(application), EdgeAgent.Listener {
     private val app = LivingRoomAndroidApp.instance
     private val api = app.intentApi
@@ -97,6 +125,9 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
     val previewFailed = mutableStateMapOf<String, Boolean>()
     val originalImages = mutableStateMapOf<String, ByteArray>()
     val feedbackDone = mutableStateMapOf<String, Boolean>()
+    val devBugBusy = mutableStateMapOf<String, Boolean>()
+    val devBugSubmitted = mutableStateMapOf<String, Boolean>()
+    val devBugError = mutableStateMapOf<String, String>()
     val scanPreviewBytes = mutableStateMapOf<String, ByteArray>()
 
     var historyNotice by mutableStateOf("")
@@ -109,6 +140,7 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
 
     var lanBrainUrl by mutableStateOf(app.settings.lanBrainUrl)
     var cloudBrainUrl by mutableStateOf(app.settings.cloudBrainUrl)
+    var adminToken by mutableStateOf(app.settings.adminToken)
     var brainRouting by mutableStateOf(app.settings.brainRouting)
     var brainEnv by mutableStateOf(BrainNetworkEnvironment())
         private set
@@ -118,6 +150,10 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
     var enabledRoles by mutableStateOf(app.settings.enabledRoles)
         private set
     var lastReportedRoles by mutableStateOf(app.settings.lastReportedRoles)
+        private set
+    var lanLastReportedRoles by mutableStateOf(app.settings.lastReportedRolesLan)
+        private set
+    var cloudLastReportedRoles by mutableStateOf(app.settings.lastReportedRolesCloud)
         private set
     var participantId by mutableStateOf(app.edgeAgent.assignedEdgeId.orEmpty())
         private set
@@ -133,12 +169,27 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
         private set
     var lastHeartbeatSuccessAtMs by mutableStateOf(app.settings.lastHeartbeatSuccessAtMs)
         private set
+    /** P0 dual-Brain: per-Brain heartbeat status, shown as two distinguishable rows. */
+    var lanHeartbeat by mutableStateOf(BrainHeartbeatStatus(BrainEndpoint.Mode.LAN))
+        private set
+    var cloudHeartbeat by mutableStateOf(BrainHeartbeatStatus(BrainEndpoint.Mode.CLOUD))
+        private set
     var heartbeatIntervalMs: Long = 30_000L
     var nextHeartbeatAtMs by mutableStateOf(0L)
         private set
     var agentRunning by mutableStateOf(app.edgeAgent.running)
         private set
     var autoStartOnBoot by mutableStateOf(app.settings.autoStartOnBoot)
+
+    /** Last capability availability snapshot (heartbeat or manual IsAvailable probe). */
+    var probedCapabilityServices by mutableStateOf<List<ServiceDescriptor>>(emptyList())
+        private set
+    var capabilityProbeBusy by mutableStateOf(false)
+        private set
+    var capabilityProbeAtMs by mutableStateOf(0L)
+        private set
+    var capabilityProbeError by mutableStateOf("")
+        private set
 
     var clockSync by mutableStateOf<ClockSyncSample?>(null)
         private set
@@ -156,6 +207,10 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
     var scanHint by mutableStateOf("")
         private set
     var photoHint by mutableStateOf("")
+        private set
+    var photoCaptureEnabled by mutableStateOf(false)
+        private set
+    var cameraCaptureBusy by mutableStateOf(false)
         private set
     var fileBusy by mutableStateOf(false)
         private set
@@ -190,12 +245,27 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
     @Volatile
     private var coldBootstrapRunning = true
 
+    private val nativeCameraListener = object : NativeCameraSession.Listener {
+        override fun onCaptureBusy(busy: Boolean) {
+            viewModelScope.launch(Dispatchers.Main.immediate) {
+                cameraCaptureBusy = busy
+            }
+        }
+
+        override fun onRuntimeCaptureStored(captureId: String, jpeg: ByteArray) {
+            viewModelScope.launch(Dispatchers.Main.immediate) {
+                onRuntimePhotoCaptured(captureId, jpeg)
+            }
+        }
+    }
+
     fun bind() {
         if (bound) {
             onForeground()
             return
         }
         bound = true
+        NativeCameraSession.listener = nativeCameraListener
         app.edgeAgent.listener = this
         agentRunning = app.edgeAgent.running
         participantId = app.edgeAgent.assignedEdgeId.orEmpty()
@@ -212,6 +282,9 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
             }
             app.edgeAgent.registerNow(force = true)
             app.edgeAgent.heartbeatNow()
+            val scheduled = app.edgeAgent.nextHeartbeatAtMs
+            val now = System.currentTimeMillis()
+            nextHeartbeatAtMs = if (scheduled > now) scheduled else now + heartbeatIntervalMs
             coldBootstrapRunning = false
         }
     }
@@ -227,6 +300,9 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
     override fun onCleared() {
         networkCallback?.let { runCatching { cm.unregisterNetworkCallback(it) } }
         if (app.edgeAgent.listener === this) app.edgeAgent.listener = null
+        if (NativeCameraSession.listener === nativeCameraListener) {
+            NativeCameraSession.listener = null
+        }
         audioPlayer.stop()
         audioRecorder.discard()
         super.onCleared()
@@ -290,6 +366,35 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
 
     fun advertisedServices(): List<ServiceDescriptor> =
         app.participant.advertisedServices(enabledRoles, app.registry.services())
+
+    /** Manual or first-open probe: runs each Skill.isAvailable() on device. */
+    fun refreshCapabilityAvailability() {
+        if (capabilityProbeBusy) return
+        viewModelScope.launch {
+            capabilityProbeBusy = true
+            capabilityProbeError = ""
+            try {
+                val services = withContext(Dispatchers.IO) {
+                    app.edgeAgent.probeCapabilityAvailability()
+                }
+                probedCapabilityServices = services
+                capabilityProbeAtMs = System.currentTimeMillis()
+                if (services.isEmpty() && enabledRoles.contains(ParticipantWire.ROLE_RUNTIME)) {
+                    capabilityProbeError = "runtime 已启用但未安装可探测能力"
+                }
+            } catch (t: Throwable) {
+                capabilityProbeError = t.message ?: t.javaClass.simpleName
+            } finally {
+                capabilityProbeBusy = false
+            }
+        }
+    }
+
+    fun ensureCapabilityAvailabilityLoaded() {
+        if (capabilityProbeBusy) return
+        if (probedCapabilityServices.isNotEmpty() && capabilityProbeAtMs > 0L) return
+        refreshCapabilityAvailability()
+    }
 
     /** Auto: LAN when `/api/v1/ping` succeeds, else Cloud. Forced LAN / Cloud skip that choice. */
     suspend fun resolveBrainEndpoint(reregister: Boolean) {
@@ -364,41 +469,85 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
         )
         turns.add(pending)
         viewModelScope.launch {
-            resolveBrainEndpoint(reregister = true)
-            if (!app.edgeAgent.running) {
-                EdgeAgentController.requestStart(getApplication(), "send")
-                delay(400)
+            submitIntent(trimmed, source) { result ->
+                if (!result.ok || result.intentId.isNullOrBlank()) {
+                    failTurn(turnId, result.message.ifBlank { "发出失败" })
+                    return@submitIntent
+                }
+                val id = result.intentId
+                val phase = IntentPhase.fromWire(result.status) ?: IntentPhase.UPLOADED
+                updateTurn(turnId) { turn ->
+                    turn.copy(
+                        intentId = id,
+                        journey = placeholderJourney(
+                            id,
+                            trimmed,
+                            phase,
+                            turn.createdAtMs,
+                            result.detail,
+                            turn.journey.acceptedAtMs,
+                        ),
+                        presentation = result.detail?.presentation,
+                        awaitingTerminal = phase.isTerminal.not(),
+                        assistantText = assistantText(phase, result.detail),
+                    )
+                }
+                if (!phase.isTerminal) startPolling(turnId, id)
             }
-            app.edgeAgent.registerNow(force = false)
-            val beat = app.edgeAgent.heartbeatNow()
-            if (beat.isFailure) {
-                failTurn(turnId, beat.exceptionOrNull()?.message ?: "发出前心跳失败")
-                return@launch
-            }
-            val result = api.submit(
-                intentUrl = intentServerUrl,
-                text = trimmed,
-                source = source,
-                clientHint = clientHint,
-                participantId = app.edgeAgent.assignedEdgeId ?: participantId,
-            )
-            if (!result.ok || result.intentId.isNullOrBlank()) {
-                failTurn(turnId, result.message.ifBlank { "发出失败" })
-                return@launch
-            }
-            val id = result.intentId
-            val phase = IntentPhase.fromWire(result.status) ?: IntentPhase.UPLOADED
-            updateTurn(turnId) { turn ->
-                turn.copy(
-                    intentId = id,
-                    journey = placeholderJourney(id, trimmed, phase, turn.createdAtMs, result.detail),
-                    presentation = result.detail?.presentation,
-                    awaitingTerminal = phase.isTerminal.not(),
-                    assistantText = assistantText(phase, result.detail),
-                )
-            }
-            if (!phase.isTerminal) startPolling(turnId, id)
         }
+    }
+
+    /** Photo pane voice: POST intent without adding a chat turn. */
+    fun sendPhotoVoiceIntent(text: String, onDone: (ok: Boolean, message: String) -> Unit) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) {
+            onDone(false, "未识别到内容")
+            return
+        }
+        viewModelScope.launch {
+            submitIntent(trimmed, "voice") { result ->
+                val ok = result.ok && !result.intentId.isNullOrBlank()
+                val message = when {
+                    ok -> "已发送 intent ${result.intentId}"
+                    else -> result.message.ifBlank { "发出失败" }
+                }
+                onDone(ok, message)
+            }
+        }
+    }
+
+    private suspend fun submitIntent(
+        trimmed: String,
+        source: String,
+        onDone: (IntentSubmitResult) -> Unit,
+    ) {
+        resolveBrainEndpoint(reregister = true)
+        if (!app.edgeAgent.running) {
+            EdgeAgentController.requestStart(getApplication(), "send")
+            delay(400)
+        }
+        app.edgeAgent.registerNow(force = false)
+        val beat = app.edgeAgent.heartbeatNow()
+        if (beat.isFailure) {
+            onDone(
+                IntentSubmitResult(
+                    ok = false,
+                    intentId = null,
+                    status = null,
+                    message = beat.exceptionOrNull()?.message ?: "发出前心跳失败",
+                    rawBody = "",
+                ),
+            )
+            return
+        }
+        val result = api.submit(
+            intentUrl = intentServerUrl,
+            text = trimmed,
+            source = source,
+            clientHint = clientHint,
+            participantId = app.edgeAgent.assignedEdgeId ?: participantId,
+        )
+        onDone(result)
     }
 
     fun refreshTurnProgress(turnId: String) {
@@ -442,17 +591,23 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
         val localAt = System.currentTimeMillis()
         clockSync = ClockSyncSample(localAtMs = localAt)
         viewModelScope.launch {
-            val ping = api.ping(intentServerUrl, timeoutSec = 10)
-            clockSyncBusy = false
-            if (!ping.ok) {
-                clockSyncError = ping.error
-                return@launch
-            }
+            val lanUrl = BrainEndpoint.intentUrl(lanBrainUrl)
+            val cloudUrl = BrainEndpoint.intentUrl(cloudBrainUrl)
+            val lanDeferred = async { api.ping(lanUrl, timeoutSec = 10, clientTimeMs = localAt) }
+            val cloudDeferred = async { api.ping(cloudUrl, timeoutSec = 10, clientTimeMs = localAt) }
+            val lan = lanDeferred.await()
+            val cloud = cloudDeferred.await()
             clockSync = ClockSyncSample(
                 localAtMs = localAt,
-                serverAtMs = ping.serverTimeMs,
-                skewMs = ping.skewMs,
+                lanServerAtMs = if (lan.ok) lan.serverTimeMs else null,
+                cloudServerAtMs = if (cloud.ok) cloud.serverTimeMs else null,
+                lanSkewMs = if (lan.ok) lan.skewMs else null,
+                cloudSkewMs = if (cloud.ok) cloud.skewMs else null,
+                lanError = if (lan.ok) "" else lan.error,
+                cloudError = if (cloud.ok) "" else cloud.error,
             )
+            clockSyncBusy = false
+            clockSyncError = ""
         }
     }
 
@@ -488,6 +643,50 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val ok = api.submitFeedback(intentServerUrl, intentId, pid, understanding, speed)
             if (ok) feedbackDone[intentId] = true
+        }
+    }
+
+    fun applyAdminToken() {
+        app.settings.adminToken = adminToken.trim()
+    }
+
+    fun reportBug(turnId: String) {
+        val turn = turns.firstOrNull { it.id == turnId } ?: return
+        if (turn.intentId.toIntOrNull() == null) return
+        if (devBugBusy[turnId] == true || devBugSubmitted[turnId] == true) return
+        devBugBusy[turnId] = true
+        devBugError.remove(turnId)
+        val pid = (app.edgeAgent.assignedEdgeId ?: participantId).trim()
+        viewModelScope.launch {
+            try {
+                val runtimeLog = IntentRuntimeLog.snapshotMap(
+                    intentId = turn.intentId,
+                    contextKeys = app.localRuntime.contextSnapshot(turn.intentId).keys.sorted(),
+                )
+                val snapshot = DebugClientSnapshot.build(
+                    env = brainEnv,
+                    intentServerUrl = intentServerUrl,
+                    lanHeartbeat = lanHeartbeat,
+                    cloudHeartbeat = cloudHeartbeat,
+                    clientHint = clientHint,
+                    journey = turn.journey,
+                    intentId = turn.intentId,
+                    runtimeLog = runtimeLog,
+                )
+                val result = api.submitDebugReport(
+                    intentUrl = intentServerUrl,
+                    intentId = turn.intentId,
+                    participantId = pid,
+                    clientSnapshot = snapshot,
+                )
+                if (!result.ok) {
+                    devBugError[turnId] = result.error.ifBlank { "提交失败" }
+                    return@launch
+                }
+                devBugSubmitted[turnId] = true
+            } finally {
+                devBugBusy[turnId] = false
+            }
         }
     }
 
@@ -532,6 +731,7 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
                         assistantText = "已上传扫描图 asset_id=${uploaded.assetId}",
                         awaitingTerminal = false,
                         inputAssetId = uploaded.assetId,
+                        uploadState = PhotoUploadState.UPLOADED,
                     ),
                 )
                 persistLocalScans()
@@ -549,6 +749,17 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
         photoHint = message
     }
 
+    fun updatePhotoCaptureEnabled(enabled: Boolean) {
+        if (photoCaptureEnabled == enabled) return
+        photoCaptureEnabled = enabled
+        NativeCameraSession.setCaptureEnabled(enabled)
+        viewModelScope.launch {
+            if (app.edgeAgent.running) {
+                app.edgeAgent.heartbeatNow()
+            }
+        }
+    }
+
     fun updateFileHint(message: String) {
         fileHint = message
     }
@@ -559,6 +770,28 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
 
     // 拍摄动作（CameraX 已出图）与上传彻底分离：先落本机 inbox 并立即上列表，
     // 上传作为后台异步任务自动触发，不阻塞下一次拍照；上传失败只标记该照片，可重试。
+    fun onRuntimePhotoCaptured(captureId: String, jpeg: ByteArray) {
+        if (captureId.isBlank() || jpeg.isEmpty()) return
+        if (turns.any { it.localCaptureId == captureId }) return
+        val now = System.currentTimeMillis()
+        scanPreviewBytes[captureId] = jpeg
+        turns.add(
+            ChatTurn(
+                id = UUID.randomUUID().toString(),
+                intentId = "photo-$captureId",
+                createdAtMs = now,
+                userText = "camera.capture",
+                source = LocalUploads.PHOTO,
+                journey = placeholderJourney("photo-$captureId", "camera.capture", IntentPhase.SUCCEEDED, now),
+                assistantText = "Runtime 已拍照，已存本机 inbox",
+                awaitingTerminal = false,
+                localCaptureId = captureId,
+                uploadState = PhotoUploadState.NONE,
+            ),
+        )
+        persistLocalScans()
+    }
+
     fun onLocalPhotoCaptured(jpeg: ByteArray) {
         if (intentServerUrl.isBlank()) {
             photoHint = "请先在设置里填写 Brain URL"
@@ -665,7 +898,11 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
                 assetType = "image",
             )
             withContext(Dispatchers.IO) {
-                CaptureStore.markUploaded(getApplication(), captureId, "img_server")
+                CaptureStore.markUploaded(
+                    getApplication(),
+                    captureId,
+                    BrainEndpoint.destLabel(intentServerUrl),
+                )
                 ScanPreviewStore.save(getApplication(), uploaded.assetId, jpeg)
             }
             scanPreviewBytes[uploaded.assetId] = jpeg
@@ -953,16 +1190,19 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
                 runCatching { CaptureStore.readBytes(getApplication(), cid) }.getOrNull()
                     ?.let { scanPreviewBytes[cid] = it }
             }
-            // 上传状态只对照片有意义；崩溃/中断时 UPLOADING 一律诚实落成 FAILED（可重试）。
-            val uploadState = if (source == LocalUploads.PHOTO) {
-                when (o.optString("upload_state")) {
+            // 上传状态：照片走异步上传；扫描/文件/录音进列表前已完成上传。
+            val uploadState = when (source) {
+                LocalUploads.PHOTO -> when (o.optString("upload_state")) {
                     PhotoUploadState.UPLOADED.name -> PhotoUploadState.UPLOADED
                     PhotoUploadState.UPLOADING.name -> PhotoUploadState.FAILED
                     PhotoUploadState.FAILED.name -> PhotoUploadState.FAILED
                     else -> if (aid.isNotEmpty()) PhotoUploadState.UPLOADED else PhotoUploadState.FAILED
                 }
-            } else {
-                PhotoUploadState.NONE
+                Capabilities.DOCUMENT_SCAN,
+                LocalUploads.FILE,
+                LocalUploads.AUDIO,
+                -> if (aid.isNotEmpty()) PhotoUploadState.UPLOADED else PhotoUploadState.NONE
+                else -> PhotoUploadState.NONE
             }
             val fallbackAssistant = when {
                 aid.isNotEmpty() -> "已上传 asset_id=$aid"
@@ -1014,12 +1254,14 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
         pollJobs[turnId] = viewModelScope.launch {
             val started = System.currentTimeMillis()
             while (System.currentTimeMillis() - started < POLL_TIMEOUT_MS) {
-                delay(POLL_INTERVAL_MS)
                 val result = api.fetchDetail(intentServerUrl, intentId)
-                val detail = result.detail ?: continue
-                applyDetail(turnId, detail)
-                val phase = IntentPhase.fromWire(detail.status)
-                if (phase?.isTerminal == true) break
+                val detail = result.detail
+                if (detail != null) {
+                    applyDetail(turnId, detail)
+                    val phase = IntentPhase.fromWire(detail.status)
+                    if (phase?.isTerminal == true) break
+                }
+                delay(POLL_INTERVAL_MS)
             }
             val turn = turns.firstOrNull { it.id == turnId } ?: return@launch
             if (turn.awaitingTerminal) {
@@ -1045,6 +1287,7 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
                     phase,
                     turn.createdAtMs,
                     detail,
+                    turn.journey.acceptedAtMs,
                 ),
                 presentation = detail.presentation ?: turn.presentation,
                 awaitingTerminal = !phase.isTerminal,
@@ -1084,7 +1327,7 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
         }
         if (!overdue) return
         nextHeartbeatAtMs = now + interval
-        app.edgeAgent.heartbeatNow()
+        app.edgeAgent.heartbeatOnce()
     }
 
     private fun startPathMonitor() {
@@ -1159,18 +1402,88 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
     }
 
     override fun onEdgeInfoReported(info: EdgeNodeInfo) {
-        lastHeartbeatAtMs = System.currentTimeMillis()
-        lastHeartbeatOk = true
-        lastHeartbeatError = ""
-        lastReportedRoles = info.roles
         participantId = info.edgeId
-        nextHeartbeatAtMs = lastHeartbeatAtMs + heartbeatIntervalMs
         agentRunning = app.edgeAgent.running
+        if (info.services.isNotEmpty()) {
+            probedCapabilityServices = info.services
+            capabilityProbeAtMs = System.currentTimeMillis()
+            capabilityProbeError = ""
+        }
     }
 
     override fun onHeartbeatStatsChanged(successCount: Long, lastSuccessAtMs: Long) {
         lastHeartbeatSuccessAtMs = lastSuccessAtMs
-        lastHeartbeatOk = true
+    }
+
+    override fun onBrainHeartbeat(baseUrl: String, ok: Boolean, error: String, roles: List<String>?) {
+        val mode = brainModeFor(baseUrl)
+        val now = System.currentTimeMillis()
+        updateHeartbeatStatus(mode, ok = ok, atMs = now, error = error)
+        if (ok && roles != null) {
+            if (mode == BrainEndpoint.Mode.LAN) lanLastReportedRoles = roles else cloudLastReportedRoles = roles
+            if (mode == brainEnv.mode) lastReportedRoles = roles
+        }
+        if (mode == brainEnv.mode) {
+            lastHeartbeatAtMs = now
+            lastHeartbeatOk = ok
+            lastHeartbeatError = if (ok) "" else error
+            if (ok) lastHeartbeatSuccessAtMs = now
+        }
+        agentRunning = app.edgeAgent.running
+    }
+
+    override fun onBrainHeartbeatPhase(baseUrl: String, attempt: Int, maxAttempts: Int) {
+        val mode = brainModeFor(baseUrl)
+        val cur = if (mode == BrainEndpoint.Mode.LAN) lanHeartbeat else cloudHeartbeat
+        val phase = when {
+            attempt <= 0 -> HeartbeatPhase.IDLE
+            attempt == 1 -> HeartbeatPhase.SENDING
+            else -> HeartbeatPhase.RETRYING
+        }
+        val next = cur.copy(phase = phase, retryAttempt = attempt.coerceAtLeast(0))
+        if (mode == BrainEndpoint.Mode.LAN) lanHeartbeat = next else cloudHeartbeat = next
+    }
+
+    override fun onHeartbeatScheduled(nextAtMs: Long) {
+        nextHeartbeatAtMs = nextAtMs
+    }
+
+    override fun onBrainRegistered(baseUrl: String) {
+        markRegistered(brainModeFor(baseUrl), System.currentTimeMillis())
+        if (registeredAtMs <= 0L) registeredAtMs = System.currentTimeMillis()
+    }
+
+    private fun brainModeFor(baseUrl: String): BrainEndpoint.Mode {
+        val root = BrainEndpoint.normalizeBase(baseUrl)
+        val cloud = BrainEndpoint.normalizeBase(cloudBrainUrl)
+        return if (root == cloud) BrainEndpoint.Mode.CLOUD else BrainEndpoint.Mode.LAN
+    }
+
+    private fun updateHeartbeatStatus(
+        mode: BrainEndpoint.Mode,
+        ok: Boolean,
+        atMs: Long,
+        error: String,
+    ) {
+        val cur = if (mode == BrainEndpoint.Mode.LAN) lanHeartbeat else cloudHeartbeat
+        val next = cur.copy(
+            lastAttemptAtMs = atMs,
+            lastOk = ok,
+            lastError = if (ok) "" else error,
+            lastSuccessAtMs = if (ok) atMs else cur.lastSuccessAtMs,
+            phase = HeartbeatPhase.IDLE,
+            retryAttempt = 0,
+        )
+        if (mode == BrainEndpoint.Mode.LAN) lanHeartbeat = next else cloudHeartbeat = next
+    }
+
+    private fun markRegistered(mode: BrainEndpoint.Mode, atMs: Long) {
+        val cur = if (mode == BrainEndpoint.Mode.LAN) lanHeartbeat else cloudHeartbeat
+        val next = cur.copy(
+            registered = true,
+            registeredAtMs = if (cur.registeredAtMs > 0L) cur.registeredAtMs else atMs,
+        )
+        if (mode == BrainEndpoint.Mode.LAN) lanHeartbeat = next else cloudHeartbeat = next
     }
 
     override fun onIntentsPulled(snapshot: IntentsPullSnapshot) {
@@ -1178,7 +1491,8 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
     }
 
     companion object {
-        private const val POLL_INTERVAL_MS = 5_000L
+        /** 3s: upload/accept is already done at POST; this tick is for parse. */
+        private const val POLL_INTERVAL_MS = 3_000L
         private const val POLL_TIMEOUT_MS = 600_000L
 
         private fun assistantText(phase: IntentPhase, detail: IntentDetail?): String? {
@@ -1198,27 +1512,15 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
             phase: IntentPhase,
             startedAt: Long,
             detail: IntentDetail? = null,
+            priorAcceptedAtMs: Long? = null,
         ): IntentJourney {
-            val now = System.currentTimeMillis()
-            val phases = IntentPhase.timelineOrder.map { p ->
-                when {
-                    phase == IntentPhase.FAILED && p.rank == IntentPhase.SUCCEEDED.rank ->
-                        PhaseRow(IntentPhase.FAILED, PhaseVisual.FAILED, enteredAtMs = now)
-                    p.rank < phase.rank ->
-                        PhaseRow(p, PhaseVisual.DONE, enteredAtMs = startedAt, durationMs = 0)
-                    p.rank == phase.rank ->
-                        PhaseRow(p, PhaseVisual.ACTIVE, enteredAtMs = startedAt, durationMs = max(0, now - startedAt))
-                    else -> PhaseRow(p, PhaseVisual.PENDING)
-                }
-            }
-            return IntentJourney(
+            return IntentJourney.timeline(
                 intentId = intentId,
                 text = text,
-                phase = phase,
-                phases = phases,
-                planSteps = detail?.planSteps.orEmpty(),
+                wire = phase,
                 startedAtMs = startedAt,
-                updatedAtMs = now,
+                acceptedAtMs = detail?.createdAtMs ?: priorAcceptedAtMs,
+                planSteps = detail?.planSteps.orEmpty(),
                 presentation = detail?.presentation,
                 error = detail?.error,
             )

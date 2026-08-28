@@ -30,17 +30,45 @@ enum PhotoUploadDest {
         return d
     }
 
-    static func endpoints(_ dest: String) throws -> (upload: String, publicBase: String, probe: String) {
+    /// dest for capability output: LAN Brain → img_server, Cloud Brain → cloud.
+    static func wireDest(forIntentURL intentURL: String) -> String {
+        let given = BrainEndpoint.displayBase(from: intentURL)
+        let cloud = BrainEndpoint.displayBase(from: BrainEndpoint.cloudBaseURL)
+        if hostsMatch(given, cloud) {
+            return "cloud"
+        }
+        return "img_server"
+    }
+
+    /// Img-server endpoints for a dest. `dest=img_server` follows the **primary Brain**:
+    /// cloud primary → cloud img-server, never LAN `192.168.3.73:8080`.
+    static func endpoints(
+        _ dest: String,
+        primaryIntentURL: String? = nil
+    ) throws -> (upload: String, publicBase: String, probe: String) {
         switch dest {
-        case "cloud":
-            return (cloudUpload, cloudPublic, "http://115.190.153.53:9527/")
         case "gdrive":
             throw destError("dest=gdrive is not implemented yet (Google Drive is a plugin slot only)")
         case "dropbox":
             throw destError("dest=dropbox is not implemented yet (Dropbox is a plugin slot only)")
         default:
-            return (lanUpload, lanPublic, "http://192.168.3.73:8080/health")
+            break
         }
+        let useCloud = dest == "cloud"
+            || (primaryIntentURL.map { wireDest(forIntentURL: $0) == "cloud" } ?? false)
+        if useCloud {
+            return (cloudUpload, cloudPublic, "http://115.190.153.53:9527/")
+        }
+        return (lanUpload, lanPublic, "http://192.168.3.73:8080/health")
+    }
+
+    private static func hostsMatch(_ a: String, _ b: String) -> Bool {
+        if a.compare(b, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame {
+            return true
+        }
+        let ha = URL(string: a)?.host?.lowercased() ?? ""
+        let hb = URL(string: b)?.host?.lowercased() ?? ""
+        return !ha.isEmpty && ha == hb
     }
 
     private static func destError(_ message: String) -> NSError {

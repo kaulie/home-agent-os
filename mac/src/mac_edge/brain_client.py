@@ -30,6 +30,18 @@ def _clip_step_msg(raw: str | None) -> str:
     return text[: _STEP_MSG_MAX - 1] + "…"
 
 
+def _availability_snapshot(services: list[dict[str, Any]] | None, config: "Config") -> list[dict[str, Any]]:
+    """P0: wrap capability_availability.snapshot_services; never raises."""
+    if not services:
+        return services or []
+    try:
+        from mac_edge.capability_availability import snapshot_services
+        return snapshot_services(services, config=config)
+    except Exception as e:
+        log.warning("availability snapshot failed (sending declaration): %s", e)
+        return services
+
+
 def _submit_report(label: str, fn: Callable[[], None]) -> None:
     def _run() -> None:
         try:
@@ -140,7 +152,13 @@ class BrainClient:
     def register(self) -> RegisterResult:
         body = self._identity_body(include_edge_id=False)
         body["client_hint"] = self.config.identity.client_hint
-        log.info("POST register hint=%s → %s", body["client_hint"], self.config.register_url)
+        rid = self._runtime_id()
+        if rid:
+            body["runtime_id"] = rid
+            body["participant_id"] = rid
+        if self.config.identity.exposure_policy is not None:
+            body["exposure_policy"] = self.config.identity.exposure_policy
+        log.info("POST register hint=%s runtime_id=%s → %s", body.get("client_hint"), rid or "(none)", self.config.register_url)
         resp = self._post(self.config.register_url, json=body)
         data = self._json_or_raise(resp, "register")
         ok = bool(data.get("ok"))
@@ -171,6 +189,8 @@ class BrainClient:
                 "details": {"role": "background"},
             },
         )
+        # P0: inject per-capability availability snapshot (Runtime IsAvailable()).
+        body["services"] = _availability_snapshot(body.get("services"), self.config)
         log.debug("POST heartbeat edge_id=%s", eid)
         resp = self._post(self.config.heartbeat_url, json=body)
         if resp.status_code == 401:
@@ -280,6 +300,52 @@ class BrainClient:
         if not data.get("ok"):
             raise BrainError(
                 f"register_asset failed: {data!r}",
+                status_code=resp.status_code,
+                body=data,
+            )
+        return data
+
+    def upload_asset(
+        self,
+        *,
+        file_bytes: bytes,
+        filename: str,
+        upload_intent: str,
+        mime_type: str = "image/jpeg",
+        asset_type: str = "image",
+        edge_id: str | None = None,
+        intent_id: str | None = None,
+        timeout_sec: float = 120.0,
+    ) -> dict[str, Any]:
+        """POST multipart to this Brain's /api/v1/assets/upload (no LAN-then-cloud hop)."""
+        url = f"{self.config.brain_base_url}/api/v1/assets/upload"
+        name = str(filename or "upload.bin").strip() or "upload.bin"
+        mime = str(mime_type or "application/octet-stream").strip() or "application/octet-stream"
+        kind = str(asset_type or "file").strip() or "file"
+        intent = str(upload_intent or "").strip()
+        if not intent:
+            raise BrainError("upload_asset requires upload_intent")
+        if not file_bytes:
+            raise BrainError("upload_asset: empty file")
+        form: dict[str, str] = {
+            "upload_intent": intent,
+            "producer": intent,
+            "type": kind,
+            "mime_type": mime,
+        }
+        eid = str(edge_id or "").strip()
+        if eid:
+            form["edge_id"] = eid
+            form["participant_id"] = eid
+        iid = str(intent_id or "").strip()
+        if iid:
+            form["intent_id"] = iid
+        files = {"file": (name, file_bytes, mime)}
+        resp = self._post(url, data=form, files=files, timeout=float(timeout_sec))
+        data = self._json_or_raise(resp, "upload_asset")
+        if not data.get("ok"):
+            raise BrainError(
+                f"upload_asset failed: {data!r}",
                 status_code=resp.status_code,
                 body=data,
             )
@@ -554,6 +620,14 @@ class BrainClient:
 
         _submit_report(f"step_status {intent_id}/{step_id}→{step_status}", _run)
 
+    def _runtime_id(self) -> str | None:
+        ident = self.config.identity
+        if ident.runtime_id:
+            return ident.runtime_id
+        from mac_edge.state import load_runtime_id
+        rid = load_runtime_id(self.config.runtime_id_path, edge_id_path=self.config.edge_id_path)
+        return rid
+
     def _identity_body(
         self,
         *,
@@ -586,6 +660,8 @@ class BrainClient:
             health=health,
             client_time_ms=client_time_ms,
             intent_sources=intent_sources,
+            runtime_id=self._runtime_id(),
+            exposure_policy=ident.exposure_policy,
         )
 
     @staticmethod

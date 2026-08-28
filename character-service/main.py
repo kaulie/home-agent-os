@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
-from pipeline import PipelineError, run_still
+from pipeline import PipelineError, detect_finger, ocr_at_finger, rank_pointed, run_still
 
 log = logging.getLogger("character_service")
 
@@ -129,7 +129,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlparse(self.path).path.rstrip("/") or "/"
-        if path not in ("/v1/point_to_character", "/point_to_character"):
+        stage = {
+            "/v1/detect_finger": "detect_finger",
+            "/v1/ocr_at_finger": "ocr_at_finger",
+            "/v1/rank_pointed": "rank_pointed",
+            "/v1/point_to_character": "point_to_character",
+            "/point_to_character": "point_to_character",
+        }.get(path)
+        if stage is None:
             self._send(404, {"error": "not found"})
             return
         length = int(self.headers.get("Content-Length") or 0)
@@ -144,7 +151,26 @@ class Handler(BaseHTTPRequestHandler):
             return_debug = parse_bool(extra.get("return_debug"), False) or parse_bool(
                 options.get("return_debug"), False
             )
-            result = run_still(image, language=language, return_debug=return_debug)
+            if stage == "detect_finger":
+                result = detect_finger(
+                    image,
+                    return_crop=parse_bool(extra.get("return_crop"), False),
+                )
+            elif stage == "ocr_at_finger":
+                result = ocr_at_finger(
+                    image, extra.get("finger"), language=language
+                )
+            elif stage == "rank_pointed":
+                result = rank_pointed(
+                    image,
+                    extra.get("finger"),
+                    extra.get("chars"),
+                    language=language,
+                    return_debug=return_debug,
+                    full_image_shape=extra.get("full_image_shape"),
+                )
+            else:
+                result = run_still(image, language=language, return_debug=return_debug)
         except ValueError as e:
             self._send(400, {"error": str(e)})
             return
@@ -152,7 +178,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(
                 200,
                 {
-                    "engine": "reading.point_to_character",
+                    "engine": f"reading.{stage}",
                     "status": e.status,
                     "character": None,
                     "reason": str(e),
@@ -160,7 +186,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         except Exception as e:
-            log.exception("point_to_character failed")
+            log.exception("%s failed", stage)
             self._send(500, {"error": f"{type(e).__name__}: {e}"})
             return
         self._send(200, result)

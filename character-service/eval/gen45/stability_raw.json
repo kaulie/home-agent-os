@@ -1,0 +1,812 @@
+[
+  {
+    "img": "IMG_8049",
+    "r": 1,
+    "top1": "零",
+    "top3": [
+      "零",
+      "七",
+      "样"
+    ],
+    "status": "ok_with_alternatives",
+    "n_blocks": 12,
+    "n_chars": 56,
+    "origin": [
+      2033.88,
+      2668.76
+    ],
+    "direction": [
+      0.272154,
+      -0.962254
+    ],
+    "timing": {
+      "hand_detection_s": 0.2988,
+      "ocr_vlm_s": 134.1873,
+      "geometry_ranking_s": 48.0321,
+      "total_s": 182.5808
+    }
+  },
+  {
+    "img": "IMG_8049",
+    "r": 2,
+    "top1": "零",
+    "top3": [
+      "零",
+      "七",
+      "样"
+    ],
+    "status": "ok_with_alternatives",
+    "n_blocks": 11,
+    "n_chars": 56,
+    "origin": [
+      2033.88,
+      2668.76
+    ],
+    "direction": [
+      0.272154,
+      -0.962254
+    ],
+    "timing": {
+      "hand_detection_s": 0.2961,
+      "ocr_vlm_s": 12.4827,
+      "geometry_ranking_s": 48.0103,
+      "total_s": 60.8497
+    }
+  },
+  {
+    "img": "IMG_8049",
+    "r": 3,
+    "top1": "零",
+    "top3": [
+      "零",
+      "七",
+      "样"
+    ],
+    "status": "ok_with_alternatives",
+    "n_blocks": 10,
+    "n_chars": 56,
+    "origin": [
+      2033.88,
+      2668.76
+    ],
+    "direction": [
+      0.272154,
+      -0.962254
+    ],
+    "timing": {
+      "hand_detection_s": 0.2945,
+      "ocr_vlm_s": 11.8282,
+      "geometry_ranking_s": 48.0467,
+      "total_s": 60.2294
+    }
+  },
+  {
+    "img": "IMG_8049",
+    "r": 4,
+    "top1": "零",
+    "top3": [
+      "零",
+      "七",
+      "样"
+    ],
+    "status": "ok_with_alternatives",
+    "n_blocks": 12,
+    "n_chars": 56,
+    "origin": [
+      2033.88,
+      2668.76
+    ],
+    "direction": [
+      0.272154,
+      -0.962254
+    ],
+    "timing": {
+      "hand_detection_s": 0.2998,
+      "ocr_vlm_s": 13.6577,
+      "geometry_ranking_s": 48.0018,
+      "total_s": 62.0195
+    }
+  },
+  {
+    "img": "IMG_8049",
+    "r": 5,
+    "top1": "零",
+    "top3": [
+      "零",
+      "七",
+      "样"
+    ],
+    "status": "ok_with_alternatives",
+    "n_blocks": 11,
+    "n_chars": 56,
+    "origin": [
+      2033.88,
+      2668.76
+    ],
+    "direction": [
+      0.272154,
+      -0.962254
+    ],
+    "timing": {
+      "hand_detection_s": 0.3002,
+      "ocr_vlm_s": 12.8574,
+      "geometry_ranking_s": 47.9545,
+      "total_s": 61.1724
+    }
+  },
+  {
+    "img": "IMG_8050",
+    "r": 1,
+    "top1": "的",
+    "top3": [
+      "的",
+      "之",
+      "患"
+    ],
+    "status": "ok",
+    "n_blocks": 8,
+    "n_chars": 41,
+    "origin": [
+      1642.83,
+      3157.06
+    ],
+    "direction": [
+      0.118663,
+      -0.992935
+    ],
+    "timing": {
+      "hand_detection_s": 0.3107,
+      "ocr_vlm_s": 130.1595,
+      "geometry_ranking_s": 46.3016,
+      "total_s": 176.8319
+    }
+  },
+  {
+    "img": "IMG_8050",
+    "r": 2,
+    "top1": "的",
+    "top3": [
+      "的",
+      "之",
+      "之"
+    ],
+    "status": "ok",
+    "n_blocks": 8,
+    "n_chars": 41,
+    "origin": [
+      1642.83,
+      3157.06
+    ],
+    "direction": [
+      0.118663,
+      -0.992935
+    ],
+    "timing": {
+      "hand_detection_s": 0.3118,
+      "ocr_vlm_s": 9.5886,
+      "geometry_ranking_s": 46.3754,
+      "total_s": 56.3366
+    }
+  },
+  {
+    "img": "IMG_8050",
+    "r": 3,
+    "top1": "的",
+    "top3": [
+      "的",
+      "之",
+      "之"
+    ],
+    "status": "ok",
+    "n_blocks": 8,
+    "n_chars": 41,
+    "origin": [
+      1642.83,
+      3157.06
+    ],
+    "direction": [
+      0.118663,
+      -0.992935
+    ],
+    "timing": {
+      "hand_detection_s": 0.3079,
+      "ocr_vlm_s": 9.6963,
+      "geometry_ranking_s": 1.0337,
+      "total_s": 11.0991
+    }
+  },
+  {
+    "img": "IMG_8050",
+    "r": 4,
+    "top1": "的",
+    "top3": [
+      "的",
+      "之",
+      "之"
+    ],
+    "status": "ok",
+    "n_blocks": 8,
+    "n_chars": 41,
+    "origin": [
+      1642.83,
+      3157.06
+    ],
+    "direction": [
+      0.118663,
+      -0.992935
+    ],
+    "timing": {
+      "hand_detection_s": 0.3078,
+      "ocr_vlm_s": 9.0979,
+      "geometry_ranking_s": 1.0539,
+      "total_s": 10.5201
+    }
+  },
+  {
+    "img": "IMG_8050",
+    "r": 5,
+    "top1": "患",
+    "top3": [
+      "患",
+      "之",
+      "而"
+    ],
+    "status": "ok_with_alternatives",
+    "n_blocks": 10,
+    "n_chars": 44,
+    "origin": [
+      1642.83,
+      3157.06
+    ],
+    "direction": [
+      0.118663,
+      -0.992935
+    ],
+    "timing": {
+      "hand_detection_s": 0.315,
+      "ocr_vlm_s": 11.4339,
+      "geometry_ranking_s": 45.8738,
+      "total_s": 57.6836
+    }
+  },
+  {
+    "img": "IMG_8051",
+    "r": 1,
+    "top1": "辎",
+    "top3": [
+      "辎",
+      "带",
+      "重"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 28,
+    "origin": [
+      1786.76,
+      3154.15
+    ],
+    "direction": [
+      0.150902,
+      -0.988549
+    ],
+    "timing": {
+      "hand_detection_s": 0.2952,
+      "ocr_vlm_s": 126.0051,
+      "geometry_ranking_s": 45.1944,
+      "total_s": 171.5513
+    }
+  },
+  {
+    "img": "IMG_8051",
+    "r": 2,
+    "top1": "辎",
+    "top3": [
+      "辎",
+      "带",
+      "重"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 28,
+    "origin": [
+      1786.76,
+      3154.15
+    ],
+    "direction": [
+      0.150902,
+      -0.988549
+    ],
+    "timing": {
+      "hand_detection_s": 0.3,
+      "ocr_vlm_s": 4.8974,
+      "geometry_ranking_s": 45.2921,
+      "total_s": 50.5622
+    }
+  },
+  {
+    "img": "IMG_8051",
+    "r": 3,
+    "top1": "辎",
+    "top3": [
+      "辎",
+      "带",
+      "重"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 28,
+    "origin": [
+      1786.76,
+      3154.15
+    ],
+    "direction": [
+      0.150902,
+      -0.988549
+    ],
+    "timing": {
+      "hand_detection_s": 0.303,
+      "ocr_vlm_s": 4.9315,
+      "geometry_ranking_s": 1.1103,
+      "total_s": 6.4355
+    }
+  },
+  {
+    "img": "IMG_8051",
+    "r": 4,
+    "top1": "辎",
+    "top3": [
+      "辎",
+      "带",
+      "重"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 28,
+    "origin": [
+      1786.76,
+      3154.15
+    ],
+    "direction": [
+      0.150902,
+      -0.988549
+    ],
+    "timing": {
+      "hand_detection_s": 0.2947,
+      "ocr_vlm_s": 4.8418,
+      "geometry_ranking_s": 45.3103,
+      "total_s": 50.5317
+    }
+  },
+  {
+    "img": "IMG_8051",
+    "r": 5,
+    "top1": "辎",
+    "top3": [
+      "辎",
+      "带",
+      "重"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 28,
+    "origin": [
+      1786.76,
+      3154.15
+    ],
+    "direction": [
+      0.150902,
+      -0.988549
+    ],
+    "timing": {
+      "hand_detection_s": 0.2947,
+      "ocr_vlm_s": 4.9253,
+      "geometry_ranking_s": 1.1057,
+      "total_s": 6.4143
+    }
+  },
+  {
+    "img": "IMG_8052",
+    "r": 1,
+    "top1": "柔",
+    "top3": [
+      "柔",
+      "然",
+      "军"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 20,
+    "origin": [
+      1885.34,
+      2916.1
+    ],
+    "direction": [
+      0.104338,
+      -0.994542
+    ],
+    "timing": {
+      "hand_detection_s": 0.3091,
+      "ocr_vlm_s": 125.8966,
+      "geometry_ranking_s": 47.0108,
+      "total_s": 173.3085
+    }
+  },
+  {
+    "img": "IMG_8052",
+    "r": 2,
+    "top1": "柔",
+    "top3": [
+      "柔",
+      "然",
+      "军"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 20,
+    "origin": [
+      1885.34,
+      2916.1
+    ],
+    "direction": [
+      0.104338,
+      -0.994542
+    ],
+    "timing": {
+      "hand_detection_s": 0.3125,
+      "ocr_vlm_s": 5.1131,
+      "geometry_ranking_s": 1.0592,
+      "total_s": 6.5742
+    }
+  },
+  {
+    "img": "IMG_8052",
+    "r": 3,
+    "top1": "柔",
+    "top3": [
+      "柔",
+      "然",
+      "军"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 20,
+    "origin": [
+      1885.34,
+      2916.1
+    ],
+    "direction": [
+      0.104338,
+      -0.994542
+    ],
+    "timing": {
+      "hand_detection_s": 0.3075,
+      "ocr_vlm_s": 4.7779,
+      "geometry_ranking_s": 46.9748,
+      "total_s": 52.1458
+    }
+  },
+  {
+    "img": "IMG_8052",
+    "r": 4,
+    "top1": "柔",
+    "top3": [
+      "柔",
+      "然",
+      "军"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 20,
+    "origin": [
+      1885.34,
+      2916.1
+    ],
+    "direction": [
+      0.104338,
+      -0.994542
+    ],
+    "timing": {
+      "hand_detection_s": 0.3182,
+      "ocr_vlm_s": 5.2426,
+      "geometry_ranking_s": 46.9833,
+      "total_s": 52.6368
+    }
+  },
+  {
+    "img": "IMG_8052",
+    "r": 5,
+    "top1": "柔",
+    "top3": [
+      "柔",
+      "然",
+      "军"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 20,
+    "origin": [
+      1885.34,
+      2916.1
+    ],
+    "direction": [
+      0.104338,
+      -0.994542
+    ],
+    "timing": {
+      "hand_detection_s": 0.3076,
+      "ocr_vlm_s": 4.8498,
+      "geometry_ranking_s": 47.245,
+      "total_s": 52.4879
+    }
+  },
+  {
+    "img": "IMG_8053",
+    "r": 1,
+    "top1": "一",
+    "top3": [
+      "一",
+      "统",
+      "到"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 38,
+    "origin": [
+      2308.68,
+      3409.97
+    ],
+    "direction": [
+      0.08133,
+      -0.996687
+    ],
+    "timing": {
+      "hand_detection_s": 0.3043,
+      "ocr_vlm_s": 126.0538,
+      "geometry_ranking_s": 45.0991,
+      "total_s": 171.545
+    }
+  },
+  {
+    "img": "IMG_8053",
+    "r": 2,
+    "top1": "一",
+    "top3": [
+      "一",
+      "统",
+      "到"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 38,
+    "origin": [
+      2308.68,
+      3409.97
+    ],
+    "direction": [
+      0.08133,
+      -0.996687
+    ],
+    "timing": {
+      "hand_detection_s": 0.3023,
+      "ocr_vlm_s": 5.0133,
+      "geometry_ranking_s": 44.7776,
+      "total_s": 50.1892
+    }
+  },
+  {
+    "img": "IMG_8053",
+    "r": 3,
+    "top1": "一",
+    "top3": [
+      "一",
+      "统",
+      "到"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 38,
+    "origin": [
+      2308.68,
+      3409.97
+    ],
+    "direction": [
+      0.08133,
+      -0.996687
+    ],
+    "timing": {
+      "hand_detection_s": 0.3032,
+      "ocr_vlm_s": 5.0313,
+      "geometry_ranking_s": 1.1825,
+      "total_s": 6.6011
+    }
+  },
+  {
+    "img": "IMG_8053",
+    "r": 4,
+    "top1": "一",
+    "top3": [
+      "一",
+      "统",
+      "到"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 38,
+    "origin": [
+      2308.68,
+      3409.97
+    ],
+    "direction": [
+      0.08133,
+      -0.996687
+    ],
+    "timing": {
+      "hand_detection_s": 0.3052,
+      "ocr_vlm_s": 4.9677,
+      "geometry_ranking_s": 44.7763,
+      "total_s": 50.1746
+    }
+  },
+  {
+    "img": "IMG_8053",
+    "r": 5,
+    "top1": "一",
+    "top3": [
+      "一",
+      "统",
+      "到"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 38,
+    "origin": [
+      2308.68,
+      3409.97
+    ],
+    "direction": [
+      0.08133,
+      -0.996687
+    ],
+    "timing": {
+      "hand_detection_s": 0.3047,
+      "ocr_vlm_s": 5.0068,
+      "geometry_ranking_s": 45.1397,
+      "total_s": 50.5464
+    }
+  },
+  {
+    "img": "IMG_8054",
+    "r": 1,
+    "top1": "代",
+    "top3": [
+      "代",
+      "迭",
+      "的"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 28,
+    "origin": [
+      1993.86,
+      2538.1
+    ],
+    "direction": [
+      0.146881,
+      -0.989154
+    ],
+    "timing": {
+      "hand_detection_s": 0.2957,
+      "ocr_vlm_s": 125.7602,
+      "geometry_ranking_s": 46.2905,
+      "total_s": 172.4404
+    }
+  },
+  {
+    "img": "IMG_8054",
+    "r": 2,
+    "top1": "代",
+    "top3": [
+      "代",
+      "迭",
+      "的"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 28,
+    "origin": [
+      1993.86,
+      2538.1
+    ],
+    "direction": [
+      0.146881,
+      -0.989154
+    ],
+    "timing": {
+      "hand_detection_s": 0.2958,
+      "ocr_vlm_s": 4.7447,
+      "geometry_ranking_s": 0.9755,
+      "total_s": 6.1097
+    }
+  },
+  {
+    "img": "IMG_8054",
+    "r": 3,
+    "top1": "代",
+    "top3": [
+      "代",
+      "迭",
+      "的"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 28,
+    "origin": [
+      1993.86,
+      2538.1
+    ],
+    "direction": [
+      0.146881,
+      -0.989154
+    ],
+    "timing": {
+      "hand_detection_s": 0.2955,
+      "ocr_vlm_s": 4.7159,
+      "geometry_ranking_s": 1.0412,
+      "total_s": 6.1496
+    }
+  },
+  {
+    "img": "IMG_8054",
+    "r": 4,
+    "top1": "代",
+    "top3": [
+      "代",
+      "迭",
+      "的"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 28,
+    "origin": [
+      1993.86,
+      2538.1
+    ],
+    "direction": [
+      0.146881,
+      -0.989154
+    ],
+    "timing": {
+      "hand_detection_s": 0.2941,
+      "ocr_vlm_s": 4.7215,
+      "geometry_ranking_s": 0.9722,
+      "total_s": 6.0798
+    }
+  },
+  {
+    "img": "IMG_8054",
+    "r": 5,
+    "top1": "代",
+    "top3": [
+      "代",
+      "迭",
+      "的"
+    ],
+    "status": "ok",
+    "n_blocks": 4,
+    "n_chars": 28,
+    "origin": [
+      1993.86,
+      2538.1
+    ],
+    "direction": [
+      0.146881,
+      -0.989154
+    ],
+    "timing": {
+      "hand_detection_s": 0.2986,
+      "ocr_vlm_s": 4.6764,
+      "geometry_ranking_s": 1.027,
+      "total_s": 6.0971
+    }
+  }
+]

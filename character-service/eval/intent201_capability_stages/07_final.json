@@ -1,0 +1,68 @@
+{
+  "asset_id": "asset_e080b636a5e20a0d4786e710",
+  "image_path": "/Users/gaolei/Projects/smart_home_control/img-server/img/3f089bec_upload_1787701987925.jpg",
+  "original_201": {
+    "status": "ok",
+    "character": "力",
+    "answer_text": "手指指的是「力」。",
+    "total_ms": 31682,
+    "note": "Mac plugin 07:58:55; Hunyuan 5 calls; return_debug was false so original blocks were not persisted."
+  },
+  "later_08_03_replay": {
+    "status": "ok_with_alternatives",
+    "character": "崭",
+    "total_ms": 36847,
+    "note": "Same image, same service, VLM non-deterministic; not intent 201."
+  },
+  "this_replay": {
+    "status": "ok_with_alternatives",
+    "character": "的",
+    "answer_text": "手指指的是「的」。",
+    "score": 0.5246,
+    "bbox": [
+      1254,
+      1403,
+      1329,
+      1504
+    ],
+    "top3": [
+      {
+        "text": "的",
+        "bbox": [
+          1254,
+          1403,
+          1329,
+          1504
+        ],
+        "score": 0.5246
+      },
+      {
+        "text": "力",
+        "bbox": [
+          1254,
+          1301,
+          1330,
+          1390
+        ],
+        "score": 0.5135
+      },
+      {
+        "text": "作",
+        "bbox": [
+          1178,
+          1403,
+          1254,
+          1504
+        ],
+        "score": 0.4532
+      }
+    ],
+    "timing": {
+      "hand_detection_s": 0.4238,
+      "ocr_vlm_s": 15.741,
+      "geometry_ranking_s": 25.1039,
+      "total_s": 41.3891
+    },
+    "post_s": 42.387
+  }
+}

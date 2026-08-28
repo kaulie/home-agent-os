@@ -15,6 +15,8 @@ import com.smarthome.livingroom_android.brain.dto.EdgeNodeInfo
 import com.smarthome.livingroom_android.brain.dto.EdgeOnlineStatus
 import com.smarthome.livingroom_android.brain.dto.EdgeRegisterRequest
 import com.smarthome.livingroom_android.brain.dto.ExecutionReport
+import com.smarthome.livingroom_android.brain.dto.ParticipantWire
+import com.smarthome.livingroom_android.brain.dto.ServiceDescriptor
 import com.smarthome.livingroom_android.command.CommandHandler
 import com.smarthome.livingroom_android.command.HttpCommandSource
 import com.smarthome.livingroom_android.command.IntentPipeline
@@ -22,6 +24,7 @@ import com.smarthome.livingroom_android.command.IntentsPullSnapshot
 import com.smarthome.livingroom_android.command.runtime.LocalEdgeRuntime
 import com.smarthome.livingroom_android.data.AppSettings
 import com.smarthome.livingroom_android.data.EdgeIdStore
+import com.smarthome.livingroom_android.data.RuntimeIdStore
 import com.smarthome.livingroom_android.skill.Skill
 import com.smarthome.livingroom_android.skill.SkillContext
 import com.smarthome.livingroom_android.skill.SkillResult
@@ -58,6 +61,14 @@ class EdgeAgent(
         fun onEdgeIdAssigned(edgeId: String) {}
         fun onEdgeInfoReported(info: EdgeNodeInfo) {}
         fun onHeartbeatStatsChanged(successCount: Long, lastSuccessAtMs: Long) {}
+        /** Per-Brain heartbeat result (LAN or Cloud base URL). roles is the payload sent, only on success. */
+        fun onBrainHeartbeat(baseUrl: String, ok: Boolean, error: String, roles: List<String>? = null) {}
+        /** attempt 0 = idle, 1 = 发送中, 2..max = 重试 n/max. */
+        fun onBrainHeartbeatPhase(baseUrl: String, attempt: Int, maxAttempts: Int) {}
+        /** Wall time of the next scheduled heartbeat tick (countdown). */
+        fun onHeartbeatScheduled(nextAtMs: Long) {}
+        /** Per-Brain register success (LAN or Cloud base URL). */
+        fun onBrainRegistered(baseUrl: String) {}
         /** CommandHandler / Agent pipeline lines for the run-log panel. */
         fun onCommandPipelineLog(message: String) {}
         /** Latest intents poll (including empty queue) for the snapshot panel. */
@@ -69,10 +80,20 @@ class EdgeAgent(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val pollMutex = Mutex()
     private var loopJob: Job? = null
+    private var pullJob: Job? = null
+    @Volatile
+    var nextHeartbeatAtMs: Long = 0L
+        private set
 
     @Volatile
     var assignedEdgeId: String? = EdgeIdStore.load(appContext)
         private set
+
+    /** P0: stable Runtime Identity, client-supplied (persisted, smooth migration from edge_id). */
+    private val runtimeId: String = RuntimeIdStore.ensure(appContext)
+
+    /** P0 Capability Exposure Policy (null = open). */
+    private val exposurePolicy: Map<String, List<String>>? get() = settings.exposurePolicy()
 
     /** Effective id: Brain-issued if present, else clientHint (UI only until register). */
     val edgeId: String
@@ -80,6 +101,22 @@ class EdgeAgent(
 
     val hasCachedEdgeId: Boolean
         get() = !assignedEdgeId.isNullOrBlank()
+
+    init {
+        val composite = brain as? CompositeBrainClient
+        composite?.onBrainHeartbeat = { base, ok, error, roles ->
+            if (ok && roles != null) {
+                persistReportedRoles(base, roles)
+            }
+            scope.launch { listener?.onBrainHeartbeat(base, ok, error, roles) }
+        }
+        composite?.onBrainHeartbeatPhase = { base, attempt, maxAttempts ->
+            scope.launch { listener?.onBrainHeartbeatPhase(base, attempt, maxAttempts) }
+        }
+        composite?.onBrainRegistered = { base ->
+            scope.launch { listener?.onBrainRegistered(base) }
+        }
+    }
 
     @Volatile
     var running: Boolean = false
@@ -108,31 +145,28 @@ class EdgeAgent(
             try {
                 withContext(Dispatchers.IO) {
                     ensureRegisteredWithBrain()
-                    val info = buildNodeInfo(EdgeOnlineStatus.ONLINE)
-                    val ok = brain.reportEdgeInfo(info)
-                    withContext(Dispatchers.Main) {
-                        listener?.onEdgeInfoReported(info)
-                    }
-                    if (ok) {
-                        recordOnlineHeartbeatSuccess()
-                        settings.lastReportedRoles = info.roles
-                        val capCount = info.services.sumOf { it.capabilities.size }
-                        postStatus(
-                            "Heartbeat ok edgeId=${info.edgeId} services=${info.services.size} " +
-                                "caps=$capCount",
-                        )
-                    } else {
-                        postStatus("Heartbeat failed (remote) edgeId=${info.edgeId}")
-                    }
-                    pullAndHandleServerCommands()
                 }
             } catch (t: Throwable) {
                 handleBrainFailure(t, phase = "register/heartbeat")
             }
             while (isActive && running) {
+                val now = System.currentTimeMillis()
+                nextHeartbeatAtMs = now + heartbeatIntervalMs
+                listener?.onHeartbeatScheduled(nextHeartbeatAtMs)
+                launch(Dispatchers.IO) { heartbeatTick() }
                 delay(heartbeatIntervalMs)
-                if (!isActive || !running) break
-                tick()
+            }
+        }
+        pullJob = scope.launch {
+            while (isActive && running) {
+                try {
+                    withContext(Dispatchers.IO) {
+                        pullAndHandleServerCommands()
+                    }
+                } catch (t: Throwable) {
+                    Log.w(TAG, "intents pull failed: ${t.message}")
+                }
+                delay(heartbeatIntervalMs)
             }
         }
     }
@@ -143,6 +177,8 @@ class EdgeAgent(
         running = false
         loopJob?.cancel()
         loopJob = null
+        pullJob?.cancel()
+        pullJob = null
         if (wasRunning && hadId) {
             scope.launch {
                 withContext(Dispatchers.IO) {
@@ -168,7 +204,11 @@ class EdgeAgent(
 
     /** Pull + execute once immediately (e.g. after UI injects a plan). */
     fun pollNow() {
-        scope.launch { tick() }
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { pullAndHandleServerCommands() }
+            }
+        }
     }
 
     fun clearAssignedEdgeId() {
@@ -239,7 +279,6 @@ class EdgeAgent(
             }
             if (!ok) error("Heartbeat failed (remote) edgeId=${info.edgeId}")
             recordOnlineHeartbeatSuccess()
-            settings.lastReportedRoles = info.roles
             "心跳成功 edgeId=${info.edgeId} services=${info.services.size}"
         }.also { result ->
             val ok = result.isSuccess
@@ -265,6 +304,7 @@ class EdgeAgent(
                 settings.lastRegisteredBrainUrl == url
             ) {
                 applyAssignedEdgeId(cached)
+                notifyPrimaryRegistered()
                 return@runCatching "已注册，复用本地 edge_id=$cached"
             }
             if (cached.isNotBlank()) applyAssignedEdgeId(cached)
@@ -279,12 +319,19 @@ class EdgeAgent(
         return if (base.isBlank()) "" else BrainEndpoint.intentUrl(base)
     }
 
+    private fun notifyPrimaryRegistered() {
+        val base = (brain as? CompositeBrainClient)?.remote?.baseURL.orEmpty()
+        if (base.isBlank()) return
+        scope.launch { listener?.onBrainRegistered(base) }
+    }
+
     private suspend fun ensureRegisteredWithBrain() {
         val url = currentBrainIntentUrl()
         val existing = assignedEdgeId?.trim().orEmpty()
             .ifBlank { EdgeIdStore.load(appContext).orEmpty() }
         if (existing.isNotEmpty() && url.isNotBlank() && settings.lastRegisteredBrainUrl == url) {
             applyAssignedEdgeId(existing)
+            notifyPrimaryRegistered()
             postStatus("Reuse cached edge_id=$existing (skip register)")
             return
         }
@@ -306,7 +353,11 @@ class EdgeAgent(
             roles = roles,
             intentSources = participant.intentSources(roles),
             endpoints = participant.endpoints(roles),
-            participantId = assignedEdgeId,
+            // P0: client-supplied identity is authoritative. Send runtime_id as
+            // participant_id so the Brain creates/updates this exact id (no hint rebind).
+            participantId = assignedEdgeId ?: runtimeId,
+            runtimeId = runtimeId,
+            exposurePolicy = exposurePolicy,
         )
         postStatus("Registering with Brain…")
         val response = brain.registerEdge(request)
@@ -317,6 +368,10 @@ class EdgeAgent(
             )
         }
         applyAssignedEdgeId(response.edgeId)
+        // Keep runtime_id store in sync with the Brain-returned id (should equal runtimeId).
+        if (response.edgeId != runtimeId) {
+            RuntimeIdStore.save(appContext, response.edgeId)
+        }
         settings.registeredAtMs = System.currentTimeMillis()
         postStatus(
             "Brain assigned edgeId=${response.edgeId} status=${response.status} (saved locally)",
@@ -333,7 +388,7 @@ class EdgeAgent(
         }
     }
 
-    fun buildNodeInfo(online: EdgeOnlineStatus): EdgeNodeInfo {
+    suspend fun buildNodeInfo(online: EdgeOnlineStatus): EdgeNodeInfo {
         val health = if (online == EdgeOnlineStatus.OFFLINE) {
             EdgeHealthSnapshot(status = EdgeHealthStatus.UNKNOWN, summary = "agent stopped")
         } else {
@@ -343,6 +398,13 @@ class EdgeAgent(
             )
         }
         val roles = participant.enabledRoles()
+        val services = participant.advertisedServices(roles, registry.services())
+        // P0: heartbeat carries an availability snapshot (Runtime IsAvailable()).
+        val snapshotted = if (online == EdgeOnlineStatus.ONLINE) {
+            availabilitySnapshot(services)
+        } else {
+            services
+        }
         return EdgeNodeInfo(
             edgeId = edgeId,
             displayName = identity.displayName,
@@ -350,41 +412,122 @@ class EdgeAgent(
             room = identity.room,
             onlineStatus = online,
             health = health,
-            services = participant.advertisedServices(roles, registry.services()),
+            services = snapshotted,
             appVersion = identity.appVersion,
             location = identity.location,
             roles = roles,
             intentSources = participant.intentSources(roles),
             endpoints = participant.endpoints(roles),
             participantId = assignedEdgeId ?: edgeId,
+            runtimeId = runtimeId,
+            exposurePolicy = exposurePolicy,
         )
     }
 
-    private suspend fun tick() {
-        pollMutex.withLock {
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    ensureRegisteredWithBrain()
-                    val info = buildNodeInfo(EdgeOnlineStatus.ONLINE)
-                    val ok = brain.reportEdgeInfo(info)
-                    withContext(Dispatchers.Main) {
-                        listener?.onEdgeInfoReported(info)
-                    }
-                    if (ok) {
-                        recordOnlineHeartbeatSuccess()
-                        settings.lastReportedRoles = info.roles
-                    } else {
-                        postStatus("Heartbeat failed (remote) edgeId=${info.edgeId}")
-                    }
-                    pullAndHandleServerCommands()
-                }.onFailure { t ->
-                    handleBrainFailure(t, phase = "tick")
-                }
+    /**
+     * P0: probe each declared capability via its Skill.isAvailable() and inject
+     * {available, observed_at}. DECLARED-but-unavailable caps stay advertised
+     * (Brain keeps the Declaration) but carry available=false so the schedulable
+     * map filters them out. Probes are best-effort; failures default to available.
+     */
+    private suspend fun availabilitySnapshot(services: List<ServiceDescriptor>): List<ServiceDescriptor> {
+        val ctx = SkillContext(
+            appContext = appContext,
+            edgeId = edgeId,
+            planId = "availability-probe",
+            stepId = "probe-${System.currentTimeMillis()}",
+        )
+        val probed = services.map { svc ->
+            val owner = registry.get(svc.serviceId)
+            val probedCaps = svc.capabilities.map { cap ->
+                val probe = runCatching {
+                    owner?.isAvailable(cap.capabilityId, emptyMap(), ctx)
+                }.getOrNull()
+                val ok = probe?.ok ?: true
+                val now = System.currentTimeMillis() / 1000.0
+                cap.copy(
+                    available = ok,
+                    observedAt = now,
+                    unavailableReason = if (ok) null else (probe?.message ?: "unavailable"),
+                )
             }
+            svc.copy(capabilities = probedCaps)
+        }
+        val availByService = probed.associate { svc ->
+            svc.serviceId to svc.capabilities.associate { cap ->
+                cap.capabilityId to (cap.available ?: true)
+            }
+        }
+        val availAny = mutableMapOf<String, Boolean>()
+        for (svc in probed) {
+            for (cap in svc.capabilities) {
+                val ok = cap.available ?: true
+                availAny[cap.capabilityId] = availAny[cap.capabilityId] == true || ok
+            }
+        }
+        return probed.map { svc ->
+            val own = availByService[svc.serviceId].orEmpty()
+            svc.copy(
+                capabilities = svc.capabilities.map { cap ->
+                    if (cap.composition != "composite" || cap.decomposesTo.isEmpty()) {
+                        cap
+                    } else {
+                        val atomOk = cap.decomposesTo.all { atom ->
+                            own[atom] ?: (availAny[atom] == true)
+                        }
+                        if (atomOk && (cap.available ?: true)) {
+                            cap
+                        } else {
+                            cap.copy(
+                                available = false,
+                                unavailableReason = cap.unavailableReason
+                                    ?: "composite atomics unavailable",
+                            )
+                        }
+                    }
+                },
+            )
+        }
+    }
+
+    /**
+     * Re-run Runtime [Skill.isAvailable] for every advertised capability (same logic
+     * as heartbeat snapshot). Does not POST edge-heartbeat — for Console UI refresh.
+     */
+    suspend fun probeCapabilityAvailability(): List<ServiceDescriptor> {
+        val roles = participant.enabledRoles()
+        if (!roles.contains(ParticipantWire.ROLE_RUNTIME)) {
+            return emptyList()
+        }
+        val services = participant.advertisedServices(roles, registry.services())
+        return availabilitySnapshot(services)
+    }
+
+    private suspend fun heartbeatTick() {
+        runCatching {
+            ensureRegisteredWithBrain()
+            val info = buildNodeInfo(EdgeOnlineStatus.ONLINE)
+            val ok = brain.reportEdgeInfo(info)
+            withContext(Dispatchers.Main) {
+                listener?.onEdgeInfoReported(info)
+            }
+            if (ok) {
+                recordOnlineHeartbeatSuccess()
+            } else {
+                postStatus("Heartbeat failed (remote) edgeId=${info.edgeId}")
+            }
+        }.onFailure { t ->
+            handleBrainFailure(t, phase = "heartbeat")
         }
     }
 
     private suspend fun pullAndHandleServerCommands() {
+        pollMutex.withLock {
+            pullAndHandleServerCommandsLocked()
+        }
+    }
+
+    private suspend fun pullAndHandleServerCommandsLocked() {
         // Peek (not pop): multi-tick / multi-edge need the same intent until terminal.
         val snapshot = commandSource.fetchSnapshot(consume = false)
         withContext(Dispatchers.Main) {
@@ -433,13 +576,11 @@ class EdgeAgent(
         )
     }
 
-    /** Manual pull now (same path as tick). */
+    /** Manual pull now (same path as the pull loop). */
     fun pullIntentsNow() {
         scope.launch {
-            pollMutex.withLock {
-                withContext(Dispatchers.IO) {
-                    pullAndHandleServerCommands()
-                }
+            withContext(Dispatchers.IO) {
+                runCatching { pullAndHandleServerCommands() }
             }
         }
     }
@@ -491,6 +632,23 @@ class EdgeAgent(
                 )
             }
         }
+    }
+
+    private fun persistReportedRoles(baseUrl: String, roles: List<String>) {
+        val mode = modeForBaseUrl(baseUrl)
+        settings.setLastReportedRoles(mode, roles)
+        val primary = (brain as? CompositeBrainClient)?.remote?.baseURL
+            ?.let { BrainEndpoint.normalizeBase(it) }
+            .orEmpty()
+        if (primary.isNotEmpty() && BrainEndpoint.normalizeBase(baseUrl) == primary) {
+            settings.lastReportedRoles = roles
+        }
+    }
+
+    private fun modeForBaseUrl(baseUrl: String): BrainEndpoint.Mode {
+        val root = BrainEndpoint.normalizeBase(baseUrl)
+        val cloud = BrainEndpoint.normalizeBase(settings.cloudBrainUrl)
+        return if (root == cloud) BrainEndpoint.Mode.CLOUD else BrainEndpoint.Mode.LAN
     }
 
     private fun handleBrainFailure(t: Throwable, phase: String) {

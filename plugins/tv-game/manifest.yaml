@@ -1,0 +1,20 @@
+id: tv-game
+service_id: chromecast.game
+group: game
+version: "0.1.0"
+display_name: TV Game Cast
+description: >
+  在 Chromecast 电视上启动互动游戏（game.launch）。
+  iPhone Cast Sender 主路径；Mac mac.game.host 提供 LAN game_url。
+
+capabilities:
+  - capability_id: game.launch
+    kind: output
+    description: >
+      能：启动本步必填 game_id 的电视互动游戏（Cast launch_game + LAN iframe）。
+      不能：实时 MOVE/PAUSE（走 iPhone 本地 GameCommand，不经 Brain）。
+
+entry:
+  ios: ios/TvGamePluginEntry.swift
+config:
+  - COIN_CATCHER_GAME_PORT

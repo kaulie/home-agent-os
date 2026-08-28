@@ -1,8 +1,10 @@
 # HomeAgent Admin
 
-口袋里的现场管理：看谁在线，开/关 Role 与 Runtime 能力。
+口袋里的 **Business Console**：看谁在线，开/关 Role 与 Runtime 能力；查看 Runtime 相关 intent 事件流。
 
-独立 App，不是 Console 的 Tab。直连 Brain，不经过本机 `8788` 代理。中控不发 intent。
+独立 App，不是 Console 的 Tab。直连 Brain，不经过本机 `8788` 代理。
+
+**开发 / Debug / Dev Task** 请用独立 App：[HomeAgent Dev](HomeAgentDev/README.md)。
 
 ## 打开工程
 

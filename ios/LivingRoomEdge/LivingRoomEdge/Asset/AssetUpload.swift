@@ -25,8 +25,9 @@ enum LocalCaptureAssets {
     }
 }
 
-/// iPhone `asset.upload`: copy a Runtime inbox capture or existing Asset to dest.
-/// Upload bytes go through `PhotoImgUpload` (probe + 10 min hard timeout).
+/// iPhone `asset.upload`: copy a Runtime inbox capture or existing Asset to the
+/// **active routing Brain** (`intentURL` / `AppModel.intentServerURL`).
+/// One POST `/api/v1/assets/upload` — not LAN img-server then cloud.
 enum AssetUpload {
     struct Result {
         let message: String
@@ -39,7 +40,10 @@ enum AssetUpload {
         intentURL: String
     ) async throws -> Result {
         let dest = PhotoUploadDest.parse(params)
-        let wireDest = PhotoUploadDest.displayName(dest)
+        if dest == "gdrive" || dest == "dropbox" {
+            _ = try PhotoUploadDest.endpoints(dest, primaryIntentURL: intentURL)
+        }
+        let wireDest = PhotoUploadDest.wireDest(forIntentURL: intentURL)
 
         var captureId = CaptureStore.parseCaptureId(params["capture_ref"])
         let existingAsset = parseRef(params["asset_ref"])
@@ -58,31 +62,14 @@ enum AssetUpload {
             } catch {
                 throw PhotoImgUpload.uploadError(error.localizedDescription)
             }
-            let uploaded = try await PhotoImgUpload.uploadData(
+            let newId = try await postToActiveBrain(
                 data: bytes,
                 filename: "\(captureId).jpg",
-                dest: dest,
-                phase: "asset.upload"
-            )
-            let newId = try await registerAsset(
                 intentURL: intentURL,
-                intentId: intentId,
-                savedAs: uploaded.savedAs,
-                publicBase: uploaded.publicBase
+                intentId: intentId
             )
             try? CaptureStore.markUploaded(captureId: captureId, dest: wireDest)
-            let outputs: [String: Any] = [
-                "asset_ref": [
-                    "asset_id": newId,
-                    "type": "image",
-                    "mime_type": "image/jpeg",
-                ],
-                "dest": wireDest,
-            ]
-            return Result(
-                message: "asset.upload dest=\(wireDest)\nasset_id: \(newId)",
-                outputs: outputs
-            )
+            return makeResult(assetId: newId, dest: wireDest)
         }
 
         guard let ref = existingAsset else {
@@ -93,29 +80,26 @@ enum AssetUpload {
             intentId: intentId,
             intentURL: intentURL
         )
-        let uploaded = try await PhotoImgUpload.uploadData(
+        let newId = try await postToActiveBrain(
             data: bytes,
             filename: "\(ref).jpg",
-            dest: dest,
-            phase: "asset.upload"
-        )
-        let newId = try await registerAsset(
             intentURL: intentURL,
-            intentId: intentId,
-            savedAs: uploaded.savedAs,
-            publicBase: uploaded.publicBase
+            intentId: intentId
         )
-        let outputs: [String: Any] = [
-            "asset_ref": [
-                "asset_id": newId,
-                "type": "image",
-                "mime_type": "image/jpeg",
-            ],
-            "dest": wireDest,
-        ]
-        return Result(
-            message: "asset.upload dest=\(wireDest)\nasset_id: \(newId)",
-            outputs: outputs
+        return makeResult(assetId: newId, dest: wireDest)
+    }
+
+    private static func makeResult(assetId: String, dest: String) -> Result {
+        Result(
+            message: "asset.upload dest=\(dest)\nasset_id: \(assetId)",
+            outputs: [
+                "asset_ref": [
+                    "asset_id": assetId,
+                    "type": "image",
+                    "mime_type": "image/jpeg",
+                ],
+                "dest": dest,
+            ]
         )
     }
 
@@ -190,50 +174,77 @@ enum AssetUpload {
         return key.isEmpty ? nil : key
     }
 
-    private static func registerAsset(
+    /// Single hop: POST multipart to the Brain `intentURL` is already routed to.
+    private static func postToActiveBrain(
+        data: Data,
+        filename: String,
         intentURL: String,
-        intentId: String,
-        savedAs: String,
-        publicBase: String
+        intentId: String
     ) async throws -> String {
-        guard let url = IntentClient.assetsURL(fromIntentURL: intentURL) else {
-            throw PhotoImgUpload.uploadError("卡在上传（asset.upload）：assets 地址无效。")
+        guard !data.isEmpty else {
+            throw PhotoImgUpload.uploadError("卡在上传（asset.upload）：文件为空。")
         }
+        guard let url = IntentClient.assetsUploadURL(fromIntentURL: intentURL) else {
+            throw PhotoImgUpload.uploadError("卡在上传（asset.upload）：assets/upload 地址无效。")
+        }
+        NSLog("[AssetUpload] POST %@ dest=%@", url.absoluteString, PhotoUploadDest.wireDest(forIntentURL: intentURL))
         let pid = ParticipantStore.participantId
-        let base = publicBase.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let storage: [String: Any] = [
-            "backend": "img_server",
-            "key": savedAs,
-            "public_base": base,
-            "edge_id": pid,
-        ]
-        let body: [String: Any] = [
-            "type": "image",
-            "mime_type": "image/jpeg",
-            "intent_id": intentId,
-            "execution_id": intentId,
-            "producer": "asset.upload",
-            "edge_id": pid,
-            "storage": storage,
-        ]
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var body = Data()
+
+        func appendField(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append(
+                "Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n"
+                    .data(using: .utf8)!
+            )
+        }
+
+        appendField("upload_intent", "asset.upload")
+        appendField("producer", "asset.upload")
+        appendField("type", "image")
+        appendField("mime_type", "image/jpeg")
+        if !pid.isEmpty {
+            appendField("edge_id", pid)
+            appendField("participant_id", pid)
+        }
+        let iid = intentId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !iid.isEmpty {
+            appendField("intent_id", iid)
+        }
+
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append(
+            "Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: image/jpeg\r\n\r\n"
+                .data(using: .utf8)!
+        )
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        request.timeoutInterval = 30
-        let (data, response) = try await URLSession.shared.data(for: request)
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        request.timeoutInterval = PhotoImgUpload.hardTimeoutSec
+
+        let (respData, response): (Data, URLResponse)
+        do {
+            (respData, response) = try await PhotoImgUpload.session.data(for: request)
+        } catch {
+            throw PhotoImgUpload.uploadError("卡在上传（asset.upload）：\(error.localizedDescription)")
+        }
         let code = (response as? HTTPURLResponse)?.statusCode ?? -1
         guard (200 ..< 300).contains(code),
-              let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+              let obj = try? JSONSerialization.jsonObject(with: respData) as? [String: Any]
         else {
-            throw PhotoImgUpload.uploadError("卡在上传（asset.upload）：登记 asset_ref 失败。")
+            let text = String(data: respData, encoding: .utf8) ?? ""
+            throw PhotoImgUpload.uploadError("卡在上传（asset.upload）：HTTP \(code) \(text.prefix(160))")
         }
-        let returned: String = {
-            if let direct = obj["asset_id"] as? String { return direct }
-            if let nested = (obj["asset"] as? [String: Any])?["asset_id"] as? String { return nested }
-            return ""
-        }()
-        let trimmed = returned.trimmingCharacters(in: .whitespacesAndNewlines)
+        let aid = (obj["asset_id"] as? String)
+            ?? ((obj["asset"] as? [String: Any])?["asset_id"] as? String)
+            ?? ((obj["asset_ref"] as? [String: Any])?["asset_id"] as? String)
+            ?? ""
+        let trimmed = aid.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw PhotoImgUpload.uploadError("卡在上传（asset.upload）：登记 asset_ref 未返回 asset_id。")
         }

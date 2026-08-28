@@ -89,8 +89,14 @@ Brain：`http://127.0.0.1:9527`（本机 LAN Brain；拷到手机用 `http://192
 
 ### C10 只拍照
 - **指令**：`拍张照`
-- **期望 plan**：仅 `camera.capture`（可带 `output_constrict.photo_url`）
+- **期望 plan**：仅 `camera.capture`（atomic；没有「给我看 / 上传 / 投屏」后续）。也可被规划器收成 `camera.capture_and_upload` 若它匹配 `prefer_when`——记观察即可
 - **通过**：`succeeded`；用户没说看/投/播报则不应搭 vision/display/speak
+
+### C10c 拍照给我看（composite，对标 cloud intent 1450）
+- **指令**：`拍张照片我看一下`
+- **期望 plan**：**仅一步** `camera.capture_and_upload`（不要 `camera.capture` + `asset.upload` 两步，尤其不要跨 Android/iPhone）
+- **通过**：`assigned_edge_id` 是当时 `camera.capture` available 的 Runtime（GoPro 可达的那台，例如 Android），不是 capture=unavailable 的 iPhone；终态 `succeeded`；`presentation.type=image` 且 `from=asset_ref`，有真实 `asset_id`
+- **心跳**：同一 Runtime 同时广告 `camera.capture`、`asset.upload`、`camera.capture_and_upload`；后两者 `composition=atomic` / `composite`（含 `decomposes_to`、`prefer_when`）
 
 ### C11 拍照投电视
 - **指令**：`拍张照投到电视上`
@@ -106,6 +112,15 @@ Brain：`http://127.0.0.1:9527`（本机 LAN Brain；拷到手机用 `http://192
 - **指令**：`拍张照，这个字读啥，用语音告诉我`
 - **期望 plan**：`camera.capture` → `vision.ask`（`photo_url=$photo_url`，`query` 含「这个字读啥」）→ `notify.speak`（`$answer_text`）
 - **通过**：不要用 `vision.perceive` 的 `$summary` 冒充读音；不要走纯文字 `query.content`（看不见图）；`succeeded`
+
+### C12c Shortcut 阅读模式指字认字
+- **前置**：先发 `开启阅读模式`（shortcut，`task_kind=shortcut`，`GET /api/v1/mode` 返回 `reading`）
+- **指令 A（现场拍）**：`这个字怎么读`
+- **期望 plan A**：`camera.capture_and_upload` → `reading.point_to_character`（`asset_ref=$asset_ref`）→ `notify.speak`（`$answer_text`）
+- **指令 B（已有照片）**：`看下最新的一张照片里手指的那个字是什么`
+- **期望 plan B**：`asset.inventory`（`type=image,index=1,order=newest_first`）→ `reading.point_to_character` → `notify.speak`；**不**含 `camera.capture_and_upload`
+- **通过**：不经 LLM；`intent_status=intent_parsed` 同步返回；`succeeded` 或 finger 缺失时失败 msg 可读
+- **退出**：`关闭阅读模式` → `GET /api/v1/mode` 无 active mode
 
 ### C13 笔画出图投屏（重跑 C1）
 - **指令**：`晋字笔画怎么写，投到电视上`
@@ -408,3 +423,38 @@ Brain：`http://127.0.0.1:9527`（本机 LAN Brain；拷到手机用 `http://192
 - **期望**：不 5xx；有终态。空 plan 停 `intent_parsed` = 不符合
 
 **执行说明**：一次只跑一条会动相机/电视/歌的用例。Q25 只验 plan。Q10–Q14 / Q18–Q22 / Q26 / Q36 / Q44 为高打扰。Runner：`tests/blackbox/run_q50.py`，结果 `run_results_q50.json`。
+
+---
+
+## TV Game MVP（G1–G10）
+
+详见 [`game_mvp_demo.md`](game_mvp_demo.md)。Runner：`tests/blackbox/run_game_mvp.sh`。
+
+### G-Plan 打开接金币
+- **指令**：`打开接金币游戏`
+- **期望**：plan 含 **一步** `game.launch`，`game_id=coin_catcher`；**无** MOVE/PAUSE/JUMP 步；`presentation.type=text` 或简短状态
+
+### G-HTTP 命令链
+- **脚本**：`run_game_mvp.sh`
+- **期望**：POST `/command` START/MOVE_LEFT/PAUSE/RESUME 均 200；SSE 客户端可收到事件
+
+---
+
+## Pronunciation Assessment（P1–P2）
+
+`pronunciation.assess`：家长上传标准朗读 + 小朋友跟读两段音频（均为音频 AssetRef）→ 整段朗读评价。
+前置：iPhone 双音频入口（`@intent`）与 Brain `ctx_param` 多音频（`@brain`）就绪前，本批只验 plan 与契约。
+Runner：待 `@quality` 打对外 API 后补；结果写入 `log.md`。
+
+### P1 评测跟读（plan + 契约）
+- **前置**：intent context 已带 `reference_audio` + `student_audio` 两个音频 AssetRef
+- **期望 plan**：仅 `pronunciation.assess`，`input_constrict` 含 `$reference_audio` + `$student_audio`，`assigned_edge_id` 为具备该能力的 Mac Edge；**无** 录音/上传/TTS/投屏步
+- **通过**：终态 `succeeded`（sidecar 在线时）；`step_outputs` 含 `overall_score` 等必填字段；`presentation.text` 含可读分数（如「本次朗读 84 分」）；不缺必填产出
+
+### P2 缺音频必失败（能力独立）
+- **前置**：intent context 只带 `reference_audio`，缺 `student_audio`
+- **期望**：`pronunciation.assess` 步 `failed`，带可读 `msg`（缺 student_audio）；**不得**从前序 step 自己去捡、不得静默成功、不得停在 `intent_parsed`
+
+### P3 sidecar 不可达必失败
+- **前置**：`pronunciation-service` :9190 未启动；两段音频齐全
+- **期望**：`pronunciation.assess` 步 `failed`，`msg` 含 pronunciation-service 不可达；**不得**静默成功或返回占位分数

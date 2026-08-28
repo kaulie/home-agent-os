@@ -30,9 +30,18 @@ class HttpEdgeReporter(
     val defaultRegisterURL: String get() = "$root/api/v1/edge-register"
     val defaultHeartbeatURL: String get() = "$root/api/v1/edge-heartbeat"
 
+    private val heartbeatClient: OkHttpClient = client.newBuilder()
+        .connectTimeout(HEARTBEAT_TIMEOUT_SEC, TimeUnit.SECONDS)
+        .readTimeout(HEARTBEAT_TIMEOUT_SEC, TimeUnit.SECONDS)
+        .writeTimeout(HEARTBEAT_TIMEOUT_SEC, TimeUnit.SECONDS)
+        .callTimeout(HEARTBEAT_TIMEOUT_SEC, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(false)
+        .build()
+
     suspend fun register(
         request: EdgeRegisterRequest,
         urlOverride: String? = null,
+        timeoutSec: Long = 6,
     ): EdgeRegisterResponse = withContext(Dispatchers.IO) {
         if (!enabled) {
             val id = request.clientHint?.trim().orEmpty().ifEmpty { "local-edge" }
@@ -51,7 +60,7 @@ class HttpEdgeReporter(
             .post(body)
             .header("Content-Type", "application/json; charset=utf-8")
             .build()
-        client.newCall(httpRequest).execute().use { response ->
+        clientForTimeout(timeoutSec).newCall(httpRequest).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw HttpEdgeException(
@@ -78,7 +87,7 @@ class HttpEdgeReporter(
             .post(body)
             .header("Content-Type", "application/json; charset=utf-8")
             .build()
-        client.newCall(httpRequest).execute().use { response ->
+        heartbeatClient.newCall(httpRequest).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
                 throw HttpEdgeException(
@@ -91,8 +100,20 @@ class HttpEdgeReporter(
         }
     }
 
+    private fun clientForTimeout(timeoutSec: Long): OkHttpClient {
+        val sec = timeoutSec.coerceAtLeast(1)
+        return client.newBuilder()
+            .connectTimeout(sec, TimeUnit.SECONDS)
+            .readTimeout(sec, TimeUnit.SECONDS)
+            .writeTimeout(sec, TimeUnit.SECONDS)
+            .callTimeout(sec, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .build()
+    }
+
     companion object {
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
+        private const val HEARTBEAT_TIMEOUT_SEC = 3L
 
         private fun defaultClient(): OkHttpClient =
             OkHttpClient.Builder()

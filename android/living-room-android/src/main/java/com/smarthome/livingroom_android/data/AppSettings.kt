@@ -66,6 +66,25 @@ class AppSettings(context: Context) {
             prefs.edit().putStringSet(KEY_LAST_ROLES, ParticipantWire.ordered(value).toSet()).apply()
         }
 
+    var lastReportedRolesLan: List<String>
+        get() = ParticipantWire.ordered(prefs.getStringSet(KEY_LAST_ROLES_LAN, emptySet()) ?: emptySet())
+        set(value) {
+            prefs.edit().putStringSet(KEY_LAST_ROLES_LAN, ParticipantWire.ordered(value).toSet()).apply()
+        }
+
+    var lastReportedRolesCloud: List<String>
+        get() = ParticipantWire.ordered(prefs.getStringSet(KEY_LAST_ROLES_CLOUD, emptySet()) ?: emptySet())
+        set(value) {
+            prefs.edit().putStringSet(KEY_LAST_ROLES_CLOUD, ParticipantWire.ordered(value).toSet()).apply()
+        }
+
+    fun lastReportedRoles(mode: BrainEndpoint.Mode): List<String> =
+        if (mode == BrainEndpoint.Mode.LAN) lastReportedRolesLan else lastReportedRolesCloud
+
+    fun setLastReportedRoles(mode: BrainEndpoint.Mode, roles: List<String>) {
+        if (mode == BrainEndpoint.Mode.LAN) lastReportedRolesLan = roles else lastReportedRolesCloud = roles
+    }
+
     var householdDirectoryJson: String
         get() = prefs.getString(KEY_HOUSEHOLD, "[]") ?: "[]"
         set(value) = prefs.edit().putString(KEY_HOUSEHOLD, value).apply()
@@ -74,8 +93,40 @@ class AppSettings(context: Context) {
         get() = prefs.getString(KEY_SCAN_HISTORY, "[]") ?: "[]"
         set(value) = prefs.edit().putString(KEY_SCAN_HISTORY, value).apply()
 
+    /**
+     * P0 Capability Exposure Policy as raw wire "lan:cap1,cap2;cloud:cap3".
+     * Empty = open by default (backward compatible).
+     */
+    var exposurePolicyWire: String
+        get() = prefs.getString(KEY_EXPOSURE_POLICY, "")?.trim().orEmpty()
+        set(value) = prefs.edit().putString(KEY_EXPOSURE_POLICY, value.trim()).apply()
+
+    /** Optional `X-Admin-Token` for Brain admin APIs (e.g. dev_task → agent-bridge). */
+    var adminToken: String
+        get() = prefs.getString(KEY_ADMIN_TOKEN, "")?.trim().orEmpty()
+        set(value) = prefs.edit().putString(KEY_ADMIN_TOKEN, value.trim()).apply()
+
+    /** Parsed exposure policy, or null when open. */
+    fun exposurePolicy(): Map<String, List<String>>? = parseExposurePolicy(exposurePolicyWire)
+
     init {
         migrateEnableRuntimeOnce()
+    }
+
+    private fun parseExposurePolicy(raw: String): Map<String, List<String>>? {
+        val text = raw.trim()
+        if (text.isEmpty()) return null
+        val out = linkedMapOf<String, List<String>>()
+        for (part in text.split(";")) {
+            val seg = part.trim()
+            if (seg.isEmpty() || ":" !in seg) continue
+            val parts = seg.split(":", limit = 2)
+            val d = parts[0].trim().lowercase()
+            val caps = parts.getOrElse(1) { "" }
+            if (d.isEmpty()) continue
+            out[d] = caps.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        }
+        return out.takeIf { it.isNotEmpty() }
     }
 
     /** Existing Console installs saved intent_source+endpoint only; turn runtime on once. */
@@ -124,8 +175,12 @@ class AppSettings(context: Context) {
         private const val KEY_LAST_REGISTERED_BRAIN = "last_registered_brain_url"
         private const val KEY_ROLES = "enabled_roles"
         private const val KEY_LAST_ROLES = "last_reported_roles"
+        private const val KEY_LAST_ROLES_LAN = "last_reported_roles_lan"
+        private const val KEY_LAST_ROLES_CLOUD = "last_reported_roles_cloud"
         private const val KEY_HOUSEHOLD = "household_directory_json"
         private const val KEY_SCAN_HISTORY = "local_scan_history_json"
         private const val KEY_RUNTIME_MIGRATED = "runtime_role_migrated_v1"
+        private const val KEY_EXPOSURE_POLICY = "exposure_policy_wire"
+        private const val KEY_ADMIN_TOKEN = "admin_token"
     }
 }

@@ -474,6 +474,126 @@ final class CastSessionController: NSObject {
         }
     }
 
+    /// Launch an interactive game in Receiver iframe (`action=launch_game`).
+    func launchGame(
+        gameURL: String,
+        gameId: String = "coin_catcher",
+        timeoutSeconds: TimeInterval = 45,
+        eventWaitSeconds: TimeInterval = 30,
+        onProgress: ((String) -> Void)? = nil
+    ) async -> ControllerResult {
+        let trimmed = gameURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return .failure("launch_game failed: invalid game_url \(gameURL)")
+        }
+        progressHandler = onProgress
+        defer { progressHandler = nil }
+        configureIfNeeded()
+        do {
+            try await ensureCastSession(timeoutSeconds: timeoutSeconds, forceRestart: preferFreshSession)
+            preferFreshSession = false
+            let channel = try await ensureImageChannel(timeoutSeconds: 12)
+            let commandId = Self.makeCommandId()
+            let presentationId = Self.makePresentationId()
+            try sendCustomAction(
+                action: "launch_game",
+                commandId: commandId,
+                payload: [
+                    "presentation_id": presentationId,
+                    "game_id": gameId,
+                    "game_url": trimmed,
+                    "options": ["transport": "cast"],
+                ],
+                on: channel
+            )
+            let outcome = await waitForPresentationOutcome(
+                commandId: commandId,
+                presentationId: presentationId,
+                timeoutSeconds: eventWaitSeconds,
+                on: channel,
+                acceptGameLoaded: true
+            )
+            if case let .error(code, message) = outcome {
+                return .failure("launch_game failed: \(code) \(message)")
+            }
+            return .success(
+                "launch_game ok game_id=\(gameId) command_id=\(commandId) status=\(outcome.label)"
+            )
+        } catch {
+            preferFreshSession = true
+            return .failure("launch_game failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Send a real-time GameCommand to the running game (`action=game.command`). No Brain round-trip.
+    func sendGameCommand(
+        type: String,
+        source: String = "SYSTEM",
+        timestampMs: Int64? = nil
+    ) async -> ControllerResult {
+        let cmdType = type.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !cmdType.isEmpty else {
+            return .failure("game.command requires non-empty type")
+        }
+        let src = source.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let normalizedSource = (src == "VOICE" || src == "GESTURE") ? src : "SYSTEM"
+        let ts = timestampMs ?? Int64(Date().timeIntervalSince1970 * 1000)
+        configureIfNeeded()
+        do {
+            try await ensureCastSession(timeoutSeconds: 20, forceRestart: false)
+            let channel = try await ensureImageChannel(timeoutSeconds: 8)
+            let commandId = Self.makeCommandId()
+            try sendCustomAction(
+                action: "game.command",
+                commandId: commandId,
+                payload: [
+                    "command": [
+                        "type": cmdType,
+                        "source": normalizedSource,
+                        "timestamp": ts,
+                    ] as [String: Any],
+                ],
+                on: channel
+            )
+            return .success("game.command ok type=\(cmdType) command_id=\(commandId)")
+        } catch {
+            return .failure("game.command failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// HTTP fallback when Cast session is unavailable (dev / offline Cast).
+    func postGameCommandHTTP(baseURL: String, type: String, source: String = "SYSTEM") async -> ControllerResult {
+        let root = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: "\(root)/command") else {
+            return .failure("invalid game host url")
+        }
+        let cmdType = type.uppercased()
+        let src = source.uppercased()
+        let body: [String: Any] = [
+            "type": cmdType,
+            "source": (src == "VOICE" || src == "GESTURE") ? src : "SYSTEM",
+            "timestamp": Int64(Date().timeIntervalSince1970 * 1000),
+        ]
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 5
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: request)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? -1
+            guard (200 ..< 300).contains(code) else {
+                return .failure("POST /command HTTP \(code)")
+            }
+            return .success("POST /command ok type=\(cmdType)")
+        } catch {
+            return .failure("POST /command failed: \(error.localizedDescription)")
+        }
+    }
+
     /// Slideshow: sequential V1 `present` commands (same namespace).
     func castSlideshow(
         urlStrings: [String],
@@ -973,6 +1093,33 @@ final class CastSessionController: NSObject {
         }
     }
 
+    private func sendCustomAction(
+        action: String,
+        commandId: String,
+        payload: [String: Any],
+        on channel: GCKCastChannel
+    ) throws {
+        let messageObj: [String: Any] = [
+            "type": "command",
+            "protocol_version": 1,
+            "command_id": commandId,
+            "action": action,
+            "payload": payload,
+        ]
+        let data = try JSONSerialization.data(withJSONObject: messageObj, options: [])
+        guard let message = String(data: data, encoding: .utf8) else {
+            throw CastError.channelFailed("failed to encode custom action JSON")
+        }
+        note("sendTextMessage \(Self.imageMessageNamespace) action=\(action) → \(message.prefix(240))…")
+        var sendError: GCKError?
+        let ok = channel.sendTextMessage(message, error: &sendError)
+        if !ok {
+            throw CastError.channelFailed(
+                "sendTextMessage failed: \(sendError?.localizedDescription ?? "unknown") — payload \(message.prefix(200))"
+            )
+        }
+    }
+
     private enum PresentationOutcome {
         case started
         case completed
@@ -996,7 +1143,8 @@ final class CastSessionController: NSObject {
         presentationId: String?,
         timeoutSeconds: TimeInterval,
         on channel: LocalImageCastChannel,
-        acceptCleared: Bool = false
+        acceptCleared: Bool = false,
+        acceptGameLoaded: Bool = false
     ) async -> PresentationOutcome {
         let deadline = Date().addingTimeInterval(max(1, timeoutSeconds))
         while Date() < deadline {
@@ -1005,7 +1153,7 @@ final class CastSessionController: NSObject {
                 presentationId: presentationId
             ) {
                 switch event.name {
-                case "presentation.started":
+                case "presentation.started", "game.loaded":
                     return .started
                 case "presentation.completed":
                     return .completed

@@ -7,6 +7,7 @@ to pixel space using the decoded image dimensions.
 
 from __future__ import annotations
 
+import hashlib
 import base64
 import io
 import json
@@ -14,6 +15,11 @@ import os
 import urllib.error
 import urllib.request
 from typing import Any
+
+# In-process OCR cache: same image bytes → same result, no repeat VLM call.
+# Keyed by SHA-256 of image bytes + language.  Bounded to _CACHE_MAX entries.
+_CACHE: dict[str, dict[str, Any]] = {}
+_CACHE_MAX = 200
 
 
 class HunyuanOcrError(Exception):
@@ -78,6 +84,16 @@ def recognize(
     if not image_bytes:
         raise HunyuanOcrError("empty image")
 
+    # Cache lookup — same image returns same result without re-calling VLM.
+    # Set HUNYUAN_OCR_CACHE=0 to disable (e.g. for benchmarking real VLM latency).
+    if os.environ.get("HUNYUAN_OCR_CACHE", "1") != "0":
+        cache_key = hashlib.sha256(image_bytes).hexdigest() + f":{language}"
+        cached = _CACHE.get(cache_key)
+        if cached is not None:
+            return dict(cached)  # return a copy
+    else:
+        cache_key = None
+
     w, h = _image_size(image_bytes)
     if not w or not h:
         raise HunyuanOcrError("cannot decode image dimensions")
@@ -95,7 +111,7 @@ def recognize(
             }
         ],
         "max_tokens": 1024,
-        "temperature": 0.1,
+        "temperature": 0.0,
     }
     if return_timings:
         req_body["timings"] = True
@@ -162,4 +178,11 @@ def recognize(
     result: dict[str, Any] = {"blocks": blocks, "text": "".join(texts)}
     if return_timings and isinstance(body.get("timings"), dict):
         result["timings"] = body["timings"]
+
+    # Store in cache (evict oldest if over limit).
+    if cache_key is not None:
+        if len(_CACHE) >= _CACHE_MAX:
+            _CACHE.pop(next(iter(_CACHE)))
+        _CACHE[cache_key] = dict(result)
+
     return result

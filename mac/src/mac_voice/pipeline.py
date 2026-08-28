@@ -9,7 +9,7 @@ from typing import Any
 from mac_voice.config import VoiceConfig
 from mac_voice.edge_id import require_parent_edge_id
 from mac_voice.intent_poster import post_intent
-from mac_voice.wake import looks_like_ack_echo
+from mac_voice.wake import looks_like_ack_echo, looks_like_light_command_echo
 
 log = logging.getLogger("mac_voice.pipeline")
 
@@ -27,6 +27,9 @@ def handle_transcript(
         return None
     if looks_like_ack_echo(text):
         log.info("skip wake-ack utterance; not an intent text=%r", text)
+        return None
+    if looks_like_light_command_echo(text):
+        log.info("skip light.set speaker echo; not an intent text=%r", text)
         return None
     if not post:
         return None

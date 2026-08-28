@@ -2,10 +2,12 @@
 
 状态：**已批准**。本文是现行 DBA 合同，只描述当前库。实现：`server/sql/*.sql` + `server/db.py`。引擎 SQLite 3；表名与列名可平移到 Postgres。
 
-范围：intent 物流、Participant 注册与心跳、意图复盘、意图复杂度分类事件、Asset 目录、管理员调度策略 `edge_control_policy`、管理员操作日志 `admin_op_log`、**Entity Registry（一期 Device）**。  
-不在本期：Mac Edge `local_ledger.json` / `edge_id.json`、Android SharedPreferences、iOS UserDefaults。
+范围：intent 物流、Participant 注册与心跳、意图复盘、意图复杂度分类事件、Asset 目录、管理员调度策略 `edge_control_policy`、管理员操作日志 `admin_op_log`、**Entity Registry（一期 Device）**、**Runtime Identity / Registration / Heartbeat（P0 双 Brain）**。  
+不在本期：Mac Edge `local_ledger.json` / `edge_id.json`、Android SharedPreferences、iOS UserDefaults、`heartbeat_history` 表（P0 用结构化日志，分析引擎待后续）。
 
 wire 名 `edge_id` / 步上 `assigned_edge_id` 仍用，值等于 `participant_id`。`location` 的入站别名是 `room`。整单不再有 `jobs.assigned_edge_id` 或 `scheduler_node`。
+
+**P0 双 Brain 约定（见 [`architecture/dual-brain-runtime.md`](architecture/dual-brain-runtime.md) 与 [`architecture/capability-availability.md`](architecture/capability-availability.md)）：** `participant_id` 即 Runtime Identity，由 Runtime 端生成并持久化、注册时上报，Brain 不再签发（legacy `client_hint` 回绑保留过渡）。每个 Brain 进程即一个 domain（`lan`/`cloud`，由 `instance_intent_origin()` 写入）。Heartbeat 属于 Registration，状态列落在 `registrations` 表（键 `(participant_id, domain)`）。`participants.services` 是稳定的 Capability Declaration；Availability 进入 heartbeat 的 `services[].capabilities[].available` + `observed_at`。`participants.exposure_policy` 是 per-domain Capability Exposure Policy。`DECLARED=true / AVAILABLE=false` 是合法状态：不进 `capability_edge_mapping`，但 Declaration 不删。
 
 库文件：`server/data/brain.sqlite3`（环境变量 `BRAIN_DB_PATH`）。  
 运行参数：`journal_mode=WAL`，`foreign_keys=ON`，`busy_timeout=5000`，`synchronous=NORMAL`。
@@ -31,6 +33,7 @@ wire 名 `edge_id` / 步上 `assigned_edge_id` 仍用，值等于 `participant_i
 ```mermaid
 erDiagram
   meta ||--|| meta : "kv"
+  participants ||--o{ registrations : "participant_id, domain (P0)"
   participants ||--o| jobs : "issuer edge_id / step assigned_edge_id"
   jobs ||--o{ intent_reviews : "intent_id, no FK"
   jobs ||--o{ intent_classification_events : "intent_id, no FK"
@@ -71,6 +74,7 @@ erDiagram
     text step_outputs
     text presentation
     text pending_delivery
+    text available_capabilities
   }
   participants {
     text participant_id PK
@@ -89,6 +93,15 @@ erDiagram
     text services
     text intent_sources
     text endpoints
+    text domain
+    text exposure_policy
+    text runtime_id
+  }
+  registrations {
+    text participant_id PK
+    text domain PK
+    real registered_at
+    real updated_at
     text online_status
     text health
     int client_time_ms
@@ -98,6 +111,10 @@ erDiagram
     text schedule_reject_reason
     real reported_at
     real server_received_at
+    text connection
+    int latency
+    text reachability
+    text services_snapshot
   }
   intent_reviews {
     int review_id PK
@@ -240,6 +257,7 @@ erDiagram
 | `step_outputs` | TEXT | 是 | JSON object |
 | `presentation` | TEXT | 是 | JSON object；公开形状用 `asset_ref`，禁止 `image_url` / `photo_url` |
 | `pending_delivery` | TEXT | 是 | JSON object |
+| `available_capabilities` | TEXT | 是 | JSON array：规划当时 planner 看到的 Available Capabilities 目录（已滤 `available=false`）。历史行 NULL。迁移：`server/sql/024_jobs_available_capabilities.sql` |
 
 写入：`INSERT … ON CONFLICT(intent_id) DO UPDATE`（除 `created_at` 外整行替换列）。应用层 `put_job` / `get_job` 收发明文字典。未声明的键不落库。
 
@@ -253,12 +271,12 @@ Edge 拉取（`GET …/intents?edge_id=`）读本表。可见条件：`status` �
 
 同一 Participant 可同时具备最多四种正交 Role（列值为 0/1）：`intent_source` / `runtime` / `endpoint` / `observer`。此处 Observer 是产品事件消费者（CLI / Dashboard），不是 Cursor `@coordinator`。
 
-心跳是在线状态，不是第五种 Role；落在同一行。未心跳过的节点 `online_status` 与 `server_received_at` 为 NULL，不出现在 `GET /api/v1/edges` 列表。
+P0 双 Brain 后，`participants` 只承载 **Identity + Declaration + Exposure Policy**；**心跳状态迁到 `registrations`**（§3.4a）。`services` 是稳定的 Capability Declaration；Availability 不落本表（进 `registrations.services_snapshot`）。
 
 | 列 | 类型 | 空 | 说明 |
 |----|------|----|------|
-| `participant_id` | TEXT PK | 否 | Brain 签发的可信 id。wire 仍可叫 `edge_id`，值相同 |
-| `client_hint` | TEXT | 是 | 客户端建议 id |
+| `participant_id` | TEXT PK | 否 | **Runtime Identity**，由 Runtime 端生成并持久化、注册时上报。wire 仍可叫 `edge_id`，值相同。legacy `client_hint` 回绑保留过渡 |
+| `client_hint` | TEXT | 是 | 客户端建议 id（legacy 回绑用） |
 | `display_name` | TEXT | 是 | |
 | `device_type` | TEXT | 是 | Identity，不是 Role |
 | `location` | TEXT | 是 | 物理位置，默认 `living-room`。wire 仍可叫 `room`，值相同 |
@@ -270,10 +288,30 @@ Edge 拉取（`GET …/intents?edge_id=`）读本表。可见条件：`status` �
 | `role_runtime` | INTEGER | 否 | 0/1；有 `services` 则置 1 |
 | `role_endpoint` | INTEGER | 否 | 0/1；有 `endpoints` 则置 1 |
 | `role_observer` | INTEGER | 否 | 0/1；靠入站 `roles` / `role_observer` |
-| `services` | TEXT | 是 | Runtime 契约：JSON array，见 §4.7 |
+| `services` | TEXT | 是 | Runtime 契约：JSON array，见 §4.7。**Capability Declaration（稳定）** |
 | `intent_sources` | TEXT | 是 | Intent Source 契约：JSON array，见 §4.2 |
 | `endpoints` | TEXT | 是 | Endpoint 契约：JSON array，见 §4.2 |
-| `online_status` | TEXT | 是 | `online` \| `offline`；无心跳则为 NULL |
+| `domain` | TEXT | 是 | 本 Brain 的 domain：`lan` \| `cloud`，注册时由 `instance_intent_origin()` 写入。迁移：`server/sql/022_runtime_identity.sql` |
+| `exposure_policy` | TEXT | 是 | JSON `{lan:[cap...], cloud:[cap...]}`；`can_participate` 第 4 条检查用。无 policy 默认全开。迁移：`022` |
+| `runtime_id` | TEXT | 是 | 冗余 = `participant_id`，供未来跨 Brain 联邦查询；本期等于 `participant_id`。迁移：`022` |
+
+> 心跳列（`online_status` / `health` / `client_time_ms` / `brain_time_ms` / `clock_skew_ms` / `schedule_eligible` / `schedule_reject_reason` / `reported_at` / `server_received_at`）**已迁出到 `registrations`**（§3.4a，迁移 `server/sql/023_registrations.sql`），`participants` 不再保留。迁移前旧列备份到 `participants_heartbeat_backup`。
+
+`participant_id` 在 Brain 重启后必须稳定：已登记的 `client_hint` 不得重新签发成新 id。P0 后 Identity 由 Runtime 自持，跨 Brain 同一 Runtime 用同一个 id。
+
+写入：先注册后心跳。`put_registration` 写 `participants`（Identity + Declaration + Exposure Policy）；`put_heartbeat` 写 `registrations`，要求该 `(participant_id, domain)` 行已存在。未声明的键不落库。
+
+### 3.4a `registrations`
+
+Per-domain Registration 与 Heartbeat 状态。键 `(participant_id, domain)`。一个 Brain 进程只存本 domain 的行；同一 Runtime 的「多 Registration」物理上分布在 Local/Cloud 两个 Brain DB。
+
+| 列 | 类型 | 空 | 说明 |
+|----|------|----|------|
+| `participant_id` | TEXT | 否 | PK 之一；等于 `participants.participant_id`，无外键 |
+| `domain` | TEXT | 否 | PK 之一；`lan` \| `cloud`，等于该 Brain 的 `instance_intent_origin()` |
+| `registered_at` | REAL | 否 | Unix 秒 |
+| `updated_at` | REAL | 否 | Unix 秒 |
+| `online_status` | TEXT | 是 | `online` \| `offline`；无心跳为 NULL |
 | `health` | TEXT | 是 | JSON object `{status, summary, details}` |
 | `client_time_ms` | INTEGER | 是 | Edge 时钟，Unix 毫秒 |
 | `brain_time_ms` | INTEGER | 是 | Brain 收到时，Unix 毫秒 |
@@ -282,12 +320,14 @@ Edge 拉取（`GET …/intents?edge_id=`）读本表。可见条件：`status` �
 | `schedule_reject_reason` | TEXT | 是 | 仅不合格时 |
 | `reported_at` | REAL | 是 | Unix 秒 |
 | `server_received_at` | REAL | 是 | Unix 秒 |
+| `connection` | TEXT | 是 | 预留：连接方式描述 |
+| `latency` | INTEGER | 是 | 预留：毫秒 |
+| `reachability` | TEXT | 是 | 预留：`lan` \| `cloud` \| `island` |
+| `services_snapshot` | TEXT | 是 | JSON array：本次 heartbeat 的 `services[]`，`capabilities[]` 含 `available` + `observed_at`（Availability Snapshot） |
 
 在线 TTL **不落库**：读取时若 `online_status=online` 且 `now - server_received_at > 30s`，响应里标 `offline`。
 
-`participant_id` 在 Brain 重启后必须稳定：已登记的 `client_hint` 不得重新签发成新 id。
-
-写入：先注册后心跳。`put_registration` 不覆盖心跳列；`put_heartbeat` 要求行已存在。未声明的键不落库。
+写入：`INSERT … ON CONFLICT(participant_id, domain) DO UPDATE`。`put_heartbeat` 落本表；同时落一行结构化日志（`participant_id, domain, observed_at, online_status, capabilities_snapshot`）供 Capability Lifecycle Timeline（P0 不建 `heartbeat_history` 表，分析引擎待后续）。
 
 ### 3.5 `intent_reviews`
 
@@ -349,6 +389,23 @@ Intent Complexity Classifier V1 的观察事件。Planner 之前对用户原话�
 | `created_at` | REAL | 否 | Unix 秒 |
 
 `features` / `candidates` 禁止双重 JSON 编码。未声明的键不落库。
+
+### 3.5c `global_events`
+
+家庭级全局事件流。Mode 切换是 `kind='mode'` 的一种；后续可追加 scene / preference 等，不改表结构。append-only；状态由事件推导（如 `resolve_active_mode()`）。不外键。无二级索引。迁移：`server/sql/025_global_events.sql`。
+
+| 列 | 类型 | 空 | 说明 |
+|----|------|----|------|
+| `event_id` | INTEGER PK AUTOINCREMENT | 否 | 自增 |
+| `kind` | TEXT | 否 | 如 `mode` |
+| `action` | TEXT | 否 | 如 `activate` / `deactivate` |
+| `subject` | TEXT | 是 | kind=mode 时为 `reading` / `game` 等 |
+| `payload` | TEXT | 是 | JSON 扩展 |
+| `edge_id` | TEXT | 是 | 触发来源 participant_id |
+| `intent_id` | TEXT | 是 | 关联 intent |
+| `created_at` | REAL | 否 | Unix 秒 |
+
+API：`GET /api/v1/mode`（读当前 mode + 最近 mode 事件）。写事件经 Shortcut 拦截链（intent POST），无单独写 HTTP。
 
 ### 3.6 `assets`
 
@@ -471,6 +528,7 @@ Entity Registry（World Model 锚点）。**与 `participants` / `assets` 正交
 | `step_outputs` | object | 否 | 键为 step 号字符串，值为该步 `outputs` 对象 |
 | `presentation` | object | 否 | Brain 顶层交付。公开形状用 `asset_ref`，禁止 `image_url` / `photo_url` |
 | `pending_delivery` | object | 否 | 待投递钩 |
+| `available_capabilities` | object[] | 否 | 规划当时的 schedulable catalog；与 prompt `<Available Capabilities>` 同形。每项至少 `capability_id`，按边行时有 `edge_id` / `assigned_edge_id`，以及当时已有的 `composition` / `prefer_when` |
 
 `get_job` 读回时补 `intent_status`（= `status`）与 `id`（= `intent_id`）。
 
@@ -556,9 +614,13 @@ services[]
   capabilities[]
     capability_id / description
     input_schema / output_schema
+    available        # P0 新增：bool，Runtime 在 heartbeat 前自检 IsAvailable() 上报
+    observed_at      # P0 新增：Unix 秒，本次 probe 时刻
 ```
 
 `input_schema` / `output_schema` 为对象，键是参数名，值含 `type`、`required`、`description`。
+
+`available` / `observed_at` 仅在 **heartbeat 的 `services_snapshot`** 里出现，是 Availability Snapshot（动态）。`participants.services`（Declaration）不带这两个字段，保持稳定。`available=false` 的 Capability 仍属 Declaration，只是不进 `capability_edge_mapping`（`DECLARED=true / AVAILABLE=false`）。
 
 ### 4.8 `execution_timing`
 
@@ -646,6 +708,11 @@ Intent 根上的 `base_time` 是调度原点，不属于本对象。
 10. `intent_reviews` 只追加；同一 `session_id` 下多轮、同一 `intent_id` 上多次 LLM 各占一行。物流改写 `jobs.execution_plan` 不回写复盘行。
 11. Asset 身份是 `asset_id`。步间只传 `asset_ref`。库不存 bytes，不存 `photo_url` / 永久 URL。Grant 绑 `(asset_id, intent_id)`。
 12. `intent_classification_events` 只追加。分类结果不写进 `jobs`，不改 Planner / `execution_plan`。
+13. **Runtime Identity 一份**：`participant_id` 由 Runtime 自持，跨 Local/Cloud Brain 同一 Runtime 用同一个 id；Brain 不签发（legacy `client_hint` 回绑过渡）。
+14. **Heartbeat 属于 Registration**：心跳状态在 `registrations(participant_id, domain)`，不在 `participants`；Local/Cloud heartbeat 独立。
+15. **Declaration 与 Availability 解耦**：`participants.services` 是稳定 Declaration；`available` 只在 heartbeat snapshot 里；`DECLARED=true / AVAILABLE=false` 时 Capability 不进 `capability_edge_mapping` 但 Declaration 不删。
+16. **Exposure Policy**：`participants.exposure_policy[domain]` 决定 Capability 在本 domain 是否可被调度；无 policy 默认全开。
+17. **Brain 永远不主动 probe 设备**：Availability 由 Runtime 自检上报，Brain 只消费 snapshot。
 
 ---
 
@@ -740,7 +807,8 @@ CREATE TABLE jobs (
   outputs TEXT,
   step_outputs TEXT,
   presentation TEXT,
-  pending_delivery TEXT
+  pending_delivery TEXT,
+  available_capabilities TEXT
 );
 
 CREATE TABLE participants (
@@ -760,6 +828,16 @@ CREATE TABLE participants (
   services TEXT,
   intent_sources TEXT,
   endpoints TEXT,
+  domain TEXT,
+  exposure_policy TEXT,
+  runtime_id TEXT
+);
+
+CREATE TABLE registrations (
+  participant_id TEXT NOT NULL,
+  domain TEXT NOT NULL,
+  registered_at REAL NOT NULL,
+  updated_at REAL NOT NULL,
   online_status TEXT,
   health TEXT,
   client_time_ms INTEGER,
@@ -768,7 +846,12 @@ CREATE TABLE participants (
   schedule_eligible INTEGER,
   schedule_reject_reason TEXT,
   reported_at REAL,
-  server_received_at REAL
+  server_received_at REAL,
+  connection TEXT,
+  latency INTEGER,
+  reachability TEXT,
+  services_snapshot TEXT,
+  PRIMARY KEY (participant_id, domain)
 );
 
 CREATE TABLE intent_reviews (

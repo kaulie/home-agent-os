@@ -1,0 +1,7 @@
+# Pronunciation assessment sidecar. V1 runs on WhisperX (pretrained, CPU).
+# MFA / GOPT are optional upgrade stages (loaded only when configured).
+whisperx>=3.1.1
+torch>=2.0.0
+torchaudio>=2.0.0
+librosa>=0.10.0
+numpy>=1.23.0

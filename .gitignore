@@ -55,3 +55,24 @@ ocr-service/qa_samples/bench.tar.gz
 character-service/**/__pycache__/
 character-service/.venv/
 character-service/samples/
+agent-bridge/.venv/
+agent-bridge/**/__pycache__/
+agent-bridge/data/
+agent-bridge/logs/
+.cursor/dev-inbox-state.json
+
+# Local temp / runtime artifacts
+.tmp_*
+mac/data/mac_voice.out
+mac/data/xiaodu-tts/
+
+# local-rt (scripts only; models/venv not in repo)
+local-rt/venv/
+local-rt/models/
+local-rt/llama.cpp/
+local-rt/logs/
+local-rt/test-imgs/
+
+# Node / game build artifacts
+**/node_modules/
+games/coin-catcher/dist/

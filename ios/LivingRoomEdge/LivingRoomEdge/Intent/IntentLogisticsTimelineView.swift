@@ -48,7 +48,7 @@ struct IntentLogisticsTimelineView: View {
                     .fill(bannerColor)
                     .frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(journey.idle ? "等待发出指令" : journey.current.label)
+                    Text(bannerTitle)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(bannerColor == .yellow ? .primary : bannerColor)
                     Text(journey.idle ? "intent_status" : journey.currentWireStatus)
@@ -95,7 +95,8 @@ struct IntentLogisticsTimelineView: View {
                         phase: phase,
                         isLast: index == journey.phases.count - 1,
                         showFailedLabel: journey.current == .failed && phase.phase == .succeeded,
-                        now: now
+                        now: now,
+                        reportedWire: journey.reportedWire
                     )
                 }
             }
@@ -128,6 +129,12 @@ struct IntentLogisticsTimelineView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(embedded ? Color.clear : Color(.tertiarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var bannerTitle: String {
+        if journey.idle { return "等待发出指令" }
+        let visual = journey.phases.first(where: { $0.phase == journey.current })?.visual ?? .active
+        return journey.current.displayLabel(visual: visual, reportedWire: journey.reportedWire)
     }
 
     private var bannerColor: Color {
@@ -452,6 +459,7 @@ private struct IntentLogisticsStepRow: View {
     let isLast: Bool
     let showFailedLabel: Bool
     let now: Date
+    let reportedWire: IntentPhase
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -538,7 +546,7 @@ private struct IntentLogisticsStepRow: View {
         if showFailedLabel || (phase.phase == .succeeded && phase.visual == .failed) {
             return IntentPhase.failed.label
         }
-        return phase.phase.label
+        return phase.phase.displayLabel(visual: phase.visual, reportedWire: reportedWire)
     }
 
     private var dotColor: Color {

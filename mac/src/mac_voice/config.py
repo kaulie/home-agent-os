@@ -109,7 +109,9 @@ def load_config() -> VoiceConfig:
     _load_dotenv(root)
     data_dir = Path(_env("MAC_VOICE_DATA_DIR", str(root / "data" / "mac_voice"))).expanduser()
     edge_data = Path(_env("MAC_EDGE_DATA_DIR", str(root / "data"))).expanduser()
-    brain = _env("MAC_VOICE_BRAIN_URL") or _env("MAC_EDGE_BRAIN_URL", "http://127.0.0.1:9527")
+    brain_raw = _env("MAC_VOICE_BRAIN_URL") or _env("MAC_EDGE_BRAIN_URL", "http://127.0.0.1:9527")
+    from mac_edge.config import primary_brain_url
+    brain = primary_brain_url(brain_raw)
     seg = int(_env("MAC_VOICE_SAUC_SEG_DURATION_MS", "200") or "200")
     # Same hint as Mac Runtime — voice is not a separate participant.
     client_hint = (

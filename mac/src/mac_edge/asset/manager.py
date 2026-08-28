@@ -35,6 +35,11 @@ class AssetManager:
     def __init__(self, *, brain: BrainClient, edge_id: str) -> None:
         self._brain = brain
         self._edge_id = edge_id.strip()
+        # asset_id → local Path cache. materialize_file downloads once; subsequent
+        # resolves (e.g. later atoms in a composite reusing the same asset) read
+        # the local copy instead of re-downloading from Brain. Cleared only on
+        # explicit invalidation; files are owned by the staging dir lifecycle.
+        self._materialized: dict[str, Path] = {}
 
     def register_storage_locator(
         self,
@@ -92,6 +97,71 @@ class AssetManager:
             producer,
         )
         return AssetRef(asset_id=aid, type=type, mime_type=mime_type)
+
+    def upload_file(
+        self,
+        path: str | Path,
+        *,
+        producer: str,
+        intent_id: str,
+        mime_type: str = "image/jpeg",
+        asset_type: str = "image",
+        filename: str | None = None,
+    ) -> AssetRef:
+        """POST bytes to the active Brain's /api/v1/assets/upload (primary / origin)."""
+        p = Path(path).expanduser()
+        if not p.is_file():
+            raise AssetStorageError(f"local file missing: {p}")
+        data = p.read_bytes()
+        if not data:
+            raise AssetStorageError("upload file is empty")
+        name = str(filename or p.name or "upload.bin").strip() or "upload.bin"
+        mime = str(mime_type or "image/jpeg").strip() or "image/jpeg"
+        kind = str(asset_type or "image").strip() or "image"
+        try:
+            result = self._brain.upload_asset(
+                file_bytes=data,
+                filename=name,
+                upload_intent=producer,
+                mime_type=mime,
+                asset_type=kind,
+                edge_id=self._edge_id,
+                intent_id=str(intent_id),
+            )
+        except BrainError as e:
+            raise AssetStorageError(f"assets/upload failed: {e}") from e
+        if not isinstance(result, dict):
+            raise AssetStorageError("assets/upload did not return an object")
+        aid = str(result.get("asset_id") or "").strip()
+        if not aid:
+            nested = result.get("asset")
+            if isinstance(nested, dict):
+                aid = str(nested.get("asset_id") or "").strip()
+        if not aid:
+            ref = result.get("asset_ref")
+            if isinstance(ref, dict):
+                aid = str(ref.get("asset_id") or "").strip()
+        if not aid:
+            raise AssetStorageError("assets/upload did not return asset_id")
+        returned_type = kind
+        returned_mime = mime
+        nested = result.get("asset") if isinstance(result.get("asset"), dict) else {}
+        ref = result.get("asset_ref") if isinstance(result.get("asset_ref"), dict) else {}
+        if isinstance(nested, dict) and nested.get("type"):
+            returned_type = str(nested.get("type") or kind)
+        elif isinstance(ref, dict) and ref.get("type"):
+            returned_type = str(ref.get("type") or kind)
+        if isinstance(nested, dict) and nested.get("mime_type"):
+            returned_mime = str(nested.get("mime_type") or mime)
+        elif isinstance(ref, dict) and ref.get("mime_type"):
+            returned_mime = str(ref.get("mime_type") or mime)
+        log.info(
+            "asset uploaded via Brain assets/upload id=%s producer=%s intent=%s",
+            aid,
+            producer,
+            intent_id,
+        )
+        return AssetRef(asset_id=aid, type=returned_type, mime_type=returned_mime)
 
     def register_local_file(
         self,
@@ -167,37 +237,49 @@ class AssetManager:
         raise AssetStorageError(f"unknown representation need: {need}")
 
     def materialize_file(self, ref: AssetRef, *, intent_id: str) -> Path:
-        """Local file for upload: edge_fs path, else download via http_url."""
+        """Local file for upload: edge_fs path, else download via http_url.
+
+        Cached per asset_id: the first call downloads to a staging file and
+        remembers it; later calls (e.g. subsequent atoms in a composite that
+        reuse the same asset_ref) return the cached local path without
+        re-downloading. This is what makes a co-located composite pay the
+        remote fetch once instead of once-per-atom."""
+        aid = str(ref.asset_id)
+        cached = self._materialized.get(aid)
+        if cached is not None and cached.is_file():
+            return cached
         try:
             local = self.resolve_for_capability(
                 ref, intent_id=intent_id, need="local_path"
             )
             if isinstance(local, LocalFileRepresentation) and local.path.is_file():
+                self._materialized[aid] = local.path
                 return local.path
         except (AssetStorageError, AssetNotFoundError):
             pass
         http = self.resolve_for_capability(ref, intent_id=intent_id, need="http_url")
         url = str(http.url or "").strip()
         if not url.startswith("http://") and not url.startswith("https://"):
-            raise AssetStorageError(f"asset {ref.asset_id} has no fetchable representation")
+            raise AssetStorageError(f"asset {aid} has no fetchable representation")
         suffix = Path(url.split("?", 1)[0]).suffix or ".bin"
-        root = Path(os.environ.get("MAC_EDGE_DATA_DIR") or "").strip()
+        root = (os.environ.get("MAC_EDGE_DATA_DIR") or "").strip()
         if root:
             staging = Path(root) / "upload"
         else:
             staging = Path(tempfile.gettempdir()) / "mac-edge-asset-upload"
         staging.mkdir(parents=True, exist_ok=True)
-        dest = staging / f"{ref.asset_id}{suffix}"
+        dest = staging / f"{aid}{suffix}"
         try:
             req = urllib.request.Request(url, method="GET")
             with urllib.request.urlopen(req, timeout=60.0) as resp:
                 dest.write_bytes(resp.read())
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             raise AssetStorageError(
-                f"asset {ref.asset_id} download failed: {e}"
+                f"asset {aid} download failed: {e}"
             ) from e
         if not dest.is_file() or dest.stat().st_size <= 0:
-            raise AssetStorageError(f"asset {ref.asset_id} downloaded empty file")
+            raise AssetStorageError(f"asset {aid} downloaded empty file")
+        self._materialized[aid] = dest
         return dest
 
     def inventory(

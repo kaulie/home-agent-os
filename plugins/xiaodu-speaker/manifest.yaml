@@ -1,0 +1,21 @@
+id: xiaodu-speaker
+service_id: xiaodu.speaker
+group: notify
+version: "0.1.0"
+display_name: 小度音箱
+description: 经 UPnP DLNA 在小度音箱播报 TTS 文案
+
+capabilities:
+  - capability_id: xiaodu.speak
+    description: >
+      能：把指定 text 经客厅小度音箱播报（edge-tts 合成 + LAN HTTP 供流 + UPnP 播放）。
+      用户说「用小度说/播报」时用本能力。
+      不能：Mac 本机 TTS（notify.speak）；知识问答；放歌；投屏。
+
+entry:
+  mac: mac/src/mac_edge/plugins/xiaodu_speaker.py
+config:
+  - MAC_EDGE_XIAODU_IP
+  - MAC_EDGE_XIAODU_HTTP_PORT
+  - MAC_EDGE_XIAODU_PUBLIC_HOST
+  - MAC_EDGE_XIAODU_VOICE

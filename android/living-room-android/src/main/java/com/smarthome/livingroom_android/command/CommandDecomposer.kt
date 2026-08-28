@@ -1,6 +1,7 @@
 package com.smarthome.livingroom_android.command
 
 import com.smarthome.livingroom_android.capability.Capabilities
+import com.smarthome.livingroom_android.skill.AndroidCameraSkill
 import com.smarthome.livingroom_android.skill.AssetUploadSkill
 import com.smarthome.livingroom_android.skill.DocumentScanSkill
 import com.smarthome.livingroom_android.skill.GoProCameraSkill
@@ -45,8 +46,9 @@ object CommandDecomposer {
                 Mapped(DocumentScanSkill.SKILL_ID, capability, cmd.params)
             capability == Capabilities.PHONE_CALL ->
                 Mapped(PhoneCallSkill.SKILL_ID, capability, cmd.params)
-            capability == Capabilities.CAMERA_CAPTURE ->
-                Mapped(GoProCameraSkill.SKILL_ID, capability, cmd.params)
+            capability == Capabilities.CAMERA_CAPTURE ||
+                capability == Capabilities.CAMERA_CAPTURE_AND_UPLOAD ->
+                Mapped(captureSkillIdFor(cmd.params), capability, cmd.params)
             capability == Capabilities.ASSET_UPLOAD ->
                 Mapped(AssetUploadSkill.SKILL_ID, capability, cmd.params)
             capability == Capabilities.TAKE_VIDEO ->
@@ -59,6 +61,15 @@ object CommandDecomposer {
                 Mapped(null, capability, cmd.params, "music runs on chromecast app-v2")
             else ->
                 Mapped(null, capability, cmd.params, "unsupported on living-room-android: '$capability'")
+        }
+    }
+
+    private fun captureSkillIdFor(params: Map<String, Any?>): String {
+        val appliance = params["appliance"]?.toString()?.trim().orEmpty().lowercase()
+        return when {
+            "gopro" in appliance -> GoProCameraSkill.SKILL_ID
+            appliance.isNotBlank() -> AndroidCameraSkill.SKILL_ID
+            else -> AndroidCameraSkill.SKILL_ID
         }
     }
 

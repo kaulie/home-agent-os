@@ -344,3 +344,19 @@ Brain：`http://115.190.153.53:9527`
 - 67s succeeded；诚实不知道缺实时天气；presentation type=text
 
 不结案。
+
+---
+
+## 2026-08-26 C10c — 拍照给我看（composite，对标 intent 1450）
+
+- **时间**：2026-08-26 上午
+- **指令**：`拍张照片我看一下`
+- **下发**：本轮 **未** 对 LAN `http://127.0.0.1:9527` POST（P2 会动相机；当时 Brain 进程未带本改动；`GET /api/v1/capabilities` 无 `camera.capture` / `camera.capture_and_upload`）
+- **自动化**：Flask 单测代替现场快门，见 [`capture_and_upload.md`](capture_and_upload.md)
+  - mock LLM 两步 capture@android + upload@iphone → 入队 **仅一步** `camera.capture_and_upload` `assigned_edge_id=android-1`
+  - iPhone capture unavailable 时不得再拆边
+  - 无 composite 广告且分边 → 入队失败（可读 msg）
+  - 独立「传到云上」仍可只派 `asset.upload`
+- **规划**：单测符合 C10c 期望 plan；现场物流待 Runtime 心跳带上三条 cap 后再 POST
+- **结论**：Brain sanitize/选边/catalog **已验收（单测）**；现场终态 `presentation.type=image` + `asset_id` **未跑快门，不结案**
+

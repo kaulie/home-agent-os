@@ -340,6 +340,35 @@ class LocalLedgerTests(unittest.TestCase):
         assert rec is not None
         self.assertEqual(rec["execution_plan"][0]["status"], 1)
 
+    def test_stale_brain_ghost_not_reaccepted_after_drop(self) -> None:
+        rec = _waiting_intent(intent_status="intent_dispatched")
+        rec["intent_base_time"] = 9001
+        rec["text"] = "关闭台灯"
+        rec["execution_plan"] = [
+            {
+                "step": 1,
+                "status": 0,
+                "assigned_edge_id": EID,
+                "capability": "light.set",
+            }
+        ]
+        self.ledger.ingest_peek([rec], EID)
+        self.ledger.set_step_status(IID, 1, 2, outputs={"state": "off"}, ts_ms=10)
+        self.ledger.set_intent_status(IID, "succeeded")
+        brain = _FakeBrain()
+        self.ledger.flush_to_brain(brain, EID)  # type: ignore[arg-type]
+        self.ledger.mark_step_synced(IID, 1, status=2, seq=1)
+        self.ledger.mark_intent_synced(IID, status="succeeded")
+        self.assertIsNone(self.ledger.get(IID))
+
+        stale = copy.deepcopy(rec)
+        stale["status"] = "intent_dispatched"
+        stale["intent_status"] = "intent_dispatched"
+        stale["execution_plan"][0]["status"] = 0
+        added = self.ledger.ingest_peek([stale], EID)
+        self.assertEqual(added, 0)
+        self.assertIsNone(self.ledger.get(IID))
+
     def test_bind_active(self) -> None:
         self.assertIs(active(), self.ledger)
 

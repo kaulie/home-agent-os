@@ -17,7 +17,6 @@ import kotlinx.coroutines.withContext
  */
 class GoProCameraSkill(
     private val intentUrl: () -> String,
-    private val cloudIntentUrl: () -> String,
     private val participantId: () -> String,
     private val api: IntentApi,
 ) : Skill {
@@ -50,6 +49,43 @@ class GoProCameraSkill(
                         description = "CaptureRef JSON {capture_id, type, mime_type}。本机 inbox 句柄，还不是 Asset。禁止 path / photo_url / asset_id。",
                     ),
                 ),
+                composition = "atomic",
+            ),
+            CapabilityDescriptor(
+                capabilityId = Capabilities.CAMERA_CAPTURE_AND_UPLOAD,
+                kind = "action",
+                composition = "composite",
+                decomposesTo = listOf(Capabilities.CAMERA_CAPTURE, Capabilities.ASSET_UPLOAD),
+                preferWhen = "拍照后还有后续动作要消费这张照片（给人看、变成 Asset、vision、投屏）时，优先本能力，不要把 decomposes_to 拆成多步",
+                role = "拍照并上传器",
+                plannerRecognize = "拍一张现场照并在同一台设备上上传成 Image Asset，产出 asset_ref。拍照后还要给人看、给视觉问、投电视时优先本步，不要再拆成拍照+上传两步（capture_ref 不能跨机）。本步不负责看图理解、不投屏",
+                typicalTriggers = listOf(
+                    "拍张照片我看一下",
+                    "拍张照片我看看",
+                    "拍的给我看",
+                    "拍照后上传",
+                    "把刚拍的照片传到图床",
+                ),
+                doNotDispatch = listOf("只上传已有图", "看图理解本身", "投屏本身", "不再拍照只传旧图"),
+                inputSchema = mapOf(
+                    "dest" to SchemaField(
+                        type = "string",
+                        required = false,
+                        description = "img_server（默认）| cloud。传给内部 asset.upload。",
+                    ),
+                ),
+                outputSchema = mapOf(
+                    "asset_ref" to SchemaField(
+                        type = "string",
+                        required = true,
+                        description = "上传后的 AssetRef JSON。禁止 photo_url / path / capture_ref 当用户可见 identity。",
+                    ),
+                    "dest" to SchemaField(
+                        type = "string",
+                        required = false,
+                        description = "img_server 或 cloud",
+                    ),
+                ),
             ),
         ),
     )
@@ -60,7 +96,13 @@ class GoProCameraSkill(
         ctx: SkillContext,
     ): SkillResult {
         val probe = GoProDriver(ctx.appContext).probeAvailable(2)
-        return if (probe.ok) SkillResult.ok("available") else SkillResult.error(probe.message)
+        if (!probe.ok) {
+            return SkillResult.error(probe.message)
+        }
+        if (capabilityId == Capabilities.CAMERA_CAPTURE_AND_UPLOAD) {
+            return SkillResult.ok("available")
+        }
+        return SkillResult.ok("available")
     }
 
     override suspend fun execute(

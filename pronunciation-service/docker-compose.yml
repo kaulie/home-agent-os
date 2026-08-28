@@ -1,0 +1,22 @@
+# Bind loopback only — Mac Edge on the same host calls http://127.0.0.1:9190
+# Do not publish to LAN or the public internet.
+services:
+  pronunciation:
+    build: .
+    container_name: home-agent-pronunciation
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9190:9190"
+    environment:
+      PRON_HOST: "0.0.0.0"
+      PRON_PORT: "9190"
+      PRON_DEVICE: "cpu"
+      PRON_COMPUTE_TYPE: "int8"
+      PRON_LANGUAGE: "en"
+      HF_HOME: /data/hf-cache
+    volumes:
+      - pron-hf-cache:/data/hf-cache
+    mem_limit: 6g
+
+volumes:
+  pron-hf-cache:

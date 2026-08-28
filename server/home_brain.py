@@ -41,6 +41,48 @@ except ImportError:  # pragma: no cover
     from server.intent_complexity import classify as classify_intent_complexity  # type: ignore
 
 try:
+    from dev_task import (
+        cancel_agent_task,
+        ensure_poller_started,
+        get_agent_task,
+        get_agent_task_usage_stats,
+        get_dev_task_categories,
+        list_agent_tasks,
+        set_agent_task_category,
+        submit_agent_task,
+    )
+    from debug_gateway import (
+        get_debug_issue,
+        list_debug_issues,
+        submit_debug_report,
+    )
+except ImportError:  # pragma: no cover
+    from server.dev_task import (  # type: ignore
+        cancel_agent_task,
+        ensure_poller_started,
+        get_agent_task,
+        get_agent_task_usage_stats,
+        get_dev_task_categories,
+        list_agent_tasks,
+        set_agent_task_category,
+        submit_agent_task,
+    )
+    from server.debug_gateway import (  # type: ignore
+        get_debug_issue,
+        list_debug_issues,
+        submit_debug_report,
+    )
+
+try:
+    from shortcut_mode import InterceptResult, apply_mode_event, intercept as shortcut_intercept
+except ImportError:  # pragma: no cover
+    from server.shortcut_mode import (  # type: ignore
+        InterceptResult,
+        apply_mode_event,
+        intercept as shortcut_intercept,
+    )
+
+try:
     from system_capabilities import (
         SYSTEM_EDGE_ID,
         catalog_rows as system_capability_catalog_rows,
@@ -57,6 +99,11 @@ except ImportError:  # pragma: no cover
         SystemCapabilityError,
     )
 
+try:
+    from capability_ads import composition_of
+except ImportError:  # pragma: no cover
+    from server.capability_ads import composition_of  # type: ignore
+
 app = Flask(__name__)
 
 # ====================== 配置区 Mock 内存缓存（本地测试不用Redis） ======================
@@ -65,10 +112,19 @@ mock_cache = {}
 # 缓存改为队列：key=sessionId，value=list(按顺序存储多条回答)
 session_result_cache = {}
 CACHE_TTL = 60 # 缓存30分钟
-# 串行任务队列，最大50排队
+# 串行任务队列，最大50排队（Ark / 执行规划路径）
 task_queue = queue.Queue(maxsize=50)
-# 单线程串行执行大模型，全局锁保证同一时间仅1次LLM调用
+# Qwen 对照专用队列：不入执行路径，不得阻塞 Ark worker
+qwen_task_queue = queue.Queue(maxsize=50)
+# 单线程串行执行大模型，全局锁保证同一时间仅1次 Ark 调用（Qwen 不用这把锁）
 llm_running_lock = threading.Lock()
+
+# Legacy / model-invented ids → canonical capability_id for gap reports.
+_CAPABILITY_ID_ALIASES = {
+    "ac.set": "climate.set",
+    "hvac.set": "climate.set",
+    "air_conditioner.set": "climate.set",
+}
 
 
 # provider: []
@@ -189,14 +245,15 @@ def clean_text(text: str) -> str:
         text = text.replace(old, new)
     return text
 
-def get_cache_key(raw_q: str, source: str = "") -> str:
+def get_cache_key(raw_q: str, source: str = "", catalog_fingerprint: str = "") -> str:
     clean_q = clean_text(raw_q)
-    md5_str = hashlib.md5(f"{source}|{clean_q}".encode("utf-8")).hexdigest()
+    fp = str(catalog_fingerprint or "").strip()
+    md5_str = hashlib.md5(f"{source}|{clean_q}|{fp}".encode("utf-8")).hexdigest()
     return f"run_global:{md5_str}"
 
 # Mock 缓存读写封装（替换真实Redis）
-def get_cache(q, source=""):
-    key = get_cache_key(q, source)
+def get_cache(q, source="", *, catalog_fingerprint: str = ""):
+    key = get_cache_key(q, source, catalog_fingerprint)
     item = mock_cache.get(key)
     if not item:
         return None
@@ -206,8 +263,8 @@ def get_cache(q, source=""):
         return None
     return item["data"]
 
-def set_cache(q, ans, source=""):
-    key = get_cache_key(q, source)
+def set_cache(q, ans, source="", *, catalog_fingerprint: str = ""):
+    key = get_cache_key(q, source, catalog_fingerprint)
     expire_ts = time.time() + CACHE_TTL
     mock_cache[key] = {
         "data": ans,
@@ -585,6 +642,29 @@ def _control_policy_allows(pid, kind, name, *, index=None):
         return True
 
 
+def _exposure_policy_allows(rec, capability_id):
+    """P0 Capability Exposure Policy: runtime declares per-domain exposure.
+    `exposure_policy` is {lan:[cap...], cloud:[cap...]} on the participant.
+    No policy (None / missing / empty) = open by default (backward compatible).
+    """
+    cap = str(capability_id or "").strip()
+    if not cap:
+        return True
+    policy = rec.get("exposure_policy") if isinstance(rec, dict) else None
+    if not isinstance(policy, dict) or not policy:
+        return True
+    domain = str(rec.get("domain") or instance_intent_origin() or "").strip().lower()
+    if not domain:
+        return True
+    allowed = policy.get(domain)
+    if allowed is None:
+        # domain not enumerated in policy → default open
+        return True
+    if not isinstance(allowed, (list, tuple)):
+        return True
+    return cap in {str(c or "").strip() for c in allowed}
+
+
 def can_participate(pid, *, role=None, capability=None, rec=None, policy_index=None):
     """节点能否参与调度。三条全要满足：
 
@@ -616,6 +696,8 @@ def can_participate(pid, *, role=None, capability=None, rec=None, policy_index=N
     if cap:
         if not _declared_capability(snap, cap):
             return False, "not_declared"
+        if not _exposure_policy_allows(snap, cap):
+            return False, "not_exposed"
     elif not _declared_role(snap, role_name):
         return False, "not_declared"
     return True, "ok"
@@ -1407,7 +1489,10 @@ def sanitize_execution_plan(plan, intent=None):
         if cap in _DISPLAY_CAPS and not asked_tv:
             continue
         cleaned.append(dict(step))
-    has_capture = any(str(s.get("capability") or "") == "camera.capture" for s in cleaned)
+    has_capture = any(
+        str(s.get("capability") or "") in ("camera.capture", "camera.capture_and_upload")
+        for s in cleaned
+    )
     if asked_photo and not asked_tv:
         drop = {"notify.speak", "query.content"}
         if not has_capture:
@@ -1415,9 +1500,102 @@ def sanitize_execution_plan(plan, intent=None):
         cleaned = [s for s in cleaned if str(s.get("capability") or "") not in drop]
     cleaned = _normalize_plan_asset_refs(cleaned)
     cleaned = _repair_stripped_query_inputs(cleaned, intent)
+    cleaned = _fold_capture_upload_composite(cleaned)
     for idx, step in enumerate(cleaned, start=1):
         step["step"] = idx
     return cleaned
+
+
+def _prepare_shortcut_execution_plan(plan, intent=None):
+    """Shortcut plans are pre-built; do not strip notify.speak like LLM sanitize."""
+    steps = []
+    for step in plan or []:
+        if not isinstance(step, dict):
+            continue
+        cap = str(step.get("capability") or "").strip()
+        if not cap:
+            continue
+        steps.append(dict(step))
+    steps = _normalize_plan_asset_refs(steps)
+    steps = _repair_stripped_query_inputs(steps, intent)
+    steps = _fold_capture_upload_composite(steps)
+    for idx, step in enumerate(steps, start=1):
+        step["step"] = idx
+    return steps
+
+
+_COMPOSITE_CAPTURE_UPLOAD = "camera.capture_and_upload"
+
+
+def _step_uses_capture_ref_token(step) -> bool:
+    ic = (step or {}).get("input_constrict")
+    if not isinstance(ic, dict):
+        return False
+    return str(ic.get("capture_ref") or "").strip() == "$capture_ref"
+
+
+def _fold_capture_upload_composite(plan):
+    """Merge consecutive capture + upload($capture_ref) into one composite step.
+
+    capture_ref is Runtime-local and cannot cross edges. Brain schedules the
+    composite as a whole; Runtime expands it.
+    """
+    rows = [dict(s) for s in (plan or []) if isinstance(s, dict)]
+    if not rows:
+        return rows
+    out = []
+    i = 0
+    while i < len(rows):
+        cur = rows[i]
+        nxt = rows[i + 1] if i + 1 < len(rows) else None
+        cap = str(cur.get("capability") or "").strip()
+        nxt_cap = str((nxt or {}).get("capability") or "").strip()
+        if (
+            cap == "camera.capture"
+            and nxt_cap == "asset.upload"
+            and _step_uses_capture_ref_token(nxt)
+        ):
+            providers = {
+                str(row.get("edge_id") or "").strip()
+                for row in online_capability_providers(_COMPOSITE_CAPTURE_UPLOAD)
+            }
+            providers.discard("")
+            if not providers:
+                out.append(cur)
+                i += 1
+                continue
+            dest = {}
+            ic = nxt.get("input_constrict")
+            if isinstance(ic, dict):
+                dest_val = ic.get("dest") or ic.get("upload_dest")
+                if dest_val not in (None, "", "$capture_ref"):
+                    dest["dest"] = dest_val
+            oc = nxt.get("output_constrict")
+            if not isinstance(oc, dict) or not oc:
+                oc = {"asset_ref": {"type": "string", "data_dest": "context"}}
+            merged = {
+                "step": cur.get("step"),
+                "capability": _COMPOSITE_CAPTURE_UPLOAD,
+                "input_constrict": dest,
+                "output_constrict": oc,
+            }
+            timing = cur.get("execution_timing") or (nxt or {}).get("execution_timing")
+            if timing:
+                merged["execution_timing"] = timing
+            edge = str(cur.get("assigned_edge_id") or "").strip()
+            nxt_edge = str((nxt or {}).get("assigned_edge_id") or "").strip()
+            if edge and edge in providers:
+                merged["assigned_edge_id"] = edge
+            elif nxt_edge and nxt_edge in providers:
+                merged["assigned_edge_id"] = nxt_edge
+            elif len(providers) == 1:
+                merged["assigned_edge_id"] = next(iter(providers))
+            out.append(merged)
+            i += 2
+            continue
+        out.append(cur)
+        i += 1
+    return out
 
 
 def extract_llm_output(llm_answer):
@@ -1476,11 +1654,15 @@ def _as_capability_notes(raw):
     return notes
 
 
-def extract_llm_capability_notes(llm_answer):
+def extract_llm_capability_notes(llm_answer, catalog=None):
     output = extract_llm_output(llm_answer)
     return {
-        "missing_capabilities": _as_capability_notes(output.get("missing_capabilities")),
-        "better_capabilities": _as_capability_notes(output.get("better_capabilities")),
+        "missing_capabilities": _normalize_capability_notes(
+            output.get("missing_capabilities"), catalog
+        ),
+        "better_capabilities": _normalize_capability_notes(
+            output.get("better_capabilities"), catalog
+        ),
     }
 
 
@@ -1581,7 +1763,7 @@ def _presentation_kind_from_plan(intent):
         return "text", "status_text"
     if "lock.status" in caps:
         return "text", "status_text"
-    if "camera.capture" in caps:
+    if "camera.capture" in caps or "camera.capture_and_upload" in caps:
         return "image", "asset_ref"
     if "document.scan" in caps or "visual.input" in caps:
         return "image", "asset_ref"
@@ -1841,6 +2023,115 @@ def _capability_registry_for_prompt():
     return rows
 
 
+def _capability_registry_fingerprint(catalog=None) -> str:
+    """Stable hash of the schedulable catalog; planner cache keys include this."""
+    rows = catalog if catalog is not None else _capability_registry_for_prompt()
+    tokens: list[str] = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        tokens.append(
+            "|".join(
+                [
+                    str(row.get("capability_id") or ""),
+                    str(row.get("edge_id") or ""),
+                    str(row.get("service_id") or ""),
+                    str(row.get("display_name") or ""),
+                ]
+            )
+        )
+    tokens.sort()
+    digest = hashlib.md5("\n".join(tokens).encode("utf-8")).hexdigest()
+    return digest[:16]
+
+
+def _score_capability_row_for_text(user_text: str, row: dict) -> int:
+    raw = str(user_text or "")
+    if not raw or not isinstance(row, dict):
+        return 0
+    score = 0
+    for trigger in row.get("typical_triggers") or []:
+        token = str(trigger or "").strip()
+        if token and token in raw:
+            score += 3
+    display = str(row.get("display_name") or "").strip()
+    if display and display in raw:
+        score += 5
+    recognize = str(row.get("planner_recognize") or "")
+    if display and display in recognize and any(
+        kw in raw for kw in ("空调", "制冷", "制热", "扫风")
+    ):
+        score += 2
+    return score
+
+
+def _catalog_matches_utterance(user_text: str, catalog) -> bool:
+    """True when the catalog clearly advertises a row for this utterance."""
+    best = 0
+    for row in catalog or []:
+        if not isinstance(row, dict):
+            continue
+        best = max(best, _score_capability_row_for_text(user_text, row))
+    return best >= 3
+
+
+def _planner_empty_plan_unreliable(user_text: str, llm_answer: str, catalog) -> bool:
+    """Empty plan is suspect when the live catalog already matches the utterance."""
+    output = extract_llm_output(llm_answer)
+    plan = output.get("plan") if isinstance(output, dict) else None
+    if isinstance(plan, list) and plan:
+        return False
+    return _catalog_matches_utterance(user_text, catalog)
+
+
+def _normalize_capability_id(cap: str, catalog_ids: set[str] | frozenset[str]) -> str:
+    cid = str(cap or "").strip()
+    if not cid:
+        return ""
+    if cid in catalog_ids:
+        return cid
+    aliased = _CAPABILITY_ID_ALIASES.get(cid)
+    if aliased and aliased in catalog_ids:
+        return aliased
+    return aliased or cid
+
+
+def _normalize_capability_notes(raw, catalog=None):
+    catalog_ids = frozenset(
+        str(row.get("capability_id") or "").strip()
+        for row in (catalog or [])
+        if isinstance(row, dict) and str(row.get("capability_id") or "").strip()
+    )
+    notes = _as_capability_notes(raw)
+    out: list[dict[str, str]] = []
+    for note in notes:
+        cap = str(note.get("capability") or "").strip()
+        reason = str(note.get("reason") or "").strip()
+        if cap in catalog_ids:
+            # Advertised capability cannot be "missing".
+            continue
+        normalized = _normalize_capability_id(cap, catalog_ids)
+        if normalized in catalog_ids:
+            continue
+        if normalized or reason:
+            out.append({"capability": normalized, "reason": reason})
+    return out
+
+
+def _persist_available_capabilities(intent_id, capabilities):
+    """jobs.available_capabilities: exact planner catalog at plan time (replay)."""
+    if intent_id in (None, ""):
+        return
+    stored = get_intent(intent_id)
+    if not stored:
+        return
+    existing = stored.get("available_capabilities")
+    if isinstance(existing, list) and existing:
+        return
+    stored["available_capabilities"] = deepcopy(list(capabilities or []))
+    _save_intent(stored)
+
+
 def _world_state_for_prompt():
     """Node presence only; Available Capabilities is the catalog."""
     nodes = []
@@ -1937,11 +2228,7 @@ def _candidate_capability_rows(user_text, rows, *, limit=4):
     for row in rows or []:
         if not isinstance(row, dict):
             continue
-        score = 0
-        for trigger in row.get("typical_triggers") or []:
-            token = str(trigger or "").strip()
-            if token and token in raw:
-                score += 3
+        score = _score_capability_row_for_text(raw, row)
         if score <= 0:
             continue
         scored.append(
@@ -2044,26 +2331,37 @@ def _list_schedulable_capabilities(*, capability_id=None, edge_id=None):
             do_not = cap.get("do_not_dispatch") or []
             if not isinstance(do_not, list):
                 do_not = []
-            rows.append(
-                {
-                    "capability_id": cid,
-                    "kind": str(cap.get("kind") or "").strip().lower(),
-                    "role": cap.get("role") or "",
-                    "planner_recognize": cap.get("planner_recognize") or "",
-                    "typical_triggers": list(triggers),
-                    "do_not_dispatch": list(do_not),
-                    # Non-authoritative; kept for legacy edges / admin display.
-                    "description": cap.get("description") or "",
-                    "input_schema": cap.get("input_schema") or {},
-                    "output_schema": cap.get("output_schema") or {},
-                    "service_id": svc.get("service_id") or sid,
-                    "display_name": svc.get("display_name") or "",
-                    "group": svc.get("group") or "",
-                    "edge_id": svc_edge,
-                    "edge_name": svc.get("edge_name") or "",
-                    "assigned_edge_id": svc_edge,
-                }
+            composition = str(cap.get("composition") or "atomic").strip().lower() or "atomic"
+            item = {
+                "capability_id": cid,
+                "kind": str(cap.get("kind") or "").strip().lower(),
+                "composition": composition,
+                "role": cap.get("role") or "",
+                "planner_recognize": cap.get("planner_recognize") or "",
+                "typical_triggers": list(triggers),
+                "do_not_dispatch": list(do_not),
+                # Non-authoritative; kept for legacy edges / admin display.
+                "description": cap.get("description") or "",
+                "input_schema": cap.get("input_schema") or {},
+                "output_schema": cap.get("output_schema") or {},
+                "service_id": svc.get("service_id") or sid,
+                "display_name": svc.get("display_name") or "",
+                "group": svc.get("group") or "",
+                "edge_id": svc_edge,
+                "edge_name": svc.get("edge_name") or "",
+                "assigned_edge_id": svc_edge,
+            }
+            decomposes = (
+                list(cap.get("decomposes_to") or [])
+                if isinstance(cap.get("decomposes_to"), list)
+                else []
             )
+            prefer = str(cap.get("prefer_when") or "").strip()
+            if decomposes:
+                item["decomposes_to"] = decomposes
+            if prefer:
+                item["prefer_when"] = prefer
+            rows.append(item)
     if not want_edge or want_edge == SYSTEM_EDGE_ID:
         for row in system_capability_catalog_rows():
             cid = str(row.get("capability_id") or "").strip()
@@ -2147,6 +2445,17 @@ def _planner_prompt_pair(user_text, intent_id, intent_base_time, intent=None):
         if ref:
             user_intent["ctx_param"] = {"asset_ref": ref}
             user_intent["has_visual_input"] = True
+        # Named audio inputs (pronunciation.assess): expose to planner so it can
+        # wire $reference_audio / $student_audio into the assess step's input_constrict.
+        audio_refs: dict[str, Any] = {}
+        for _key in ("reference_audio", "student_audio"):
+            _aref = _as_asset_ref(ctx.get(_key))
+            if _aref:
+                _aref["type"] = "audio"
+                audio_refs[_key] = _aref
+        if audio_refs:
+            user_intent.setdefault("ctx_param", {}).update(audio_refs)
+            user_intent["has_audio_input"] = True
     capabilities = _capability_registry_for_prompt()
     memory = _planner_memory(intent)
     world_state = _world_state_for_prompt()
@@ -2161,17 +2470,31 @@ def _planner_prompt_pair(user_text, intent_id, intent_base_time, intent=None):
         output_schema=_PLANNER_OUTPUT_SCHEMA,
         candidates=candidates,
     )
+    # available_capabilities: exact catalog JSON the planner saw this turn.
+    _persist_available_capabilities(intent_id, capabilities)
+    if isinstance(intent, dict):
+        intent.setdefault("available_capabilities", deepcopy(capabilities))
     return system_prompt, user_prompt
 
 
-def call_ark(user_text, session_id, user_id, intent_id, intent_base_time, intent=None):
+def call_ark(user_text, session_id, user_id, intent_id, intent_base_time, intent=None, *, _retry: int = 0):
     # 【核心优化】真正调用大模型前，二次检查缓存，避免重复生成
     intent = intent or get_intent(intent_id) or {}
     source = str(intent.get("source") or "text")
-    cache_hit = get_cache(user_text, source)
+    catalog = _capability_registry_for_prompt()
+    catalog_fp = _capability_registry_fingerprint(catalog)
+    cache_hit = None if _retry > 0 else get_cache(user_text, source, catalog_fingerprint=catalog_fp)
     if cache_hit is not None:
-        llm_logger.info(f"二次缓存校验命中，跳过LLM调用 question={user_text}")
-        return _ark_result(ans=cache_hit, cost_ms=0, cache_hit=True)
+        if _planner_empty_plan_unreliable(user_text, cache_hit, catalog):
+            llm_logger.info(
+                "planner cache stale (empty plan but catalog matches) question=%s",
+                user_text,
+            )
+            cache_hit = None
+        else:
+            llm_logger.info(f"二次缓存校验命中，跳过LLM调用 question={user_text}")
+            _persist_available_capabilities(intent_id, catalog)
+            return _ark_result(ans=cache_hit, cost_ms=0, cache_hit=True)
 
     system_prompt, user_prompt = _planner_prompt_pair(
         user_text, intent_id, intent_base_time, intent=intent
@@ -2200,12 +2523,16 @@ def call_ark(user_text, session_id, user_id, intent_id, intent_base_time, intent
              "response_format": {"type": "json_object"},
              "extra_body": {
                 "thinking": {
-                    "type": "enabled"
+                    "type": "disabled"
                 }
              },
              }
     payload = json.dumps(payload_obj).encode("utf-8")
-    log.info("full payload:\n%s", payload.decode("utf-8"))
+    safe_payload = json.dumps(_without_secrets(payload_obj), ensure_ascii=False)
+    if len(safe_payload) > 8000:
+        safe_payload = safe_payload[:8000] + "...(truncated)"
+    log.debug("ark payload: %s", safe_payload)
+    log.info("ark request model=%s payload_bytes=%d", MODEL_ID, len(payload))
     ans = ""
     cost_ms = 0
     response_json = None
@@ -2223,8 +2550,25 @@ def call_ark(user_text, session_id, user_id, intent_id, intent_base_time, intent
         log.info("get res:%s", resp_data)
         ans = resp_data["choices"][0]["message"]["content"]
         log.info("get ans: %s", ans)
-        set_cache(user_text, ans, source)
-        log.info("put into cache for user query:%s", user_text)
+        if _planner_empty_plan_unreliable(user_text, ans, catalog) and _retry < 1:
+            llm_logger.info(
+                "planner empty plan but catalog matches; retrying LLM question=%s",
+                user_text,
+            )
+            return call_ark(
+                user_text,
+                session_id,
+                user_id,
+                intent_id,
+                intent_base_time,
+                intent=intent,
+                _retry=_retry + 1,
+            )
+        if not _planner_empty_plan_unreliable(user_text, ans, catalog):
+            set_cache(user_text, ans, source, catalog_fingerprint=catalog_fp)
+            log.info("put into cache for user query:%s", user_text)
+        else:
+            log.info("skip planner cache (empty plan with matching catalog) question=%s", user_text)
     except urllib.error.HTTPError as e:
         cost_ms = int((time.time() - start_time) * 1000)
         log.exception("call doubao api error: %s", e)
@@ -2351,21 +2695,8 @@ def _record_qwen_shadow_review(
     edge_id,
     intent,
     holder,
-    thread,
-    timeout_sec,
 ):
-    if thread is not None:
-        thread.join(timeout=timeout_sec)
     qwen = holder.get("result")
-    if thread is not None and thread.is_alive():
-        qwen = qwen or {
-            "ans": "",
-            "cost_ms": int(max(timeout_sec, 0) * 1000),
-            "request_payload": None,
-            "response_json": None,
-            "error": "qwen shadow timed out",
-            "model": QWEN_PLANNER_MODEL,
-        }
     if holder.get("exc") and not qwen:
         qwen = {
             "ans": "",
@@ -2432,8 +2763,6 @@ def run_qwen_shadow_review(intent_id):
         edge_id=intent.get("edge_id"),
         intent=intent,
         holder={"result": result},
-        thread=None,
-        timeout_sec=0,
     )
     return {
         "ok": True,
@@ -2459,6 +2788,38 @@ def make_execution_plan(llm_plan):
 
 class AmbiguousCapabilityEdge(Exception):
     """Plan step omitted which named instance to use when several exist."""
+
+
+class CaptureUploadSplitError(Exception):
+    """camera.capture and asset.upload cannot run on different Runtimes."""
+
+
+def _assert_capture_upload_colocation(plan) -> None:
+    """Fail enqueue if capture/upload would split across edges or composite has no edge."""
+    rows = [s for s in (plan or []) if isinstance(s, dict)]
+    for step in rows:
+        cid = str(step.get("capability") or "").strip()
+        if composition_of(cid) != "composite":
+            continue
+        edge = str(step.get("assigned_edge_id") or "").strip()
+        if not edge or edge == SYSTEM_EDGE_ID:
+            raise CaptureUploadSplitError(
+                "没有可用的拍照并上传设备。拍照和上传必须在同一台设备上完成。"
+            )
+    for i, cur in enumerate(rows[:-1]):
+        nxt = rows[i + 1]
+        cap = str(cur.get("capability") or "").strip()
+        nxt_cap = str(nxt.get("capability") or "").strip()
+        if cap != "camera.capture" or nxt_cap != "asset.upload":
+            continue
+        if not _step_uses_capture_ref_token(nxt):
+            continue
+        a = str(cur.get("assigned_edge_id") or "").strip()
+        b = str(nxt.get("assigned_edge_id") or "").strip()
+        if not a or not b or a != b:
+            raise CaptureUploadSplitError(
+                "拍照和上传被派到了不同设备，本机照片句柄不能跨机。"
+            )
 
 
 def _provider_display_name(svc, view, edge_id):
@@ -2500,6 +2861,9 @@ def online_capability_providers(capability_id):
                 if not isinstance(cap, dict):
                     continue
                 if str(cap.get("capability_id") or "").strip() != cid:
+                    continue
+                # P0: skip DECLARED-but-unavailable caps (Runtime IsAvailable()=false).
+                if cap.get("available") is False:
                     continue
                 ok, _reason = can_participate(
                     edge_id,
@@ -2573,9 +2937,62 @@ def _prefer_provider(candidates, intent, preferred_edge_id=None):
 
 
 def _user_text_matches_instance(text, instance_key):
-    blob = str(text or "").strip()
+    blob = str(text or "").strip().casefold()
     key = str(instance_key or "").strip()
-    return bool(blob and key and key in blob)
+    if not blob or not key:
+        return False
+    folded_key = key.casefold()
+    if folded_key in blob:
+        return True
+    for token in _instance_match_tokens(key):
+        if token in blob:
+            return True
+    return False
+
+
+_APPLIANCE_TOKEN_NOISE = frozenset(
+    {
+        "camera",
+        "photo",
+        "相机",
+        "拍照",
+        "cam",
+        "the",
+        "and",
+        "or",
+        "on",
+        "ok",
+    }
+)
+
+
+def _instance_match_tokens(instance_key: str) -> list[str]:
+    key = str(instance_key or "").strip()
+    if not key:
+        return []
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for raw in (key, key.replace(".", " ").replace("_", " ")):
+        folded = raw.casefold()
+        if folded and folded not in seen:
+            seen.add(folded)
+            tokens.append(folded)
+        for part in re.split(r"[\s_/·\-]+", raw):
+            part = part.strip()
+            if len(part) < 2:
+                continue
+            folded_part = part.casefold()
+            if folded_part not in seen:
+                seen.add(folded_part)
+                tokens.append(folded_part)
+    return [t for t in tokens if t not in _APPLIANCE_TOKEN_NOISE]
+
+
+def _service_id_matches_text(service_id, text) -> bool:
+    sid = str(service_id or "").strip()
+    if not sid:
+        return False
+    return _user_text_matches_instance(text, sid.replace(".", " ").replace("_", " "))
 
 
 def _matched_instance_groups(groups, text):
@@ -2583,6 +3000,11 @@ def _matched_instance_groups(groups, text):
     for key, rows in (groups or {}).items():
         if _user_text_matches_instance(text, key):
             hits.append((key, rows))
+            continue
+        for row in rows:
+            if _service_id_matches_text(row.get("service_id"), text):
+                hits.append((key, rows))
+                break
     if len(hits) > 1:
         hits.sort(key=lambda item: len(item[0]), reverse=True)
         longest = len(hits[0][0])
@@ -2633,8 +3055,16 @@ def _assign_runtime_edge_id(step, cid, intent=None):
     if appliance:
         matched = []
         for key, rows in groups.items():
-            if appliance == key or appliance in key or key in appliance:
-                matched.extend(rows)
+            for row in rows:
+                sid = str(row.get("service_id") or "").strip()
+                if (
+                    appliance == key
+                    or appliance in key
+                    or key in appliance
+                    or _user_text_matches_instance(appliance, key)
+                    or _service_id_matches_text(sid, appliance)
+                ):
+                    matched.append(row)
         if matched:
             picked = _pick(matched)
             if picked:
@@ -2721,7 +3151,11 @@ def do_execution_plan(intent_id, execution_plan):
             _simple_step["input_constrict"] = filled
 
         simple_plan.append(_simple_step)
+    _assert_capture_upload_colocation(simple_plan)
     intent["execution_plan"] = simple_plan
+    # available_capabilities: planner catalog at plan/enqueue time (replay).
+    if not (isinstance(intent.get("available_capabilities"), list) and intent.get("available_capabilities")):
+        intent["available_capabilities"] = _capability_registry_for_prompt()
     pres = intent.get("presentation")
     if isinstance(pres, dict):
         src = str(pres.get("from") or "").strip()
@@ -2730,6 +3164,7 @@ def do_execution_plan(intent_id, execution_plan):
             pres.pop("from", None)
             intent["presentation"] = pres
     _save_intent(intent)
+    _grant_plan_input_assets(intent_id, simple_plan)
     try_run_system_steps(intent_id)
 
     #if commands_queue.get('gopro') is None:
@@ -2774,10 +3209,14 @@ def _apply_failure_presentation(intent, msg):
     if not intent or not text:
         return
     pres = intent.get("presentation") if isinstance(intent.get("presentation"), dict) else {}
+    pres_type = "text"
+    if str((intent or {}).get("task_kind") or "") == "shortcut":
+        if str((intent or {}).get("source") or "").strip().lower() == "voice":
+            pres_type = "audio"
     intent["presentation"] = _stamp_presentation_endpoint(
         {
             **pres,
-            "type": "text",
+            "type": pres_type,
             "from": "msg",
             "text": text,
         },
@@ -2844,6 +3283,10 @@ def _job_to_intent(job):
             intent["output_affinity"] = cleaned["output_affinity"]
         if not intent.get("session_id") and cleaned.get("session_id"):
             intent["session_id"] = cleaned["session_id"]
+        if not intent.get("task_kind") and cleaned.get("task_kind"):
+            intent["task_kind"] = cleaned["task_kind"]
+        if not intent.get("dev_task") and isinstance(cleaned.get("dev_task"), dict):
+            intent["dev_task"] = cleaned["dev_task"]
     intent.setdefault("status_log", [])
     intent.setdefault("execution_plan", [])
     intent.setdefault("step_log", [])
@@ -2858,6 +3301,7 @@ def _job_to_intent(job):
         intent["planner_has_request_payload"] = bool(notes.get("has_request_payload"))
     intent.pop("assigned_edge_id", None)
     intent.pop("scheduler_node", None)
+    intent.pop("available_capabilities", None)
     if not str(intent.get("text") or "").strip():
         try:
             reviews = brain_db.list_intent_reviews(ident)
@@ -3050,26 +3494,69 @@ def _ark_call_fields(ark, *, started):
 
 
 # ====================== 串行消费后台线程（核心排队逻辑） ======================
+def _enqueue_qwen_shadow(task, intent):
+    """Queue a compare-only Qwen job. Never used for execution enqueue."""
+    if not qwen_planner_enabled():
+        return
+    try:
+        qwen_task_queue.put_nowait(
+            {
+                "question": task.get("question") or "",
+                "session_id": task.get("session_id"),
+                "source": task.get("source"),
+                "edge_id": task.get("edge_id"),
+                "intent_id": task.get("intent_id"),
+                "intent_snap": dict(intent or {}),
+            }
+        )
+    except queue.Full:
+        log.warning("qwen shadow queue full, skip intent=%s", task.get("intent_id"))
+
+
+def _process_qwen_task(task):
+    """Shadow planner only: call Qwen and write intent_reviews. Does not enqueue."""
+    holder = {}
+    user_q = str(task.get("question") or "")
+    snap = task.get("intent_snap") if isinstance(task.get("intent_snap"), dict) else {}
+    try:
+        holder["result"] = call_qwen_planner(user_q, intent=snap)
+    except Exception:
+        log.exception("qwen shadow planner failed")
+        holder["exc"] = traceback.format_exc()
+    _record_qwen_shadow_review(
+        task.get("intent_id"),
+        text=user_q,
+        session_id=task.get("session_id"),
+        source=task.get("source"),
+        edge_id=task.get("edge_id"),
+        intent=snap,
+        holder=holder,
+    )
+
+
+def _should_skip_llm_planner(intent) -> bool:
+    if not intent:
+        return False
+    if _is_dev_task_job(intent):
+        return True
+    if str(intent.get("source") or "").strip().lower() == "dev":
+        return True
+    return False
+
+
 def _process_llm_task(task):
     user_q, session_id, user_id, intent_id = task["question"], task["session_id"], task["user_id"], task["intent_id"]
     log.info("get question: %s %s %s %s", user_q, session_id, user_id, intent_id)
     intent = get_intent(intent_id)
+    if _should_skip_llm_planner(intent):
+        log.info("skip llm planner for dev_task intent=%s", intent_id)
+        return
     started = time.time()
     ark = None
-    qwen_thread = None
-    qwen_holder = {}
-    if qwen_planner_enabled():
-        snap = dict(intent or {})
-
-        def _qwen_job():
-            try:
-                qwen_holder["result"] = call_qwen_planner(user_q, intent=snap)
-            except Exception:
-                log.exception("qwen shadow planner failed")
-                qwen_holder["exc"] = traceback.format_exc()
-
-        qwen_thread = threading.Thread(target=_qwen_job, name="qwen-shadow", daemon=True)
-        qwen_thread.start()
+    try:
+        _enqueue_qwen_shadow(task, intent)
+    except Exception:
+        log.exception("enqueue qwen shadow failed")
     try:
         with llm_running_lock:
             ark = call_ark(
@@ -3098,7 +3585,7 @@ def _process_llm_task(task):
             stored = get_intent(intent_id)
             stored_plan = stored.get("execution_plan") or []
             llm_out = extract_llm_output(ans)
-            notes = extract_llm_capability_notes(ans)
+            notes = extract_llm_capability_notes(ans, catalog=_capability_registry_for_prompt())
             fail_msg = None
             if not stored_plan:
                 if str(ans).strip() == "__ARK_HTTP_401__":
@@ -3154,19 +3641,6 @@ def _process_llm_task(task):
             request_payload=fields["request_payload"],
             response_json=fields["response_json"],
         )
-    finally:
-        if qwen_thread is not None or qwen_holder:
-            _record_qwen_shadow_review(
-                intent_id,
-                text=user_q,
-                session_id=session_id,
-                source=task.get("source"),
-                edge_id=task.get("edge_id"),
-                intent=intent,
-                holder=qwen_holder,
-                thread=qwen_thread,
-                timeout_sec=QWEN_PLANNER_TIMEOUT_SEC + 5,
-            )
 
 
 def llm_worker():
@@ -3179,10 +3653,28 @@ def llm_worker():
         finally:
             task_queue.task_done()
 
-# 启动后台工作线程（单测可 BRAIN_SKIP_LLM_WORKER=1 跳过）
+
+def qwen_llm_worker():
+    log.info("qwen llm worker started, scan task begin..")
+    while True:
+        task = qwen_task_queue.get()
+        try:
+            _process_qwen_task(task)
+        except Exception:
+            log.exception("qwen shadow task failed")
+        finally:
+            qwen_task_queue.task_done()
+
+# 启动后台工作线程（单测可 BRAIN_SKIP_LLM_WORKER=1 同时跳过 Ark 与 Qwen worker）
 if os.environ.get("BRAIN_SKIP_LLM_WORKER") != "1":
     worker_thread = threading.Thread(target=llm_worker, daemon=True)
     worker_thread.start()
+    qwen_worker_thread = threading.Thread(
+        target=qwen_llm_worker, name="qwen-llm-worker", daemon=True
+    )
+    qwen_worker_thread.start()
+
+ensure_poller_started()
 
 # ====================== 构造DuerOS标准返回报文 ======================
 def quick_speak(text, lazy_answer=True):
@@ -3333,6 +3825,133 @@ def _classification_public_payload(result):
     }
 
 
+def _dispatch_shortcut_intent(
+    intent_id,
+    text,
+    intercepted: InterceptResult,
+    *,
+    source,
+    edge_id,
+    intent_origin,
+    ctx_param,
+    reply,
+):
+    intent = get_intent(intent_id)
+    if not intent:
+        return jsonify(ok=False, error="intent not found"), 404
+    intent["task_kind"] = "shortcut"
+    if intercepted.mode:
+        intent["shortcut_mode"] = intercepted.mode
+    ctx = dict(intent.get("ctx_param") or intent.get("context") or {})
+    ctx["task_kind"] = "shortcut"
+    if intercepted.mode:
+        ctx["shortcut_mode"] = intercepted.mode
+    intent["ctx_param"] = ctx
+    intent["context"] = ctx
+    if intercepted.kind in ("enter_mode", "exit_mode"):
+        apply_mode_event(intercepted, intent=intent)
+    if isinstance(intercepted.presentation, dict) and intercepted.presentation:
+        intent["presentation"] = intercepted.presentation
+    _save_intent(intent)
+    plan = _prepare_shortcut_execution_plan(intercepted.plan, intent)
+    execution_plan = make_execution_plan(plan)
+    meta = intercepted.planner_meta if isinstance(intercepted.planner_meta, dict) else {}
+    review_parsed = {
+        "goal": meta.get("goal"),
+        "reason": "shortcut intercept",
+        "required_capabilities": [],
+        "plan": plan,
+        "presentation": intercepted.presentation,
+        "missing_capabilities": [],
+        "better_capabilities": [],
+    }
+    review_kwargs = dict(
+        text=text,
+        raw=json.dumps(meta, ensure_ascii=False),
+        parsed=review_parsed,
+        session_id=intent.get("session_id"),
+        source=source,
+        edge_id=edge_id,
+        cost_ms=0,
+        planner="shortcut",
+        request_payload={"shortcut": True, "kind": intercepted.kind, "mode": intercepted.mode},
+        response_json=meta,
+    )
+    try:
+        do_execution_plan(intent_id, execution_plan)
+    except (CaptureUploadSplitError, AmbiguousCapabilityEdge) as e:
+        fail_msg = str(e)
+        mark_intent_failed(intent_id, fail_msg)
+        intent = get_intent(intent_id)
+        if intent:
+            _apply_failure_presentation(intent, fail_msg)
+            _save_intent(intent)
+        _record_intent_review(
+            intent_id,
+            plan=[],
+            error=fail_msg,
+            **review_kwargs,
+        )
+        return jsonify(
+            ok=True,
+            text=text,
+            source=source,
+            edge_id=edge_id,
+            intent_origin=intent_origin,
+            reply=fail_msg,
+            intent_id=intent_id,
+            intent_status="failed",
+            task_kind="shortcut",
+            shortcut_mode=intercepted.mode,
+            error=fail_msg,
+            asset_ref=ctx_param.get("asset_ref"),
+        )
+    update_intent_status(intent_id, "intent_parsed")
+    _record_intent_review(
+        intent_id,
+        plan=get_intent(intent_id).get("execution_plan") or [],
+        error=None,
+        **review_kwargs,
+    )
+    return jsonify(
+        ok=True,
+        text=text,
+        source=source,
+        edge_id=edge_id,
+        intent_origin=intent_origin,
+        reply=reply,
+        intent_id=intent_id,
+        intent_status="intent_parsed",
+        task_kind="shortcut",
+        shortcut_mode=intercepted.mode,
+        asset_ref=ctx_param.get("asset_ref"),
+    )
+
+
+@app.route("/api/v1/mode", methods=["GET"])
+def get_active_mode_api():
+    mode = None
+    try:
+        resolve = getattr(brain_db, "resolve_active_mode", None)
+        if callable(resolve):
+            mode = resolve()
+    except Exception:
+        log.exception("resolve_active_mode failed")
+    events = []
+    try:
+        list_events = getattr(brain_db, "list_global_events", None)
+        if callable(list_events):
+            raw_limit = request.args.get("limit", "10")
+            try:
+                limit = max(1, min(int(raw_limit), 100))
+            except (TypeError, ValueError):
+                limit = 10
+            events = list_events(kind="mode", limit=limit)
+    except Exception:
+        log.exception("list_global_events failed")
+    return jsonify(ok=True, mode=mode, active_mode=mode, events=events)
+
+
 @app.route("/api/v1/intent", methods=["POST", "GET"])
 def dispatch_intent():
     text = "default"
@@ -3359,7 +3978,7 @@ def dispatch_intent():
             return jsonify(ok=False, error="text is required"), 400
 
         source = str(data.get("source") or "text").strip().lower() or "text"
-        if source not in ("text", "voice", "visual"):
+        if source not in ("text", "voice", "visual", "dev"):
             source = "text"
         edge_id = str(
             data.get("edge_id") or data.get("participant_id") or ""
@@ -3377,6 +3996,21 @@ def dispatch_intent():
             ctx_param["asset_ref"] = ref
             if source == "text":
                 source = "visual"
+
+        # Optional named Audio Inputs (e.g. pronunciation.assess): reference_audio +
+        # student_audio AssetRefs attached at issue time. Each is granted read access
+        # so the executing Edge can materialize them. Surfaced to the planner via
+        # ctx_param so it can wire $reference_audio / $student_audio into the step.
+        for _audio_key in ("reference_audio", "student_audio"):
+            _raw_audio = data.get(_audio_key)
+            if _raw_audio is None and isinstance(data.get("context"), dict):
+                _raw_audio = data["context"].get(_audio_key)
+            if _raw_audio is None and isinstance(data.get("ctx_param"), dict):
+                _raw_audio = data["ctx_param"].get(_audio_key)
+            _audio_ref = _as_asset_ref(_raw_audio)
+            if _audio_ref:
+                _audio_ref["type"] = "audio"
+                ctx_param[_audio_key] = _audio_ref
 
     rejected = _issuer_post_reject(edge_id)
     if rejected is not None:
@@ -3428,6 +4062,21 @@ def dispatch_intent():
     if ctx_param:
         intent_body["ctx_param"] = ctx_param
         intent_body["context"] = ctx_param
+    if source == "dev":
+        view = submit_agent_task(text)
+        return jsonify(
+            ok=True,
+            text=text,
+            source=source,
+            edge_id=edge_id,
+            intent_origin=intent_origin,
+            reply=f"已下发开发任务：{text}",
+            intent_id=view.get("task_id"),
+            intent_status=view.get("status"),
+            task_kind="dev_task",
+            asset_ref=ctx_param.get("asset_ref"),
+            **view,
+        )
     intent_id = new_intent(intent_body)
     _observe_intent_complexity(text, intent_id=intent_id)
     if ctx_param.get("asset_ref") and callable(getattr(brain_db, "put_asset_grant", None)):
@@ -3445,6 +4094,43 @@ def dispatch_intent():
                 )
             except Exception:
                 log.exception("visual input asset grant failed intent=%s asset=%s", intent_id, aid)
+    # Grant read access for named audio inputs (pronunciation.assess etc.).
+    if callable(getattr(brain_db, "put_asset_grant", None)):
+        for _audio_key in ("reference_audio", "student_audio"):
+            _audio_ref = ctx_param.get(_audio_key)
+            if not isinstance(_audio_ref, dict):
+                continue
+            _aid = str((_audio_ref.get("asset_id") or "").strip())
+            if not _aid:
+                continue
+            try:
+                brain_db.put_asset_grant(
+                    {
+                        "asset_id": _aid,
+                        "intent_id": str(intent_id),
+                        "execution_id": str(intent_id),
+                        "capability_id": "pronunciation.assess",
+                        "permission": "read",
+                    }
+                )
+            except Exception:
+                log.exception(
+                    "audio input asset grant failed intent=%s key=%s asset=%s",
+                    intent_id, _audio_key, _aid,
+                )
+    intent_snap = get_intent(intent_id)
+    intercepted = shortcut_intercept(text, intent=intent_snap)
+    if intercepted is not None:
+        return _dispatch_shortcut_intent(
+            intent_id,
+            text,
+            intercepted,
+            source=source,
+            edge_id=edge_id,
+            intent_origin=intent_origin,
+            ctx_param=ctx_param,
+            reply=reply,
+        )
     try:
         task_queue.put_nowait({
             "question": text,
@@ -3716,6 +4402,7 @@ _CAPTURE_STEP_CAPABILITIES = frozenset(
         "take_video",
         "document.scan",
         "visual.input",
+        "camera.capture_and_upload",
     }
 )
 
@@ -4128,11 +4815,11 @@ def notify_step_status_update(intent_id, step_id):
     try_run_system_steps(intent_id_int)
     intent = get_intent(intent_id_int) or intent
 
-    return {
-        "id" : intent['id'],
-        "step" : step_id_int,
-        "status" : step_status,
-    }
+    return jsonify(
+        id=intent["id"],
+        step=step_id_int,
+        status=step_status,
+    )
 
 
 
@@ -4211,11 +4898,11 @@ def notify_intent_status_update(intent_id):
 
     update_intent(intent_id_int, _record)
 
-    return {
-        "id" : intent['id'],
-        "status" : intent_status,
-        'execution_plan' : intent.get('execution_plan') or []
-    }
+    return jsonify(
+        id=intent["id"],
+        status=intent_status,
+        execution_plan=intent.get("execution_plan") or [],
+    )
 
 
 @app.route("/api/v1/intent/<intent_id>/delivery_complete", methods=["POST"])
@@ -4346,12 +5033,66 @@ def _guess_mime(filename: str, fallback: str = "application/octet-stream") -> st
     return (mime or "").strip() or fallback
 
 
-def _img_server_upload_url() -> str:
+def _explicit_img_server_upload_url() -> str:
     return (
         os.environ.get("BRAIN_IMG_UPLOAD_URL")
         or os.environ.get("PHOTO_UPLOAD_URL")
-        or "http://127.0.0.1:8080/api/v1/photos/upload"
+        or ""
     ).strip().rstrip("/")
+
+
+def _img_server_upload_url() -> str:
+    return _explicit_img_server_upload_url() or "http://127.0.0.1:8080/api/v1/photos/upload"
+
+
+def _use_local_upload_store() -> bool:
+    """Cloud Brain keeps bytes under gopropics/; it has no sidecar img-server :8080.
+
+    LAN always uses img-server. Ops can still point cloud Brain at a real
+    img-server by setting BRAIN_IMG_UPLOAD_URL or PHOTO_UPLOAD_URL.
+    """
+    if instance_intent_origin() != "cloud":
+        return False
+    return not _explicit_img_server_upload_url()
+
+
+def _put_bytes_on_local_upload(
+    data: bytes,
+    *,
+    filename: str,
+    mime_type: str,
+) -> dict:
+    """Write bytes under gopropics/assets. Catalog identity stays asset_ref."""
+    upload_dir = _asset_upload_dir()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    saved_as = _safe_on_disk_name(filename, prefix=uuid.uuid4().hex[:8])
+    dest = upload_dir / saved_as
+    dest.write_bytes(data)
+    return {
+        "backend": "local_upload",
+        "saved_as": saved_as,
+        "public_base": "",
+        "url": "",
+    }
+
+
+def _store_uploaded_asset_bytes(
+    data: bytes,
+    *,
+    filename: str,
+    mime_type: str,
+) -> dict:
+    if _use_local_upload_store():
+        stored = _put_bytes_on_local_upload(
+            data, filename=filename, mime_type=mime_type
+        )
+        stored.setdefault("backend", "local_upload")
+        return stored
+    stored = _put_bytes_on_img_server(
+        data, filename=filename, mime_type=mime_type
+    )
+    stored.setdefault("backend", "img_server")
+    return stored
 
 
 def _img_server_public_base() -> str:
@@ -4425,7 +5166,10 @@ def _put_bytes_on_img_server(
 
 @app.route("/api/v1/assets/upload", methods=["POST"])
 def upload_asset_with_intent():
-    """Multipart upload with explicit upload_intent; bytes go to img-server, then Asset catalog.
+    """Multipart upload with explicit upload_intent, then Asset catalog.
+
+    LAN: bytes go to img-server. Cloud: bytes go to gopropics/assets
+    (backend=local_upload) unless BRAIN_IMG_UPLOAD_URL / PHOTO_UPLOAD_URL is set.
 
     Does not use POST /api/v1/photos/upload as the client contract. Clients must not call
     POST /api/v1/assets afterward for the same file.
@@ -4469,21 +5213,26 @@ def upload_asset_with_intent():
         return jsonify(ok=False, error="assets catalog not available"), 503
 
     try:
-        stored = _put_bytes_on_img_server(
+        stored = _store_uploaded_asset_bytes(
             data, filename=original, mime_type=mime_type
         )
     except Exception as e:
-        log.warning("assets/upload img-server failed: %s", e)
+        log.warning("assets/upload store failed: %s", e)
+        if _use_local_upload_store():
+            return jsonify(ok=False, error=f"本地图床写入失败: {e}"), 502
         return jsonify(ok=False, error=f"img-server upload failed: {e}"), 502
 
     saved_as = stored["saved_as"]
     aid = "asset_" + secrets.token_hex(12)
+    backend = str(stored.get("backend") or "img_server").strip() or "img_server"
     storage = {
-        "backend": "img_server",
+        "backend": backend,
         "key": saved_as,
         "saved_as": saved_as,
-        "public_base": stored["public_base"],
     }
+    public_base = str(stored.get("public_base") or "").strip()
+    if backend == "img_server" or public_base:
+        storage["public_base"] = public_base or stored.get("public_base") or ""
     if edge_id:
         storage["edge_id"] = edge_id
     record = {
@@ -4600,6 +5349,12 @@ def _admin_auth_error():
     if auth.startswith("Bearer ") and auth[7:].strip() == token:
         return None
     return jsonify(ok=False, error="admin token required"), 401
+
+
+def _admin_request_ok() -> bool:
+    return _admin_auth_error() is None and bool(
+        (os.environ.get("BRAIN_ADMIN_TOKEN") or "").strip()
+    )
 
 
 _ADMIN_ROLE_LABELS = {
@@ -4849,6 +5604,74 @@ def admin_list_nodes():
     return jsonify({"ok": True, "nodes": nodes})
 
 
+@app.route("/api/v1/admin/nodes/<participant_id>/exposure-policy", methods=["GET"])
+def admin_get_exposure_policy(participant_id):
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    pid = str(participant_id or "").strip()
+    rec = brain_db.get_registration(pid)
+    if rec is None:
+        return jsonify(ok=False, error="unknown participant_id"), 404
+    return jsonify(
+        {
+            "ok": True,
+            "participant_id": pid,
+            "domain": rec.get("domain"),
+            "exposure_policy": rec.get("exposure_policy") or {},
+        }
+    )
+
+
+@app.route("/api/v1/admin/nodes/<participant_id>/exposure-policy", methods=["PUT", "POST"])
+def admin_put_exposure_policy(participant_id):
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    pid = str(participant_id or "").strip()
+    rec = brain_db.get_registration(pid)
+    if rec is None:
+        return jsonify(ok=False, error="unknown participant_id"), 404
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify(ok=False, error="JSON object required"), 400
+    policy = body.get("exposure_policy")
+    if not isinstance(policy, dict):
+        return jsonify(ok=False, error="exposure_policy must be an object {lan:[...], cloud:[...]}"), 400
+    # Normalize: only lan/cloud keys, values are lists of capability_id strings.
+    norm = {}
+    for dom in ("lan", "cloud"):
+        if dom in policy:
+            vals = policy.get(dom)
+            if vals is None:
+                norm[dom] = None
+            elif isinstance(vals, (list, tuple)):
+                norm[dom] = [str(c or "").strip() for c in vals if str(c or "").strip()]
+            else:
+                return jsonify(ok=False, error=f"exposure_policy.{dom} must be a list or null"), 400
+    updated = dict(rec)
+    updated["exposure_policy"] = norm or None
+    brain_db.put_registration(updated, domain=rec.get("domain") or instance_intent_origin())
+    rebuild_capability_maps(force=True)
+    _record_admin_op(
+        action="exposure_policy_replace",
+        participant_id=pid,
+        target_kind="capability",
+        target_id="",
+        extra={"exposure_policy": norm},
+        result="ok",
+        summary=f"设置 {rec.get('display_name') or pid} 的 Capability Exposure Policy",
+    )
+    return jsonify(
+        {
+            "ok": True,
+            "participant_id": pid,
+            "domain": rec.get("domain"),
+            "exposure_policy": norm,
+        }
+    )
+
+
 @app.route("/api/v1/admin/nodes/<participant_id>/policy", methods=["PUT", "POST"])
 def admin_put_node_policy(participant_id):
     denied = _admin_auth_error()
@@ -4890,7 +5713,7 @@ def admin_put_node_policy(participant_id):
         return _fail(str(exc), 400)
     except sqlite3.OperationalError as exc:
         return _fail(str(exc), 501)
-    rebuild_capability_maps()
+    rebuild_capability_maps(force=True)
     policy = _load_control_policy_index()
     rec = dict(rec)
     beats = brain_db.list_heartbeats()
@@ -4995,7 +5818,7 @@ def admin_toggle_policy():
         return _fail(str(exc), 400)
     except sqlite3.OperationalError as exc:
         return _fail(str(exc), 501)
-    rebuild_capability_maps()
+    rebuild_capability_maps(force=True)
     _record_admin_op(
         action=action,
         participant_id=pid,
@@ -5216,6 +6039,422 @@ def admin_list_intents():
             "exhausted": exhausted,
         }
     )
+
+
+def _is_dev_task_job(job):
+    if not isinstance(job, dict):
+        return False
+    if str(job.get("source") or "").strip().lower() == "dev":
+        return True
+    if str(job.get("task_kind") or "").strip() == "dev_task":
+        return True
+    ctx = job.get("ctx_param") or job.get("context") or {}
+    if isinstance(ctx, dict) and str(ctx.get("task_kind") or "").strip() == "dev_task":
+        return True
+    return False
+
+
+def _admin_dev_task_view(intent):
+    view = _admin_intent_view(intent if isinstance(intent, dict) else {})
+    dev = {}
+    if isinstance(intent, dict):
+        raw = intent.get("dev_task")
+        if isinstance(raw, dict):
+            dev = dict(raw)
+        ctx = intent.get("ctx_param") or intent.get("context") or {}
+        if isinstance(ctx, dict) and isinstance(ctx.get("dev_task"), dict):
+            dev = {**ctx.get("dev_task"), **dev}
+    pres = view.get("presentation") if isinstance(view.get("presentation"), dict) else {}
+    result_text = str(pres.get("text") or view.get("msg") or "").strip()
+    ctx_param = intent.get("ctx_param") if isinstance(intent, dict) else {}
+    if isinstance(ctx_param, dict):
+        answer = str(ctx_param.get("answer_text") or "").strip()
+        if answer:
+            result_text = answer
+    view["task_kind"] = "dev_task"
+    view["dev_task"] = dev
+    view["result_text"] = result_text
+    return view
+
+
+def _list_admin_dev_task_jobs(before_id, limit):
+    fn = getattr(brain_db, "list_jobs_page", None)
+    collected = []
+    cursor = before_id
+    scanned_end = False
+    while len(collected) < limit:
+        batch = _ADMIN_INTENTS_SCAN_BATCH
+        if callable(fn):
+            rows = fn(before_id=cursor, limit=batch)
+        else:
+            rows = []
+            for job in brain_db.list_jobs():
+                try:
+                    iid = int(job.get("intent_id") if job.get("intent_id") is not None else job.get("id"))
+                except (TypeError, ValueError):
+                    continue
+                if cursor is not None and iid >= cursor:
+                    continue
+                rows.append(job)
+                if len(rows) >= batch:
+                    break
+        if not rows:
+            scanned_end = True
+            break
+        ids = []
+        for job in rows:
+            try:
+                ids.append(int(job.get("intent_id") if job.get("intent_id") is not None else job.get("id")))
+            except (TypeError, ValueError):
+                continue
+            if _is_dev_task_job(job):
+                collected.append(job)
+                if len(collected) >= limit:
+                    break
+        if not ids:
+            scanned_end = True
+            break
+        cursor = min(ids)
+        if len(rows) < batch:
+            scanned_end = True
+            break
+    return collected[:limit], scanned_end
+
+
+@app.route("/api/v1/admin/dev_task", methods=["POST"])
+def admin_post_dev_task():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error="JSON object required"), 400
+    text = str(data.get("text") or "").strip()
+    attachments_raw = data.get("attachments")
+    if attachments_raw is None:
+        attachments_raw = data.get("attachment_asset_ids")
+    if attachments_raw is not None and not isinstance(attachments_raw, list):
+        return jsonify(ok=False, error="attachments must be an array"), 400
+    if not text and not attachments_raw:
+        return jsonify(ok=False, error="text or attachments required"), 400
+    parent_raw = data.get("parent_task_id") or data.get("continue_task_id")
+    parent_task_id = None
+    if parent_raw not in (None, ""):
+        try:
+            parent_task_id = int(parent_raw)
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="parent_task_id must be an integer"), 400
+    thread_raw = data.get("thread_id")
+    thread_id = None
+    if thread_raw not in (None, ""):
+        try:
+            thread_id = int(thread_raw)
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="thread_id must be an integer"), 400
+    category_raw = data.get("category")
+    category = None
+    if category_raw not in (None, ""):
+        category = str(category_raw).strip()
+    view = submit_agent_task(
+        text,
+        parent_task_id=parent_task_id,
+        thread_id=thread_id,
+        category=category,
+        attachments=attachments_raw,
+    )
+    return jsonify(ok=True, **view)
+
+
+@app.route("/api/v1/admin/dev_task/attachment/upload", methods=["POST"])
+def admin_upload_dev_task_attachment():
+    """Multipart upload for Dev Task attachments (extensible beyond images)."""
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    from dev_task_attachments import DEV_TASK_UPLOAD_INTENT
+
+    if "file" not in request.files:
+        return jsonify(ok=False, error='expected multipart field name "file"'), 400
+    f = request.files["file"]
+    data = f.read()
+    if not data:
+        return jsonify(ok=False, error="empty file"), 400
+    try:
+        original = _validate_asset_filename(f.filename or "upload.bin")
+    except AssetFilenameError as e:
+        return jsonify(ok=False, error=str(e)), 400
+    mime_type = str(request.form.get("mime_type") or f.mimetype or "").strip()
+    if not mime_type or mime_type == "application/octet-stream":
+        mime_type = _guess_mime(original, "application/octet-stream")
+    kind = str(request.form.get("kind") or request.form.get("type") or "").strip().lower()
+    asset_type = _infer_asset_type(
+        mime_type=mime_type,
+        filename=original,
+        explicit=kind,
+    )
+    put = getattr(brain_db, "put_asset", None)
+    if not callable(put):
+        return jsonify(ok=False, error="assets catalog not available"), 503
+    try:
+        stored = _store_uploaded_asset_bytes(data, filename=original, mime_type=mime_type)
+    except Exception as e:
+        log.warning("admin dev_task attachment store failed: %s", e)
+        if _use_local_upload_store():
+            return jsonify(ok=False, error=f"本地图床写入失败: {e}"), 502
+        return jsonify(ok=False, error=f"img-server upload failed: {e}"), 502
+    saved_as = stored["saved_as"]
+    aid = "asset_" + secrets.token_hex(12)
+    backend = str(stored.get("backend") or "img_server").strip() or "img_server"
+    storage = {
+        "backend": backend,
+        "key": saved_as,
+        "saved_as": saved_as,
+    }
+    public_base = str(stored.get("public_base") or "").strip()
+    if backend == "img_server" or public_base:
+        storage["public_base"] = public_base or stored.get("public_base") or ""
+    record = {
+        "asset_id": aid,
+        "type": asset_type,
+        "mime_type": mime_type,
+        "status": "ready",
+        "producer": DEV_TASK_UPLOAD_INTENT,
+        "producer_capability": DEV_TASK_UPLOAD_INTENT,
+        "size_bytes": len(data),
+        "metadata": {
+            "upload_intent": DEV_TASK_UPLOAD_INTENT,
+            "original_filename": original,
+        },
+        "storage": storage,
+    }
+    try:
+        put(record)
+    except ValueError as e:
+        return jsonify(ok=False, error=str(e)), 400
+    except Exception:
+        log.exception("admin dev_task attachment put_asset failed")
+        return jsonify(ok=False, error="register_asset failed"), 500
+    from debug_attachments import normalize_attachments
+
+    attachment = normalize_attachments(
+        [
+            {
+                "asset_id": aid,
+                "kind": kind or asset_type,
+                "mime_type": mime_type,
+                "filename": original,
+            }
+        ]
+    )[0]
+    return jsonify(ok=True, attachment=attachment)
+
+
+@app.route("/api/v1/admin/dev_task/usage", methods=["GET"])
+def admin_dev_task_usage():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    period = (request.args.get("period") or "").strip().lower()
+    days_raw = request.args.get("days")
+    if period:
+        return jsonify(ok=True, usage=get_agent_task_usage_stats(period=period))
+    if days_raw is not None:
+        try:
+            days = int(days_raw)
+        except (TypeError, ValueError):
+            days = 7
+        if days <= 0:
+            days = None
+        return jsonify(ok=True, usage=get_agent_task_usage_stats(days=days))
+    return jsonify(ok=True, usage=get_agent_task_usage_stats(period="week"))
+
+
+@app.route("/api/v1/admin/dev_task/categories", methods=["GET"])
+def admin_dev_task_categories():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    return jsonify(ok=True, categories=get_dev_task_categories())
+
+
+@app.route("/api/v1/admin/dev_task/<task_id>/category", methods=["PATCH"])
+def admin_patch_dev_task_category(task_id):
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    try:
+        task_id_int = int(task_id)
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="task_id must be an integer"), 400
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error="JSON object required"), 400
+    category_raw = data.get("category")
+    if category_raw in (None, ""):
+        return jsonify(ok=False, error="category is required"), 400
+    view = set_agent_task_category(task_id_int, str(category_raw))
+    if not view:
+        return jsonify(ok=False, error="dev task not found"), 404
+    return jsonify(ok=True, **view)
+
+
+@app.route("/api/v1/admin/dev_task/<task_id>/cancel", methods=["POST"])
+def admin_cancel_dev_task(task_id):
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    try:
+        task_id_int = int(task_id)
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="task_id must be an integer"), 400
+    view = cancel_agent_task(task_id_int)
+    if not view:
+        return jsonify(ok=False, error="dev task not found"), 404
+    return jsonify(ok=True, **view)
+
+
+@app.route("/api/v1/admin/dev_task/<task_id>", methods=["GET"])
+def admin_get_dev_task(task_id):
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    try:
+        task_id_int = int(task_id)
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="task_id must be an integer"), 400
+    view = get_agent_task(task_id_int)
+    if not view:
+        return jsonify(ok=False, error="dev task not found"), 404
+    return jsonify(ok=True, **view)
+
+
+@app.route("/api/v1/admin/dev_tasks", methods=["GET"])
+def admin_list_dev_tasks():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    before_raw = request.args.get("before_id")
+    before_id = None
+    if before_raw not in (None, ""):
+        try:
+            before_id = int(before_raw)
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="before_id must be an integer"), 400
+        if before_id < 1:
+            return jsonify(ok=False, error="before_id must be >= 1"), 400
+    limit = ADMIN_INTENTS_DEFAULT
+    if request.args.get("limit") not in (None, ""):
+        try:
+            limit = int(request.args.get("limit"))
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="limit must be an integer"), 400
+    limit = max(1, min(limit, ADMIN_INTENTS_MAX))
+    thread_raw = request.args.get("thread_id")
+    thread_id = None
+    if thread_raw not in (None, ""):
+        try:
+            thread_id = int(thread_raw)
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="thread_id must be an integer"), 400
+    roots_only = request.args.get("roots_only", "1") not in ("0", "false", "no")
+    category_raw = request.args.get("category")
+    category = None
+    if category_raw not in (None, ""):
+        category = str(category_raw).strip()
+    page = list_agent_tasks(
+        before_id=before_id,
+        limit=limit,
+        thread_id=thread_id,
+        roots_only=roots_only if thread_id is None else False,
+        category=category,
+    )
+    return jsonify(ok=True, **page)
+
+
+@app.route("/api/v1/debug/report", methods=["POST"])
+def post_debug_report():
+    """User/Business Console: one-tap bug report with auto-collected execution context."""
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error="JSON object required"), 400
+    try:
+        intent_id = int(data.get("intent_id"))
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="intent_id must be an integer"), 400
+    participant_id = str(
+        data.get("participant_id") or data.get("edge_id") or ""
+    ).strip()
+    if not participant_id:
+        return jsonify(ok=False, error="participant_id is required"), 400
+    source = str(data.get("source") or "user_console").strip() or "user_console"
+    user_summary = str(data.get("user_summary") or data.get("summary") or "").strip()
+    problem_type = str(data.get("problem_type") or data.get("feedback_type") or "").strip()
+    attachments_raw = data.get("attachments")
+    if attachments_raw is None:
+        attachments_raw = data.get("attachment_asset_ids")
+    client_snapshot = data.get("client_snapshot")
+    if client_snapshot is not None and not isinstance(client_snapshot, dict):
+        return jsonify(ok=False, error="client_snapshot must be an object"), 400
+    if attachments_raw is not None and not isinstance(attachments_raw, list):
+        return jsonify(ok=False, error="attachments must be an array"), 400
+    result = submit_debug_report(
+        intent_id=intent_id,
+        participant_id=participant_id,
+        source=source,
+        user_summary=user_summary,
+        problem_type=problem_type,
+        attachments=attachments_raw,
+        client_snapshot=client_snapshot,
+        get_intent=lambda iid: get_intent(iid),
+    )
+    if not result.get("ok"):
+        return jsonify(ok=False, **{k: v for k, v in result.items() if k != "ok"}), 400
+    return jsonify(ok=True, **{k: v for k, v in result.items() if k != "ok"})
+
+
+@app.route("/api/v1/admin/debug/issues", methods=["GET"])
+def admin_list_debug_issues():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    before_raw = request.args.get("before_id")
+    before_id = None
+    if before_raw not in (None, ""):
+        try:
+            before_id = int(before_raw)
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="before_id must be an integer"), 400
+    intent_raw = request.args.get("intent_id")
+    intent_id = None
+    if intent_raw not in (None, ""):
+        try:
+            intent_id = int(intent_raw)
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="intent_id must be an integer"), 400
+    limit = ADMIN_INTENTS_DEFAULT
+    if request.args.get("limit") not in (None, ""):
+        try:
+            limit = int(request.args.get("limit"))
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="limit must be an integer"), 400
+    limit = max(1, min(limit, ADMIN_INTENTS_MAX))
+    page = list_debug_issues(before_id=before_id, limit=limit, intent_id=intent_id)
+    return jsonify(ok=True, **page)
+
+
+@app.route("/api/v1/admin/debug/issue/<issue_id>", methods=["GET"])
+def admin_get_debug_issue(issue_id):
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    try:
+        issue_id_int = int(issue_id)
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="issue_id must be an integer"), 400
+    view = get_debug_issue(issue_id_int)
+    if not view:
+        return jsonify(ok=False, error="issue not found"), 404
+    return jsonify(ok=True, issue=view)
 
 
 @app.route("/api/v1/edges", methods=["GET"])
@@ -5473,6 +6712,45 @@ def _grant_asset_read(asset_id, intent_id) -> None:
         log.exception("asset grant failed asset=%s intent=%s", aid, iid)
 
 
+def _iter_plan_input_asset_ids(plan) -> list[str]:
+    """Concrete asset_id values in plan step input_constrict (skip $hydrate tokens)."""
+    ids: list[str] = []
+    seen: set[str] = set()
+    for step in plan or []:
+        if not isinstance(step, dict):
+            continue
+        inp = step.get("input_constrict") or {}
+        if not isinstance(inp, dict):
+            continue
+        refs = []
+        ref = _as_asset_ref(inp.get("asset_ref"))
+        if ref:
+            refs.append(ref)
+        refs.extend(_parse_asset_refs_list(inp.get("asset_refs")))
+        for item in refs:
+            aid = str((item or {}).get("asset_id") or "").strip()
+            if not aid or aid.startswith("$") or aid in seen:
+                continue
+            seen.add(aid)
+            ids.append(aid)
+    return ids
+
+
+def _grant_plan_input_assets(intent_id, plan) -> None:
+    """Grant read on assets the planner bound into this intent's steps.
+
+    iPhone photo uploads are catalogued without origin_intent_id. A later
+    「最新照片里这个字」plan copies that asset_ref into input_constrict.
+    Runtime fetch only sees storage if this intent has a grant; otherwise
+    Brain returns the public metadata view and Mac reports no storage locator.
+    """
+    iid = str(intent_id or "").strip()
+    if not iid:
+        return
+    for aid in _iter_plan_input_asset_ids(plan):
+        _grant_asset_read(aid, iid)
+
+
 def _grant_presented_asset(intent) -> None:
     """If Brain put asset_ref on this intent's presentation, the issuer may fetch bytes."""
     if not isinstance(intent, dict):
@@ -5514,6 +6792,9 @@ def _intent_job_presents_asset(intent_id: str, asset_id: str) -> bool:
         ref = _as_asset_ref(blob.get("asset_ref"))
         if ref and str(ref.get("asset_id") or "").strip() == aid:
             return True
+    plan = job.get("execution_plan")
+    if isinstance(plan, list) and aid in _iter_plan_input_asset_ids(plan):
+        return True
     return False
 
 
@@ -5867,6 +7148,7 @@ def _get_asset_content_handler(asset_id):
     if not (
         _asset_client_may_read(rec, intent_id)
         or _asset_producer_may_read(rec, edge_id)
+        or _admin_request_ok()
     ):
         return jsonify(ok=False, error="asset_ref grant required"), 403
     representation = str(request.args.get("representation") or "original").strip().lower()
@@ -5936,7 +7218,7 @@ def command_handler():
     max_fetch_num = 10
     edge_id = request.args.get('edge_id', "")
     if edge_id.strip() == "":
-        return {"intents" : []}
+        return jsonify(intents=[])
     status = request.args.get('intent_status', "")
     if status:
         filtered_intents = []
@@ -5959,9 +7241,7 @@ def command_handler():
 
     sorted_intents = sorted(filtered_intents, key=lambda v: v["id"], reverse=True)
 
-    return {
-            "intents": sorted_intents[0:fetch_num]
-    }
+    return jsonify(intents=sorted_intents[0:fetch_num])
  
 
 
@@ -6018,7 +7298,7 @@ def chat():
     user_msg = request.args.get("msg", "")
     log.info("get user msg: %s", user_msg)
     if not user_msg.strip():
-        return json.dumps({"error": "缺少提问内容"}), 400
+        return jsonify(error="缺少提问内容"), 400
     full_prompt = SYS_PROMPT_RUNNER.format(user_question=user_msg)
 
     headers = {
@@ -6039,13 +7319,13 @@ def chat():
         log.info("%s", resp_data)
         ans = resp_data["choices"][0]["message"]["content"]
         log.info("%s", ans)
-        return json.dumps({"reply" : ans})
+        return jsonify(reply=ans)
     except urllib.error.URLError as e:
         err_msg = f"网络读取超时，模型生成内容较长，当前网络不稳定"
-        return json.dumps({"reply": err_msg})
+        return jsonify(reply=err_msg)
     except Exception as e:
         err_msg = f"服务异常：{str(e)}"
-        return json.dumps({"reply": err_msg})
+        return jsonify(reply=err_msg)
 
 ALPHABET = string.ascii_letters + string.digits  # a-zA-Z0-9
 def random_edge_token(length: int = 8) -> str:
@@ -6079,6 +7359,8 @@ def _registration_from_body(body, edge_id, *, client_hint=None, existing=None):
         "intent_sources",
         "endpoints",
         "roles",
+        "exposure_policy",
+        "runtime_id",
     ):
         if body.get(key) is not None:
             rec[key] = body.get(key)
@@ -6106,33 +7388,47 @@ def node_register():
             body = {}
     else:
         body = request.args.to_dict()
+    domain = instance_intent_origin()
+    # P0: Runtime Identity is client-supplied and stable across Brains.
+    # When the client supplies runtime_id / participant_id, it is authoritative:
+    # create or update that exact id. Do NOT fall back to client_hint rebind
+    # (legacy mechanism for clients that don't supply a runtime_id).
+    supplied_id = str(
+        body.get("runtime_id") or body.get("participant_id") or ""
+    ).strip()
     client_hint = str(body.get("client_hint") or body.get("edge_id") or "").strip()
-    existing = _find_by_client_hint(client_hint) if client_hint else None
+    existing = None
+    if supplied_id:
+        existing = brain_db.get_registration(supplied_id)
+    elif client_hint:
+        existing = _find_by_client_hint(client_hint)
     if existing:
         edge_id = existing["participant_id"]
         rec = _registration_from_body(
             body, edge_id, client_hint=client_hint or existing.get("client_hint"), existing=existing
         )
-        brain_db.put_registration(rec)
+        brain_db.put_registration(rec, domain=domain)
         d = {
             "ts": time.time(),
             "edge_id": edge_id,
             "participant_id": edge_id,
+            "runtime_id": rec.get("runtime_id") or edge_id,
             "ok": True,
             "status": "approved",
             "message": "ok",
         }
         return jsonify(d)
 
-    edge_id = "edge-node-"+random_edge_token(8)
+    edge_id = supplied_id or ("edge-node-" + random_edge_token(8))
     rec = _registration_from_body(body, edge_id, client_hint=client_hint or None)
-    brain_db.put_registration(rec)
+    brain_db.put_registration(rec, domain=domain)
     if edge_id not in _REGISTERED_edges:
         _REGISTERED_edges.append(edge_id)
     d = {
         "ts": time.time(),
         "edge_id": edge_id,
         "participant_id": edge_id,
+        "runtime_id": rec.get("runtime_id") or edge_id,
         "ok": True,
         "status": "approved",
         "message": "ok"
@@ -6169,6 +7465,9 @@ def upsert_edge_heartbeat(edge_id, body):
                 continue
             cid = cap.get("capability_id")
             if cid and not is_system_capability(str(cid)):
+                # DECLARED but unavailable caps do not enter the schedulable map.
+                if cap.get("available") is False:
+                    continue
                 # Unique mapping is rebuilt from all heartbeats in rebuild_capability_maps.
                 capability_edge_mapping.setdefault(cid, edge_id)
 
@@ -6218,6 +7517,7 @@ def node_heartbeat():
     if edge_id not in _REGISTERED_edges and brain_db.get_registration(edge_id) is None:
         return jsonify({"ok": False, "error": "unknown edge_id; register first"}), 401
     existing = brain_db.get_registration(edge_id) or {}
+    domain = instance_intent_origin()
     brain_db.put_registration(
         _registration_from_body(
             {
@@ -6229,12 +7529,15 @@ def node_heartbeat():
                 "intent_sources": body.get("intent_sources") if body.get("intent_sources") is not None else existing.get("intent_sources"),
                 "endpoints": body.get("endpoints") if body.get("endpoints") is not None else existing.get("endpoints"),
                 "roles": body.get("roles"),
+                "exposure_policy": body.get("exposure_policy") or existing.get("exposure_policy"),
+                "runtime_id": body.get("runtime_id") or existing.get("runtime_id") or edge_id,
                 "client_hint": existing.get("client_hint"),
             },
             edge_id,
             client_hint=existing.get("client_hint"),
             existing=existing,
-        )
+        ),
+        domain=domain,
     )
     info = upsert_edge_heartbeat(edge_id, body)
     info["brain_time_ms"] = brain_time_ms
@@ -6244,10 +7547,10 @@ def node_heartbeat():
     if reject_reason:
         info["schedule_reject_reason"] = reject_reason
     try:
-        brain_db.put_heartbeat(edge_id, info)
+        brain_db.put_heartbeat(edge_id, info, domain=domain)
     except KeyError:
         return jsonify({"ok": False, "error": "unknown edge_id; register first"}), 401
-    rebuild_capability_maps()
+    rebuild_capability_maps(force=True)
     payload = {
         "ok": schedule_eligible,
         "edge_id": edge_id,
@@ -6274,7 +7577,33 @@ def _edge_public_view(info):
     return out
 
 
-def rebuild_capability_maps():
+_CAP_MAPS_LOCK = threading.Lock()
+# Capability→edge map only changes on heartbeat/registration. Rebuilding from
+# scratch (list_heartbeats + per-cap policy filter) is ~1-2s, and it was called
+# on every dispatch AND every heartbeat — a constant, contended cost. Cache it
+# and invalidate via brain_db.heartbeat_version() (bumped on every heartbeat/
+# registration write). Heartbeat/policy handlers pass force=True; dispatch and
+# read paths use the cache. Concurrent dispatches coalesce on the lock.
+_CAP_MAPS_BUILT_GEN = -1
+
+
+def rebuild_capability_maps(force: bool = False):
+    """Rebuild capability→edge maps. Cached unless `force` (heartbeat/state change)
+    or brain_db.heartbeat_version() advanced since the last build. Read paths
+    pass force=False."""
+    global _CAP_MAPS_BUILT_GEN
+    gen = brain_db.heartbeat_version()
+    if not force and _CAP_MAPS_BUILT_GEN == gen:
+        return
+    with _CAP_MAPS_LOCK:
+        gen = brain_db.heartbeat_version()
+        if not force and _CAP_MAPS_BUILT_GEN == gen:
+            return
+        _do_rebuild_capability_maps()
+        _CAP_MAPS_BUILT_GEN = gen
+
+
+def _do_rebuild_capability_maps():
     global services_registered_mapping, capability_edge_mapping, _EDGES
     services_registered_mapping = {}
     capability_edge_mapping = {}
@@ -6303,6 +7632,13 @@ def rebuild_capability_maps():
                     continue
                 cid = cap.get("capability_id")
                 if not cid or is_system_capability(str(cid)):
+                    continue
+                # P0: Availability filter. `available` comes from the Runtime's
+                # IsAvailable() probe in the heartbeat snapshot. Absent = treat as
+                # available (legacy clients / declaration-only). DECLARED but
+                # unavailable caps stay in participants.services (Declaration) but
+                # do not enter the schedulable map.
+                if cap.get("available") is False:
                     continue
                 ok, _reason = can_participate(
                     edge_id,
@@ -6340,6 +7676,8 @@ def _requeue_unplanned_jobs():
     for job in brain_db.list_jobs():
         if str(job.get("status") or "") != "intent_received":
             continue
+        if _should_skip_llm_planner(job):
+            continue
         try:
             task_queue.put_nowait(
                 {
@@ -6355,12 +7693,54 @@ def _requeue_unplanned_jobs():
             break
 
 
+# Non-terminal jobs past planning that a Brain restart leaves orphaned: the
+# in-flight dispatch/execution state is in-memory and dies with the process.
+# `intent_received` is re-queued above; these statuses have no resume path.
+_ORPHAN_STATUSES = frozenset(
+    {"intent_parsed", "intent_scheduled", "intent_dispatched", "running"}
+)
+# Only fail orphans older than the grace window so we don't race a fresh
+# dispatch whose Edge may still report back right after a restart.
+_ORPHAN_GRACE_SEC = 5 * 60
+
+
+def _reconcile_orphan_jobs() -> int:
+    """Fail non-terminal jobs orphaned by a prior Brain restart. Boot-only."""
+    now = time.time()
+    closed = 0
+    for job in brain_db.list_jobs():
+        status = _normalize_status(str(job.get("status") or ""))
+        if status not in _ORPHAN_STATUSES:
+            continue
+        updated_at = job.get("updated_at")
+        try:
+            age = now - float(updated_at) if updated_at is not None else now
+        except (TypeError, ValueError):
+            age = now
+        if age < _ORPHAN_GRACE_SEC:
+            continue
+        iid = int(job.get("intent_id") or job.get("id") or 0)
+        if not iid:
+            continue
+        msg = f"Brain 重启收口：任务在 {status} 状态超过 {_ORPHAN_GRACE_SEC}s 未完成（Brain 重启导致在途派发孤儿）"
+        try:
+            mark_intent_failed(iid, msg)
+            closed += 1
+            log.warning("reconcile orphan intent=%s status=%s age=%.0fs", iid, status, age)
+        except Exception:
+            log.exception("reconcile orphan intent=%s failed", iid)
+    if closed:
+        log.warning("reconcile orphan jobs closed=%d", closed)
+    return closed
+
+
 def _boot_from_existing_schema():
     """Load runtime caches. Schema/migrate is @dba (`python db.py init`)."""
     global _REGISTERED_edges
     _REGISTERED_edges = brain_db.registration_ids()
     rebuild_capability_maps()
     _requeue_unplanned_jobs()
+    _reconcile_orphan_jobs()
 
 
 try:

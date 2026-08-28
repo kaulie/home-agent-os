@@ -17,6 +17,9 @@ from typing import Any
 
 log = logging.getLogger("mac_edge.voice_test.brain_capture")
 
+from mac_edge.config import primary_brain_url
+
+
 DEFAULT_BRAIN = "http://127.0.0.1:9527"
 DEFAULT_ISSUER = "edge-node-JzvEe287"
 TERMINAL = frozenset({"succeeded", "failed", "plan_failed"})
@@ -27,7 +30,7 @@ class BrainCaptureError(Exception):
 
 
 def _brain_url() -> str:
-    return (os.environ.get("MAC_EDGE_BRAIN_URL") or DEFAULT_BRAIN).strip().rstrip("/")
+    return primary_brain_url(os.environ.get("MAC_EDGE_BRAIN_URL"), default=DEFAULT_BRAIN)
 
 
 def _issuer() -> str:

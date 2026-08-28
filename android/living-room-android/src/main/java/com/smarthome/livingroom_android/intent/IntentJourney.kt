@@ -4,17 +4,33 @@ import org.json.JSONObject
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.max
 
-enum class IntentPhase(val wire: String, val label: String, val rank: Int) {
-    UPLOADED("intent_received", "上传到服务器，待意图解析", 0),
-    INTENT_PARSED("intent_parsed", "意图解析完成，待下发到中控节点", 1),
-    SCHEDULED("intent_scheduled", "任务已调度", 2),
-    ASSIGNED("intent_dispatched", "任务已分配到具体 edge", 3),
-    RUNNING("running", "任务执行中", 4),
-    SUCCEEDED("succeeded", "任务执行完成（成功）", 5),
-    FAILED("failed", "任务执行完成（失败）", 5),
+enum class IntentPhase(val wire: String, val rank: Int) {
+    UPLOADED("intent_received", 0),
+    INTENT_PARSED("intent_parsed", 1),
+    SCHEDULED("intent_scheduled", 2),
+    ASSIGNED("intent_dispatched", 3),
+    RUNNING("running", 4),
+    SUCCEEDED("succeeded", 5),
+    FAILED("failed", 5),
     ;
 
     val isTerminal: Boolean get() = this == SUCCEEDED || this == FAILED
+
+    val label: String get() = displayLabel(PhaseVisual.DONE)
+
+    fun displayLabel(visual: PhaseVisual = PhaseVisual.DONE, reportedWire: IntentPhase? = null): String = when (this) {
+        UPLOADED -> "已到达服务器"
+        INTENT_PARSED -> {
+            val waitingForParse = visual == PhaseVisual.ACTIVE &&
+                (reportedWire == null || reportedWire == UPLOADED)
+            if (waitingForParse) "意图解析中" else "意图解析完成，待下发到中控节点"
+        }
+        SCHEDULED -> "任务已调度"
+        ASSIGNED -> "任务已分配到具体 edge"
+        RUNNING -> "任务执行中"
+        SUCCEEDED -> "任务执行完成（成功）"
+        FAILED -> "任务执行完成（失败）"
+    }
 
     companion object {
         val timelineOrder = listOf(
@@ -25,6 +41,16 @@ enum class IntentPhase(val wire: String, val label: String, val rank: Int) {
             val v = raw?.trim()?.lowercase().orEmpty()
             if (v.isEmpty()) return null
             return entries.firstOrNull { it.wire == v }
+        }
+
+        fun jobAccepted(intentId: String): Boolean {
+            val id = intentId.trim()
+            return id.isNotEmpty() && id != "pending…"
+        }
+
+        /** POST 200 with a real intent_id means intent_received already landed. */
+        fun logisticsCurrent(wire: IntentPhase, intentId: String): IntentPhase {
+            return if (wire == UPLOADED && jobAccepted(intentId)) INTENT_PARSED else wire
         }
     }
 }
@@ -66,6 +92,9 @@ data class IntentJourney(
     val updatedAtMs: Long = System.currentTimeMillis(),
     val presentation: IntentPresentation? = null,
     val error: String? = null,
+    val reportedWire: IntentPhase = IntentPhase.UPLOADED,
+    /** POST accept / intent_base_time. Frozen across polls. */
+    val acceptedAtMs: Long? = null,
 ) {
     fun logisticsText(nowMs: Long = System.currentTimeMillis()): String = buildString {
         append("意图 #").append(intentId)
@@ -80,7 +109,7 @@ data class IntentJourney(
                 PhaseVisual.FAILED -> "✗"
                 PhaseVisual.PENDING -> "·"
             }
-            append(mark).append(' ').append(p.phase.label)
+            append(mark).append(' ').append(p.phase.displayLabel(p.visual, reportedWire))
             val dur = when (p.visual) {
                 PhaseVisual.ACTIVE -> p.enteredAtMs?.let { max(0L, nowMs - it) }
                 PhaseVisual.DONE, PhaseVisual.FAILED -> p.durationMs
@@ -130,6 +159,94 @@ data class IntentJourney(
                 server != null -> "服务 $server"
                 else -> ""
             }
+        }
+
+        /**
+         * First row completes at Brain accept (`intent_base_time`).
+         * Parse wait is the second row, even while wire is still `intent_received`.
+         */
+        fun timeline(
+            intentId: String,
+            text: String,
+            wire: IntentPhase,
+            startedAtMs: Long,
+            acceptedAtMs: Long? = null,
+            nowMs: Long = System.currentTimeMillis(),
+            planSteps: List<PlanStepRow> = emptyList(),
+            presentation: IntentPresentation? = null,
+            error: String? = null,
+        ): IntentJourney {
+            val logistics = IntentPhase.logisticsCurrent(wire, intentId)
+            val accepted = when {
+                acceptedAtMs != null -> acceptedAtMs
+                IntentPhase.jobAccepted(intentId) -> nowMs
+                else -> null
+            }
+            val entered = linkedMapOf<IntentPhase, Long>()
+            entered[IntentPhase.UPLOADED] = startedAtMs
+            if (IntentPhase.jobAccepted(intentId) && accepted != null) {
+                entered[IntentPhase.INTENT_PARSED] = accepted
+            }
+            if (logistics.rank > IntentPhase.INTENT_PARSED.rank) {
+                for (p in IntentPhase.timelineOrder) {
+                    if (p.rank in 2..logistics.rank) {
+                        entered.putIfAbsent(p, nowMs)
+                    }
+                }
+            }
+            val phases = IntentPhase.timelineOrder.map { p ->
+                when {
+                    logistics == IntentPhase.FAILED && p.rank == IntentPhase.SUCCEEDED.rank -> {
+                        val failAt = entered[IntentPhase.FAILED] ?: nowMs
+                        val prev = IntentPhase.timelineOrder.lastOrNull { it.rank < logistics.rank }
+                        val prevAt = prev?.let { entered[it] }
+                        PhaseRow(
+                            phase = IntentPhase.FAILED,
+                            visual = PhaseVisual.FAILED,
+                            enteredAtMs = failAt,
+                            durationMs = prevAt?.let { max(0L, failAt - it) }
+                                ?: max(0L, nowMs - (entered[p] ?: startedAtMs)),
+                        )
+                    }
+                    p.rank < logistics.rank -> {
+                        val start = entered[p] ?: startedAtMs
+                        val next = IntentPhase.timelineOrder.firstOrNull {
+                            it.rank > p.rank && entered.containsKey(it)
+                        } ?: logistics.takeIf { entered.containsKey(it) }
+                        val end = next?.let { entered[it] } ?: nowMs
+                        PhaseRow(
+                            phase = p,
+                            visual = PhaseVisual.DONE,
+                            enteredAtMs = start,
+                            durationMs = max(0L, end - start),
+                        )
+                    }
+                    p.rank == logistics.rank -> {
+                        val start = entered[p] ?: nowMs
+                        val visual = if (logistics.isTerminal) PhaseVisual.DONE else PhaseVisual.ACTIVE
+                        PhaseRow(
+                            phase = p,
+                            visual = visual,
+                            enteredAtMs = start,
+                            durationMs = max(0L, nowMs - start),
+                        )
+                    }
+                    else -> PhaseRow(p, PhaseVisual.PENDING)
+                }
+            }
+            return IntentJourney(
+                intentId = intentId,
+                text = text,
+                phase = logistics,
+                phases = phases,
+                planSteps = planSteps,
+                startedAtMs = startedAtMs,
+                updatedAtMs = nowMs,
+                presentation = presentation,
+                error = error,
+                reportedWire = wire,
+                acceptedAtMs = accepted,
+            )
         }
     }
 }
@@ -235,45 +352,57 @@ class IntentJourneyStore {
         if (id.isEmpty()) return
         val current = active
         val now = System.currentTimeMillis()
+        val logistics = IntentPhase.logisticsCurrent(phase, id)
 
         if (current == null || current.intentId != id) {
             phaseEntered.clear()
         } else if (current.phase.isTerminal &&
-            phase.rank <= current.phase.rank &&
-            phase != IntentPhase.FAILED
+            logistics.rank <= current.phase.rank &&
+            logistics != IntentPhase.FAILED
         ) {
             return
         }
 
-        // Record enter time for newly reached ranks
-        val prevRank = current?.takeIf { it.intentId == id }?.phase?.rank ?: -1
-        if (phase.rank > prevRank || current?.intentId != id) {
-            // Close previous active phase duration implicitly via entered map
-            if (!phaseEntered.containsKey(phase)) {
-                phaseEntered[phase] = now
-            }
-            // Fill any skipped intermediate phases with same timestamp (0 duration)
-            for (p in IntentPhase.timelineOrder) {
-                if (p.rank <= phase.rank && !phaseEntered.containsKey(p)) {
-                    phaseEntered[p] = now
-                }
-            }
-        } else if (!phaseEntered.containsKey(phase)) {
-            phaseEntered[phase] = now
+        val startedAt = current?.takeIf { it.intentId == id }?.startedAtMs ?: now
+        if (IntentPhase.jobAccepted(id) && !phaseEntered.containsKey(IntentPhase.UPLOADED)) {
+            phaseEntered[IntentPhase.UPLOADED] = startedAt
+        }
+        if (logistics.rank >= IntentPhase.INTENT_PARSED.rank &&
+            !phaseEntered.containsKey(IntentPhase.INTENT_PARSED)
+        ) {
+            phaseEntered[IntentPhase.INTENT_PARSED] =
+                current?.takeIf { it.intentId == id }?.acceptedAtMs ?: startedAt
         }
 
-        val startedAt = current?.takeIf { it.intentId == id }?.startedAtMs ?: now
-        val phases = buildPhaseRows(phase, now)
+        // Record enter time for newly reached ranks
+        val prevRank = current?.takeIf { it.intentId == id }?.phase?.rank ?: -1
+        if (logistics.rank > prevRank || current?.intentId != id) {
+            if (!phaseEntered.containsKey(logistics)) {
+                phaseEntered[logistics] = now
+            }
+            for (p in IntentPhase.timelineOrder) {
+                if (p.rank <= logistics.rank && !phaseEntered.containsKey(p)) {
+                    phaseEntered[p] = if (p == IntentPhase.UPLOADED) startedAt else now
+                }
+            }
+        } else if (!phaseEntered.containsKey(logistics)) {
+            phaseEntered[logistics] = now
+        }
+
+        val phases = buildPhaseRows(logistics, now)
         val journey = IntentJourney(
             intentId = id,
             text = text.ifBlank { current?.text.orEmpty() },
-            phase = phase,
+            phase = logistics,
             phases = phases,
             planSteps = planSteps,
             startedAtMs = startedAt,
             updatedAtMs = now,
             presentation = presentation ?: current?.takeIf { it.intentId == id }?.presentation,
             error = error ?: current?.takeIf { it.intentId == id }?.error,
+            reportedWire = phase,
+            acceptedAtMs = current?.takeIf { it.intentId == id }?.acceptedAtMs
+                ?: phaseEntered[IntentPhase.INTENT_PARSED],
         )
         active = journey
         listeners.forEach { it.onJourneyChanged(journey) }

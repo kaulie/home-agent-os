@@ -23,6 +23,17 @@ class TtsPlaybackTests(unittest.TestCase):
                 self.assertFalse(flag.is_file())
                 self.assertFalse(is_playing(flag))
 
+    def test_nested_sessions_keep_flag_until_outer_exits(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            flag = Path(td) / "tts_playing"
+            with patch("mac_edge.tts_playback.flag_path", return_value=flag):
+                with playback_session():
+                    self.assertTrue(flag.is_file())
+                    with playback_session():
+                        self.assertTrue(flag.is_file())
+                    self.assertTrue(flag.is_file())
+                self.assertFalse(flag.is_file())
+
     def test_stale_flag_ignored(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             flag = Path(td) / "tts_playing"

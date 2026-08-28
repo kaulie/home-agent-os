@@ -1,5 +1,7 @@
 import Foundation
+import PhotosUI
 import SwiftUI
+import UIKit
 
 enum IntentUnderstandingFeedback: String, CaseIterable, Codable, Equatable {
     case accurate
@@ -41,126 +43,346 @@ struct IntentUserFeedback: Codable, Equatable {
     }
 }
 
-enum IntentFeedbackStore {
-    private static let key = "livingroom.intentUserFeedback.v1"
+enum DebugReportStore {
+    private static let key = "livingroom.debugReportSubmitted.v1"
 
-    static func load(intentId: String) -> IntentUserFeedback {
-        guard let map = UserDefaults.standard.dictionary(forKey: key) as? [String: Data],
-              let data = map[intentId],
-              let row = try? JSONDecoder().decode(IntentUserFeedback.self, from: data) else {
-            return IntentUserFeedback()
-        }
-        return row
+    static func isSubmitted(intentId: String) -> Bool {
+        let id = intentId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { return false }
+        let set = UserDefaults.standard.array(forKey: key) as? [String] ?? []
+        return set.contains(id)
     }
 
-    static func save(intentId: String, feedback: IntentUserFeedback) {
-        var map = (UserDefaults.standard.dictionary(forKey: key) as? [String: Data]) ?? [:]
-        if let data = try? JSONEncoder().encode(feedback) {
-            map[intentId] = data
-            UserDefaults.standard.set(map, forKey: key)
+    static func markSubmitted(intentId: String) {
+        let id = intentId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { return }
+        var set = Set(UserDefaults.standard.array(forKey: key) as? [String] ?? [])
+        set.insert(id)
+        UserDefaults.standard.set(Array(set), forKey: key)
+    }
+}
+
+enum UserFeedbackProblemType: String, CaseIterable, Identifiable, Equatable {
+    case intentUnderstanding = "intent_understanding"
+    case executionError = "execution_error"
+    case slowResponse = "slow_response"
+    case other = "other"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .intentUnderstanding: return "意图理解不准确"
+        case .executionError: return "执行报错"
+        case .slowResponse: return "响应速度太慢"
+        case .other: return "其他"
         }
     }
 }
 
-struct IntentFeedbackStrip: View {
-    let intentId: String
+struct UserFeedbackSheet: View {
+    let turn: ChatTurn
     @EnvironmentObject private var model: AppModel
-    @State private var feedback = IntentUserFeedback()
-    @State private var hint = ""
+    @Environment(\.dismiss) private var dismiss
+    @State private var selected: UserFeedbackProblemType?
+    @State private var otherDetail = ""
+    @State private var localError = ""
+    @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var pendingAttachments: [PendingFeedbackAttachment] = []
+    @FocusState private var otherDetailFocused: Bool
+
+    private let maxAttachments = 3
+
+    private var busy: Bool {
+        model.isDevBugBusy(turnId: turn.id)
+    }
+
+    private var trimmedOtherDetail: String {
+        otherDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSubmit: Bool {
+        guard let selected else { return false }
+        if selected == .other {
+            return !trimmedOtherDetail.isEmpty
+        }
+        return true
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text("意图理解")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 52, alignment: .leading)
-                chipGroup(
-                    choices: IntentUnderstandingFeedback.allCases,
-                    selection: feedback.understanding,
-                    label: { $0.label }
-                ) { feedback.understanding = $0; persist() }
-            }
-            HStack(spacing: 6) {
-                Text("响应速度")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 52, alignment: .leading)
-                chipGroup(
-                    choices: IntentSpeedFeedback.allCases,
-                    selection: feedback.responseSpeed,
-                    label: { $0.label }
-                ) { feedback.responseSpeed = $0; persist() }
-            }
-            if !hint.isEmpty {
-                Text(hint)
-                    .font(.caption2)
-                    .foregroundStyle(hint.contains("失败") || hint.contains("未同步") ? .orange : .secondary)
-            }
-        }
-        .padding(.top, 4)
-        .task(id: intentId) {
-            await load()
-        }
-    }
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("请选择本次体验的问题类型，我们会自动收集执行现场并交给 Dev Agent 分析。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
-    private func chipGroup<T: Hashable>(
-        choices: [T],
-        selection: T?,
-        label: @escaping (T) -> String,
-        onSelect: @escaping (T) -> Void
-    ) -> some View {
-        HStack(spacing: 4) {
-            ForEach(choices, id: \.self) { choice in
-                let selected = selection == choice
-                Button {
-                    onSelect(choice)
-                } label: {
-                    Text(label(choice))
-                        .font(.caption2)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(selected ? Color.accentColor.opacity(0.15) : Color(.tertiarySystemFill))
-                        .foregroundStyle(selected ? Color.accentColor : Color.secondary)
-                        .clipShape(Capsule())
+                    VStack(spacing: 10) {
+                        ForEach(UserFeedbackProblemType.allCases) { option in
+                            let picked = selected == option
+                            Button {
+                                selected = option
+                                localError = ""
+                                if option != .other {
+                                    otherDetail = ""
+                                    otherDetailFocused = false
+                                }
+                            } label: {
+                                HStack {
+                                    Text(option.label)
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    Image(systemName: picked ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(picked ? Color.accentColor : Color.secondary)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(picked ? Color.accentColor.opacity(0.12) : Color(.tertiarySystemFill))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    if selected == .other {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("补充说明")
+                                .font(.subheadline.weight(.semibold))
+                            TextField(
+                                "请描述遇到的问题或期望…",
+                                text: $otherDetail,
+                                axis: .vertical
+                            )
+                            .lineLimit(3...6)
+                            .focused($otherDetailFocused)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color(.tertiarySystemFill))
+                            )
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("附件")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Text("\(pendingAttachments.count)/\(maxAttachments)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text("可附最多 \(maxAttachments) 个附件（当前支持图片，后续可扩展文件/音频）。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if !pendingAttachments.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 10) {
+                                    ForEach(pendingAttachments) { pending in
+                                        ZStack(alignment: .topTrailing) {
+                                            Image(uiImage: pending.preview)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .frame(width: 88, height: 88)
+                                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                            Button {
+                                                pendingAttachments.removeAll { $0.id == pending.id }
+                                                syncPickerItems()
+                                            } label: {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .font(.system(size: 18))
+                                                    .foregroundStyle(.white, Color.black.opacity(0.55))
+                                            }
+                                            .offset(x: 6, y: -6)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if pendingAttachments.count < maxAttachments {
+                            PhotosPicker(
+                                selection: $pickerItems,
+                                maxSelectionCount: maxAttachments - pendingAttachments.count,
+                                matching: .images
+                            ) {
+                                Label("添加图片附件", systemImage: "paperclip")
+                                    .font(.subheadline.weight(.semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(Color(.tertiarySystemFill))
+                                    )
+                            }
+                            .disabled(busy)
+                        }
+                    }
+
+                    if !localError.isEmpty {
+                        Text(localError)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(20)
+            }
+            .navigationTitle("一键反馈")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                        .disabled(busy)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if busy {
+                        ProgressView()
+                    } else {
+                        Button("提交") { submit() }
+                            .disabled(!canSubmit)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.height(sheetHeight)])
+        .presentationDragIndicator(.visible)
+        .onChange(of: pickerItems) { items in
+            Task { await importPickerImages(items) }
+        }
+        .onChange(of: selected) { next in
+            if next == .other {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    otherDetailFocused = true
+                }
             }
         }
     }
 
-    private func load() async {
-        feedback = IntentFeedbackStore.load(intentId: intentId)
-        let remote = await model.intentClient.fetchIntentFeedback(
-            intentId: intentId,
-            participantId: model.participantId,
-            intentURL: model.intentServerURL
-        )
-        if let remote {
-            feedback = remote
-            IntentFeedbackStore.save(intentId: intentId, feedback: remote)
+    private var sheetHeight: CGFloat {
+        var height: CGFloat = selected == .other ? 520 : 460
+        if !pendingAttachments.isEmpty {
+            height += 70
+        }
+        return height
+    }
+
+    private func syncPickerItems() {
+        pickerItems = []
+    }
+
+    private func importPickerImages(_ items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else { return }
+        var imported: [PendingFeedbackAttachment] = []
+        for item in items {
+            guard pendingAttachments.count + imported.count < maxAttachments else { break }
+            if let data = try? await item.loadTransferable(type: Data.self),
+               let image = UIImage(data: data) {
+                imported.append(.image(image))
+            }
+        }
+        await MainActor.run {
+            pendingAttachments.append(contentsOf: imported)
+            if pendingAttachments.count > maxAttachments {
+                pendingAttachments = Array(pendingAttachments.prefix(maxAttachments))
+            }
+            syncPickerItems()
         }
     }
 
-    private func persist() {
-        IntentFeedbackStore.save(intentId: intentId, feedback: feedback)
-        guard let u = feedback.understanding, let s = feedback.responseSpeed else {
-            hint = ""
+    private func submit() {
+        guard let selected else {
+            localError = "请先选择问题类型"
             return
         }
-        hint = "保存中…"
-        Task {
-            let ok = await model.intentClient.submitIntentFeedback(
-                intentId: intentId,
-                participantId: model.participantId,
-                understanding: u,
-                responseSpeed: s,
-                intentURL: model.intentServerURL
-            )
-            hint = ok ? "已记录" : "暂存本机（服务端未同步）"
+        if selected == .other && trimmedOtherDetail.isEmpty {
+            localError = "请填写补充说明"
+            return
+        }
+        localError = ""
+        model.submitUserFeedback(
+            turnId: turn.id,
+            problemType: selected,
+            detail: selected == .other ? trimmedOtherDetail : "",
+            attachments: pendingAttachments
+        ) { ok, message in
             if ok {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                if hint == "已记录" { hint = "" }
+                dismiss()
+            } else {
+                localError = message.isEmpty ? "提交失败" : message
+            }
+        }
+    }
+}
+
+struct DebugBugReportStrip: View {
+    let turn: ChatTurn
+    @EnvironmentObject private var model: AppModel
+    @State private var showFeedbackSheet = false
+
+    private var submitted: Bool {
+        model.isDevBugSubmitted(intentId: turn.intentId)
+    }
+
+    private var busy: Bool {
+        model.isDevBugBusy(turnId: turn.id)
+    }
+
+    private var error: String? {
+        model.devBugError(for: turn.id)
+    }
+
+    private var canSubmit: Bool {
+        ChatTurn.isBrainIntentId(turn.intentId) && !submitted
+    }
+
+    var body: some View {
+        Group {
+            if !canSubmit && error == nil {
+                if submitted {
+                    Text("已提交反馈，正在分析。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 4)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    if canSubmit {
+                        HStack {
+                            Spacer(minLength: 0)
+                            Button {
+                                showFeedbackSheet = true
+                            } label: {
+                                if busy {
+                                    HStack(spacing: 6) {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                        Text("提交中…")
+                                            .font(.caption2)
+                                    }
+                                } else {
+                                    Text("一键反馈")
+                                        .font(.caption2.weight(.semibold))
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.mini)
+                            .tint(Color(red: 0.82, green: 0.70, blue: 0.48))
+                            .disabled(busy)
+                        }
+                    }
+                    if let error, !error.isEmpty {
+                        Text(error)
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                }
+                .padding(.top, 4)
+                .sheet(isPresented: $showFeedbackSheet) {
+                    UserFeedbackSheet(turn: turn)
+                        .environmentObject(model)
+                }
             }
         }
     }

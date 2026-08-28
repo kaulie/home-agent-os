@@ -1,6 +1,7 @@
 package com.smarthome.livingroom_android.skill
 
 import android.util.Log
+import com.smarthome.livingroom_android.brain.BrainEndpoint
 import com.smarthome.livingroom_android.brain.dto.CapabilityDescriptor
 import com.smarthome.livingroom_android.brain.dto.SchemaField
 import com.smarthome.livingroom_android.brain.dto.ServiceDescriptor
@@ -18,7 +19,6 @@ import java.io.File
  */
 class AssetUploadSkill(
     private val intentUrl: () -> String,
-    private val cloudIntentUrl: () -> String,
     private val participantId: () -> String,
     private val api: IntentApi,
 ) : Skill {
@@ -80,13 +80,15 @@ class AssetUploadSkill(
         ctx: SkillContext,
     ): SkillResult = withContext(Dispatchers.IO) {
         val destRaw = (params["dest"] ?: params["upload_dest"] ?: "img_server").toString().trim()
-        val dest = when (destRaw.lowercase()) {
-            "cloud" -> "cloud"
+        when (destRaw.lowercase()) {
             "gdrive", "dropbox" -> return@withContext SkillResult.error(
                 "asset.upload 失败：dest=$destRaw 尚未实现。",
             )
-            else -> "img_server"
         }
+        val primary = intentUrl()
+        val dest = BrainEndpoint.destLabel(primary)
+        val uploadUrl = BrainEndpoint.apiUrl(primary, "assets/upload")
+        Log.i(TAG, "asset.upload POST $uploadUrl dest=$dest destParam=$destRaw")
         var captureId = CaptureStore.parseCaptureId(params["capture_ref"])
         val assetId = parseAssetId(params["asset_ref"])
         if (captureId == null && assetId == null) {
@@ -121,12 +123,9 @@ class AssetUploadSkill(
         }
         val intentId = params["intent_id"]?.toString()?.trim().orEmpty()
         val pid = participantId()
-        val primary = intentUrl()
-        val cloud = cloudIntentUrl()
-        val target = if (dest == "cloud" && cloud.isNotBlank()) cloud else primary
         val uploaded = try {
             api.uploadAsset(
-                intentUrl = target,
+                intentUrl = primary,
                 jpeg = jpeg,
                 uploadIntent = Capabilities.ASSET_UPLOAD,
                 participantId = pid,

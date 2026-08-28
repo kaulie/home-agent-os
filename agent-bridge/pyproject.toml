@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-bridge"
+version = "0.1.0"
+description = "Local Cursor Agent bridge: HTTP API for phone/remote dev task control"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "cursor-sdk>=1.0.28,<2",
+  "flask>=3.0.0,<4",
+]
+
+[project.scripts]
+agent-bridge = "agent_bridge.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

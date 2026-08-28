@@ -6,6 +6,7 @@ import os
 import sys
 import json
 import io
+import queue
 import tempfile
 import time
 import unittest
@@ -80,12 +81,36 @@ class HomeBrainPersistTest(unittest.TestCase):
         self._heartbeat(pid)
 
     def tearDown(self) -> None:
+        self._drop_qwen_queue()
         if self._qwen_flag is None:
             os.environ.pop("QWEN_PLANNER", None)
         else:
             os.environ["QWEN_PLANNER"] = self._qwen_flag
         brain_db.reset()
         self._tmp.cleanup()
+
+    def _drop_qwen_queue(self) -> None:
+        if hb is None:
+            return
+        while True:
+            try:
+                hb.qwen_task_queue.get_nowait()
+            except queue.Empty:
+                return
+            hb.qwen_task_queue.task_done()
+
+    def _flush_qwen_shadow(self) -> int:
+        flushed = 0
+        while True:
+            try:
+                task = hb.qwen_task_queue.get_nowait()
+            except queue.Empty:
+                return flushed
+            try:
+                hb._process_qwen_task(task)
+            finally:
+                hb.qwen_task_queue.task_done()
+                flushed += 1
 
     def test_intent_survives_reconnect_and_ids_continue(self) -> None:
         iid = hb.new_intent(
@@ -503,6 +528,497 @@ class HomeBrainPersistTest(unittest.TestCase):
             ["camera.capture", "display.photo"],
         )
 
+    def test_sanitize_folds_capture_upload_into_composite(self) -> None:
+        self._register_photo_runtimes()
+        intent = {"text": "拍张照片我看一下", "source": "voice"}
+        plan = [
+            {
+                "step": 1,
+                "capability": "camera.capture",
+                "assigned_edge_id": "android-1",
+                "output_constrict": {
+                    "capture_ref": {"type": "string", "data_dest": "context"}
+                },
+            },
+            {
+                "step": 2,
+                "capability": "asset.upload",
+                "assigned_edge_id": "iphone-1",
+                "input_constrict": {"capture_ref": "$capture_ref"},
+                "output_constrict": {
+                    "asset_ref": {"type": "string", "data_dest": "context"}
+                },
+            },
+        ]
+        cleaned = hb.sanitize_execution_plan(plan, intent)
+        self.assertEqual([s["capability"] for s in cleaned], ["camera.capture_and_upload"])
+        self.assertEqual(cleaned[0]["step"], 1)
+        self.assertEqual(cleaned[0]["assigned_edge_id"], "android-1")
+        self.assertNotIn("capture_ref", cleaned[0].get("input_constrict") or {})
+        self.assertIn("asset_ref", cleaned[0].get("output_constrict") or {})
+
+    def test_sanitize_keeps_standalone_upload(self) -> None:
+        intent = {"text": "把刚才那张传到云上", "source": "text"}
+        plan = [
+            {
+                "step": 1,
+                "capability": "asset.upload",
+                "input_constrict": {"asset_ref": "$asset_ref", "dest": "cloud"},
+            }
+        ]
+        cleaned = hb.sanitize_execution_plan(plan, intent)
+        self.assertEqual([s["capability"] for s in cleaned], ["asset.upload"])
+
+    def test_do_execution_plan_assigns_composite_to_available_runtime(self) -> None:
+        self._register_photo_runtimes()
+        iid = hb.new_intent(
+            {
+                "status": "intent_received",
+                "text": "拍张照片我看一下",
+                "source": "voice",
+                "edge_id": "iphone-1",
+            }
+        )
+        hb.do_execution_plan(
+            iid,
+            hb.sanitize_execution_plan(
+                [
+                    {
+                        "step": 1,
+                        "capability": "camera.capture",
+                        "assigned_edge_id": "android-1",
+                        "output_constrict": {
+                            "capture_ref": {"type": "string", "data_dest": "context"}
+                        },
+                    },
+                    {
+                        "step": 2,
+                        "capability": "asset.upload",
+                        "assigned_edge_id": "iphone-1",
+                        "input_constrict": {"capture_ref": "$capture_ref"},
+                        "output_constrict": {
+                            "asset_ref": {"type": "string", "data_dest": "context"}
+                        },
+                    },
+                ],
+                {"text": "拍张照片我看一下"},
+            ),
+        )
+        got = hb.get_intent(iid)
+        plan = got["execution_plan"]
+        self.assertEqual([s["capability"] for s in plan], ["camera.capture_and_upload"])
+        self.assertEqual(plan[0]["assigned_edge_id"], "android-1")
+
+    def test_plan_persists_available_capabilities_for_replay(self) -> None:
+        self._register_photo_runtimes()
+        iid = hb.new_intent(
+            {
+                "status": "intent_received",
+                "text": "拍张照片我看一下",
+                "source": "voice",
+                "edge_id": "iphone-1",
+            }
+        )
+        hb.do_execution_plan(
+            iid,
+            hb.sanitize_execution_plan(
+                [
+                    {
+                        "step": 1,
+                        "capability": "camera.capture",
+                        "assigned_edge_id": "android-1",
+                        "output_constrict": {
+                            "capture_ref": {"type": "string", "data_dest": "context"}
+                        },
+                    },
+                    {
+                        "step": 2,
+                        "capability": "asset.upload",
+                        "assigned_edge_id": "iphone-1",
+                        "input_constrict": {"capture_ref": "$capture_ref"},
+                        "output_constrict": {
+                            "asset_ref": {"type": "string", "data_dest": "context"}
+                        },
+                    },
+                ],
+                {"text": "拍张照片我看一下"},
+            ),
+        )
+        job = brain_db.get_job(iid)
+        assert job is not None
+        caps = job.get("available_capabilities") or []
+        self.assertTrue(caps)
+        pairs = {
+            (row.get("capability_id"), row.get("edge_id") or row.get("assigned_edge_id"))
+            for row in caps
+            if isinstance(row, dict)
+        }
+        self.assertIn(("camera.capture", "android-1"), pairs)
+        self.assertNotIn(("camera.capture", "iphone-1"), pairs)
+        android_capture = next(
+            row
+            for row in caps
+            if row.get("capability_id") == "camera.capture"
+            and row.get("edge_id") == "android-1"
+        )
+        self.assertEqual(android_capture.get("composition"), "atomic")
+        detail = hb.app.test_client().get(f"/api/v1/intent_detail?intent_id={iid}")
+        self.assertEqual(detail.status_code, 200)
+        body = detail.get_json()
+        # available_capabilities is persisted on the job (replay) but stripped from
+        # the public intent_detail response (perf: too large to ship every poll).
+        self.assertIsNone(body.get("available_capabilities"))
+        job2 = brain_db.get_job(iid)
+        assert job2 is not None
+        self.assertEqual(job2.get("available_capabilities"), caps)
+
+    def test_reconcile_fails_orphan_dispatched_jobs_on_boot(self) -> None:
+        # A job dispatched before a restart is orphaned; boot must close it.
+        old = hb.new_intent(
+            {"status": "intent_received", "text": "几点了", "source": "voice"}
+        )
+        brain_db.put_job({"id": old, "intent_id": old, "status": "intent_dispatched",
+                          "updated_at": time.time() - 600})
+        fresh = hb.new_intent(
+            {"status": "intent_received", "text": "几点了", "source": "voice"}
+        )
+        brain_db.put_job({"id": fresh, "intent_id": fresh, "status": "intent_dispatched",
+                          "updated_at": time.time() - 10})
+        closed = hb._reconcile_orphan_jobs()
+        self.assertEqual(closed, 1)
+        self.assertEqual(hb.get_intent(old)["status"], "failed")
+        # Fresh in-flight (within grace) is left alone, not failed.
+        self.assertEqual(hb.get_intent(fresh)["status"], "intent_dispatched")
+        # intent_received is re-queued, never reconciled to failed.
+        recv = hb.new_intent(
+            {"status": "intent_received", "text": "几点了", "source": "voice"}
+        )
+        brain_db.put_job({"id": recv, "intent_id": recv, "status": "intent_received",
+                          "updated_at": time.time() - 600})
+        self.assertEqual(hb._reconcile_orphan_jobs(), 0)
+        self.assertEqual(hb.get_intent(recv)["status"], "intent_received")
+
+    def test_do_execution_plan_rejects_split_capture_upload(self) -> None:
+        self._register_split_atomic_runtimes()
+        iid = hb.new_intent(
+            {
+                "status": "intent_received",
+                "text": "拍张照片我看一下",
+                "source": "voice",
+            }
+        )
+        with self.assertRaises(hb.CaptureUploadSplitError):
+            hb.do_execution_plan(
+                iid,
+                [
+                    {
+                        "step": 1,
+                        "capability": "camera.capture",
+                        "assigned_edge_id": "android-1",
+                        "input_constrict": {},
+                        "output_constrict": {
+                            "capture_ref": {"type": "string", "data_dest": "context"}
+                        },
+                    },
+                    {
+                        "step": 2,
+                        "capability": "asset.upload",
+                        "assigned_edge_id": "iphone-1",
+                        "input_constrict": {"capture_ref": "$capture_ref"},
+                        "output_constrict": {
+                            "asset_ref": {"type": "string", "data_dest": "context"}
+                        },
+                    },
+                ],
+            )
+
+    def test_sanitize_does_not_fold_without_composite_provider(self) -> None:
+        self._register_split_atomic_runtimes()
+        cleaned = hb.sanitize_execution_plan(
+            [
+                {
+                    "step": 1,
+                    "capability": "camera.capture",
+                    "assigned_edge_id": "android-1",
+                    "output_constrict": {
+                        "capture_ref": {"type": "string", "data_dest": "context"}
+                    },
+                },
+                {
+                    "step": 2,
+                    "capability": "asset.upload",
+                    "assigned_edge_id": "iphone-1",
+                    "input_constrict": {"capture_ref": "$capture_ref"},
+                    "output_constrict": {
+                        "asset_ref": {"type": "string", "data_dest": "context"}
+                    },
+                },
+            ],
+            {"text": "拍张照片我看一下"},
+        )
+        self.assertEqual(
+            [s["capability"] for s in cleaned],
+            ["camera.capture", "asset.upload"],
+        )
+
+    def test_catalog_includes_composite_composition_fields(self) -> None:
+        self._register_photo_runtimes()
+        rows = hb._capability_registry_for_prompt()
+        composite = next(
+            r
+            for r in rows
+            if r["capability_id"] == "camera.capture_and_upload"
+            and r.get("edge_id") == "android-1"
+        )
+        self.assertEqual(composite["composition"], "composite")
+        self.assertEqual(composite["decomposes_to"], ["camera.capture", "asset.upload"])
+        self.assertTrue(str(composite.get("prefer_when") or "").strip())
+        capture = next(
+            r
+            for r in rows
+            if r["capability_id"] == "camera.capture" and r.get("edge_id") == "android-1"
+        )
+        self.assertEqual(capture["composition"], "atomic")
+        self.assertNotIn("decomposes_to", capture)
+        self.assertNotIn("prefer_when", capture)
+
+    def test_reading_point_to_character_ads_are_composite(self) -> None:
+        from capability_ads import composition_of, decomposes_to
+
+        self.assertEqual(composition_of("reading.point_to_character"), "composite")
+        self.assertEqual(
+            decomposes_to("reading.point_to_character"),
+            ["reading.detect_finger", "reading.ocr_at_finger", "reading.rank_pointed"],
+        )
+        self.assertEqual(composition_of("reading.detect_finger"), "atomic")
+        self.assertEqual(decomposes_to("reading.detect_finger"), [])
+        self.assertEqual(composition_of("reading.ocr_at_finger"), "atomic")
+        self.assertEqual(composition_of("reading.rank_pointed"), "atomic")
+
+    def test_process_llm_task_folds_split_capture_upload(self) -> None:
+        from unittest.mock import patch
+
+        self._register_photo_runtimes()
+        iid = hb.new_intent(
+            {
+                "status": "intent_received",
+                "text": "拍张照片我看一下",
+                "source": "voice",
+                "edge_id": "iphone-1",
+                "status_log": [],
+            }
+        )
+        ans = json.dumps(
+            {
+                "goal": "show a new photo",
+                "reason": "user wants to see a capture",
+                "plan": [
+                    {
+                        "step": 1,
+                        "capability": "camera.capture",
+                        "assigned_edge_id": "android-1",
+                        "output_constrict": {
+                            "capture_ref": {"type": "string", "data_dest": "context"}
+                        },
+                    },
+                    {
+                        "step": 2,
+                        "capability": "asset.upload",
+                        "assigned_edge_id": "iphone-1",
+                        "input_constrict": {"capture_ref": "$capture_ref"},
+                        "output_constrict": {
+                            "asset_ref": {"type": "string", "data_dest": "context"}
+                        },
+                    },
+                ],
+                "presentation": {"type": "image", "from": "asset_ref"},
+                "missing_capabilities": [],
+                "better_capabilities": [],
+            }
+        )
+        ark = {
+            "ans": ans,
+            "cost_ms": 10,
+            "request_payload": {"model": "ep-test", "messages": []},
+            "response_json": {"choices": [{"message": {"content": ans}}]},
+            "cache_hit": False,
+        }
+        with patch.object(hb, "call_ark", return_value=ark):
+            hb._process_llm_task(
+                {
+                    "question": "拍张照片我看一下",
+                    "session_id": "sess-photo",
+                    "user_id": "u1",
+                    "intent_id": iid,
+                    "source": "voice",
+                    "edge_id": "iphone-1",
+                }
+            )
+        got = hb.get_intent(iid)
+        plan = got["execution_plan"]
+        self.assertEqual([s["capability"] for s in plan], ["camera.capture_and_upload"])
+        self.assertEqual(plan[0]["assigned_edge_id"], "android-1")
+        self.assertNotEqual(got.get("status"), "failed")
+
+    def _register_photo_runtimes(self) -> None:
+        def _caps(*, capture_ok: bool) -> list[dict]:
+            return [
+                {
+                    "capability_id": "camera.capture",
+                    "composition": "atomic",
+                    "kind": "input",
+                    "available": capture_ok,
+                    "input_schema": {},
+                    "output_schema": {},
+                },
+                {
+                    "capability_id": "camera.capture_and_upload",
+                    "composition": "composite",
+                    "decomposes_to": ["camera.capture", "asset.upload"],
+                    "prefer_when": "拍照后还有后续动作",
+                    "kind": "action",
+                    "available": capture_ok,
+                    "input_schema": {},
+                    "output_schema": {},
+                },
+            ]
+
+        def _put(pid: str, *, capture_ok: bool) -> None:
+            brain_db.put_registration(
+                {
+                    "participant_id": pid,
+                    "display_name": pid,
+                    "device_type": "phone",
+                    "roles": ["runtime"],
+                    "services": [
+                        {
+                            "service_id": "gopro.camera",
+                            "group": "camera",
+                            "capabilities": _caps(capture_ok=capture_ok),
+                        },
+                        {
+                            "service_id": "local.asset",
+                            "group": "asset",
+                            "capabilities": [
+                                {
+                                    "capability_id": "asset.upload",
+                                    "composition": "atomic",
+                                    "kind": "action",
+                                    "available": True,
+                                    "input_schema": {},
+                                    "output_schema": {},
+                                }
+                            ],
+                        },
+                    ],
+                }
+            )
+            received = time.time()
+            brain_db.put_heartbeat(
+                pid,
+                {
+                    "online_status": "online",
+                    "server_received_at": received,
+                    "reported_at": received,
+                    "schedule_eligible": True,
+                    "services": [
+                        {
+                            "service_id": "gopro.camera",
+                            "group": "camera",
+                            "edge_id": pid,
+                            "capabilities": _caps(capture_ok=capture_ok),
+                        },
+                        {
+                            "service_id": "local.asset",
+                            "group": "asset",
+                            "edge_id": pid,
+                            "capabilities": [
+                                {
+                                    "capability_id": "asset.upload",
+                                    "composition": "atomic",
+                                    "available": True,
+                                    "input_schema": {},
+                                    "output_schema": {},
+                                }
+                            ],
+                        },
+                    ],
+                },
+            )
+
+        _put("android-1", capture_ok=True)
+        _put("iphone-1", capture_ok=False)
+        hb._REGISTERED_edges = brain_db.registration_ids()
+        hb.rebuild_capability_maps()
+
+    def _register_split_atomic_runtimes(self) -> None:
+        """Capture only on android, upload only on iphone; no composite ads."""
+        received = time.time()
+
+        def _put(pid: str, services: list[dict]) -> None:
+            brain_db.put_registration(
+                {
+                    "participant_id": pid,
+                    "display_name": pid,
+                    "device_type": "phone",
+                    "roles": ["runtime"],
+                    "services": services,
+                }
+            )
+            brain_db.put_heartbeat(
+                pid,
+                {
+                    "online_status": "online",
+                    "server_received_at": received,
+                    "reported_at": received,
+                    "schedule_eligible": True,
+                    "services": services,
+                },
+            )
+
+        _put(
+            "android-1",
+            [
+                {
+                    "service_id": "gopro.camera",
+                    "group": "camera",
+                    "edge_id": "android-1",
+                    "capabilities": [
+                        {
+                            "capability_id": "camera.capture",
+                            "composition": "atomic",
+                            "kind": "input",
+                            "available": True,
+                            "input_schema": {},
+                            "output_schema": {},
+                        }
+                    ],
+                }
+            ],
+        )
+        _put(
+            "iphone-1",
+            [
+                {
+                    "service_id": "local.asset",
+                    "group": "asset",
+                    "edge_id": "iphone-1",
+                    "capabilities": [
+                        {
+                            "capability_id": "asset.upload",
+                            "composition": "atomic",
+                            "kind": "action",
+                            "available": True,
+                            "input_schema": {},
+                            "output_schema": {},
+                        }
+                    ],
+                }
+            ],
+        )
+        hb._REGISTERED_edges = brain_db.registration_ids()
+        hb.rebuild_capability_maps()
+
     def test_sanitize_restores_stripped_query_for_image_cast(self) -> None:
         intent = {"text": "来张战斗机的图片投到电视上", "source": "voice"}
         plan = [
@@ -725,6 +1241,8 @@ class HomeBrainPersistTest(unittest.TestCase):
             "notify.speak",
             "voicewakeup.echo",
             "camera.capture",
+            "camera.capture_and_upload",
+            "asset.upload",
             "music.play",
             "query.content",
             "search.images",
@@ -748,6 +1266,9 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertIn("planner_recognize", prompt)
         self.assertIn("do_not_dispatch", prompt)
         self.assertIn("typical_triggers", prompt)
+        self.assertIn("prefer_when", prompt)
+        self.assertIn("decomposes_to", prompt)
+        self.assertIn("composition", prompt)
         self.assertIn("not** authoritative", prompt)
 
     def test_planner_prompt_delay_is_not_a_missing_capability(self) -> None:
@@ -850,6 +1371,9 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertIn("开灯", light["typical_triggers"])
         self.assertIn("放歌", light["do_not_dispatch"])
         self.assertEqual(light["input_schema"]["state"]["required"], True)
+        self.assertEqual(light.get("composition") or "atomic", "atomic")
+        self.assertNotIn("decomposes_to", light)
+        self.assertNotIn("prefer_when", light)
 
     def test_assemble_presentation_light_set_is_text_from_state(self) -> None:
         self._register_endpoint("living-room-iphone-1", "iphone")
@@ -1695,7 +2219,10 @@ class HomeBrainPersistTest(unittest.TestCase):
         plan = hb.get_intent(iid)["execution_plan"]
         speak = [s for s in plan if s.get("capability") == "notify.speak"]
         self.assertEqual(speak, [])
-        self.assertEqual(plan[0]["assigned_edge_id"], "mac-speaker")
+        # clock.now is kind=system: Brain reads its own clock in-process, so the
+        # step is reassigned to the system edge regardless of the incoming hint.
+        self.assertEqual(plan[0]["capability"], "clock.now")
+        self.assertEqual(plan[0]["assigned_edge_id"], "system")
 
     def test_post_intent_accepts_participant_id(self) -> None:
         self._register_live_issuer("iphone-origin")
@@ -2019,6 +2546,61 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data, b"\x89PNG\r\n\x1a\n")
         self.assertTrue(brain_db.has_asset_grant("asset_old_photo", 103))
+
+    def test_do_execution_plan_grants_input_asset_ref(self) -> None:
+        """intent 194 style: planner binds an older iPhone photo into a later step."""
+        self._register_runtime("mac-runtime-read", cap="reading.point_to_character")
+        brain_db.put_asset(
+            {
+                "asset_id": "asset_iphone_photo",
+                "type": "image",
+                "mime_type": "image/jpeg",
+                "status": "available",
+                "producer_capability": "iphone.photo",
+                "producer_edge_id": "iphone-origin",
+                "storage": {
+                    "backend": "img_server",
+                    "key": "photo.jpg",
+                    "public_base": "http://192.168.3.73:8080",
+                },
+            }
+        )
+        iid = hb.new_intent(
+            {
+                "status": "intent_received",
+                "text": "最新的照片里面手指的是哪个字",
+                "source": "voice",
+                "edge_id": "iphone-origin",
+            }
+        )
+        self.assertFalse(brain_db.has_asset_grant("asset_iphone_photo", iid))
+        hb.do_execution_plan(
+            iid,
+            [
+                {
+                    "step": 1,
+                    "capability": "reading.point_to_character",
+                    "assigned_edge_id": "mac-runtime-read",
+                    "input_constrict": {
+                        "asset_ref": {
+                            "asset_id": "asset_iphone_photo",
+                            "type": "image",
+                            "mime_type": "image/jpeg",
+                        }
+                    },
+                    "output_constrict": {"answer_text": {}, "character": {}},
+                }
+            ],
+        )
+        self.assertTrue(brain_db.has_asset_grant("asset_iphone_photo", iid))
+        client = hb.app.test_client()
+        runtime = client.get(
+            f"/api/v1/assets/asset_iphone_photo?intent_id={iid}&edge_id=mac-runtime-read"
+        )
+        self.assertEqual(runtime.status_code, 200)
+        storage = (runtime.get_json().get("asset") or {}).get("storage") or {}
+        self.assertEqual(storage.get("backend"), "img_server")
+        self.assertEqual(storage.get("key"), "photo.jpg")
 
     def test_assemble_presentation_grants_shown_asset_ref(self) -> None:
         brain_db.put_asset(
@@ -2503,7 +3085,7 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertIsNone(body.get("intent_id"))
 
     def test_list_capabilities_and_services(self) -> None:
-        self._register_runtime("mac-cap-list", cap="clock.now")
+        self._register_runtime("mac-cap-list", cap="light.set")
         client = hb.app.test_client()
         services = client.get("/api/v1/services")
         self.assertEqual(services.status_code, 200)
@@ -2517,21 +3099,29 @@ class HomeBrainPersistTest(unittest.TestCase):
         cap_body = caps.get_json()
         self.assertTrue(cap_body["ok"])
         ids = [c["capability_id"] for c in cap_body["capabilities"]]
-        self.assertIn("clock.now", ids)
-        row = next(c for c in cap_body["capabilities"] if c["capability_id"] == "clock.now")
+        # Edge-advertised non-system capability lists under that edge.
+        self.assertIn("light.set", ids)
+        row = next(c for c in cap_body["capabilities"] if c["capability_id"] == "light.set")
         self.assertEqual(row["edge_id"], "mac-cap-list")
         self.assertEqual(row["assigned_edge_id"], "mac-cap-list")
         self.assertIn("input_schema", row)
         self.assertIn("output_schema", row)
+        # clock.now is kind=system: listed under the system edge, not any runtime.
+        self.assertIn("clock.now", ids)
+        clock_row = next(
+            c for c in cap_body["capabilities"] if c["capability_id"] == "clock.now"
+        )
+        self.assertEqual(clock_row["edge_id"], "system")
+        self.assertEqual(clock_row["assigned_edge_id"], "system")
 
         filtered = client.get(
             "/api/v1/capabilities",
-            query_string={"capability_id": "clock.now", "edge_id": "mac-cap-list"},
+            query_string={"capability_id": "light.set", "edge_id": "mac-cap-list"},
         )
         self.assertEqual(filtered.status_code, 200)
         fbody = filtered.get_json()
         self.assertEqual(fbody["count"], 1)
-        self.assertEqual(fbody["capabilities"][0]["capability_id"], "clock.now")
+        self.assertEqual(fbody["capabilities"][0]["capability_id"], "light.set")
 
         missing = client.get(
             "/api/v1/capabilities",
@@ -2909,6 +3499,114 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 502)
         self.assertIn("img-server", resp.get_json().get("error", ""))
 
+    def test_assets_upload_cloud_origin_uses_local_upload(self) -> None:
+        from io import BytesIO
+        from unittest.mock import patch
+
+        jpeg = b"\xff\xd8\xffcloud-local"
+        upload_root = Path(self._tmp.name) / "gopropics"
+        prev_origin = os.environ.get("BRAIN_ORIGIN")
+        prev_img = os.environ.get("BRAIN_IMG_UPLOAD_URL")
+        prev_photo = os.environ.get("PHOTO_UPLOAD_URL")
+        prev_upload = hb.UPLOAD_DIR
+        prev_asset_dir = hb._ASSET_UPLOAD_DIR
+        os.environ["BRAIN_ORIGIN"] = "cloud"
+        os.environ.pop("BRAIN_IMG_UPLOAD_URL", None)
+        os.environ.pop("PHOTO_UPLOAD_URL", None)
+        hb.UPLOAD_DIR = upload_root
+        hb._ASSET_UPLOAD_DIR = None
+        client = hb.app.test_client()
+        try:
+            self.assertTrue(hb._use_local_upload_store())
+            with patch.object(hb, "_put_bytes_on_img_server") as img_put:
+                resp = client.post(
+                    "/api/v1/assets/upload",
+                    data={
+                        "upload_intent": "asset.upload",
+                        "producer": "asset.upload",
+                        "edge_id": "iphone-test",
+                        "intent_id": "1454",
+                        "type": "image",
+                        "mime_type": "image/jpeg",
+                        "file": (BytesIO(jpeg), "living.jpg"),
+                    },
+                    content_type="multipart/form-data",
+                )
+            img_put.assert_not_called()
+            self.assertEqual(resp.status_code, 200)
+            body = resp.get_json()
+            self.assertTrue(body["ok"])
+            aid = body["asset_id"]
+            rec = brain_db.get_asset(aid)
+            assert rec is not None
+            storage = rec.get("storage") or {}
+            self.assertEqual(storage.get("backend"), "local_upload")
+            key = str(storage.get("key") or "")
+            self.assertTrue(key.endswith("_living.jpg"))
+            disk = upload_root / "assets" / Path(key).name
+            self.assertTrue(disk.is_file())
+            self.assertEqual(disk.read_bytes(), jpeg)
+            content = client.get(
+                f"/api/v1/assets/{aid}/content",
+                query_string={"intent_id": "1454"},
+            )
+            self.assertEqual(content.status_code, 200)
+            self.assertEqual(content.data, jpeg)
+        finally:
+            hb.UPLOAD_DIR = prev_upload
+            hb._ASSET_UPLOAD_DIR = prev_asset_dir
+            if prev_origin is None:
+                os.environ.pop("BRAIN_ORIGIN", None)
+            else:
+                os.environ["BRAIN_ORIGIN"] = prev_origin
+            if prev_img is None:
+                os.environ.pop("BRAIN_IMG_UPLOAD_URL", None)
+            else:
+                os.environ["BRAIN_IMG_UPLOAD_URL"] = prev_img
+            if prev_photo is None:
+                os.environ.pop("PHOTO_UPLOAD_URL", None)
+            else:
+                os.environ["PHOTO_UPLOAD_URL"] = prev_photo
+
+    def test_assets_upload_cloud_explicit_img_url_still_uses_img_server(self) -> None:
+        from io import BytesIO
+        from unittest.mock import patch
+
+        prev_origin = os.environ.get("BRAIN_ORIGIN")
+        prev_img = os.environ.get("BRAIN_IMG_UPLOAD_URL")
+        os.environ["BRAIN_ORIGIN"] = "cloud"
+        os.environ["BRAIN_IMG_UPLOAD_URL"] = "http://127.0.0.1:18080/api/v1/photos/upload"
+        try:
+            self.assertFalse(hb._use_local_upload_store())
+            client = hb.app.test_client()
+            fake_store = {
+                "saved_as": "aabbccdd_cloud.jpg",
+                "public_base": "http://115.190.153.53:8080",
+                "url": "http://115.190.153.53:8080/aabbccdd_cloud.jpg",
+            }
+            with patch.object(hb, "_put_bytes_on_img_server", return_value=fake_store) as img_put:
+                resp = client.post(
+                    "/api/v1/assets/upload",
+                    data={
+                        "upload_intent": "asset.upload",
+                        "file": (BytesIO(b"\xff\xd8\xff"), "a.jpg"),
+                    },
+                    content_type="multipart/form-data",
+                )
+            img_put.assert_called_once()
+            self.assertEqual(resp.status_code, 200)
+            rec = brain_db.get_asset(resp.get_json()["asset_id"])
+            self.assertEqual((rec.get("storage") or {}).get("backend"), "img_server")
+        finally:
+            if prev_origin is None:
+                os.environ.pop("BRAIN_ORIGIN", None)
+            else:
+                os.environ["BRAIN_ORIGIN"] = prev_origin
+            if prev_img is None:
+                os.environ.pop("BRAIN_IMG_UPLOAD_URL", None)
+            else:
+                os.environ["BRAIN_IMG_UPLOAD_URL"] = prev_img
+
     def test_assets_upload_rejects_illegal_filename(self) -> None:
         from io import BytesIO
         from unittest.mock import patch
@@ -3059,6 +3757,87 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertIn("儿童房空调", msg)
         job = hb.get_intent(iid)
         self.assertFalse(job.get("execution_plan"))
+
+    def test_gopro_in_utterance_picks_gopro_camera_on_same_edge(self) -> None:
+        received = time.time()
+        pid = "edge-android-dual-cam"
+
+        def composite_caps() -> list[dict]:
+            return [
+                {
+                    "capability_id": "camera.capture_and_upload",
+                    "composition": "composite",
+                    "kind": "action",
+                    "available": True,
+                    "input_schema": {},
+                    "output_schema": {},
+                }
+            ]
+
+        services_reg = [
+            {
+                "service_id": "android.camera",
+                "display_name": "Android Camera",
+                "group": "camera",
+                "capabilities": composite_caps(),
+            },
+            {
+                "service_id": "gopro.camera",
+                "display_name": "GoPro Camera",
+                "group": "camera",
+                "capabilities": composite_caps(),
+            },
+        ]
+        brain_db.put_registration(
+            {
+                "participant_id": pid,
+                "display_name": "客厅 Android",
+                "device_type": "android",
+                "roles": ["runtime"],
+                "services": services_reg,
+            }
+        )
+        hb_services = [
+            {**svc, "edge_id": pid, "capabilities": composite_caps()}
+            for svc in services_reg
+        ]
+        brain_db.put_heartbeat(
+            pid,
+            {
+                "online_status": "online",
+                "server_received_at": received,
+                "reported_at": received,
+                "schedule_eligible": True,
+                "services": hb_services,
+            },
+        )
+        hb._REGISTERED_edges = brain_db.registration_ids()
+        hb.rebuild_capability_maps()
+        iid = hb.new_intent(
+            {
+                "status": "intent_received",
+                "text": "用GoPro拍张照片我看一下",
+                "source": "voice",
+                "edge_id": pid,
+            }
+        )
+        hb.do_execution_plan(
+            iid,
+            [
+                {
+                    "step": 1,
+                    "capability": "camera.capture_and_upload",
+                    "input_constrict": {},
+                    "output_constrict": {
+                        "asset_ref": {"type": "object", "data_dest": "context"},
+                    },
+                }
+            ],
+        )
+        plan = hb.get_intent(iid)["execution_plan"]
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0]["assigned_edge_id"], pid)
+        self.assertEqual(plan[0]["input_constrict"].get("appliance"), "GoPro Camera")
 
     def test_same_named_instance_on_two_edges_picks_one(self) -> None:
         self._register_named_climate(
@@ -3278,7 +4057,7 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertEqual(payload["temperature"], 0.2)
         self.assertEqual(payload["max_tokens"], 4096)
         self.assertEqual(payload["response_format"], {"type": "json_object"})
-        self.assertEqual(payload["extra_body"]["thinking"]["type"], "enabled")
+        self.assertEqual(payload["extra_body"]["thinking"]["type"], "disabled")
         self.assertEqual(payload["messages"][0]["role"], "system")
         self.assertEqual(payload["messages"][1]["role"], "user")
         dumped = json.dumps(payload)
@@ -3291,7 +4070,11 @@ class HomeBrainPersistTest(unittest.TestCase):
         )
 
     def test_call_ark_cache_hit_cost_ms_zero(self) -> None:
-        hb.set_cache("现在几点了", '{"plan":[]}', "text")
+        from unittest.mock import patch
+
+        catalog: list[dict] = []
+        fp = hb._capability_registry_fingerprint(catalog)
+        hb.set_cache("现在几点了", '{"plan":[]}', "text", catalog_fingerprint=fp)
         iid = hb.new_intent(
             {
                 "status": "intent_received",
@@ -3300,14 +4083,15 @@ class HomeBrainPersistTest(unittest.TestCase):
                 "status_log": [],
             }
         )
-        result = hb.call_ark(
-            "现在几点了",
-            "sess-a",
-            "u1",
-            iid,
-            0,
-            intent=hb.get_intent(iid),
-        )
+        with patch.object(hb, "_capability_registry_for_prompt", return_value=catalog):
+            result = hb.call_ark(
+                "现在几点了",
+                "sess-a",
+                "u1",
+                iid,
+                0,
+                intent=hb.get_intent(iid),
+            )
         self.assertTrue(result["cache_hit"])
         self.assertEqual(result["cost_ms"], 0)
         self.assertEqual(result["ans"], '{"plan":[]}')
@@ -3559,6 +4343,7 @@ class HomeBrainPersistTest(unittest.TestCase):
                                 "edge_id": "phone-1",
                             }
                         )
+                        self._flush_qwen_shadow()
         rows = brain_db.list_intent_reviews(iid)
         planners = [row["planner"] for row in rows]
         self.assertEqual(sorted(planners), ["ark", "qwen"])
@@ -3633,6 +4418,7 @@ class HomeBrainPersistTest(unittest.TestCase):
                                     "edge_id": "phone-1",
                                 }
                             )
+                            self._flush_qwen_shadow()
         intent = hb.get_intent(iid)
         rows = brain_db.list_intent_reviews(iid)
         ark_row = next(row for row in rows if row["planner"] == "ark")
@@ -3781,6 +4567,7 @@ class HomeBrainPersistTest(unittest.TestCase):
                                         "edge_id": "phone-1",
                                     }
                                 )
+                                self._flush_qwen_shadow()
         intent = hb.get_intent(iid)
         rows = brain_db.list_intent_reviews(iid)
         planners = sorted(row["planner"] for row in rows)
@@ -3852,6 +4639,7 @@ class HomeBrainPersistTest(unittest.TestCase):
                                         "edge_id": "phone-1",
                                     }
                                 )
+                                self._flush_qwen_shadow()
         intent = hb.get_intent(iid)
         rows = brain_db.list_intent_reviews(iid)
         qwen_row = next(row for row in rows if row["planner"] == "qwen")
@@ -3926,10 +4714,320 @@ class HomeBrainPersistTest(unittest.TestCase):
                                     "edge_id": "phone-1",
                                 }
                             )
+                            qwen_mock.assert_not_called()
+                            self._flush_qwen_shadow()
         qwen_mock.assert_called()
         self.assertEqual(do_plan.call_count, 1)
         planners = [row["planner"] for row in brain_db.list_intent_reviews(iid)]
         self.assertEqual(sorted(planners), ["ark", "qwen"])
+
+    def test_process_llm_task_returns_without_waiting_for_slow_qwen(self) -> None:
+        from unittest.mock import patch
+
+        iid = hb.new_intent(
+            {
+                "status": "intent_received",
+                "text": "现在几点了",
+                "source": "text",
+                "status_log": [],
+            }
+        )
+        ans = json.dumps(
+            {
+                "goal": "clock",
+                "reason": "ask time",
+                "plan": [
+                    {
+                        "step": 1,
+                        "capability": "clock.now",
+                        "assigned_edge_id": "sys",
+                        "input_constrict": {},
+                        "output_constrict": {},
+                        "execution_timing": {"mode": "immediate"},
+                    }
+                ],
+                "presentation": {"type": "text", "from": "time_text"},
+                "missing_capabilities": [],
+                "better_capabilities": [],
+            }
+        )
+        ark = {
+            "ans": ans,
+            "cost_ms": 8,
+            "request_payload": {"model": "ep-test"},
+            "response_json": {},
+            "cache_hit": False,
+        }
+        qwen = {
+            "ans": '{"goal":"shadow"}',
+            "cost_ms": 400,
+            "request_payload": {"system": "S", "text": "T"},
+            "response_json": {"ok": True, "text": '{"goal":"shadow"}'},
+            "error": None,
+            "model": "Qwen2.5-0.5B-Instruct",
+            "planner": "qwen",
+        }
+
+        def slow_qwen(*args, **kwargs):
+            time.sleep(0.4)
+            return qwen
+
+        with patch.object(hb, "qwen_planner_enabled", return_value=True):
+            with patch.object(hb, "call_ark", return_value=ark):
+                with patch.object(hb, "call_qwen_planner", side_effect=slow_qwen):
+                    with patch.object(
+                        hb,
+                        "sanitize_execution_plan",
+                        side_effect=lambda plan, intent=None: plan or [],
+                    ):
+                        with patch.object(hb, "do_execution_plan") as do_plan:
+                            t0 = time.monotonic()
+                            hb._process_llm_task(
+                                {
+                                    "question": "现在几点了",
+                                    "session_id": "sess-a",
+                                    "user_id": "u1",
+                                    "intent_id": iid,
+                                    "source": "text",
+                                    "edge_id": "phone-1",
+                                }
+                            )
+                            elapsed = time.monotonic() - t0
+                            self.assertLess(elapsed, 0.25)
+                            self.assertEqual(do_plan.call_count, 1)
+                            planners = [
+                                row["planner"] for row in brain_db.list_intent_reviews(iid)
+                            ]
+                            self.assertEqual(planners, ["ark"])
+                            self.assertGreaterEqual(hb.qwen_task_queue.qsize(), 1)
+                            self._flush_qwen_shadow()
+        planners = [row["planner"] for row in brain_db.list_intent_reviews(iid)]
+        self.assertEqual(sorted(planners), ["ark", "qwen"])
+        qwen_row = next(
+            row for row in brain_db.list_intent_reviews(iid) if row["planner"] == "qwen"
+        )
+        self.assertTrue(qwen_row["parsed_json"]["shadow"])
+
+    def _register_reading_mac(self, pid: str = "mac-reading") -> None:
+        brain_db.put_registration(
+            {
+                "participant_id": pid,
+                "device_type": "mac",
+                "roles": ["intent_source", "runtime", "endpoint"],
+                "intent_sources": [{"source_id": "microphone", "channel": "voice"}],
+                "endpoints": [
+                    {
+                        "endpoint_id": "mac.display",
+                        "supported_presentation": ["text", "audio"],
+                    }
+                ],
+                "services": [
+                    {
+                        "service_id": "local.camera",
+                        "group": "camera",
+                        "capabilities": [
+                            {
+                                "capability_id": "camera.capture_and_upload",
+                                "input_schema": {},
+                                "output_schema": {},
+                            },
+                            {
+                                "capability_id": "reading.point_to_character",
+                                "input_schema": {},
+                                "output_schema": {},
+                            },
+                        ],
+                    },
+                    {
+                        "service_id": "local.notify",
+                        "group": "notify",
+                        "capabilities": [
+                            {
+                                "capability_id": "notify.speak",
+                                "input_schema": {},
+                                "output_schema": {},
+                            }
+                        ],
+                    },
+                ],
+            }
+        )
+        self._heartbeat(pid)
+        hb._REGISTERED_edges = brain_db.registration_ids()
+        hb.rebuild_capability_maps()
+
+    def test_shortcut_enter_reading_mode_skips_llm(self) -> None:
+        self._register_reading_mac()
+        client = hb.app.test_client()
+        before_qsize = hb.task_queue.qsize()
+        resp = client.post(
+            "/api/v1/intent",
+            json={
+                "text": "开启阅读模式",
+                "source": "voice",
+                "participant_id": "mac-reading",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body["intent_status"], "intent_parsed")
+        self.assertEqual(body["task_kind"], "shortcut")
+        self.assertEqual(hb.task_queue.qsize(), before_qsize)
+        self.assertEqual(brain_db.resolve_active_mode(), "reading")
+        plan = hb.get_intent(body["intent_id"])["execution_plan"]
+        self.assertEqual(plan[0]["capability"], "notify.speak")
+
+    def test_shortcut_reading_pipeline_when_mode_active(self) -> None:
+        self._register_reading_mac()
+        brain_db.append_global_event(
+            {"kind": "mode", "action": "activate", "subject": "reading"}
+        )
+        client = hb.app.test_client()
+        resp = client.post(
+            "/api/v1/intent",
+            json={
+                "text": "这个字怎么读",
+                "source": "voice",
+                "participant_id": "mac-reading",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body["intent_status"], "intent_parsed")
+        self.assertEqual(body["task_kind"], "shortcut")
+        caps = [s["capability"] for s in hb.get_intent(body["intent_id"])["execution_plan"]]
+        self.assertEqual(
+            caps,
+            [
+                "camera.capture_and_upload",
+                "reading.point_to_character",
+                "notify.speak",
+            ],
+        )
+
+    def test_shortcut_reading_existing_photo_skips_capture(self) -> None:
+        self._register_reading_mac()
+        brain_db.append_global_event(
+            {"kind": "mode", "action": "activate", "subject": "reading"}
+        )
+        client = hb.app.test_client()
+        resp = client.post(
+            "/api/v1/intent",
+            json={
+                "text": "看下最新的一张照片里手指的那个字是什么",
+                "source": "voice",
+                "participant_id": "mac-reading",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body["intent_status"], "intent_parsed")
+        self.assertEqual(body["task_kind"], "shortcut")
+        caps = [s["capability"] for s in hb.get_intent(body["intent_id"])["execution_plan"]]
+        self.assertEqual(
+            caps,
+            [
+                "asset.inventory",
+                "reading.point_to_character",
+                "notify.speak",
+            ],
+        )
+
+    def test_shortcut_reading_pipeline_fails_without_capture_device(self) -> None:
+        self._register_live_issuer("iphone-offline")
+        hb._REGISTERED_edges = brain_db.registration_ids()
+        hb.rebuild_capability_maps()
+        brain_db.append_global_event(
+            {"kind": "mode", "action": "activate", "subject": "reading"}
+        )
+        client = hb.app.test_client()
+        resp = client.post(
+            "/api/v1/intent",
+            json={
+                "text": "这个字怎么读",
+                "source": "voice",
+                "participant_id": "iphone-offline",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body["intent_status"], "failed")
+        self.assertEqual(body["task_kind"], "shortcut")
+        self.assertIn("拍照", body.get("error") or body.get("reply") or "")
+
+    def test_shortcut_reading_mode_unrelated_falls_through_to_queue(self) -> None:
+        self._register_reading_mac()
+        brain_db.append_global_event(
+            {"kind": "mode", "action": "activate", "subject": "reading"}
+        )
+        client = hb.app.test_client()
+        before_qsize = hb.task_queue.qsize()
+        resp = client.post(
+            "/api/v1/intent",
+            json={
+                "text": "开一下灯",
+                "source": "voice",
+                "participant_id": "mac-reading",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body["intent_status"], "intent_received")
+        self.assertGreater(hb.task_queue.qsize(), before_qsize)
+
+    def test_get_mode_api(self) -> None:
+        brain_db.append_global_event(
+            {"kind": "mode", "action": "activate", "subject": "reading"}
+        )
+        client = hb.app.test_client()
+        resp = client.get("/api/v1/mode")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["mode"], "reading")
+        self.assertGreaterEqual(len(body["events"]), 1)
+
+    def test_intent_accepts_named_audio_refs_in_context(self) -> None:
+        """pronunciation.assess: reference_audio + student_audio attached to an
+        intent must land in ctx_param (typed audio) and get read grants."""
+        self._register_live_issuer("phone-1")
+        client = hb.app.test_client()
+        resp = client.post(
+            "/api/v1/intent",
+            json={
+                "text": "评测这段跟读",
+                "edge_id": "phone-1",
+                "context": {
+                    "reference_audio": {
+                        "asset_id": "asset_refaudio01",
+                        "type": "audio",
+                        "mime_type": "audio/wav",
+                    },
+                    "student_audio": {
+                        "asset_id": "asset_stuaudio01",
+                        "type": "audio",
+                        "mime_type": "audio/wav",
+                    },
+                },
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        iid = resp.get_json()["intent_id"]
+        job = brain_db.get_job(iid)
+        assert job is not None
+        ctx = job.get("ctx_param") or job.get("context") or {}
+        if isinstance(ctx, str):
+            ctx = json.loads(ctx)
+        self.assertEqual(ctx.get("reference_audio", {}).get("asset_id"), "asset_refaudio01")
+        self.assertEqual(ctx.get("reference_audio", {}).get("type"), "audio")
+        self.assertEqual(ctx.get("student_audio", {}).get("asset_id"), "asset_stuaudio01")
+        self.assertEqual(ctx.get("student_audio", {}).get("type"), "audio")
+        # Read grants issued for both audio assets.
+        if callable(getattr(brain_db, "list_asset_grants", None)):
+            grants = brain_db.list_asset_grants(intent_id=iid)
+            aids = {g.get("asset_id") for g in (grants or [])}
+            self.assertIn("asset_refaudio01", aids)
+            self.assertIn("asset_stuaudio01", aids)
 
 
 if __name__ == "__main__":

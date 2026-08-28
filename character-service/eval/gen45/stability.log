@@ -1,0 +1,44 @@
+GEN45 Rounds=5 total=30 replay->/tmp/replay_gen45/
+===============================================================================================
+IMG_8049   r1 top1=零    top3=['零', '七', '样'] blocks=12 chars=56 183.3s
+IMG_8049   r2 top1=零    top3=['零', '七', '样'] blocks=11 chars=56 61.5s
+IMG_8049   r3 top1=零    top3=['零', '七', '样'] blocks=10 chars=56 60.9s
+IMG_8049   r4 top1=零    top3=['零', '七', '样'] blocks=12 chars=56 62.7s
+IMG_8049   r5 top1=零    top3=['零', '七', '样'] blocks=11 chars=56 61.9s
+-----------------------------------------------------------------------------------------------
+IMG_8050   r1 top1=的    top3=['的', '之', '患'] blocks=8 chars=41 177.6s
+IMG_8050   r2 top1=的    top3=['的', '之', '之'] blocks=8 chars=41 57.1s
+IMG_8050   r3 top1=的    top3=['的', '之', '之'] blocks=8 chars=41 11.8s
+IMG_8050   r4 top1=的    top3=['的', '之', '之'] blocks=8 chars=41 11.2s
+IMG_8050   r5 top1=患    top3=['患', '之', '而'] blocks=10 chars=44 58.4s
+-----------------------------------------------------------------------------------------------
+IMG_8051   r1 top1=辎    top3=['辎', '带', '重'] blocks=4 chars=28 172.1s
+IMG_8051   r2 top1=辎    top3=['辎', '带', '重'] blocks=4 chars=28 51.2s
+IMG_8051   r3 top1=辎    top3=['辎', '带', '重'] blocks=4 chars=28 7.0s
+IMG_8051   r4 top1=辎    top3=['辎', '带', '重'] blocks=4 chars=28 51.2s
+IMG_8051   r5 top1=辎    top3=['辎', '带', '重'] blocks=4 chars=28 7.0s
+-----------------------------------------------------------------------------------------------
+IMG_8052   r1 top1=柔    top3=['柔', '然', '军'] blocks=4 chars=20 174.1s
+IMG_8052   r2 top1=柔    top3=['柔', '然', '军'] blocks=4 chars=20 7.3s
+IMG_8052   r3 top1=柔    top3=['柔', '然', '军'] blocks=4 chars=20 52.9s
+IMG_8052   r4 top1=柔    top3=['柔', '然', '军'] blocks=4 chars=20 53.3s
+IMG_8052   r5 top1=柔    top3=['柔', '然', '军'] blocks=4 chars=20 53.2s
+-----------------------------------------------------------------------------------------------
+IMG_8053   r1 top1=一    top3=['一', '统', '到'] blocks=4 chars=38 172.3s
+IMG_8053   r2 top1=一    top3=['一', '统', '到'] blocks=4 chars=38 50.9s
+IMG_8053   r3 top1=一    top3=['一', '统', '到'] blocks=4 chars=38 7.4s
+IMG_8053   r4 top1=一    top3=['一', '统', '到'] blocks=4 chars=38 50.9s
+IMG_8053   r5 top1=一    top3=['一', '统', '到'] blocks=4 chars=38 51.3s
+-----------------------------------------------------------------------------------------------
+IMG_8054   r1 top1=代    top3=['代', '迭', '的'] blocks=4 chars=28 173.2s
+IMG_8054   r2 top1=代    top3=['代', '迭', '的'] blocks=4 chars=28 6.9s
+IMG_8054   r3 top1=代    top3=['代', '迭', '的'] blocks=4 chars=28 6.9s
+IMG_8054   r4 top1=代    top3=['代', '迭', '的'] blocks=4 chars=28 6.8s
+IMG_8054   r5 top1=代    top3=['代', '迭', '的'] blocks=4 chars=28 6.8s
+-----------------------------------------------------------------------------------------------
+
+=== SUMMARY (no GT — user verify) ===
+Traceback (most recent call last):
+  File "/tmp/stability_gen45.py", line 79, in <module>
+    print(f"{image:<10} {rounds:<8} {top1s:<30} {avg_sec}", flush=True)
+NameError: name 'image' is not defined

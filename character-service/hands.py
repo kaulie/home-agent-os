@@ -109,7 +109,13 @@ def decode_bgr(image_bytes: bytes) -> Any:
     import numpy as np
 
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    # OpenCV 4.x IMREAD_COLOR already applies JPEG EXIF. Ignore it so
+    # apply_exif_orientation is the only rotate (older OpenCV stays consistent).
+    flags = cv2.IMREAD_COLOR
+    ignore = getattr(cv2, "IMREAD_IGNORE_ORIENTATION", 0)
+    if ignore:
+        flags |= ignore
+    img = cv2.imdecode(arr, flags)
     if img is None:
         raise HandsError("无法解码图片")
     return apply_exif_orientation(img, jpeg_exif_orientation(image_bytes))
@@ -127,54 +133,40 @@ def encode_jpeg(image_bgr: Any, quality: int = 92) -> bytes | None:
     return None
 
 
-def _landmarks_from_result(result: Any, w: int, h: int) -> dict[int, tuple[float, float]] | None:
+def _landmarks_all_hands(result: Any, w: int, h: int) -> list[dict[int, tuple[float, float]]]:
     if not result.multi_hand_landmarks:
-        return None
-    best = None
-    best_conf = -1.0
-    scores = list(result.multi_handedness or [])
-    for i, hand in enumerate(result.multi_hand_landmarks):
-        conf = 0.0
-        if i < len(scores):
-            cats = getattr(scores[i], "classification", None) or []
-            if cats:
-                conf = float(cats[0].score)
-        if conf >= best_conf:
-            best_conf = conf
-            best = hand
-    if best is None:
-        return None
-    lm = best.landmark
-    if len(lm) <= INDEX_TIP:
-        return None
-    return {
-        INDEX_MCP: (lm[INDEX_MCP].x * w, lm[INDEX_MCP].y * h),
-        INDEX_PIP: (lm[INDEX_PIP].x * w, lm[INDEX_PIP].y * h),
-        INDEX_DIP: (lm[INDEX_DIP].x * w, lm[INDEX_DIP].y * h),
-        INDEX_TIP: (lm[INDEX_TIP].x * w, lm[INDEX_TIP].y * h),
-    }
+        return []
+    out: list[dict[int, tuple[float, float]]] = []
+    for hand in result.multi_hand_landmarks:
+        lm = hand.landmark
+        if len(lm) < 21:
+            continue
+        pts = {i: (lm[i].x * w, lm[i].y * h) for i in range(21)}
+        out.append(pts)
+    return out
 
 
-def _detect_on(image_bgr: Any, conf: float, complexity: int = 1) -> dict[int, tuple[float, float]] | None:
+def _detect_on(image_bgr: Any, conf: float, complexity: int = 1) -> list[dict[int, tuple[float, float]]]:
     import cv2
 
     h, w = image_bgr.shape[:2]
     rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    return _landmarks_from_result(_mp_hands(conf, complexity).process(rgb), w, h)
+    return _landmarks_all_hands(_mp_hands(conf, complexity).process(rgb), w, h)
 
 
-def _rescale(found: dict[int, tuple[float, float]], scale: float, pad: int = 0) -> dict[int, tuple[float, float]]:
-    return {idx: ((x - pad) / scale, (y - pad) / scale) for idx, (x, y) in found.items()}
+def _rescale_hands(
+    found: list[dict[int, tuple[float, float]]], scale: float, pad: int = 0
+) -> list[dict[int, tuple[float, float]]]:
+    return [
+        {idx: ((x - pad) / scale, (y - pad) / scale) for idx, (x, y) in hand.items()}
+        for hand in found
+    ]
 
 
-def detect_index_landmarks(image_bgr: Any, max_dim: int = 1600) -> dict[int, tuple[float, float]] | None:
-    """Best hand's index MCP/PIP/DIP/TIP in pixel coords of the *original* image, or None.
-
-    MediaPipe often misses hands on very large images or bent fingers, so
-    detection runs across multiple resize scales, confidence thresholds and
-    model complexities (the lighter complexity=0 model catches hands that
-    complexity=1 misses), then landmarks are scaled back to full resolution.
-    """
+def detect_hands_landmarks(
+    image_bgr: Any, max_dim: int = 1600
+) -> list[dict[int, tuple[float, float]]]:
+    """All MediaPipe hands (21 landmarks each) in original-image pixels, or []."""
     import cv2
 
     h, w = image_bgr.shape[:2]
@@ -191,7 +183,7 @@ def detect_index_landmarks(image_bgr: Any, max_dim: int = 1600) -> dict[int, tup
             for conf in _DETECT_CONFS:
                 found = _detect_on(small, conf, complexity)
                 if found:
-                    return _rescale(found, scale)
+                    return _rescale_hands(found, scale)
 
     for scale, small in scales_tried:
         pad = max(24, int(PAD_FRAC * max(small.shape[:2])))
@@ -202,5 +194,21 @@ def detect_index_landmarks(image_bgr: Any, max_dim: int = 1600) -> dict[int, tup
             for conf in _DETECT_CONFS:
                 found = _detect_on(padded, conf, complexity)
                 if found:
-                    return _rescale(found, scale, pad)
-    return None
+                    return _rescale_hands(found, scale, pad)
+    return []
+
+
+def detect_index_landmarks(image_bgr: Any, max_dim: int = 1600) -> dict[int, tuple[float, float]] | None:
+    """First hand's index MCP/PIP/DIP/TIP, or None. Kept for eval dumps."""
+    hands = detect_hands_landmarks(image_bgr, max_dim=max_dim)
+    if not hands:
+        return None
+    lm = hands[0]
+    if INDEX_TIP not in lm:
+        return None
+    return {
+        INDEX_MCP: lm[INDEX_MCP],
+        INDEX_PIP: lm[INDEX_PIP],
+        INDEX_DIP: lm[INDEX_DIP],
+        INDEX_TIP: lm[INDEX_TIP],
+    }

@@ -1,0 +1,18 @@
+id: tv-game-input
+service_id: iphone.game.input
+group: game
+version: "0.1.0"
+display_name: TV Game Input
+description: >
+  iPhone 游戏遥控器：本地语音 + 人体姿态 → GameCommand。
+  不经 Brain；自管理生命周期（kind=input）。
+
+capabilities:
+  - capability_id: game.input
+    kind: input
+    description: >
+      本地 ASR 关键词 + Vision 手势识别，经 Cast/HTTP 发送 GameCommand。
+      不作为计划逐步执行。
+
+entry:
+  ios: ios/GameInputPluginEntry.swift

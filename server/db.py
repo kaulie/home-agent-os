@@ -6,6 +6,7 @@ Phase 1 replaces in-memory dicts in the Flask stubs. Nested wire payloads stay J
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -17,10 +18,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
+log = logging.getLogger("brain_db")
+
 _SQL_DIR = Path(__file__).resolve().parent / "sql"
 _DEFAULT_DB = Path(__file__).resolve().parent / "data" / "brain.sqlite3"
 
 _lock = threading.RLock()
+# Bumped on every heartbeat/registration write. home_brain's capability-map
+# cache uses this to detect staleness without a time-based TTL (so concurrent
+# dispatches coalesce, and tests that put_heartbeat then rebuild see fresh data).
+_heartbeat_version = 0
+
+
+def heartbeat_version() -> int:
+    return _heartbeat_version
 _connection: sqlite3.Connection | None = None
 _path_override: Path | None = None
 
@@ -288,6 +299,7 @@ _JOB_JSON_COLS = (
     "step_outputs",
     "presentation",
     "pending_delivery",
+    "available_capabilities",
 )
 
 
@@ -355,7 +367,10 @@ def _row_to_job(row: sqlite3.Row) -> dict[str, Any]:
         if val is not None:
             job[col] = int(val)
     for col in _JOB_JSON_COLS:
-        raw = row[col]
+        try:
+            raw = row[col]
+        except (IndexError, KeyError):
+            continue
         if raw is None or raw == "":
             if col == "execution_plan":
                 job[col] = []
@@ -404,6 +419,7 @@ def put_job(job: dict[str, Any]) -> None:
         _opt_json(job.get("step_outputs")),
         _opt_json(job.get("presentation")),
         _opt_json(job.get("pending_delivery")),
+        _opt_json(job.get("available_capabilities")),
     )
     with _lock:
         conn = _connect()
@@ -414,9 +430,10 @@ def put_job(job: dict[str, Any]) -> None:
               edge_node_id, error, msg, detail, command_id,
               base_time, intent_base_time, created_at, updated_at,
               execution_plan, steps, step_log, status_log, ctx_param, context,
-              outputs, step_outputs, presentation, pending_delivery
+              outputs, step_outputs, presentation, pending_delivery,
+              available_capabilities
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(intent_id) DO UPDATE SET
               job_id = excluded.job_id,
               status = excluded.status,
@@ -441,7 +458,10 @@ def put_job(job: dict[str, Any]) -> None:
               outputs = excluded.outputs,
               step_outputs = excluded.step_outputs,
               presentation = excluded.presentation,
-              pending_delivery = excluded.pending_delivery
+              pending_delivery = excluded.pending_delivery,
+              available_capabilities = COALESCE(
+                excluded.available_capabilities, jobs.available_capabilities
+              )
             """,
             values,
         )
@@ -478,6 +498,7 @@ def create_job(job: dict[str, Any]) -> int:
         _opt_json(job.get("step_outputs")),
         _opt_json(job.get("presentation")),
         _opt_json(job.get("pending_delivery")),
+        _opt_json(job.get("available_capabilities")),
     )
     with _lock:
         conn = _connect()
@@ -488,9 +509,10 @@ def create_job(job: dict[str, Any]) -> int:
               edge_node_id, error, msg, detail, command_id,
               base_time, intent_base_time, created_at, updated_at,
               execution_plan, steps, step_log, status_log, ctx_param, context,
-              outputs, step_outputs, presentation, pending_delivery
+              outputs, step_outputs, presentation, pending_delivery,
+              available_capabilities
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             values,
         )
@@ -1090,7 +1112,7 @@ def _load_json_col(raw: Any) -> Any:
     return deepcopy(parsed) if isinstance(parsed, (dict, list)) else parsed
 
 
-def _row_to_participant(row: sqlite3.Row, *, include_heartbeat: bool) -> dict[str, Any]:
+def _row_to_participant(row: sqlite3.Row, *, include_heartbeat: bool = True) -> dict[str, Any]:
     pid = str(row["participant_id"])
     roles = [key for key in _ROLE_KEYS if int(row[f"role_{key}"] or 0)]
     out: dict[str, Any] = {
@@ -1113,12 +1135,26 @@ def _row_to_participant(row: sqlite3.Row, *, include_heartbeat: bool) -> dict[st
     if loc is not None:
         out["location"] = loc
         out["room"] = loc
-    services = _load_json_col(row["services"])
-    out["services"] = services if isinstance(services, list) else []
+    services_decl = _load_json_col(row["services"])
+    out["services"] = services_decl if isinstance(services_decl, list) else []
     for col in ("intent_sources", "endpoints"):
         parsed = _load_json_col(row[col])
         if parsed is not None:
             out[col] = parsed
+    for col in ("domain", "runtime_id"):
+        try:
+            val = row[col]
+        except (IndexError, KeyError):
+            val = None
+        if val is not None:
+            out[col] = val
+    try:
+        exposure_raw = row["exposure_policy"]
+    except (IndexError, KeyError):
+        exposure_raw = None
+    exposure = _load_json_col(exposure_raw)
+    if exposure is not None:
+        out["exposure_policy"] = exposure
     if include_heartbeat:
         if row["online_status"] is not None:
             out["online_status"] = row["online_status"]
@@ -1136,6 +1172,13 @@ def _row_to_participant(row: sqlite3.Row, *, include_heartbeat: bool) -> dict[st
             out["reported_at"] = row["reported_at"]
         if row["server_received_at"] is not None:
             out["server_received_at"] = row["server_received_at"]
+        try:
+            snap_raw = row["services_snapshot"]
+        except (IndexError, KeyError):
+            snap_raw = None
+        snap = _load_json_col(snap_raw)
+        if isinstance(snap, list):
+            out["services"] = snap
     else:
         if row["server_received_at"] is not None:
             out["server_received_at"] = row["server_received_at"]
@@ -1144,13 +1187,72 @@ def _row_to_participant(row: sqlite3.Row, *, include_heartbeat: bool) -> dict[st
     return out
 
 
-def put_registration(record: dict[str, Any]) -> None:
+def _registrations_exists(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='registrations'"
+    ).fetchone()
+    return row is not None
+
+
+def _participant_domain(conn: sqlite3.Connection, pid: str) -> str | None:
+    try:
+        row = conn.execute(
+            "SELECT domain FROM participants WHERE participant_id = ?", (pid,)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if row is None:
+        return None
+    val = row["domain"]
+    return str(val) if val is not None else None
+
+
+def _participant_select_with_heartbeat() -> str:
+    return """
+        SELECT
+          p.participant_id AS participant_id,
+          p.client_hint AS client_hint,
+          p.display_name AS display_name,
+          p.device_type AS device_type,
+          p.location AS location,
+          p.app_version AS app_version,
+          p.status AS status,
+          p.registered_at AS registered_at,
+          p.updated_at AS updated_at,
+          p.role_intent_source AS role_intent_source,
+          p.role_runtime AS role_runtime,
+          p.role_endpoint AS role_endpoint,
+          p.role_observer AS role_observer,
+          p.services AS services,
+          p.intent_sources AS intent_sources,
+          p.endpoints AS endpoints,
+          p.domain AS domain,
+          p.exposure_policy AS exposure_policy,
+          p.runtime_id AS runtime_id,
+          r.online_status AS online_status,
+          r.health AS health,
+          r.client_time_ms AS client_time_ms,
+          r.brain_time_ms AS brain_time_ms,
+          r.clock_skew_ms AS clock_skew_ms,
+          r.schedule_eligible AS schedule_eligible,
+          r.schedule_reject_reason AS schedule_reject_reason,
+          r.reported_at AS reported_at,
+          r.server_received_at AS server_received_at,
+          r.services_snapshot AS services_snapshot
+        FROM participants p
+        LEFT JOIN registrations r ON r.participant_id = p.participant_id
+    """
+
+
+def put_registration(record: dict[str, Any], *, domain: str | None = None) -> None:
     pid = str(record.get("participant_id") or record.get("edge_id") or "").strip()
     if not pid:
         raise ValueError("put_registration requires participant_id")
     roles = _roles_from_record(record)
     now = _now()
     registered_at = float(record.get("registered_at") or now)
+    exposure = record.get("exposure_policy")
+    runtime_id = str(record.get("runtime_id") or pid).strip() or pid
     with _lock:
         conn = _connect()
         conn.execute(
@@ -1159,9 +1261,10 @@ def put_registration(record: dict[str, Any]) -> None:
               participant_id, client_hint, display_name, device_type, location, app_version,
               status, registered_at, updated_at,
               role_intent_source, role_runtime, role_endpoint, role_observer,
-              services, intent_sources, endpoints
+              services, intent_sources, endpoints,
+              domain, exposure_policy, runtime_id
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(participant_id) DO UPDATE SET
               client_hint = excluded.client_hint,
               display_name = excluded.display_name,
@@ -1176,7 +1279,10 @@ def put_registration(record: dict[str, Any]) -> None:
               role_observer = excluded.role_observer,
               services = excluded.services,
               intent_sources = excluded.intent_sources,
-              endpoints = excluded.endpoints
+              endpoints = excluded.endpoints,
+              domain = COALESCE(excluded.domain, participants.domain),
+              exposure_policy = COALESCE(excluded.exposure_policy, participants.exposure_policy),
+              runtime_id = COALESCE(excluded.runtime_id, participants.runtime_id)
             """,
             (
                 pid,
@@ -1197,8 +1303,25 @@ def put_registration(record: dict[str, Any]) -> None:
                 _opt_json(record.get("services")),
                 _opt_json(record.get("intent_sources")),
                 _opt_json(record.get("endpoints")),
+                _opt_text(domain),
+                _opt_json(exposure),
+                runtime_id,
             ),
         )
+        if _registrations_exists(conn):
+            dom = (domain or _participant_domain(conn, pid) or "lan").strip() or "lan"
+            conn.execute(
+                """
+                INSERT INTO registrations(
+                  participant_id, domain, registered_at, updated_at
+                ) VALUES (?, ?, ?, ?)
+                ON CONFLICT(participant_id, domain) DO UPDATE SET
+                  updated_at = excluded.updated_at
+                """,
+                (pid, dom, registered_at, now),
+            )
+        global _heartbeat_version
+        _heartbeat_version += 1
 
 
 def get_registration(edge_id: str) -> dict[str, Any] | None:
@@ -1207,12 +1330,18 @@ def get_registration(edge_id: str) -> dict[str, Any] | None:
         return None
     with _lock:
         conn = _connect()
-        row = conn.execute(
-            "SELECT * FROM participants WHERE participant_id = ?", (pid,)
-        ).fetchone()
+        if _registrations_exists(conn):
+            row = conn.execute(
+                _participant_select_with_heartbeat() + " WHERE p.participant_id = ?",
+                (pid,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM participants WHERE participant_id = ?", (pid,)
+            ).fetchone()
     if row is None:
         return None
-    return _row_to_participant(row, include_heartbeat=False)
+    return _row_to_participant(row, include_heartbeat=True)
 
 
 def registration_ids() -> list[str]:
@@ -1228,37 +1357,159 @@ def registration_count() -> int:
     with _lock:
         conn = _connect()
         row = conn.execute("SELECT COUNT(*) AS n FROM participants").fetchone()
-        return int(row["n"])
+    return int(row["n"])
 
 
-def put_heartbeat(edge_id: str, info: dict[str, Any]) -> None:
+def put_registration_row(
+    participant_id: str, domain: str, *, registered_at: float | None = None
+) -> None:
+    pid = str(participant_id or "").strip()
+    dom = str(domain or "").strip()
+    if not pid or not dom:
+        raise ValueError("put_registration_row requires participant_id and domain")
+    now = _now()
+    ts = float(registered_at) if registered_at is not None else now
+    with _lock:
+        conn = _connect()
+        if not _registrations_exists(conn):
+            return
+        conn.execute(
+            """
+            INSERT INTO registrations(
+              participant_id, domain, registered_at, updated_at
+            ) VALUES (?, ?, ?, ?)
+            ON CONFLICT(participant_id, domain) DO UPDATE SET
+              updated_at = excluded.updated_at
+            """,
+            (pid, dom, ts, now),
+        )
+
+
+def get_registration_row(
+    participant_id: str, domain: str
+) -> dict[str, Any] | None:
+    pid = str(participant_id or "").strip()
+    dom = str(domain or "").strip()
+    if not pid or not dom:
+        return None
+    with _lock:
+        conn = _connect()
+        if not _registrations_exists(conn):
+            return None
+        row = conn.execute(
+            "SELECT * FROM registrations WHERE participant_id = ? AND domain = ?",
+            (pid, dom),
+        ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def list_registrations(domain: str | None = None) -> dict[str, dict[str, Any]]:
+    with _lock:
+        conn = _connect()
+        if not _registrations_exists(conn):
+            return {}
+        if domain:
+            rows = conn.execute(
+                "SELECT * FROM registrations WHERE domain = ? ORDER BY participant_id",
+                (str(domain),),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM registrations ORDER BY participant_id, domain"
+            ).fetchall()
+    return {str(r["participant_id"]): dict(r) for r in rows}
+
+
+def put_heartbeat(
+    edge_id: str,
+    info: dict[str, Any],
+    *,
+    domain: str | None = None,
+) -> None:
     pid = str(edge_id or "").strip()
     if not pid:
         raise ValueError("put_heartbeat requires participant_id")
     eligible = info.get("schedule_eligible")
-    if eligible is None:
-        eligible_int = None
-    else:
-        eligible_int = 1 if eligible else 0
+    eligible_int = None if eligible is None else (1 if eligible else 0)
+    now = _now()
+    reported = float(info["reported_at"]) if info.get("reported_at") is not None else None
+    received = (
+        float(info["server_received_at"])
+        if info.get("server_received_at") is not None
+        else None
+    )
+    dom = "lan"
     with _lock:
         conn = _connect()
+        if not _registrations_exists(conn):
+            cur = conn.execute(
+                """
+                UPDATE participants SET
+                  online_status = ?,
+                  health = ?,
+                  client_time_ms = ?,
+                  brain_time_ms = ?,
+                  clock_skew_ms = ?,
+                  schedule_eligible = ?,
+                  schedule_reject_reason = ?,
+                  reported_at = ?,
+                  server_received_at = ?,
+                  services = COALESCE(?, services),
+                  updated_at = ?
+                WHERE participant_id = ?
+                """,
+                (
+                    _opt_text(info.get("online_status")),
+                    _opt_json(info.get("health")),
+                    _opt_int(info.get("client_time_ms")),
+                    _opt_int(info.get("brain_time_ms")),
+                    _opt_int(info.get("clock_skew_ms")),
+                    eligible_int,
+                    _opt_text(info.get("schedule_reject_reason")),
+                    reported,
+                    received,
+                    _opt_json(info.get("services")),
+                    now,
+                    pid,
+                ),
+            )
+            if cur.rowcount == 0:
+                raise KeyError(f"unknown participant_id: {pid}")
+            if info.get("services"):
+                conn.execute(
+                    "UPDATE participants SET role_runtime = 1 WHERE participant_id = ?",
+                    (pid,),
+                )
+            return
+        dom = (domain or _participant_domain(conn, pid) or "lan").strip() or "lan"
         cur = conn.execute(
             """
-            UPDATE participants SET
-              online_status = ?,
-              health = ?,
-              client_time_ms = ?,
-              brain_time_ms = ?,
-              clock_skew_ms = ?,
-              schedule_eligible = ?,
-              schedule_reject_reason = ?,
-              reported_at = ?,
-              server_received_at = ?,
-              services = COALESCE(?, services),
-              updated_at = ?
-            WHERE participant_id = ?
+            INSERT INTO registrations(
+              participant_id, domain, registered_at, updated_at,
+              online_status, health, client_time_ms, brain_time_ms, clock_skew_ms,
+              schedule_eligible, schedule_reject_reason, reported_at,
+              server_received_at, services_snapshot
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(participant_id, domain) DO UPDATE SET
+              updated_at = excluded.updated_at,
+              online_status = excluded.online_status,
+              health = excluded.health,
+              client_time_ms = excluded.client_time_ms,
+              brain_time_ms = excluded.brain_time_ms,
+              clock_skew_ms = excluded.clock_skew_ms,
+              schedule_eligible = excluded.schedule_eligible,
+              schedule_reject_reason = excluded.schedule_reject_reason,
+              reported_at = excluded.reported_at,
+              server_received_at = excluded.server_received_at,
+              services_snapshot = COALESCE(excluded.services_snapshot, registrations.services_snapshot)
             """,
             (
+                pid,
+                dom,
+                now,
+                now,
                 _opt_text(info.get("online_status")),
                 _opt_json(info.get("health")),
                 _opt_int(info.get("client_time_ms")),
@@ -1266,34 +1517,54 @@ def put_heartbeat(edge_id: str, info: dict[str, Any]) -> None:
                 _opt_int(info.get("clock_skew_ms")),
                 eligible_int,
                 _opt_text(info.get("schedule_reject_reason")),
-                float(info["reported_at"]) if info.get("reported_at") is not None else None,
-                float(info["server_received_at"])
-                if info.get("server_received_at") is not None
-                else None,
+                reported,
+                received,
                 _opt_json(info.get("services")),
-                _now(),
-                pid,
             ),
         )
         if cur.rowcount == 0:
-            raise KeyError(f"unknown participant_id: {pid}")
+            row = conn.execute(
+                "SELECT 1 FROM participants WHERE participant_id = ?", (pid,)
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"unknown participant_id: {pid}")
         if info.get("services"):
             conn.execute(
                 "UPDATE participants SET role_runtime = 1 WHERE participant_id = ?",
                 (pid,),
             )
+        global _heartbeat_version
+        _heartbeat_version += 1
+
+    snap = info.get("services")
+    log.info(
+        "heartbeat_timeline participant_id=%s domain=%s observed_at=%s "
+        "online_status=%s capabilities_snapshot=%s",
+        pid,
+        dom,
+        received if received is not None else now,
+        info.get("online_status"),
+        _dumps(snap) if snap is not None else "null",
+    )
 
 
 def list_heartbeats() -> dict[str, dict[str, Any]]:
     with _lock:
         conn = _connect()
-        rows = conn.execute(
-            """
-            SELECT * FROM participants
-            WHERE server_received_at IS NOT NULL OR online_status IS NOT NULL
-            ORDER BY participant_id
-            """
-        ).fetchall()
+        if _registrations_exists(conn):
+            rows = conn.execute(
+                _participant_select_with_heartbeat()
+                + " WHERE r.server_received_at IS NOT NULL OR r.online_status IS NOT NULL "
+                "ORDER BY p.participant_id"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT * FROM participants
+                WHERE server_received_at IS NOT NULL OR online_status IS NOT NULL
+                ORDER BY participant_id
+                """
+            ).fetchall()
     out: dict[str, dict[str, Any]] = {}
     for row in rows:
         payload = _row_to_participant(row, include_heartbeat=True)
@@ -1304,12 +1575,20 @@ def list_heartbeats() -> dict[str, dict[str, Any]]:
 def heartbeat_count() -> int:
     with _lock:
         conn = _connect()
-        row = conn.execute(
-            """
-            SELECT COUNT(*) AS n FROM participants
-            WHERE server_received_at IS NOT NULL OR online_status IS NOT NULL
-            """
-        ).fetchone()
+        if _registrations_exists(conn):
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS n FROM registrations
+                WHERE server_received_at IS NOT NULL OR online_status IS NOT NULL
+                """
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS n FROM participants
+                WHERE server_received_at IS NOT NULL OR online_status IS NOT NULL
+                """
+            ).fetchone()
         return int(row["n"])
 
 
@@ -1772,9 +2051,14 @@ def list_asset_grants(
 def list_participants(*, include_heartbeat: bool = True) -> list[dict[str, Any]]:
     with _lock:
         conn = _connect()
-        rows = conn.execute(
-            "SELECT * FROM participants ORDER BY participant_id"
-        ).fetchall()
+        if include_heartbeat and _registrations_exists(conn):
+            rows = conn.execute(
+                _participant_select_with_heartbeat() + " ORDER BY p.participant_id"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM participants ORDER BY participant_id"
+            ).fetchall()
     return [_row_to_participant(row, include_heartbeat=include_heartbeat) for row in rows]
 
 
@@ -2043,6 +2327,120 @@ def list_admin_op_logs(*, limit: int = 100) -> list[dict[str, Any]]:
             }
         )
     return out
+
+
+def _row_to_global_event(row: sqlite3.Row) -> dict[str, Any]:
+    payload = _load_json_col(row["payload"])
+    out: dict[str, Any] = {
+        "event_id": int(row["event_id"]),
+        "kind": str(row["kind"] or ""),
+        "action": str(row["action"] or ""),
+        "created_at": float(row["created_at"] or 0),
+    }
+    if row["subject"] is not None and str(row["subject"]).strip():
+        out["subject"] = str(row["subject"])
+    if isinstance(payload, dict):
+        out["payload"] = payload
+    elif row["payload"]:
+        out["payload"] = row["payload"]
+    if row["edge_id"] is not None and str(row["edge_id"]).strip():
+        out["edge_id"] = str(row["edge_id"])
+    if row["intent_id"] is not None and str(row["intent_id"]).strip():
+        out["intent_id"] = str(row["intent_id"])
+    return out
+
+
+def append_global_event(record: dict[str, Any]) -> int:
+    kind = str(record.get("kind") or "").strip()
+    action = str(record.get("action") or "").strip()
+    if not kind:
+        raise ValueError("kind is required")
+    if not action:
+        raise ValueError("action is required")
+    now = _unix_seconds(record.get("created_at"))
+    with _lock:
+        conn = _connect()
+        cur = conn.execute(
+            """
+            INSERT INTO global_events(
+              kind, action, subject, payload, edge_id, intent_id, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                kind,
+                action,
+                _opt_text(record.get("subject")),
+                _opt_json(record.get("payload")),
+                _opt_text(record.get("edge_id")),
+                _opt_text(record.get("intent_id")),
+                now,
+            ),
+        )
+        return int(cur.lastrowid)
+
+
+def list_global_events(
+    *,
+    kind: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    try:
+        cap = int(limit)
+    except (TypeError, ValueError):
+        cap = 50
+    cap = max(1, min(cap, 500))
+    kind_s = str(kind or "").strip()
+    with _lock:
+        conn = _connect()
+        try:
+            if kind_s:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM global_events
+                    WHERE kind = ?
+                    ORDER BY event_id DESC
+                    LIMIT ?
+                    """,
+                    (kind_s, cap),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM global_events
+                    ORDER BY event_id DESC
+                    LIMIT ?
+                    """,
+                    (cap,),
+                ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+    rows = list(reversed(rows))
+    return [_row_to_global_event(row) for row in rows]
+
+
+def resolve_active_mode() -> str | None:
+    """Derive current household mode from append-only mode events."""
+    with _lock:
+        conn = _connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT action, subject FROM global_events
+                WHERE kind = 'mode'
+                ORDER BY event_id DESC
+                """
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return None
+    for row in rows:
+        action = str(row["action"] or "").strip().lower()
+        subject = str(row["subject"] or "").strip()
+        if action == "activate" and subject:
+            return subject
+        if action == "deactivate":
+            return None
+    return None
 
 
 def backup(dest: Path) -> Path:

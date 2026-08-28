@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hooks": {
+    "stop": [
+      {
+        "command": ".cursor/hooks/dev-inbox-check.sh",
+        "loop_limit": 8
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": ".cursor/hooks/dev-inbox-check.sh",
+        "loop_limit": 3
+      }
+    ]
+  }
+}

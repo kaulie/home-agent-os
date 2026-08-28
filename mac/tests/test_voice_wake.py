@@ -16,6 +16,7 @@ from mac_voice.wake import (
     contains_ack_echo,
     extract_wake,
     looks_like_ack_echo,
+    looks_like_light_command_echo,
     normalize,
     strip_ack_echo,
 )
@@ -601,6 +602,13 @@ class AckEchoTests(unittest.TestCase):
         self.assertFalse(looks_like_ack_echo("关闭台灯"))
         self.assertFalse(looks_like_ack_echo("拍照。"))
         self.assertFalse(looks_like_ack_echo("他在他在家干嘛？又咋了？"))
+
+    def test_light_command_echo(self) -> None:
+        self.assertTrue(looks_like_light_command_echo("关灯"))
+        self.assertTrue(looks_like_light_command_echo("开灯"))
+        self.assertTrue(looks_like_light_command_echo("小书小书"))
+        self.assertFalse(looks_like_light_command_echo("关闭台灯"))
+        self.assertFalse(looks_like_light_command_echo("咱们去睡觉"))
         self.assertTrue(contains_ack_echo("他在他在家干嘛？又咋了？"))
         self.assertEqual(strip_ack_echo("他在他在家干嘛？又咋了？"), "他在他在家干嘛")
         self.assertEqual(strip_ack_echo("几点了？又咋了"), "几点了")

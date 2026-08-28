@@ -9,7 +9,7 @@ GoPro 相机服务插件（`gopro-camera`），group=`camera`。
 | plugin id | `gopro-camera` |
 | service_id | `gopro.camera` |
 | group | `camera` |
-| wire capabilities | `camera.capture`（Mac / iOS）；iOS 另有 `take_video` |
+| wire capabilities | `camera.capture`（atomic）、`camera.capture_and_upload`（composite）；iOS 另有 `take_video` |
 
 ## 做什么
 
@@ -30,7 +30,7 @@ GoPro 相机服务插件（`gopro-camera`），group=`camera`。
 
 心跳结构化字段：拍一张现场照片并写入本机 inbox，产出 `capture_ref`，**不上传、不登记 Asset**。  
 典型触发：`拍一张`、`看看现在`、`看看客厅电视画面`、`拍一下电视屏幕`、`拍照`。  
-不能：上传 / 传到图床 / 传到云上、看图理解、投屏、无拍照直接回答画面内容。要把图给用户看或上图床时，下一步排 `asset.upload`，入参 `$capture_ref`。禁止把 path 写进 plan。
+不能：上传 / 传到图床 / 传到云上、看图理解、投屏、无拍照直接回答画面内容。要把图给用户看或上图床时，**优先**排 `camera.capture_and_upload`（同一 Runtime 内拆成 capture→upload）。独立 `asset.upload` 只用于已有 `capture_ref` / `asset_ref`。禁止把 path 写进 plan。
 
 ### iPhone / Android Console
 
@@ -42,7 +42,7 @@ GoPro 相机服务插件（`gopro-camera`），group=`camera`。
 |--|--|--|
 | 源码 | iOS `ios/LivingRoomEdge/LivingRoomEdge/GoPro/`；Android `android/living-room-android/.../gopro/` | `mac/.../gopro_camera.py` + `wifi_switch.py` |
 | Wi‑Fi | **不切网**。停在 GoPro AP 上控相机；上传若需达 Brain 可走蜂窝 | 必须切网：家 → GoPro → **切回家** 再写 inbox |
-| 上传 | 不在 capture 里上传。下一步 `asset.upload` 走蜂窝，入参 `$capture_ref` | 不在 capture 里上传。下一步 `asset.upload` 走家里 LAN 图床，入参 `$capture_ref` |
+| 上传 | atomic `camera.capture` 不上传。给人看图用 composite `camera.capture_and_upload`（本机拆成 capture→upload，蜂窝）。独立 `asset.upload` 仍可单独调度 | 给人看图用 composite（切网后本机 upload 走家里 LAN）。独立 `asset.upload` 仍可单独调度 |
 
 不要把 Mac 的 `wifi_switch` / restore home 搬进 iPhone 或 Android Console。
 
@@ -61,8 +61,11 @@ Mac 无蜂窝 Multipath，流水线必须切网：
 
 | capability_id | 说明 | output_schema |
 |---------------|------|---------------|
-| `camera.capture` | 拍照并写入本机 inbox；**不上传、不登记 Asset**。上传走独立 `asset.upload` | `capture_ref`（必填 CaptureRef） |
+| `camera.capture` | atomic。拍照并写入本机 inbox；**不上传、不登记 Asset** | `capture_ref`（必填 CaptureRef） |
+| `camera.capture_and_upload` | composite。`composition=composite`，`decomposes_to=["camera.capture","asset.upload"]`。Brain 调度一步；Runtime 同机执行两个 atomic，产出 Asset | `asset_ref`（必填） |
 | `take_video` | 开始录像（仅 iOS 本地，不上报 Brain） | — |
+
+`camera.capture_and_upload` 声明 `prefer_when`：拍照后还有后续动作要消费这张照片（给人看、变成 Asset、vision、投屏）时优先本能力，不要再拆成跨边的 capture+upload。心跳 **同时** 上报这三条（以及 `asset.upload` 在 `local.asset` 上）。`available` = 两个 atomic 的 AND。Plugin 不实现第三套快门/上传。
 
 成功时 Skill / intent status 带结构化 `outputs`，例如：
 

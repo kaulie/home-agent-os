@@ -67,8 +67,47 @@ Compatibility: Sender may include top-level `"url"` equal to `payload.content.as
 | `clear` | Stop renderer, clear stage |
 | `stop` | Stop playback / presentation |
 | `pause` / `resume` | Video (optional V1) |
+| `launch_game` | Load interactive game iframe (`payload.game_id`, `payload.game_url`) |
+| `game.command` | Forward real-time GameCommand to running game (`payload.command`) |
 
 **Slideshow (wire `display.slideshow`):** Sender issues sequential `present` commands (one image each) with shared or per-slide `presentation_id`; do not invent a second Cast namespace.
+
+**Interactive game (wire `game.launch`):** Sender issues `launch_game` with LAN `game_url` (Mac Edge `games/coin-catcher/serve.py`). Real-time control uses `game.command` on the same namespace — **not** Brain plan steps.
+
+### GameCommand (game.command payload)
+
+```json
+{
+  "type": "command",
+  "protocol_version": 1,
+  "action": "game.command",
+  "command_id": "cmd_…",
+  "payload": {
+    "command": {
+      "type": "MOVE_LEFT",
+      "source": "GESTURE",
+      "timestamp": 1730000000123
+    }
+  }
+}
+```
+
+Allowed `type`: `START` | `PAUSE` | `RESUME` | `RESTART` | `MOVE_LEFT` | `MOVE_RIGHT` | `JUMP` | `SPEED_UP` | `SPEED_DOWN`.  
+Allowed `source`: `VOICE` | `GESTURE` | `SYSTEM`.
+
+### launch_game payload
+
+```json
+{
+  "action": "launch_game",
+  "payload": {
+    "presentation_id": "p_…",
+    "game_id": "coin_catcher",
+    "game_url": "http://192.168.x.x:8102/",
+    "options": { "transport": "cast" }
+  }
+}
+```
 
 ---
 
@@ -80,6 +119,7 @@ Compatibility: Sender may include top-level `"url"` equal to `payload.content.as
 {"type": "event", "event": "presentation.completed", "command_id": "cmd_…", "presentation_id": "p_…"}
 {"type": "event", "event": "presentation.error", "command_id": "cmd_…", "presentation_id": "p_…", "error": {"code": "ASSET_LOAD_FAILED", "message": "…"}}
 {"type": "event", "event": "presentation.cleared", "command_id": "cmd_…"}
+{"type": "event", "event": "game.loaded", "command_id": "cmd_…", "presentation_id": "p_…", "game_id": "coin_catcher"}
 {"type": "event", "event": "receiver.heartbeat", "ts": 0}
 ```
 

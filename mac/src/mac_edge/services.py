@@ -63,6 +63,47 @@ CHROMECAST_DISPLAY_SERVICE: dict[str, Any] = {
     ],
 }
 
+GAME_HOST_SERVICE: dict[str, Any] = {
+    "service_id": "mac.game.host",
+    "display_name": "Mac Game Host",
+    "version": "0.1.0",
+    "group": "game",
+    "capabilities": [
+        attach(
+            "game.launch",
+            input_schema={
+                "game_id": {
+                    "type": "string",
+                    "required": True,
+                    "description": "游戏 id，如 coin_catcher",
+                },
+                "game_url": {
+                    "type": "string",
+                    "required": False,
+                    "description": "可选 LAN URL；缺省由 Mac 启动 serve.py 并返回",
+                },
+            },
+            output_schema={
+                "game_url": {
+                    "type": "string",
+                    "required": True,
+                    "description": "LAN 游戏页 URL（Chromecast iframe 加载）",
+                },
+                "game_id": {
+                    "type": "string",
+                    "required": True,
+                    "description": "已启动的游戏 id",
+                },
+                "status": {
+                    "type": "string",
+                    "required": True,
+                    "description": "ready",
+                },
+            },
+        ),
+    ],
+}
+
 XIAOMI_TV_DISPLAY_SERVICE: dict[str, Any] = {
     "service_id": "xiaomi.tv.display",
     "display_name": "小米电视 DLNA",
@@ -94,6 +135,31 @@ LOCAL_NOTIFY_SERVICE: dict[str, Any] = {
                     'type': 'string',
                     'required': False,
                     'description': '可选 say 音色名；edge 后端时为 edge-tts 音色',
+                },
+            },
+            output_schema={},
+        ),
+    ],
+}
+
+XIAODU_SPEAKER_SERVICE: dict[str, Any] = {
+    "service_id": "xiaodu.speaker",
+    "display_name": "小度音箱",
+    "version": "0.1.0",
+    "group": "notify",
+    "capabilities": [
+        attach(
+            "xiaodu.speak",
+            input_schema={
+                "text": {
+                    "type": "string",
+                    "required": True,
+                    "description": "要经小度音箱播报的原文",
+                },
+                "voice": {
+                    "type": "string",
+                    "required": False,
+                    "description": "edge-tts 音色，默认 zh-CN-XiaoxiaoNeural",
                 },
             },
             output_schema={},
@@ -456,6 +522,209 @@ LOCAL_VISION_SERVICE: dict[str, Any] = {
                     'type': 'string',
                     'required': True,
                     'description': '针对图+问句的中文回答；不确定时直说我不知道',
+                },
+            },
+        ),
+    ],
+}
+
+LOCAL_CHARACTER_SERVICE: dict[str, Any] = {
+    "service_id": "local.character",
+    "display_name": "Local Character Reading",
+    "version": "0.3.0",
+    "group": "reading",
+    "capabilities": [
+        attach(
+            "reading.detect_finger",
+            input_schema={
+                "asset_ref": {
+                    "type": "string",
+                    "required": True,
+                    "description": "AssetRef JSON {asset_id, type, mime_type?}。手指指向某字的图片。禁止 photo_url / path / 永久 URL。常为 $asset_ref。",
+                },
+            },
+            output_schema={
+                "finger": {
+                    "type": "object",
+                    "required": True,
+                    "description": "食指 {tip:[x,y], direction:[dx,dy]}",
+                },
+                "status": {
+                    "type": "string",
+                    "required": False,
+                    "description": "引擎状态",
+                },
+            },
+        ),
+        attach(
+            "reading.ocr_at_finger",
+            input_schema={
+                "asset_ref": {
+                    "type": "string",
+                    "required": True,
+                    "description": "AssetRef JSON {asset_id, type, mime_type?}。禁止 photo_url / path / 永久 URL。常为 $asset_ref。",
+                },
+                "finger": {
+                    "type": "object",
+                    "required": True,
+                    "description": "食指 {tip:[x,y], direction:[dx,dy]}。由 reading.detect_finger 产出。",
+                },
+            },
+            output_schema={
+                "chars": {
+                    "type": "array",
+                    "required": True,
+                    "description": "指尖附近 OCR 字框列表",
+                },
+                "status": {
+                    "type": "string",
+                    "required": False,
+                    "description": "引擎状态",
+                },
+            },
+        ),
+        attach(
+            "reading.rank_pointed",
+            input_schema={
+                "asset_ref": {
+                    "type": "string",
+                    "required": True,
+                    "description": "AssetRef JSON {asset_id, type, mime_type?}。禁止 photo_url / path / 永久 URL。常为 $asset_ref。",
+                },
+                "finger": {
+                    "type": "object",
+                    "required": True,
+                    "description": "食指 {tip:[x,y], direction:[dx,dy]}。由 reading.detect_finger 产出。",
+                },
+                "chars": {
+                    "type": "array",
+                    "required": True,
+                    "description": "指尖附近 OCR 字框。由 reading.ocr_at_finger 产出。",
+                },
+            },
+            output_schema={
+                "character": {
+                    "type": "string",
+                    "required": True,
+                    "description": "指尖指向的汉字；认不出时为空串",
+                },
+                "answer_text": {
+                    "type": "string",
+                    "required": True,
+                    "description": "给人听/看的中文答案；认不出时直说不知道",
+                },
+                "status": {
+                    "type": "string",
+                    "required": False,
+                    "description": "引擎状态：ok / ok_with_alternatives / 其它失败状态",
+                },
+            },
+        ),
+        attach(
+            "reading.point_to_character",
+            input_schema={
+                "asset_ref": {
+                    "type": "string",
+                    "required": True,
+                    "description": "已排好的 Image Asset。自己不拍照。禁止 photo_url / path / 永久 URL。常为 $asset_ref。",
+                },
+            },
+            output_schema={
+                "character": {
+                    "type": "string",
+                    "required": True,
+                    "description": "指尖指向的汉字；认不出时为空串",
+                },
+                "answer_text": {
+                    "type": "string",
+                    "required": True,
+                    "description": "给人听/看的中文答案；认不出时直说不知道",
+                },
+                "status": {
+                    "type": "string",
+                    "required": False,
+                    "description": "引擎状态：ok / ok_with_alternatives / 其它失败状态",
+                },
+            },
+        ),
+    ],
+}
+
+LOCAL_PRONUNCIATION_SERVICE: dict[str, Any] = {
+    "service_id": "local.pronunciation",
+    "display_name": "Local Pronunciation Assessment",
+    "version": "0.1.0",
+    "group": "pronunciation",
+    "capabilities": [
+        attach(
+            "pronunciation.assess",
+            input_schema={
+                "reference_audio": {
+                    "type": "string",
+                    "required": True,
+                    "description": "AssetRef JSON {asset_id, type:audio, mime_type?}。标准英文朗读音频。禁止 path / 永久 URL / base64。常为 $reference_audio。",
+                },
+                "student_audio": {
+                    "type": "string",
+                    "required": True,
+                    "description": "AssetRef JSON {asset_id, type:audio, mime_type?}。小朋友跟读的整段英文音频。禁止 path / 永久 URL / base64。常为 $student_audio。",
+                },
+            },
+            output_schema={
+                "overall_score": {
+                    "type": "number",
+                    "required": True,
+                    "description": "整段朗读总体评分 0..100",
+                },
+                "accuracy_score": {
+                    "type": "number",
+                    "required": True,
+                    "description": "发音准确度 0..100",
+                },
+                "fluency_score": {
+                    "type": "number",
+                    "required": True,
+                    "description": "流利度 0..100",
+                },
+                "completeness_score": {
+                    "type": "number",
+                    "required": True,
+                    "description": "完整度 0..100",
+                },
+                "prosody_score": {
+                    "type": "number",
+                    "required": True,
+                    "description": "韵律/重音表现 0..100",
+                },
+                "duration": {
+                    "type": "object",
+                    "required": True,
+                    "description": "{reference, student} 两段音频时长（秒）",
+                },
+                "problem_words": {
+                    "type": "array",
+                    "required": True,
+                    "description": "重点问题单词 [{word, score, start, end, phoneme_errors, reason?}]",
+                },
+                "problem_phonemes": {
+                    "type": "array",
+                    "required": True,
+                    "description": "重点问题音素 [{phoneme, word, start, end}]",
+                },
+                "fluency": {
+                    "type": "object",
+                    "required": True,
+                    "description": "{speech_rate, pause_count, long_pause_count, repetition_count}",
+                },
+                "raw_alignment": {
+                    "type": "array",
+                    "required": True,
+                    "description": "逐词对齐明细，供调试/UI 展开",
+                },
+                "feedback_text": {
+                    "type": "string",
+                    "required": True,
+                    "description": "给人看的中文一句话总结，供 Brain 组装 presentation",
                 },
             },
         ),
@@ -845,6 +1114,28 @@ GOPRO_CAMERA_SERVICE: dict[str, Any] = {
                 },
             },
         ),
+        attach(
+            'camera.capture_and_upload',
+            input_schema={
+                'dest': {
+                    'type': 'string',
+                    'required': False,
+                    'description': 'img_server（默认）| cloud。传给内部 asset.upload。',
+                },
+            },
+            output_schema={
+                'asset_ref': {
+                    'type': 'string',
+                    'required': True,
+                    'description': '上传后的 AssetRef JSON。禁止 photo_url / path / capture_ref 当用户可见 identity。',
+                },
+                'dest': {
+                    'type': 'string',
+                    'required': False,
+                    'description': 'img_server 或 cloud',
+                },
+            },
+        ),
     ],
 }
 
@@ -878,6 +1169,50 @@ def _cast_service_listening() -> bool:
         return False
 
 
+def _character_service_listening() -> bool:
+    """True when the local character-service (reading.point_to_character) is up."""
+    from mac_edge.plugins.point_to_character import DEFAULT_HEALTH_URL
+
+    raw = (
+        os.environ.get("MAC_EDGE_CHARACTER_HEALTH_URL") or DEFAULT_HEALTH_URL
+    ).strip() or DEFAULT_HEALTH_URL
+    parsed = urlparse(raw)
+    host = parsed.hostname or "127.0.0.1"
+    if parsed.port:
+        port = parsed.port
+    elif parsed.scheme == "https":
+        port = 443
+    else:
+        port = 80
+    try:
+        with socket.create_connection((host, port), timeout=0.4):
+            return True
+    except OSError:
+        return False
+
+
+def _pronunciation_service_listening() -> bool:
+    """True when the local pronunciation-service (pronunciation.assess) is up."""
+    from mac_edge.plugins.pronunciation_assess import DEFAULT_HEALTH_URL
+
+    raw = (
+        os.environ.get("MAC_EDGE_PRONUNCIATION_HEALTH_URL") or DEFAULT_HEALTH_URL
+    ).strip() or DEFAULT_HEALTH_URL
+    parsed = urlparse(raw)
+    host = parsed.hostname or "127.0.0.1"
+    if parsed.port:
+        port = parsed.port
+    elif parsed.scheme == "https":
+        port = 443
+    else:
+        port = 80
+    try:
+        with socket.create_connection((host, port), timeout=0.4):
+            return True
+    except OSError:
+        return False
+
+
 # GoPro stays home-server-only. Living-room light is also advertised on the
 # laptop speaker (same 小书 wake protocol) so Mac-origin voice 开灯 does not
 # depend on a backgrounded iPhone AVAudioSession.
@@ -893,7 +1228,10 @@ HOME_SERVER_SERVICES = frozenset(
 _LAPTOP_SERVICE_ORDER = (
     CHROMECAST_DISPLAY_SERVICE,
     LOCAL_NOTIFY_SERVICE,
+    XIAODU_SPEAKER_SERVICE,
     LOCAL_VISION_SERVICE,
+    LOCAL_CHARACTER_SERVICE,
+    LOCAL_PRONUNCIATION_SERVICE,
     LOCAL_QUERY_SERVICE,
     LOCAL_SEARCH_SERVICE,
     LOCAL_CLOCK_SERVICE,
@@ -906,6 +1244,7 @@ _LAPTOP_SERVICE_ORDER = (
     LIVINGROOM_AQUARIUM_SERVICE,
     ENTRY_LOCK_SERVICE,
     XIAOMI_TV_DISPLAY_SERVICE,
+    GAME_HOST_SERVICE,
     LOCAL_VOICE_TEST_SERVICE,
 )
 
@@ -998,8 +1337,28 @@ def default_services() -> list[dict[str, Any]]:
             log.info("skip chromecast.display — no Cast HTTP on this machine")
     if _allow_service(LOCAL_NOTIFY_SERVICE["service_id"], allowed_set):
         services.append(dict(LOCAL_NOTIFY_SERVICE))
+    if _allow_service(XIAODU_SPEAKER_SERVICE["service_id"], allowed_set):
+        from mac_edge.plugins.xiaodu_speaker import xiaodu_configured
+
+        if xiaodu_configured():
+            services.append(dict(XIAODU_SPEAKER_SERVICE))
+            log.info("advertise xiaodu.speaker (MAC_EDGE_XIAODU_IP set)")
+        else:
+            log.info("skip xiaodu.speaker — MAC_EDGE_XIAODU_IP unset")
     if _allow_service(LOCAL_VISION_SERVICE["service_id"], allowed_set):
         services.append(dict(LOCAL_VISION_SERVICE))
+    if _allow_service(LOCAL_CHARACTER_SERVICE["service_id"], allowed_set):
+        if _character_service_listening():
+            services.append(dict(LOCAL_CHARACTER_SERVICE))
+            log.info("advertise local.character (reading.point_to_character)")
+        else:
+            log.info("skip local.character — character-service :9189 not reachable")
+    if _allow_service(LOCAL_PRONUNCIATION_SERVICE["service_id"], allowed_set):
+        if _pronunciation_service_listening():
+            services.append(dict(LOCAL_PRONUNCIATION_SERVICE))
+            log.info("advertise local.pronunciation (pronunciation.assess)")
+        else:
+            log.info("skip local.pronunciation — pronunciation-service :9190 not reachable")
     if _allow_service(LOCAL_QUERY_SERVICE["service_id"], allowed_set):
         services.append(dict(LOCAL_QUERY_SERVICE))
     if _allow_service(LOCAL_SEARCH_SERVICE["service_id"], allowed_set):
@@ -1074,4 +1433,13 @@ def default_services() -> list[dict[str, Any]]:
             log.info("advertise entry.lock")
         else:
             log.info("skip entry.lock — MAC_EDGE_XIAOMI_USERNAME/PASSWORD unset")
+    if _allow_service(GAME_HOST_SERVICE["service_id"], allowed_set):
+        try:
+            from mac_edge.plugins.game_host import ensure_running
+
+            ensure_running()
+            services.append(dict(GAME_HOST_SERVICE))
+            log.info("advertise mac.game.host (coin-catcher :8102)")
+        except Exception as e:
+            log.warning("skip mac.game.host — %s", e)
     return services

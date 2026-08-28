@@ -1,0 +1,31 @@
+---
+description: Dev controller inbox — phone tasks via Agent Chatbox @controller
+alwaysApply: true
+---
+
+# Dev Controller Inbox
+
+手机通过 **HomeAgent Admin → Brain → agent-bridge** 下发开发任务时，进度会推到本机 **Agent Chatbox**（`http://127.0.0.1:8787/`），消息带 `@controller [dev-task]`。
+
+## 服务
+
+```bash
+python3 chat/serve.py          # 8787，与 agent-bridge 配合
+cd agent-bridge && ./run.sh    # 9540
+```
+
+## 本窗口如何收到
+
+1. **Hook 自动唤醒**：`.cursor/hooks.json` 在 `sessionStart` / `stop` 时 pull `@controller` 消息；若有新 `[dev-task]`，会注入 `followup_message` 继续这一会话。
+2. **你发消息时**：若 hook 未触发，先 `GET /api/v1/pull_msg?handle=controller` 看有没有未读 `[dev-task]`，有则先同步给用户再继续。
+
+## 消息含义
+
+| event | 说明 |
+|-------|------|
+| `queued` | Brain 已收到手机任务 |
+| `started` | bridge 开始跑 Cursor SDK |
+| `progress` | Agent 流式输出片段 |
+| `finished` / `failed` | 终态 |
+
+不要改 Chatbox 水位文件 `.cursor/dev-inbox-state.json` 以外的 agent 协调逻辑；规范仍见 [`docs/agent-coordination.md`](docs/agent-coordination.md)。

@@ -1,46 +1,47 @@
 // !$*UTF8*$!
 {
 	archiveVersion = 1;
-	classes = {};
+	classes = {
+	};
 	objectVersion = 56;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		100199064BDC4C31B02E9F9C /* AdminClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 937F21B204A64F62929C082A /* AdminClient.swift */; };
-		D0A2CAB5A93F4C7FBD74E0B4 /* AdminSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A050166BDC5241D78FF54274 /* AdminSettings.swift */; };
-		0F66AD6FD29D4925A1F0B691 /* AdminStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DFB54DD135245CD8AF71181 /* AdminStore.swift */; };
-		3ED4708237CB47D891913BF3 /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E2A5C50CE704269BAF29BEC /* ConnectionView.swift */; };
-		57B2DE8BB19B487B8A52E21A /* EventStreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07C89C8670A24F5BBD9899CB /* EventStreamView.swift */; };
-		93BE77FEA2E2420FB6BD13E8 /* HomeAgentAdminApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4F5CC91278F4F2DB58E9FD1 /* HomeAgentAdminApp.swift */; };
-		4B758D951CE14DD5910F321E /* ManagementLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70E92217ECC145AB9703995C /* ManagementLogView.swift */; };
-		10D8F968A175485D807364D5 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62A325F9FE704443BE887339 /* Models.swift */; };
-		0C717462D5EE4E42832299A4 /* NodeDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 132F6AFAE41848E3A26F8E1E /* NodeDetailView.swift */; };
-		324A93F445DD4DA0A62B4FAF /* NodeListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A79B1F2A9542B48F6B74FF /* NodeListView.swift */; };
-		E49408617D314CEDAFCDE5AD /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 732C01D2CCA64D9EAF5C51D8 /* RootTabView.swift */; };
-		17787A0DB2814331BF4803F5 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 573B85263E4C4CF4A8111C38 /* Theme.swift */; };
-		C6C6EEFCD149436F9EB00C6F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FF8EBC2D9D664248A07719A1 /* Assets.xcassets */; };
+		09FCACF3A22649F5888CE7B5 /* AdminClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 769ACD8258F14D2C8809F247 /* AdminClient.swift */; };
+		2842F77945D041CEBB0ACAFF /* ManagementLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74123686CCA1474091B92C1D /* ManagementLogView.swift */; };
+		52A5A420A8C148EAA3389D44 /* NodeListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8699DA5A535495EAD316221 /* NodeListView.swift */; };
+		5B0D42FDE0774D12A5BB21B1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2ABA8C871E314E90977C5C70 /* Assets.xcassets */; };
+		5B8B5E18CB6A4831B9EED792 /* NodeDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F56F543A9C64C25A654E11A /* NodeDetailView.swift */; };
+		85114C63975A479FB20E036F /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 622AF9F3B84D4AFBA6424FEB /* Models.swift */; };
+		86475A12FB444774A12E4DFE /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 150B7BC799B14B2B94615842 /* Theme.swift */; };
+		A7D8B3017A04429FAC95F4EC /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 374C5250E020497B811F1A52 /* ConnectionView.swift */; };
+		B5DA9F8802F24BFBBB17D926 /* HomeAgentAdminApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA3C092B8A4F47D9838E3C06 /* HomeAgentAdminApp.swift */; };
+		BD4FCB8435D842F0AEC90A44 /* AdminSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BB00E13AB22442F983DCEB8 /* AdminSettings.swift */; };
+		C09AF39ECF7642D4BFF1C44F /* AdminStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FF6D52A70934EC38B8F6D05 /* AdminStore.swift */; };
+		E18220AA0E35497C93D88C62 /* RootTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 445B88C81C864BF996F6B193 /* RootTabView.swift */; };
+		F80160B47632404988F43114 /* EventStreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F3A75BF4EF94C01A4A37144 /* EventStreamView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		78348D4ADAFF47EB94BD9EA4 /* HomeAgentAdmin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomeAgentAdmin.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		937F21B204A64F62929C082A /* AdminClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminClient.swift; sourceTree = "<group>"; };
-		A050166BDC5241D78FF54274 /* AdminSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminSettings.swift; sourceTree = "<group>"; };
-		4DFB54DD135245CD8AF71181 /* AdminStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminStore.swift; sourceTree = "<group>"; };
-		4E2A5C50CE704269BAF29BEC /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
-		07C89C8670A24F5BBD9899CB /* EventStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStreamView.swift; sourceTree = "<group>"; };
-		B4F5CC91278F4F2DB58E9FD1 /* HomeAgentAdminApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAgentAdminApp.swift; sourceTree = "<group>"; };
-		70E92217ECC145AB9703995C /* ManagementLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagementLogView.swift; sourceTree = "<group>"; };
-		62A325F9FE704443BE887339 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
-		132F6AFAE41848E3A26F8E1E /* NodeDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeDetailView.swift; sourceTree = "<group>"; };
-		C0A79B1F2A9542B48F6B74FF /* NodeListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeListView.swift; sourceTree = "<group>"; };
-		732C01D2CCA64D9EAF5C51D8 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
-		573B85263E4C4CF4A8111C38 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
-		465B3870C8AA47DFB04765F9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		FF8EBC2D9D664248A07719A1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		150B7BC799B14B2B94615842 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		1A7C064C1D364397B690B7FE /* HomeAgentAdmin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomeAgentAdmin.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1F3A75BF4EF94C01A4A37144 /* EventStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStreamView.swift; sourceTree = "<group>"; };
+		2ABA8C871E314E90977C5C70 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		2BB00E13AB22442F983DCEB8 /* AdminSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminSettings.swift; sourceTree = "<group>"; };
+		374C5250E020497B811F1A52 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
+		445B88C81C864BF996F6B193 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
+		622AF9F3B84D4AFBA6424FEB /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		74123686CCA1474091B92C1D /* ManagementLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagementLogView.swift; sourceTree = "<group>"; };
+		769ACD8258F14D2C8809F247 /* AdminClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminClient.swift; sourceTree = "<group>"; };
+		7F56F543A9C64C25A654E11A /* NodeDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeDetailView.swift; sourceTree = "<group>"; };
+		7FF6D52A70934EC38B8F6D05 /* AdminStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminStore.swift; sourceTree = "<group>"; };
+		8355C7163C3C4623A1710770 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		CA3C092B8A4F47D9838E3C06 /* HomeAgentAdminApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAgentAdminApp.swift; sourceTree = "<group>"; };
+		E8699DA5A535495EAD316221 /* NodeListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeListView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		51A5F460B7B244E683E1FB41 /* Frameworks */ = {
+		E95333E115694749A48151F3 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -50,53 +51,53 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		128D6850FFA4407AA32062CF = {
+		4E2212A3E192414392C30CE6 = {
 			isa = PBXGroup;
 			children = (
-				53DA8C5196A54D86AB20F466 /* HomeAgentAdmin */,
-				14F424CE8BBD4525AE0BE316 /* Products */,
+				55335E8C68EE472794F5FF57 /* HomeAgentAdmin */,
+				A789D99D5FC04CECA577AD34 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		14F424CE8BBD4525AE0BE316 /* Products */ = {
+		55335E8C68EE472794F5FF57 /* HomeAgentAdmin */ = {
 			isa = PBXGroup;
 			children = (
-				78348D4ADAFF47EB94BD9EA4 /* HomeAgentAdmin.app */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
-		53DA8C5196A54D86AB20F466 /* HomeAgentAdmin */ = {
-			isa = PBXGroup;
-			children = (
-				937F21B204A64F62929C082A,
-				A050166BDC5241D78FF54274,
-				4DFB54DD135245CD8AF71181,
-				4E2A5C50CE704269BAF29BEC,
-				07C89C8670A24F5BBD9899CB,
-				B4F5CC91278F4F2DB58E9FD1,
-				70E92217ECC145AB9703995C,
-				62A325F9FE704443BE887339,
-				132F6AFAE41848E3A26F8E1E,
-				C0A79B1F2A9542B48F6B74FF,
-				732C01D2CCA64D9EAF5C51D8,
-				573B85263E4C4CF4A8111C38,
-				465B3870C8AA47DFB04765F9,
-				FF8EBC2D9D664248A07719A1,
+				769ACD8258F14D2C8809F247 /* AdminClient.swift */,
+				2BB00E13AB22442F983DCEB8 /* AdminSettings.swift */,
+				7FF6D52A70934EC38B8F6D05 /* AdminStore.swift */,
+				374C5250E020497B811F1A52 /* ConnectionView.swift */,
+				1F3A75BF4EF94C01A4A37144 /* EventStreamView.swift */,
+				CA3C092B8A4F47D9838E3C06 /* HomeAgentAdminApp.swift */,
+				74123686CCA1474091B92C1D /* ManagementLogView.swift */,
+				622AF9F3B84D4AFBA6424FEB /* Models.swift */,
+				7F56F543A9C64C25A654E11A /* NodeDetailView.swift */,
+				E8699DA5A535495EAD316221 /* NodeListView.swift */,
+				445B88C81C864BF996F6B193 /* RootTabView.swift */,
+				150B7BC799B14B2B94615842 /* Theme.swift */,
+				8355C7163C3C4623A1710770 /* Info.plist */,
+				2ABA8C871E314E90977C5C70 /* Assets.xcassets */,
 			);
 			path = HomeAgentAdmin;
+			sourceTree = "<group>";
+		};
+		A789D99D5FC04CECA577AD34 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1A7C064C1D364397B690B7FE /* HomeAgentAdmin.app */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		913974D8512A48F4975F0A2C /* HomeAgentAdmin */ = {
+		A04C9DAFD320475285403A92 /* HomeAgentAdmin */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 1E157605FD3E48638EE11FC0 /* Build configuration list for PBXNativeTarget "HomeAgentAdmin" */;
+			buildConfigurationList = 89AC57314CB240368902989B /* Build configuration list for PBXNativeTarget "HomeAgentAdmin" */;
 			buildPhases = (
-				2C5C8D72BAD948A7B3B3FCCC /* Sources */,
-				51A5F460B7B244E683E1FB41 /* Frameworks */,
-				EDBA3F25920F4AD9BAD41C2C /* Resources */,
+				130224946CF644499DF42190 /* Sources */,
+				E95333E115694749A48151F3 /* Frameworks */,
+				7383C67158894D55819104CF /* Resources */,
 			);
 			buildRules = (
 			);
@@ -106,20 +107,20 @@
 			packageProductDependencies = (
 			);
 			productName = HomeAgentAdmin;
-			productReference = 78348D4ADAFF47EB94BD9EA4 /* HomeAgentAdmin.app */;
+			productReference = 1A7C064C1D364397B690B7FE /* HomeAgentAdmin.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		049C595050B84AFF882DADF0 /* Project object */ = {
+		CCAE6CA043F347C0B813F8FC /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1500;
 				LastUpgradeCheck = 1500;
 			};
-			buildConfigurationList = 81BFD12398B24D6EB09E97B7 /* Build configuration list for PBXProject "HomeAgentAdmin" */;
+			buildConfigurationList = B08A34CE6BEA4A93ABD2D330 /* Build configuration list for PBXProject "HomeAgentAdmin" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -127,72 +128,53 @@
 				en,
 				Base,
 			);
-			mainGroup = 128D6850FFA4407AA32062CF;
+			mainGroup = 4E2212A3E192414392C30CE6;
 			packageReferences = (
 			);
-			productRefGroup = 14F424CE8BBD4525AE0BE316 /* Products */;
+			productRefGroup = A789D99D5FC04CECA577AD34 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				913974D8512A48F4975F0A2C /* HomeAgentAdmin */,
+				A04C9DAFD320475285403A92 /* HomeAgentAdmin */,
 			);
-			};
+		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		EDBA3F25920F4AD9BAD41C2C /* Resources */ = {
+		7383C67158894D55819104CF /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C6C6EEFCD149436F9EB00C6F /* Assets.xcassets in Resources */,
+				5B0D42FDE0774D12A5BB21B1 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		2C5C8D72BAD948A7B3B3FCCC /* Sources */ = {
+		130224946CF644499DF42190 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				100199064BDC4C31B02E9F9C /* AdminClient.swift in Sources */,
-				D0A2CAB5A93F4C7FBD74E0B4 /* AdminSettings.swift in Sources */,
-				0F66AD6FD29D4925A1F0B691 /* AdminStore.swift in Sources */,
-				3ED4708237CB47D891913BF3 /* ConnectionView.swift in Sources */,
-				57B2DE8BB19B487B8A52E21A /* EventStreamView.swift in Sources */,
-				93BE77FEA2E2420FB6BD13E8 /* HomeAgentAdminApp.swift in Sources */,
-				4B758D951CE14DD5910F321E /* ManagementLogView.swift in Sources */,
-				10D8F968A175485D807364D5 /* Models.swift in Sources */,
-				0C717462D5EE4E42832299A4 /* NodeDetailView.swift in Sources */,
-				324A93F445DD4DA0A62B4FAF /* NodeListView.swift in Sources */,
-				E49408617D314CEDAFCDE5AD /* RootTabView.swift in Sources */,
-				17787A0DB2814331BF4803F5 /* Theme.swift in Sources */,
+				09FCACF3A22649F5888CE7B5 /* AdminClient.swift in Sources */,
+				BD4FCB8435D842F0AEC90A44 /* AdminSettings.swift in Sources */,
+				C09AF39ECF7642D4BFF1C44F /* AdminStore.swift in Sources */,
+				A7D8B3017A04429FAC95F4EC /* ConnectionView.swift in Sources */,
+				F80160B47632404988F43114 /* EventStreamView.swift in Sources */,
+				B5DA9F8802F24BFBBB17D926 /* HomeAgentAdminApp.swift in Sources */,
+				2842F77945D041CEBB0ACAFF /* ManagementLogView.swift in Sources */,
+				85114C63975A479FB20E036F /* Models.swift in Sources */,
+				5B8B5E18CB6A4831B9EED792 /* NodeDetailView.swift in Sources */,
+				52A5A420A8C148EAA3389D44 /* NodeListView.swift in Sources */,
+				E18220AA0E35497C93D88C62 /* RootTabView.swift in Sources */,
+				86475A12FB444774A12E4DFE /* Theme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		AF013ABEEB7A489787FCA0C1 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf";
-				GCC_DYNAMIC_NO_PIC = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				ONLY_ACTIVE_ARCH = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				SDKROOT = iphoneos;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		6ADDB020F3784199AD5EE7DB /* Release */ = {
+		26A238A0144F4798A1484A8E /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -206,37 +188,13 @@
 			};
 			name = Release;
 		};
-		6C7DFC062B7F4739BE140716 /* Debug */ = {
+		6CDFC0BF7E734819BB611732 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
-				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = HomeAgentAdmin/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
-				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.homeagent.admin;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		31EC07AA54FC45308A5F0124 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = JD4B775BJ5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HomeAgentAdmin/Info.plist;
@@ -254,28 +212,71 @@
 			};
 			name = Release;
 		};
+		998DF424AA434A9FB94454B8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		9F4564C578544FEAB4BC022B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = JD4B775BJ5;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HomeAgentAdmin/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.homeagent.admin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		81BFD12398B24D6EB09E97B7 /* Build configuration list for PBXProject "HomeAgentAdmin" */ = {
+		89AC57314CB240368902989B /* Build configuration list for PBXNativeTarget "HomeAgentAdmin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				AF013ABEEB7A489787FCA0C1 /* Debug */,
-				6ADDB020F3784199AD5EE7DB /* Release */,
+				9F4564C578544FEAB4BC022B /* Debug */,
+				6CDFC0BF7E734819BB611732 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		1E157605FD3E48638EE11FC0 /* Build configuration list for PBXNativeTarget "HomeAgentAdmin" */ = {
+		B08A34CE6BEA4A93ABD2D330 /* Build configuration list for PBXProject "HomeAgentAdmin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				6C7DFC062B7F4739BE140716 /* Debug */,
-				31EC07AA54FC45308A5F0124 /* Release */,
+				998DF424AA434A9FB94454B8 /* Debug */,
+				26A238A0144F4798A1484A8E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = 049C595050B84AFF882DADF0 /* Project object */;
+	rootObject = CCAE6CA043F347C0B813F8FC /* Project object */;
 }

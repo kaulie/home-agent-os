@@ -121,35 +121,25 @@ class AssetUploadPluginTests(unittest.TestCase):
 
 
 class CapAssetUploadToTests(unittest.TestCase):
-    def test_upload_to_uses_shared_backend(self) -> None:
+    def test_upload_to_posts_to_brain_assets_upload(self) -> None:
         from mac_edge.asset.sdk import CapAsset
-        from mac_edge.asset.img_upload import UploadResult
 
         manager = MagicMock()
         manager.materialize_file.return_value = Path("/tmp/a.jpg")
         new_ref = AssetRef(asset_id="asset_new", type="image", mime_type="image/jpeg")
-        manager.register_storage_locator.return_value = new_ref
+        manager.upload_file.return_value = new_ref
         cap = CapAsset(manager=manager, intent_id="1", step_num=2)
-        uploaded = UploadResult(
-            photo_url="http://192.168.3.73:8080/x.jpg",
-            saved_as="x.jpg",
-            dest="lan",
-            public_base="http://192.168.3.73:8080",
+        out = cap.upload_to(
+            AssetRef(asset_id="asset_old", type="image", mime_type="image/jpeg"),
+            dest="img_server",
         )
-        with patch(
-            "mac_edge.asset.img_upload.upload_image_file", return_value=uploaded
-        ) as up:
-            out = cap.upload_to(
-                AssetRef(asset_id="asset_old", type="image", mime_type="image/jpeg"),
-                dest="img_server",
-            )
         self.assertEqual(out.asset_id, "asset_new")
-        up.assert_called_once()
-        self.assertEqual(up.call_args.kwargs["preferred_dest"], "lan")
-        self.assertFalse(up.call_args.kwargs["allow_cloud_fallback"])
         manager.materialize_file.assert_called_once()
-        manager.register_storage_locator.assert_called_once()
-        self.assertEqual(manager.register_storage_locator.call_args.kwargs["producer"], "asset.upload")
+        manager.upload_file.assert_called_once()
+        kwargs = manager.upload_file.call_args.kwargs
+        self.assertEqual(kwargs["producer"], "asset.upload")
+        self.assertEqual(kwargs["intent_id"], "1")
+        manager.register_storage_locator.assert_not_called()
 
 
 if __name__ == "__main__":

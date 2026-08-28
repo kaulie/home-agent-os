@@ -39,11 +39,21 @@ fun ConsoleApp(
     speechStatus: String,
     onToggleSpeech: () -> Unit,
     onDraftChangeFromSpeech: (String) -> Unit,
+    photoMicEnabled: Boolean,
+    photoMicStatus: String,
+    photoMicBusy: Boolean,
+    photoMicLevel: Float,
+    photoVoiceTrace: List<PhotoVoiceTraceLine>,
+    onTogglePhotoMic: () -> Unit,
+    onLeavePhotoPane: () -> Unit,
+    onExitCaptureSession: () -> Unit,
 ) {
     var tab by remember { mutableStateOf(EdgeTab.Chat) }
     var showSettings by remember { mutableStateOf(false) }
-    var interactPane by remember { mutableStateOf(ChatPane.Chat) }
-    val hideBottomBar = tab == EdgeTab.Chat && interactPane == ChatPane.Photo
+    var interactPane by remember { mutableStateOf(ChatPane.Photo) }
+    var photoCaptureSessionActive by remember { mutableStateOf(false) }
+    val hideBottomBar =
+        tab == EdgeTab.Chat && interactPane == ChatPane.Photo && photoCaptureSessionActive
 
     LaunchedEffect(Unit) { vm.bind() }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -54,7 +64,10 @@ fun ConsoleApp(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(tab) {
+    LaunchedEffect(tab, interactPane) {
+        if (tab != EdgeTab.Chat || interactPane != ChatPane.Photo) {
+            onLeavePhotoPane()
+        }
         if (tab != EdgeTab.Chat && interactPane == ChatPane.Audio) {
             vm.onAudioPaneLeave()
         }
@@ -104,6 +117,15 @@ fun ConsoleApp(
                     onOpenSettings = { showSettings = true },
                     pane = interactPane,
                     onPane = { interactPane = it },
+                    photoMicEnabled = photoMicEnabled,
+                    photoMicStatus = photoMicStatus,
+                    photoMicBusy = photoMicBusy,
+                    photoMicLevel = photoMicLevel,
+                    photoVoiceTrace = photoVoiceTrace,
+                    onTogglePhotoMic = onTogglePhotoMic,
+                    onExitCaptureSession = onExitCaptureSession,
+                    photoCaptureSessionActive = photoCaptureSessionActive,
+                    onCaptureSessionActive = { photoCaptureSessionActive = it },
                 )
                 EdgeTab.System -> SystemObserverPane()
                 EdgeTab.Runtime -> RuntimeCapabilitiesPane(vm)

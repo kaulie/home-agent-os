@@ -1,9 +1,8 @@
-"""Shared img-server upload with LAN → cloud fallback.
+"""Shared img-server upload (query.content / search_images).
 
-Used by asset.upload / query.content before CapAsset.register.
-
-Before a multipart upload, probe TCP (+ optional /health) so unreachable LAN
-skips straight to cloud instead of waiting on a long upload timeout.
+asset.upload posts to the active Brain's /api/v1/assets/upload instead.
+Do not LAN-then-cloud dual-upload: dest is dest. Cloud is used only when
+preferred_dest is already cloud (or allow_cloud_fallback on LAN *failure*).
 """
 
 from __future__ import annotations
@@ -49,7 +48,6 @@ class UploadResult:
     dest: str  # lan | cloud
     public_base: str
     local_path: str = ""
-    # Best-effort cloud mirror after LAN success — Intent Source / Brain proxy.
     cloud_public_base: str = ""
     cloud_saved_as: str = ""
     cloud_photo_url: str = ""
@@ -110,7 +108,13 @@ def upload_endpoints(dest: str) -> tuple[str, str, str]:
         return upload, public.rstrip("/"), probe
     upload = _env("MAC_EDGE_PHOTO_UPLOAD_URL") or DEFAULT_CLOUD_UPLOAD_URL
     public = _env("MAC_EDGE_PHOTO_PUBLIC_BASE") or DEFAULT_CLOUD_PUBLIC_BASE
-    brain = _env("MAC_EDGE_BRAIN_URL") or re.sub(r"/api/v1/photos/upload/?$", "", upload)
+    from mac_edge.config import parse_brain_url_env, primary_brain_url
+    _urls, by_domain = parse_brain_url_env(_env("MAC_EDGE_BRAIN_URL"))
+    brain = (
+        by_domain.get("cloud")
+        or primary_brain_url(_env("MAC_EDGE_BRAIN_URL"))
+        or re.sub(r"/api/v1/photos/upload/?$", "", upload)
+    )
     probe = brain.rstrip("/") + "/"
     return upload, public.rstrip("/"), probe
 
@@ -279,46 +283,16 @@ def _upload_once(path: Path, dest: str) -> UploadResult:
     )
 
 
-def _with_cloud_mirror(path: Path, lan: UploadResult) -> UploadResult:
-    """After LAN ok, also mirror to cloud so phone/Brain can resolve AssetRef."""
-    try:
-        if not probe_reachable("cloud"):
-            log.warning("cloud img probe unreachable; skip mirror (lan-only storage)")
-            return lan
-        cloud = _upload_once(path, "cloud")
-    except ImgUploadError as e:
-        log.warning("cloud mirror after lan failed (%s); keeping lan-only storage", e)
-        return lan
-    log.info(
-        "img cloud mirror ok url=%s saved_as=%s (lan=%s)",
-        cloud.photo_url,
-        cloud.saved_as,
-        lan.saved_as,
-    )
-    return UploadResult(
-        photo_url=lan.photo_url,
-        saved_as=lan.saved_as,
-        dest=lan.dest,
-        public_base=lan.public_base,
-        local_path=lan.local_path or str(path),
-        cloud_public_base=cloud.public_base,
-        cloud_saved_as=cloud.saved_as,
-        cloud_photo_url=cloud.photo_url,
-    )
-
-
 def upload_image_file(
     path: Path,
     *,
     preferred_dest: str = "lan",
     allow_cloud_fallback: bool = True,
 ) -> UploadResult:
-    """Upload a local file. If preferred lan fails, optionally fall back to cloud.
+    """Upload a local file to preferred_dest only (no LAN-then-cloud second hop).
 
-    LAN path: quick TCP/HTTP probe first; unreachable → skip straight to cloud
-    (no 20s upload wait). Probe-ok but upload fail still falls back to cloud.
-    LAN success also best-effort mirrors to cloud (Intent Source needs a
-    non-LAN URL for presentation.asset_ref).
+    If preferred dest is lan and it is unreachable / the upload fails, optionally
+    fall back to cloud. That fallback is for LAN *failure*, not a dual-upload.
     """
     dest = require_implemented_dest(preferred_dest)
     skip_lan = False
@@ -335,8 +309,6 @@ def upload_image_file(
                 result.photo_url,
                 result.saved_as,
             )
-            if result.dest == "lan" and allow_cloud_fallback:
-                return _with_cloud_mirror(path, result)
             return result
         except ImgUploadError as first_err:
             if dest != "lan" or not allow_cloud_fallback:

@@ -28,10 +28,16 @@ object EdgeJson {
         o.put("intent_sources", encodeIntentSources(request.intentSources))
         o.put("endpoints", encodeEndpoints(request.endpoints))
         val pid = request.participantId?.trim().orEmpty()
-        if (pid.isNotEmpty()) {
+        val rid = request.runtimeId?.trim().orEmpty().ifEmpty { pid }
+        if (rid.isNotEmpty()) {
+            o.put("runtime_id", rid)
+            o.put("participant_id", rid)
+            o.put("edge_id", rid)
+        } else if (pid.isNotEmpty()) {
             o.put("participant_id", pid)
             o.put("edge_id", pid)
         }
+        encodeExposurePolicy(o, request.exposurePolicy)
         if (request.appVersion != null) o.put("app_version", request.appVersion)
         o.put("reported_at", request.reportedAtSec)
         return o.toString()
@@ -52,14 +58,29 @@ object EdgeJson {
         o.put("intent_sources", encodeIntentSources(info.intentSources))
         o.put("endpoints", encodeEndpoints(info.endpoints))
         val pid = info.participantId?.trim().orEmpty().ifEmpty { info.edgeId }
-        if (pid.isNotEmpty()) {
+        val rid = info.runtimeId?.trim().orEmpty().ifEmpty { pid }
+        if (rid.isNotEmpty()) {
+            o.put("runtime_id", rid)
+            o.put("participant_id", rid)
+            o.put("edge_id", rid)
+        } else if (pid.isNotEmpty()) {
             o.put("participant_id", pid)
             o.put("edge_id", pid)
         }
+        encodeExposurePolicy(o, info.exposurePolicy)
         if (info.appVersion != null) o.put("app_version", info.appVersion)
         o.put("reported_at", info.reportedAtSec)
         o.put("client_time_ms", info.clientTimeMs)
         return o.toString()
+    }
+
+    private fun encodeExposurePolicy(o: JSONObject, policy: Map<String, List<String>>?) {
+        if (policy == null) return
+        val obj = JSONObject()
+        for ((domain, caps) in policy) {
+            obj.put(domain, JSONArray(caps))
+        }
+        o.put("exposure_policy", obj)
     }
 
     fun parseRegisterResponse(body: String): EdgeRegisterResponse {
@@ -149,9 +170,20 @@ object EdgeJson {
             if (cap.kind.isNotBlank()) {
                 o.put("kind", cap.kind)
             }
+            o.put("composition", cap.composition.ifBlank { "atomic" })
+            if (cap.decomposesTo.isNotEmpty()) {
+                o.put("decomposes_to", JSONArray(cap.decomposesTo))
+            }
+            if (cap.preferWhen.isNotBlank()) {
+                o.put("prefer_when", cap.preferWhen)
+            }
             if (cap.description.isNotBlank()) {
                 o.put("description", cap.description)
             }
+            // P0: availability snapshot fields (heartbeat only; null on declaration).
+            cap.available?.let { o.put("available", it) }
+            cap.observedAt?.let { o.put("observed_at", it) }
+            cap.unavailableReason?.let { o.put("unavailable_reason", it) }
             arr.put(o)
         }
         return arr

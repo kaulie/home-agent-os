@@ -6,9 +6,8 @@ import threading
 import time
 from typing import Any
 
-import httpx
-
-from mac_edge.brain_client import BrainClient, BrainError, format_intent_summary
+from mac_edge.brain_client import BrainError, format_intent_summary
+from mac_edge.multi_brain import MultiBrainClient
 from mac_edge.config import Config
 from mac_edge.delivery import run_pending_deliveries
 from mac_edge.executor import (
@@ -23,10 +22,11 @@ from mac_edge.intranet_ping_monitor import IntranetPingMonitor
 from mac_edge.local_ledger import LocalLedger, bind as bind_ledger
 from mac_edge.scheduler import IntentScheduler
 from mac_edge.services import voice_stream_enabled
-from mac_edge.state import clear_edge_id, load_edge_id, save_edge_id
+from mac_edge.state import clear_edge_id, load_edge_id, save_edge_id, ensure_runtime_id
 from mac_edge.timing_beats import set_beat_listener
 from mac_edge.voice_supervisor import VoiceSupervisor
 from mac_edge.plugins.video_live_ingest import VideoLiveIngestServer
+from mac_edge.plugins.xiaodu_speaker import XiaoduTtsHttpServer, bind_server
 
 log = logging.getLogger("mac_edge.agent")
 
@@ -56,6 +56,11 @@ class EdgeAgent:
         self._stop = False
         self._edge_id_lock = threading.Lock()
         self._edge_id: str | None = load_edge_id(config.edge_id_path)
+        # P0: ensure a stable Runtime Identity exists (client-supplied, persisted).
+        # Smooth migration: reuse cached edge_id if present.
+        self._runtime_id = ensure_runtime_id(
+            config.runtime_id_path, edge_id_path=config.edge_id_path
+        )
         self._brain_down = False
         self._brain_fail_streak = 0
         self._last_brain_warn_mono = 0.0
@@ -89,6 +94,7 @@ class EdgeAgent:
             get_edge_id=self._get_voice_edge_id,
         )
         self._video_ingest = VideoLiveIngestServer.from_env(config.data_dir)
+        self._xiaodu_tts = XiaoduTtsHttpServer.from_env(config.data_dir)
 
     def request_stop(self, *_args: Any) -> None:
         log.info("stop requested")
@@ -98,20 +104,26 @@ class EdgeAgent:
         self._voice.stop()
         if self._video_ingest is not None:
             self._video_ingest.stop()
+        if self._xiaodu_tts is not None:
+            self._xiaodu_tts.stop()
+            bind_server(None)
 
     def run(self) -> None:
         signal.signal(signal.SIGINT, self.request_stop)
         signal.signal(signal.SIGTERM, self.request_stop)
 
         log.info(
-            "Mac Edge starting brain=%s hint=%s interval=%ss data=%s "
-            "cached_edge_id=%s cast_display=%s intranet_ping=%s/%s "
+            "Mac Edge starting brain=%s brains=%s domains=%s hint=%s interval=%ss data=%s "
+            "cached_edge_id=%s runtime_id=%s cast_display=%s intranet_ping=%s/%s "
             "channels=heartbeat|control|executor deadline_sleep=cap10s/half-remaining",
             self.config.brain_base_url,
+            ",".join(self.config.brain_base_urls),
+            ",".join(f"{k}={v}" for k, v in self.config.brain_urls_by_domain.items()) or "-",
             self.config.identity.client_hint,
             self.config.interval_sec,
             self.config.data_dir,
             self._get_edge_id() or "(none)",
+            self._runtime_id,
             self.config.cast_display_url,
             "on" if self.config.intranet_ping.enabled else "off",
             self.config.intranet_ping.mode,
@@ -124,11 +136,19 @@ class EdgeAgent:
             except OSError:
                 log.exception("video live ingest failed to bind; continuing without it")
                 self._video_ingest = None
+        if self._xiaodu_tts is not None:
+            try:
+                self._xiaodu_tts.start()
+                bind_server(self._xiaodu_tts)
+            except OSError:
+                log.exception("xiaodu TTS HTTP failed to bind; continuing without it")
+                self._xiaodu_tts = None
+                bind_server(None)
         self._ensure_channel_threads()
 
         try:
             # Control channel: pull + deadline wake. Never does heartbeat here.
-            with BrainClient(self.config) as brain:
+            with MultiBrainClient(list(self.config.brain_base_urls), config=self.config) as brain:
                 while not self._stop:
                     self._ensure_channel_threads()
                     tick_started = time.monotonic()
@@ -240,9 +260,10 @@ class EdgeAgent:
     def _heartbeat_loop(self) -> None:
         """Dedicated keep-alive channel — isolated from pull/execute timing."""
         timeout = min(float(self.config.http_timeout_sec), _HEARTBEAT_HTTP_TIMEOUT_SEC)
-        client = httpx.Client(timeout=timeout)
         try:
-            with BrainClient(self.config, client=client) as brain:
+            with MultiBrainClient(
+                list(self.config.brain_base_urls), config=self.config, timeout_sec=timeout
+            ) as brain:
                 while not self._stop:
                     try:
                         started = time.monotonic()
@@ -272,11 +293,11 @@ class EdgeAgent:
                         log.exception("heartbeat loop iteration failed — continue")
                         self._interruptible_sleep(float(self.config.interval_sec))
         finally:
-            client.close()
+            pass  # MultiBrainClient closes its own clients on __exit__
 
     # --- channel 2: control (pull / enqueue / deadlines) ---
 
-    def _control_tick(self, brain: BrainClient) -> int | None:
+    def _control_tick(self, brain) -> int | None:
         """Pull new intents from Brain, flush local state, enqueue from ledger."""
         if not self._get_edge_id():
             self._register(brain)
@@ -352,15 +373,23 @@ class EdgeAgent:
         return earliest_local_deadline_ms(intents, eid)
 
     def _enqueue_intent(self, intent_id: str, intent: dict[str, Any]) -> None:
+        iid = str(intent_id or "").strip()
+        if not iid:
+            return
+        if self._ledger is not None:
+            fresh = self._ledger.get(iid)
+            if fresh is None:
+                return
+            intent = fresh
         with self._work_lock:
-            self._pending_intents[intent_id] = intent
+            self._pending_intents[iid] = intent
         self._work_wake.set()
 
     # --- channel 3: executor (highest work priority) ---
 
     def _executor_loop(self) -> None:
         """Step execution channel — TTS/actions only block this thread."""
-        with BrainClient(self.config) as brain:
+        with MultiBrainClient(list(self.config.brain_base_urls), config=self.config) as brain:
             while not self._stop:
                 self._work_wake.wait(timeout=1.0)
                 self._work_wake.clear()
@@ -395,9 +424,11 @@ class EdgeAgent:
                     finally:
                         with self._work_lock:
                             self._executing_ids.discard(iid)
-                            # A newer snapshot may have landed while we were speaking.
                             if iid in self._pending_intents:
-                                self._work_wake.set()
+                                if self._ledger is not None and self._ledger.get(iid) is None:
+                                    del self._pending_intents[iid]
+                                else:
+                                    self._work_wake.set()
 
     def _take_pending(self) -> list[tuple[str, dict[str, Any]]]:
         with self._work_lock:
@@ -405,7 +436,19 @@ class EdgeAgent:
             keep: dict[str, dict[str, Any]] = {}
             for iid, intent in self._pending_intents.items():
                 if iid in self._executing_ids:
-                    keep[iid] = intent
+                    if self._ledger is not None:
+                        fresh = self._ledger.get(iid)
+                        if fresh is None:
+                            continue
+                        keep[iid] = fresh
+                    else:
+                        keep[iid] = intent
+                    continue
+                if self._ledger is not None:
+                    fresh = self._ledger.get(iid)
+                    if fresh is None:
+                        continue
+                    ready.append((iid, fresh))
                 else:
                     ready.append((iid, intent))
             self._pending_intents = keep

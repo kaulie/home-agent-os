@@ -9,6 +9,7 @@ struct RootTabView: View {
 
     enum EdgeTab: Hashable {
         case chat
+        case game
         case system
         case runtime
         case entity
@@ -22,6 +23,12 @@ struct RootTabView: View {
                     Label("互动", systemImage: "bubble.left.and.bubble.right.fill")
                 }
                 .tag(EdgeTab.chat)
+
+            GameControllerView()
+                .tabItem {
+                    Label("游戏", systemImage: "gamecontroller.fill")
+                }
+                .tag(EdgeTab.game)
 
             SystemObserverView()
                 .tabItem {

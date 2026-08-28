@@ -43,7 +43,20 @@ iPhone App 是 **Intent Source + Endpoint**，并预装 **Runtime：GoPro `camer
 
 投屏、播报仍由已注册对应能力的 Participant（例如 Mac Edge）执行。
 
-现场管理中控是另一个 App：[HomeAgent Admin](HomeAgentAdmin/README.md)。不要把开关塞进 Console 底栏。
+现场管理中控是另一个 App：[HomeAgent Admin](HomeAgentAdmin/README.md)（业务运行态）。Dev / Debug 用 [HomeAgent Dev](HomeAgentDev/README.md)。不要把开关塞进 Console 底栏。
+
+## Legacy（iOS 12 老设备）
+
+**iOS 12.x** 无法安装上面的 LivingRoomEdge（最低 iOS 16）。请用独立 UIKit 工程 **[LivingRoomLegacy](LivingRoomLegacy/README.md)**：
+
+- 仅文字发 Intent + 轮询结果；含最小 register / heartbeat
+- Bundle ID `com.gaolei.livingroom.legacy`，可与主 Console 同机并存
+- 默认 Cloud Brain 与上文一致；设置页可改 LAN
+
+```bash
+python3 ios/LivingRoomLegacy/generate_xcodeproj.py
+open ios/LivingRoomLegacy/LivingRoomLegacy.xcodeproj
+```
 
 ## 打开工程
 
@@ -74,4 +87,4 @@ ios/LivingRoomEdge/LivingRoomEdge/
   Net/       HTTP 计时
 ```
 
-中控：`ios/HomeAgentAdmin/`（节点列表 / 详情开关 / 管理日志 / 连接）。
+中控：`ios/HomeAgentAdmin/`（节点 / 策略 / 事件流）。Dev：`ios/HomeAgentDev/`（Issue / Dev Task）。

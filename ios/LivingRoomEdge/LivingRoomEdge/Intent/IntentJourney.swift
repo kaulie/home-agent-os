@@ -16,16 +16,33 @@ enum IntentPhase: String, CaseIterable, Equatable {
         .uploaded, .intentParsed, .scheduled, .assigned, .running, .succeeded,
     ]
 
-    var label: String {
+    var label: String { displayLabel(visual: .done) }
+
+    /// Upload completes when Brain accepts the POST (`intent_base_time`).
+    /// Parse wait belongs on `intent_parsed`, not on this row.
+    func displayLabel(visual: IntentPhaseVisualState = .done, reportedWire: IntentPhase? = nil) -> String {
         switch self {
-        case .uploaded: return "上传到服务器，待意图解析"
-        case .intentParsed: return "意图解析完成，待下发到中控节点"
+        case .uploaded:
+            return "已到达服务器"
+        case .intentParsed:
+            let waitingForParse = visual == .active && (reportedWire == nil || reportedWire == .uploaded)
+            return waitingForParse
+                ? "意图解析中"
+                : "意图解析完成，待下发到中控节点"
         case .scheduled: return "任务已调度（intent_scheduled）"
         case .assigned: return "任务已分发到执行节点（intent_dispatched）"
         case .running: return "任务执行中"
         case .succeeded: return "任务执行完成（成功）"
         case .failed: return "任务执行完成（失败）"
         }
+    }
+
+    /// POST 200 with a real `intent_id` means `intent_received` already landed.
+    static func logisticsCurrent(wire: IntentPhase, jobAccepted: Bool) -> IntentPhase {
+        if wire == .uploaded, jobAccepted {
+            return .intentParsed
+        }
+        return wire
     }
 
     var rank: Int {
@@ -507,7 +524,7 @@ struct IntentJobSnapshot: Equatable {
             steps = [
                 IntentJobStep(
                     status: status,
-                    at: Date(),
+                    at: createdAt,
                     detail: detail
                 ),
             ]
@@ -1218,9 +1235,13 @@ struct IntentJourney: Equatable {
     /// Brain `status_log` first/last — logistics phase stamps only, not total elapsed.
     var serverStartedAt: Date?
     var serverFinishedAt: Date?
+    /// POST accept / `intent_base_time`. Frozen; never wall-clock `now`.
+    var acceptedAt: Date?
+    /// Last Brain `intent_status` applied (may still be `intent_received` while UI waits on parse).
+    var reportedWire: IntentPhase
 
-    /// Wire status string for header (e.g. intent_parsed).
-    var currentWireStatus: String { current.wireValue }
+    /// Wire status string for header (e.g. intent_received).
+    var currentWireStatus: String { reportedWire.wireValue }
 
     /// Empty logistics track shown on the home screen before an intent is sent.
     static var idlePlaceholder: IntentJourney {
@@ -1240,7 +1261,9 @@ struct IntentJourney: Equatable {
             clientStartedAt: nil,
             clientFinishedAt: nil,
             serverStartedAt: nil,
-            serverFinishedAt: nil
+            serverFinishedAt: nil,
+            acceptedAt: nil,
+            reportedWire: .uploaded
         )
     }
 
@@ -1260,7 +1283,9 @@ struct IntentJourney: Equatable {
             status: displayStatus,
             steps: snapshot.steps,
             edgeNodeId: snapshot.edgeNodeId,
-            error: snapshot.error
+            error: snapshot.error,
+            acceptedAt: snapshot.createdAt,
+            reportedWire: snapshot.wireStatus
         )
         journey.planSteps = snapshot.planSteps
         if journey.serverStartedAt == nil, let created = snapshot.createdAt {
@@ -1286,7 +1311,9 @@ struct IntentJourney: Equatable {
             clientStartedAt: Date(),
             clientFinishedAt: nil,
             serverStartedAt: nil,
-            serverFinishedAt: nil
+            serverFinishedAt: nil,
+            acceptedAt: nil,
+            reportedWire: status
         )
         journey.apply(status: status, steps: [], edgeNodeId: nil, error: nil)
         return journey
@@ -1294,16 +1321,35 @@ struct IntentJourney: Equatable {
 
     /// Apply server/local status. Builds logistics visuals from current phase rank
     /// (prior steps = done / green, current = active / yellow, later = pending / gray).
+    ///
+    /// `intent_received` on a real job is already done: Brain stamped `intent_base_time`
+    /// at POST accept. The yellow/active wait until `intent_parsed` is parse, not upload.
     mutating func apply(
         status: IntentPhase,
         steps: [IntentJobStep],
         edgeNodeId: String?,
         error: String?,
-        failedAt: IntentPhase? = nil
+        failedAt: IntentPhase? = nil,
+        acceptedAt: Date? = nil,
+        reportedWire: IntentPhase? = nil
     ) {
-        current = status
-        terminal = status.isTerminal
+        let jobAccepted = !jobId.isEmpty && jobId != "pending…"
+        let displayStatus = IntentPhase.logisticsCurrent(wire: status, jobAccepted: jobAccepted)
+        current = displayStatus
+        self.reportedWire = reportedWire ?? status
+        terminal = displayStatus.isTerminal
         timedOut = false
+        if jobAccepted {
+            if let incoming = acceptedAt {
+                if let existing = self.acceptedAt {
+                    if incoming < existing { self.acceptedAt = incoming }
+                } else {
+                    self.acceptedAt = incoming
+                }
+            } else if self.acceptedAt == nil {
+                self.acceptedAt = Date()
+            }
+        }
         if let edgeNodeId { self.edgeNodeId = edgeNodeId }
         if let error, !error.isEmpty {
             let prior = (self.error ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1319,7 +1365,7 @@ struct IntentJourney: Equatable {
             }
             return map
         }()
-        let failAnchor = failedAt ?? (status == .failed ? .succeeded : nil)
+        let failAnchor = failedAt ?? (displayStatus == .failed ? .succeeded : nil)
         let atByPhase: [IntentPhase: Date] = {
             var map: [IntentPhase: Date] = [:]
             for s in steps {
@@ -1336,9 +1382,12 @@ struct IntentJourney: Equatable {
         if let first = serverAts.first {
             serverStartedAt = first
         }
-        if status.isTerminal, let last = serverAts.last {
+        if let acceptedAt, serverStartedAt == nil {
+            serverStartedAt = acceptedAt
+        }
+        if displayStatus.isTerminal, let last = serverAts.last {
             serverFinishedAt = last
-        } else if !status.isTerminal {
+        } else if !displayStatus.isTerminal {
             serverFinishedAt = nil
         }
         let previousAt: [IntentPhase: Date] = Dictionary(
@@ -1348,17 +1397,20 @@ struct IntentJourney: Equatable {
             }
         )
         let now = Date()
+        // status_log `intent_received` / createdAt is acceptance (end of upload), not t0.
+        let acceptedStamp = self.acceptedAt
+        let uploadStart = clientStartedAt ?? previousAt[.uploaded] ?? acceptedStamp
 
         let curRank: Int = {
-            if status == .failed, let failAnchor {
+            if displayStatus == .failed, let failAnchor {
                 return failAnchor.rank
             }
-            return status.rank
+            return displayStatus.rank
         }()
 
         phases = IntentPhase.timelineOrder.map { phase in
             let visual: IntentPhaseVisualState
-            if status == .failed {
+            if displayStatus == .failed {
                 if phase.rank < curRank {
                     visual = .done
                 } else if phase.rank == curRank || phase == .succeeded {
@@ -1369,13 +1421,13 @@ struct IntentJourney: Equatable {
             } else if phase.rank < curRank {
                 visual = .done
             } else if phase.rank == curRank {
-                visual = status.isTerminal ? .done : .active
+                visual = displayStatus.isTerminal ? .done : .active
             } else {
                 visual = .pending
             }
 
             var detail = detailByPhase[phase] ?? ""
-            if status == .failed, phase.rank == curRank || phase == .succeeded {
+            if displayStatus == .failed, phase.rank == curRank || phase == .succeeded {
                 detail = error ?? detail
             }
             if phase == .assigned, let edgeNodeId, !edgeNodeId.isEmpty, detail.isEmpty {
@@ -1386,6 +1438,16 @@ struct IntentJourney: Equatable {
                 detail = "已完成"
             }
             let at: Date? = {
+                switch phase {
+                case .uploaded:
+                    return uploadStart
+                case .intentParsed:
+                    if visual == .pending { return nil }
+                    // Start of parse = accept time. status_log `intent_parsed` is parse *end*.
+                    return acceptedStamp ?? previousAt[.intentParsed]
+                default:
+                    break
+                }
                 // Prefer Brain status_log timestamps over locally frozen stamps.
                 if let t = atByPhase[phase] { return t }
                 // Terminal failure slot: use serverFinishedAt, never wall-clock now.
@@ -1397,7 +1459,7 @@ struct IntentJourney: Equatable {
                     return now
                 case .done, .failed:
                     // Prefer server end for any reached phase missing its own stamp.
-                    if status.isTerminal {
+                    if displayStatus.isTerminal {
                         return serverFinishedAt ?? serverStartedAt
                     }
                     return now
@@ -1433,10 +1495,15 @@ struct IntentJourney: Equatable {
             case .active, .timedOut:
                 phases[i].durationSeconds = max(0, now.timeIntervalSince(start))
             case .done, .failed:
+                // Next phase's start (frozen). Do not use wall-clock `now` —
+                // that would bill parse wait onto the previous (upload) row.
                 let nextAt = phases.dropFirst(i + 1).compactMap(\.at).first
                     ?? serverEnd
-                    ?? now
-                phases[i].durationSeconds = max(0, nextAt.timeIntervalSince(start))
+                if let nextAt {
+                    phases[i].durationSeconds = max(0, nextAt.timeIntervalSince(start))
+                } else {
+                    phases[i].durationSeconds = 0
+                }
             }
         }
     }
@@ -1531,8 +1598,9 @@ final class IntentJourneyStore: ObservableObject {
 
     private var pollTasks: [String: Task<Void, Never>] = [:]
     private var lastProgressAtByJob: [String: Date] = [:]
-    /// Phone is an intent source only: poll Brain every 5s until terminal.
-    private let pollIntervalNs: UInt64 = 5_000_000_000
+    /// Phone is an intent source only: poll Brain until terminal.
+    /// 3s: first row is already done at POST; this tick is for `intent_parsed`.
+    private let pollIntervalNs: UInt64 = 3_000_000_000
     private let timeoutSeconds: TimeInterval = 600
 
     /// Show timeline immediately on send (before server returns intent_id).
@@ -1603,9 +1671,14 @@ final class IntentJourneyStore: ObservableObject {
                 incoming: snapshot.planSteps
             )
         }
-        let elevated = IntentJobSnapshot.phaseFromPlanSteps(
+        let elevatedRaw = IntentJobSnapshot.phaseFromPlanSteps(
             journey.planSteps,
             fallback: snapshot.wireStatus
+        )
+        // Wire may still be intent_received after POST; logistics already advanced.
+        let elevated = IntentPhase.logisticsCurrent(
+            wire: elevatedRaw,
+            jobAccepted: !snapshot.jobId.isEmpty
         )
         let wireStillOpen = !snapshot.wireStatus.isTerminal
         if journey.terminal, wireStillOpen {
@@ -1627,7 +1700,7 @@ final class IntentJourneyStore: ObservableObject {
                 }
             }
         }
-        if elevated != snapshot.status {
+        if elevatedRaw != snapshot.status {
             NSLog(
                 "[IntentJourneyStore] elevate logistics intent_id=%@ wire=%@ → %@ (from plan steps)",
                 snapshot.jobId,
@@ -1636,10 +1709,12 @@ final class IntentJourneyStore: ObservableObject {
             )
         }
         journey.apply(
-            status: elevated,
+            status: elevatedRaw,
             steps: snapshot.steps,
             edgeNodeId: snapshot.edgeNodeId,
-            error: snapshot.error
+            error: snapshot.error,
+            acceptedAt: snapshot.createdAt,
+            reportedWire: snapshot.wireStatus
         )
         reconcilePlanSteps(on: &journey, intentStatus: elevated)
         journey.stampClientFinishedIfNeeded()
@@ -1655,6 +1730,7 @@ final class IntentJourneyStore: ObservableObject {
         if let prior {
             journey.clientStartedAt = prior.clientStartedAt ?? journey.clientStartedAt
             journey.clientFinishedAt = prior.clientFinishedAt
+            journey.acceptedAt = prior.acceptedAt ?? journey.acceptedAt
         }
         journey.reply = snapshot.reply
         journey.presentation = snapshot.presentation
@@ -1662,7 +1738,9 @@ final class IntentJourneyStore: ObservableObject {
             status: snapshot.status,
             steps: snapshot.steps,
             edgeNodeId: snapshot.edgeNodeId,
-            error: snapshot.error
+            error: snapshot.error,
+            acceptedAt: snapshot.createdAt,
+            reportedWire: snapshot.wireStatus
         )
         journey.planSteps = snapshot.planSteps
         journey.stampClientFinishedIfNeeded()
@@ -1790,7 +1868,7 @@ final class IntentJourneyStore: ObservableObject {
                 }
             }
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: self?.pollIntervalNs ?? 5_000_000_000)
+                try? await Task.sleep(nanoseconds: self?.pollIntervalNs ?? 3_000_000_000)
                 guard let self, !Task.isCancelled else { return }
                 let idleAnchor = self.lastProgressAtByJob[key] ?? started
                 if Date().timeIntervalSince(idleAnchor) >= self.timeoutSeconds {

@@ -1,12 +1,16 @@
 import Foundation
 import UIKit
 
-/// One click「对时」snapshot: local time first, then server + skew after ping.
+/// One click「对时」snapshot: local + LAN Brain + Cloud Brain, same timestamp format.
 struct ClockSyncSample: Equatable {
     var localAt: Date
-    var serverAt: Date?
-    /// Brain `skew_ms` = `server_time_ms − client_time_ms` (positive ⇒ server ahead).
-    var skewMs: Int?
+    var lanServerAt: Date?
+    var cloudServerAt: Date?
+    /// Brain `skew_ms` = server − local. Positive = server ahead of this device.
+    var lanSkewMs: Int?
+    var cloudSkewMs: Int?
+    var lanError: String = ""
+    var cloudError: String = ""
 }
 
 /// Phone-side Brain client: POST an intent, then GET `intent_detail` while it runs.
@@ -26,7 +30,8 @@ final class IntentClient {
         text: String,
         source: String,
         serverURL: String,
-        assetRef: [String: Any]? = nil
+        assetRef: [String: Any]? = nil,
+        context: [String: Any]? = nil
     ) async -> DispatchResult {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedText.isEmpty else {
@@ -53,6 +58,17 @@ final class IntentClient {
         if let assetRef {
             payload["asset_ref"] = assetRef
             payload["context"] = ["asset_ref": assetRef]
+        }
+        // Named context inputs (e.g. pronunciation.assess reference_audio +
+        // student_audio AssetRefs) are merged into payload["context"] so the
+        // Brain planner can wire them into the assess step's input_constrict.
+        if let context, !context.isEmpty {
+            if var existing = payload["context"] as? [String: Any] {
+                existing.merge(context) { _, new in new }
+                payload["context"] = existing
+            } else {
+                payload["context"] = context
+            }
         }
         let pid = ParticipantStore.participantId.trimmingCharacters(in: .whitespacesAndNewlines)
         if !pid.isEmpty {
@@ -109,22 +125,25 @@ final class IntentClient {
     }
 
     /// Register as Intent Source + Endpoint. Returns participant_id and optional server time.
-    func registerParticipant(serverURL: String) async -> (id: String, ts: Date?)? {
+    /// Heartbeat-path self-heal should pass `timeout: 3` so one attempt cannot hang on register.
+    func registerParticipant(serverURL: String, timeout: TimeInterval = 6) async -> (id: String, ts: Date?)? {
         let trimmedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = Self.edgeRegisterURL(fromIntentURL: trimmedURL) else {
             return nil
         }
-        let payload = ParticipantStore.registrationBody()
+        var payload = ParticipantStore.registrationBody()
+        await ParticipantStore.applyAvailability(to: &payload)
         guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
             return nil
         }
+        let cap = max(0.5, timeout)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
-        request.timeoutInterval = 6
+        request.timeoutInterval = cap
         do {
-            let timed = try await TimedHTTP.data(for: request, label: "edge-register", hardTimeout: 6)
+            let timed = try await TimedHTTP.data(for: request, label: "edge-register", hardTimeout: cap)
             guard let http = timed.http, (200 ..< 300).contains(http.statusCode),
                   let obj = try JSONSerialization.jsonObject(with: timed.data) as? [String: Any] else {
                 return nil
@@ -147,9 +166,26 @@ final class IntentClient {
         case failed(String)
     }
 
+    /// Build heartbeat JSON once (availability probe included) so retries reuse the same body.
+    func prepareHeartbeatBody(participantId: String) async -> (data: Data?, error: String?) {
+        let pid = participantId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pid.isEmpty else { return (nil, "participant_id 为空") }
+        var payload = ParticipantStore.heartbeatBody()
+        payload["edge_id"] = pid
+        payload["participant_id"] = pid
+        await ParticipantStore.applyAvailability(to: &payload)
+        guard JSONSerialization.isValidJSONObject(payload),
+              let body = try? JSONSerialization.data(withJSONObject: payload) else {
+            return (nil, "心跳 JSON 无法序列化")
+        }
+        return (body, nil)
+    }
+
     func sendHeartbeat(
         serverURL: String,
-        participantId: String
+        participantId: String,
+        body: Data? = nil,
+        hardTimeout: TimeInterval = 3
     ) async -> HeartbeatSend {
         let pid = participantId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pid.isEmpty else { return .failed("participant_id 为空") }
@@ -157,21 +193,26 @@ final class IntentClient {
         guard let url = Self.edgeHeartbeatURL(fromIntentURL: trimmedURL) else {
             return .failed("无法从 \(trimmedURL) 拼出 edge-heartbeat URL")
         }
-        var payload = ParticipantStore.heartbeatBody()
-        payload["edge_id"] = pid
-        payload["participant_id"] = pid
-        guard JSONSerialization.isValidJSONObject(payload),
-              let body = try? JSONSerialization.data(withJSONObject: payload) else {
-            return .failed("心跳 JSON 无法序列化")
+        let wire: Data
+        if let body {
+            wire = body
+        } else {
+            let prepared = await prepareHeartbeatBody(participantId: pid)
+            if let data = prepared.data {
+                wire = data
+            } else {
+                return .failed(prepared.error ?? "心跳 JSON 无法序列化")
+            }
         }
-        let sentRoles = Self.rolesFromHeartbeatWire(body)
+        let sentRoles = Self.rolesFromHeartbeatWire(wire)
+        let cap = max(0.5, hardTimeout)
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body
-        request.timeoutInterval = 5
+        request.httpBody = wire
+        request.timeoutInterval = cap
         do {
-            let timed = try await TimedHTTP.data(for: request, label: "edge-heartbeat", hardTimeout: 5)
+            let timed = try await TimedHTTP.data(for: request, label: "edge-heartbeat", hardTimeout: cap)
             guard let http = timed.http else {
                 return .failed("心跳无 HTTP 响应 · \(url.absoluteString) · \(timed.durationLabel)")
             }
@@ -612,6 +653,7 @@ final class IntentClient {
 
     private static let runtimeCapabilities: Set<String> = [
         "camera.capture",
+        "camera.capture_and_upload",
         "asset.upload",
         "light.set",
         "climate.set",
@@ -1111,6 +1153,121 @@ final class IntentClient {
         components.path = path
         components.query = nil
         return components.url
+    }
+
+    static func debugReportURL(fromIntentURL intentURL: String) -> URL? {
+        guard var components = URLComponents(string: intentURL) else { return nil }
+        var path = components.path
+        if path.hasSuffix("/intent") {
+            path = String(path.dropLast("intent".count)) + "debug/report"
+        } else if let range = path.range(of: "/api/v1/") {
+            path = String(path[..<range.upperBound]) + "debug/report"
+        } else {
+            path = "/api/v1/debug/report"
+        }
+        components.path = path
+        components.query = nil
+        return components.url
+    }
+
+    struct DebugReportResult {
+        let ok: Bool
+        let issueId: Int?
+        let message: String
+        let error: String
+    }
+
+    func submitDebugReport(
+        intentId: String,
+        participantId: String,
+        intentURL: String,
+        clientSnapshot: [String: Any]? = nil,
+        userSummary: String = "",
+        problemType: String = "",
+        attachmentAssetIds: [String] = [],
+        attachments: [FeedbackAttachment] = []
+    ) async -> DebugReportResult {
+        let iid = Int(intentId.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let pid = participantId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard iid > 0 else {
+            return DebugReportResult(ok: false, issueId: nil, message: "", error: "invalid intent_id")
+        }
+        guard !pid.isEmpty else {
+            return DebugReportResult(ok: false, issueId: nil, message: "", error: "participant_id is required")
+        }
+        guard let url = Self.debugReportURL(fromIntentURL: intentURL) else {
+            return DebugReportResult(ok: false, issueId: nil, message: "", error: "无法拼出 debug/report URL")
+        }
+        var payload: [String: Any] = [
+            "intent_id": iid,
+            "participant_id": pid,
+            "source": "user_console",
+        ]
+        let summary = userSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !summary.isEmpty {
+            payload["user_summary"] = summary
+        }
+        let ptype = problemType.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !ptype.isEmpty {
+            payload["problem_type"] = ptype
+        }
+        if let clientSnapshot, !clientSnapshot.isEmpty {
+            payload["client_snapshot"] = clientSnapshot
+        }
+        if !attachments.isEmpty {
+            payload["attachments"] = attachments.map { $0.apiPayload() }
+        } else {
+            let legacyIds = attachmentAssetIds
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            if !legacyIds.isEmpty {
+                payload["attachments"] = legacyIds.map {
+                    FeedbackAttachment(assetId: $0, kind: .image, mimeType: "image/jpeg", filename: "").apiPayload()
+                }
+            }
+        }
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
+            return DebugReportResult(ok: false, issueId: nil, message: "", error: "encode JSON failed")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        request.timeoutInterval = 20
+        do {
+            let timed = try await TimedHTTP.data(for: request, label: "debug_report")
+            guard let http = timed.http else {
+                return DebugReportResult(ok: false, issueId: nil, message: "", error: "无 HTTP 响应")
+            }
+            let raw = String(data: timed.data, encoding: .utf8) ?? ""
+            guard let obj = try? JSONSerialization.jsonObject(with: timed.data) as? [String: Any] else {
+                return DebugReportResult(
+                    ok: false,
+                    issueId: nil,
+                    message: "",
+                    error: raw.isEmpty ? "返回格式不对" : String(raw.prefix(200))
+                )
+            }
+            if !(200 ..< 300).contains(http.statusCode) || obj["ok"] as? Bool != true {
+                let err = (obj["error"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                return DebugReportResult(
+                    ok: false,
+                    issueId: nil,
+                    message: "",
+                    error: err?.isEmpty == false ? err! : String(raw.prefix(200))
+                )
+            }
+            let issueId = obj["issue_id"] as? Int
+            let message = (obj["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return DebugReportResult(
+                ok: true,
+                issueId: issueId,
+                message: message?.isEmpty == false ? message! : "已提交反馈，正在分析。",
+                error: ""
+            )
+        } catch {
+            return DebugReportResult(ok: false, issueId: nil, message: "", error: error.localizedDescription)
+        }
     }
 
     func fetchIntentFeedback(

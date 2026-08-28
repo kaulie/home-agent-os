@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -14,6 +15,8 @@ log = logging.getLogger("mac_edge.tts_playback")
 _FLAG_NAME = "tts_playing"
 _STALE_SEC = 180.0
 _HANGOVER_SEC = 0.7
+_session_lock = threading.Lock()
+_session_depth = 0
 
 
 def flag_path() -> Path:
@@ -34,24 +37,34 @@ def is_playing(path: Path | None = None, *, stale_s: float = _STALE_SEC) -> bool
 
 @contextmanager
 def playback_session() -> Iterator[None]:
+    global _session_depth
     path = flag_path()
-    wrote = False
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("1\n", encoding="utf-8")
-        wrote = True
-        log.info("tts playback start flag=%s", path)
-    except OSError as e:
-        log.warning("tts playback flag write failed: %s", e)
+    with _session_lock:
+        _session_depth += 1
+        depth = _session_depth
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("1\n", encoding="utf-8")
+            if depth == 1:
+                log.info("tts playback start flag=%s", path)
+        except OSError as e:
+            log.warning("tts playback flag write failed: %s", e)
     try:
         yield
     finally:
-        if wrote:
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
-            log.info("tts playback end")
+        with _session_lock:
+            _session_depth = max(0, _session_depth - 1)
+            if _session_depth > 0:
+                try:
+                    path.write_text("1\n", encoding="utf-8")
+                except OSError:
+                    pass
+            else:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                log.info("tts playback end")
 
 
 class PlaybackMute:

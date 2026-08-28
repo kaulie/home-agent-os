@@ -71,6 +71,22 @@
       opacity: 0.45;
       letter-spacing: 0.04em;
     }
+    #gameFrameWrap {
+      display: none;
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      z-index: 20;
+    }
+    #gameFrameWrap.visible { display: block; }
+    #gameFrame {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #000;
+    }
   </style>
 </head>
 <body>
@@ -82,6 +98,9 @@
       <div id="textPane"></div>
     </div>
     <div id="status">connecting…</div>
+    <div id="gameFrameWrap">
+      <iframe id="gameFrame" title="Home Agent Game" allow="autoplay"></iframe>
+    </div>
   </div>
 
   <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -90,7 +109,8 @@
   "use strict";
 
   var NAMESPACE = "urn:x-cast:local.image";
-  var RECEIVER_VERSION = "1.1.0";
+  var RECEIVER_VERSION = "1.2.0";
+  var GAME_MESSAGE_CHANNEL = "homeagent.game";
   var HEARTBEAT_MS = 25000;
 
   var ctx = cast.framework.CastReceiverContext.getInstance();
@@ -98,6 +118,8 @@
   var vid = document.getElementById("vid");
   var textPane = document.getElementById("textPane");
   var statusEl = document.getElementById("status");
+  var gameFrameWrap = document.getElementById("gameFrameWrap");
+  var gameFrame = document.getElementById("gameFrame");
 
   var lastCommandIds = [];
   var MAX_CMD_CACHE = 64;
@@ -105,7 +127,9 @@
     commandId: null,
     presentationId: null,
     contentType: null,
-    status: "idle"
+    status: "idle",
+    gameId: null,
+    gameUrl: null
   };
 
   function setStatus(text, isError) {
@@ -182,15 +206,106 @@
 
   function clearStage(commandId) {
     hideAll();
+    unloadGame();
     current = {
       commandId: commandId || null,
       presentationId: null,
       contentType: null,
-      status: "idle"
+      status: "idle",
+      gameId: null,
+      gameUrl: null
     };
     setStatus("ready");
     emit("presentation.cleared", { command_id: commandId || undefined });
   }
+
+  function unloadGame() {
+    if (!gameFrameWrap || !gameFrame) return;
+    gameFrameWrap.classList.remove("visible");
+    gameFrame.removeAttribute("src");
+    var app = document.getElementById("app");
+    if (app) app.style.visibility = "";
+  }
+
+  function launchGame(commandId, presentationId, payload) {
+    payload = payload || {};
+    var gameId = payload.game_id || "coin_catcher";
+    var gameUrl = payload.game_url || "";
+    if (!gameUrl) {
+      emit("presentation.error", {
+        command_id: commandId,
+        presentation_id: presentationId,
+        error: { code: "MISSING_GAME_URL", message: "game_url empty" }
+      });
+      setStatus("missing game url", true);
+      return;
+    }
+    hideAll();
+    unloadGame();
+    var app = document.getElementById("app");
+    if (app) app.style.visibility = "hidden";
+    current = {
+      commandId: commandId,
+      presentationId: presentationId,
+      contentType: "game",
+      status: "loading",
+      gameId: gameId,
+      gameUrl: gameUrl
+    };
+    setStatus("游戏加载中…");
+    gameFrame.onload = function () {
+      current.status = "presenting";
+      setStatus("");
+      emit("game.loaded", {
+        command_id: commandId,
+        presentation_id: presentationId,
+        game_id: gameId,
+        game_url: gameUrl
+      });
+      emit("presentation.started", {
+        command_id: commandId,
+        presentation_id: presentationId,
+        game_id: gameId
+      });
+    };
+    gameFrame.onerror = function () {
+      current.status = "error";
+      setStatus("游戏加载失败", true);
+      emit("presentation.error", {
+        command_id: commandId,
+        presentation_id: presentationId,
+        error: { code: "GAME_LOAD_FAILED", message: "iframe load failed: " + gameUrl }
+      });
+    };
+    var sep = gameUrl.indexOf("?") >= 0 ? "&" : "?";
+    gameFrame.src = gameUrl + sep + "transport=cast";
+    gameFrameWrap.classList.add("visible");
+  }
+
+  function forwardGameCommand(payload) {
+    payload = payload || {};
+    var cmd = payload.command || payload;
+    if (!gameFrame || !gameFrame.contentWindow) return;
+    try {
+      gameFrame.contentWindow.postMessage({
+        channel: GAME_MESSAGE_CHANNEL,
+        command: cmd
+      }, "*");
+    } catch (e) {}
+  }
+
+  window.addEventListener("message", function (ev) {
+    var data = ev.data;
+    if (!data || typeof data !== "object") return;
+    if (data.channel !== GAME_MESSAGE_CHANNEL) return;
+    if (data.event === "game.loaded" && current.contentType === "game") {
+      emit("game.loaded", {
+        command_id: current.commandId,
+        presentation_id: current.presentationId,
+        game_id: data.game_id || current.gameId
+      });
+    }
+  });
 
   function presentImage(url, commandId, presentationId, options) {
     if (!url) {
@@ -373,6 +488,14 @@
       handlePresent(commandId, presentationId, payload);
       return;
     }
+    if (action === "launch_game") {
+      launchGame(commandId, presentationId, payload);
+      return;
+    }
+    if (action === "game.command" || action === "game_command") {
+      forwardGameCommand(payload);
+      return;
+    }
     emit("presentation.error", {
       command_id: commandId,
       presentation_id: presentationId,
@@ -419,14 +542,14 @@
     setStatus("ready");
     emit("receiver.ready", {
       receiver: { version: RECEIVER_VERSION },
-      capabilities: ["present.image", "present.text", "present.video", "clear", "stop"]
+      capabilities: ["present.image", "present.text", "present.video", "clear", "stop", "game.launch", "game.command"]
     });
   });
 
   ctx.addEventListener(cast.framework.system.EventType.SENDER_CONNECTED, function () {
     emit("receiver.ready", {
       receiver: { version: RECEIVER_VERSION },
-      capabilities: ["present.image", "present.text", "present.video", "clear", "stop"]
+      capabilities: ["present.image", "present.text", "present.video", "clear", "stop", "game.launch", "game.command"]
     });
   });
 

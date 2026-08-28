@@ -1,0 +1,24 @@
+id: pronunciation-assess
+service_id: local.pronunciation
+group: pronunciation
+version: "0.1.0"
+display_name: Pronunciation Assessment
+description: >
+  能：给定标准朗读音频和小朋友跟读音频（均为音频 AssetRef），做整段→整段
+  英文朗读评测，产出总分、发音准确度、流利度、完整度、韵律、重点问题单词/
+  音素及时间位置。
+  不能：录音本身；上传音频；从前序 step 收集音频；TTS；投屏；单句打分；知识问答。
+
+capabilities:
+  - capability_id: pronunciation.assess
+    description: >
+      能：reference_audio + student_audio → 整段朗读评价 JSON。
+      不能：缺音频时从前序 step 捡；自己录音/上传；sidecar 不可达时静默成功。
+
+entry:
+  mac: mac/src/mac_edge/plugins/pronunciation_assess.py
+config:
+  - key: MAC_EDGE_PRONUNCIATION_URL
+    description: pronunciation-service base URL，缺省 http://127.0.0.1:9190
+  - key: MAC_EDGE_PRONUNCIATION_HEALTH_URL
+    description: 健康检查 URL，缺省 http://127.0.0.1:9190/health

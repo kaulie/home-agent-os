@@ -207,7 +207,9 @@ class CatalogRowsTests(unittest.TestCase):
     def test_catalog_is_system(self) -> None:
         rows = catalog_rows()
         ids = {r["capability_id"] for r in rows}
-        self.assertEqual(ids, {"capabilities.summary", "asset.inventory", "image.ocr"})
+        self.assertEqual(
+            ids, {"capabilities.summary", "asset.inventory", "image.ocr", "clock.now"}
+        )
         for row in rows:
             self.assertEqual(row["kind"], "system")
             self.assertEqual(row["edge_id"], SYSTEM_EDGE_ID)

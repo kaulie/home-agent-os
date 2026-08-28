@@ -155,7 +155,11 @@ struct ScanWorkspaceView: View {
             } else {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     ForEach(model.scanTurns) { turn in
-                        MediaTimelineRow(turn: turn, accessibilityNoun: "扫描图")
+                        MediaTimelineRow(
+                            turn: turn,
+                            accessibilityNoun: "扫描图",
+                            onRetryUpload: nil
+                        )
                     }
                 }
             }

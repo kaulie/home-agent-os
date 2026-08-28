@@ -29,6 +29,9 @@ _EDGE_VOICE_EN_MALE = "en-US-GuyNeural"
 _ZH_SAY_VOICES = ("Ting-Ting", "Tingting", "Mei-Jia", "Sin-ji", "Sinji", "Yu-shu", "Lilian")
 _EN_SAY_VOICES = ("Alex", "Samantha", "Victoria")
 
+# `say -v ?` output cache (populated once on first use). See _raw_say_voices_lines().
+_SAY_VOICES_LINES_CACHE: list[str] | None = None
+
 
 class NotifySpeakError(Exception):
     pass
@@ -100,7 +103,12 @@ def _edge_tts_speak(text: str, *, voice: str, timeout_sec: float) -> None:
                 pass
 
 
-def _list_say_voices() -> set[str]:
+def _raw_say_voices_lines() -> list[str]:
+    """Cached `say -v ?` output. Installed voices don't change during a session,
+    so enumerate once and reuse — `say -v ?` itself takes ~3.5s per call."""
+    global _SAY_VOICES_LINES_CACHE
+    if _SAY_VOICES_LINES_CACHE is not None:
+        return _SAY_VOICES_LINES_CACHE
     say = shutil.which("say") or SAY_BIN
     try:
         proc = subprocess.run(
@@ -110,11 +118,17 @@ def _list_say_voices() -> set[str]:
             timeout=10,
             check=False,
         )
+        lines = (proc.stdout or "").splitlines()
     except Exception as e:
         log.warning("say -v ? failed: %s", e)
-        return set()
+        lines = []
+    _SAY_VOICES_LINES_CACHE = lines
+    return lines
+
+
+def _list_say_voices() -> set[str]:
     names: set[str] = set()
-    for line in (proc.stdout or "").splitlines():
+    for line in _raw_say_voices_lines():
         parts = line.split()
         if parts:
             names.add(parts[0])
@@ -122,20 +136,9 @@ def _list_say_voices() -> set[str]:
 
 
 def _voices_for_lang_prefix(lang_prefix: str) -> list[str]:
-    say = shutil.which("say") or SAY_BIN
-    try:
-        proc = subprocess.run(
-            [say, "-v", "?"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-    except Exception:
-        return []
     prefix = lang_prefix.lower().replace("-", "_")
     out: list[str] = []
-    for line in (proc.stdout or "").splitlines():
+    for line in _raw_say_voices_lines():
         parts = line.split()
         if len(parts) < 2:
             continue

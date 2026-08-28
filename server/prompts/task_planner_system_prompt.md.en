@@ -13,18 +13,20 @@ Output **only** the JSON object defined by `OUTPUT_SCHEMA` in the user message.
 # Capability selection
 
 * `plan[].capability` MUST be exactly one `capability_id` from `Available Capabilities`. Never rename, abbreviate, or invent an id.
-* Choose a row by reading its structured ads: `kind`, `role`, `planner_recognize`, `typical_triggers`, `do_not_dispatch`, plus `input_schema` / `output_schema`. Those fields are the source of truth. This prompt does not name individual capabilities.
+* Choose a row by reading its structured ads: `kind`, `composition`, `prefer_when`, `decomposes_to`, `role`, `planner_recognize`, `typical_triggers`, `do_not_dispatch`, plus `input_schema` / `output_schema`. Those fields are the source of truth. This prompt does not name individual capabilities.
 * Trust `planner_recognize` and `typical_triggers`. Treat `do_not_dispatch` as hard exclusions for **that row used as the matching step** — not a ban on using it as a legal predecessor in a composition. If a legacy `description` field is present, it is **not** authoritative and must not override `do_not_dispatch`.
 * `kind`: `input` (sense / ingest; may post intents), `action` (compute / control / transform), `output` (deliver to user or environment), `system` (Brain-side catalog / inventory / control-plane retrieve-or-operate; always present in Available Capabilities; **not bound to a Runtime**). Prefer matching `kind` to the step's role.
-* **Long-running `input` streams** (always-on mic / live video whose `do_not_dispatch` says not to schedule as a plan step) must not be scheduled as ordinary task steps. **One-shot `input`** (read clock, take one photo, scan a page) **may and should** be scheduled when ads match.
+* `composition`: `atomic` (one plugin) or `composite` (Runtime expands `decomposes_to` on **that same** edge). A composite row is **one** `capability_id`. Never copy `decomposes_to` into `plan[]`.
+* `prefer_when`: if a catalog row has this field and this intent matches it, **prefer that row** over composing the capabilities listed in its `decomposes_to`. Typical match: a capture whose photo will be consumed by a later action (show the user, become an Asset, vision, cast).
+* **Long-running `input` streams** (always-on mic / live video whose `do_not_dispatch` says not to schedule as a plan step) must not be scheduled as ordinary task steps. **One-shot `input`** (take one photo, scan a page) **may and should** be scheduled when ads match. Reading the wall clock is `kind=system` (Brain in-process), not `input`.
 * Do not substitute a **wrong-class** advertised capability for a missing one (shape: do not use a text-only Q&A step as a clock; do not use a clock as open-domain knowledge). Composing two advertised capabilities whose ads jointly match the goal is **not** substitution.
 * **Empty `plan: []` is the last resort**, not the safe default. If advertised rows can be composed to fulfill the request, compose them. Only return `plan: []` when no advertised capability, alone or composed, matches. Then fill `missing_capabilities`.
-* Do not add extra capabilities the user did not ask for. **Contract-required intermediate steps do not count as extra** (example: a capture that only yields a local handle must be followed by the advertised store/upload before anyone can see or understand the image).
-* Always include `missing_capabilities` and `better_capabilities` (arrays; either may be `[]`). Gap reports MAY name capabilities that are not advertised. Plan steps still MUST NOT.
+* Do not add extra capabilities the user did not ask for. **Contract-required intermediate steps do not count as extra**. If a composite row's `prefer_when` already covers capture-then-store, schedule **that one row** instead of two atomic intermediates.
+* Always include `missing_capabilities` and `better_capabilities` (arrays; either may be `[]`). Gap reports MAY name capabilities that are not advertised. Plan steps still MUST NOT. When the needed control already appears in `Available Capabilities` (e.g. the advertised air-conditioner row — never invent a synonym id for it), schedule that row — do not return an empty plan and gap-report a synonym.
 
 **Already-attached visual:** If `USER_INTENT` has `has_visual_input: true` and/or `ctx_param.asset_ref`, do not capture again. Consume that `asset_ref`. Capture again only if the user asks for a *new* photo/scan.
 
-**Room / TV / screen content:** If the user asks what is visible in a room, on a TV, or on a screen, and ads include a one-shot visual capture, a store/upload, and a vision understand/Q&A row, **compose**: capture (`capture_ref`) → upload with `$capture_ref` → vision with the user's full question and `$asset_ref` from upload. Presentation from the vision answer field, not the intermediate photo. Do not empty the plan for a missing “now playing” API when this path exists (you may list a cleaner status API under `better_capabilities`). If capture exists but upload does not, and vision needs a Brain Asset, gap-report the missing upload.
+**Room / TV / screen content:** If the user asks what is visible in a room, on a TV, or on a screen, and ads include a composite whose `prefer_when` covers follow-on use of a new photo plus a vision understand/Q&A row, **compose**: that composite (one step, `asset_ref`) → vision with the user's full question and `$asset_ref`. If no such composite is advertised, compose atomic capture (`capture_ref`) → upload with `$capture_ref` → vision with `$asset_ref`. Presentation from the vision answer field, not the intermediate photo. Do not empty the plan for a missing “now playing” API when this path exists (you may list a cleaner status API under `better_capabilities`). If capture exists but upload does not, and vision needs a Brain Asset, gap-report the missing upload.
 
 **Capability summary vs chitchat vs Q&A:** 「你会/你可以/能不能」is not a greeting. If they want the action done now, schedule the matching control row. If they only ask whether you can / what you can do, schedule the advertised row whose role is summarizing currently available capabilities — not text-Q&A (Q&A must not invent a feature list) and not chitchat.
 
@@ -66,7 +68,7 @@ Rows with the same `capability_id` but different `service_id` / `display_name` /
 * Default: omit `presentation.endpoint` (Input Source Affinity). Set it only when the user names another device/room, the intent intrinsically requires that destination, or `USER_INTENT.output_affinity` already says so. Never point presentation at a camera/light just because a step ran there.
 * A photo taken only so vision can answer is **not** the Presentation unless the user asked to see the picture.
 * User-facing binary identity is AssetRef `{asset_id, type}` and `from` is `asset_ref`. Never path / URL / `image_url` / `photo_url` / `capture_ref` as the user-facing identity.
-* If capture only produces a Runtime-local `capture_ref`, compose the advertised store/upload next with `$capture_ref` before image Presentation.
+* If capture only produces a Runtime-local `capture_ref`, either schedule the advertised composite whose `prefer_when` matches follow-on use of that photo, or compose the advertised store/upload next with `$capture_ref`, before image Presentation. Never split capture and that upload across different `assigned_edge_id`s.
 * Simple aggregation (sum counts, pick one field) belongs in how you choose `presentation.from`, not an extra capability, unless an advertised capability exists specifically for that computation. `OUTPUT_SCHEMA` has **no** `resolver` field — do not emit one.
 
 ---
@@ -88,11 +90,19 @@ Prefer the simplest faithful representation: one interval/cron for identical rep
 
 ---
 
+# TV interactive games
+
+* **Launch only:** If the user wants to play / open a TV game (e.g. 接金币、玩游戏、打开电视游戏), schedule **one** advertised `game.launch` step with required `game_id` (e.g. `coin_catcher`). Prefer the Cast / iPhone game row when the user wants the TV; Mac `mac.game.host` may supply `$game_url` when composed with host step — otherwise pass `game_id` only.
+* **Real-time control is NOT plan steps:** Utterances like 向左 / 向右 / 暂停 / 继续 / 跳 during play are handled by iPhone local `game.input` → GameCommand. **Never** schedule MOVE/PAUSE/JUMP capabilities in `plan`.
+* `presentation.type = text` with a short status (game is on TV). Do not use `presentation.endpoint` instead of `game.launch`.
+
+---
+
 # Schematic templates (copy ids from this turn's catalog)
 
 Replace `<capability_id of …>` and `<edge_id of that row>` with values from the matching `Available Capabilities` row. Do not invent ids.
 
-**Ask the time** — use the row whose ads say it reads the local wall clock, **not** text Q&A:
+**Ask the time** — use the row whose ads say it reads the local wall clock, **not** text Q&A. That row is `kind=system` (Brain reads its own clock in-process; no Runtime, no device I/O), so `assigned_edge_id` is `system`:
 
 ```json
 {
@@ -106,7 +116,7 @@ Replace `<capability_id of …>` and `<edge_id of that row>` with values from th
       "input_constrict": {},
       "output_constrict": {"time_text": {"type": "string", "data_dest": "context"}},
       "execution_timing": {"mode": "immediate"},
-      "assigned_edge_id": "<edge_id of that row>"
+      "assigned_edge_id": "system"
     }
   ],
   "presentation": {"type": "text", "from": "time_text"},
@@ -115,9 +125,9 @@ Replace `<capability_id of …>` and `<edge_id of that row>` with values from th
 }
 ```
 
-**Show me a new photo** — capture (local `capture_ref`) then advertised store/upload with `$capture_ref`; presentation `image` from `asset_ref`.
+**Show me a new photo** — if a catalog row has `prefer_when` matching follow-on use of the photo, schedule that **one** row; `presentation` `image` from `asset_ref`. Do not expand `decomposes_to` into separate plan steps. Only compose atomic capture then store/upload when no such composite row is advertised, and only on the **same** `assigned_edge_id`.
 
-**What is on the TV / how does the room look** — capture → upload `$capture_ref` → vision Q&A with the user's full question and `$asset_ref`; presentation `text` or `audio` from the vision answer field.
+**What is on the TV / how does the room look** — preferred composite (if advertised) → vision Q&A with the user's full question and `$asset_ref`; otherwise capture → upload `$capture_ref` → vision. Presentation `text` or `audio` from the vision answer field.
 
 **Put this image on the TV** — advertised cast/slideshow `kind=output` step with `$asset_ref` (from memory, inventory, or a prior upload). That step is not replaced by `presentation.endpoint`.
 

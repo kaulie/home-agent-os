@@ -675,5 +675,153 @@ enum JSONValue: Decodable, Equatable {
     }
 }
 
+struct AdminDevTasksResponse: Decodable {
+    let ok: Bool?
+    let tasks: [AdminDevTask]
+    let error: String?
+    let nextBeforeId: Int?
+    let exhausted: Bool?
 
+    enum CodingKeys: String, CodingKey {
+        case ok, tasks, error, exhausted
+        case nextBeforeId = "next_before_id"
+    }
 
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try c.decodeIfPresent(Bool.self, forKey: .ok)
+        tasks = try c.decodeIfPresent([AdminDevTask].self, forKey: .tasks) ?? []
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        nextBeforeId = try c.decodeIfPresent(Int.self, forKey: .nextBeforeId)
+        exhausted = try c.decodeIfPresent(Bool.self, forKey: .exhausted)
+    }
+}
+
+struct AdminDevTask: Identifiable, Decodable, Equatable {
+    var id: Int { intentId }
+
+    let intentId: Int
+    let text: String
+    let status: String
+    let createdAt: Date?
+    let resultText: String
+    let msg: String
+    let bridgeRunId: String
+    let bridgeStatus: String
+    let events: [AdminDevEvent]
+    let statusLog: [AdminIntentStatusEvent]
+
+    var statusTitle: String {
+        switch status {
+        case "succeeded", "success", "completed": return "完成"
+        case "failed", "error": return "失败"
+        case "running", "dispatched": return "执行中"
+        case "intent_parsed", "queued", "intent_received", "intent_waiting": return "排队"
+        default: return status.isEmpty ? "进行中" : status
+        }
+    }
+
+    var isTerminal: Bool {
+        status == "succeeded" || status == "failed" || status == "error"
+    }
+
+    var isActive: Bool { !isTerminal }
+
+    var timeLabel: String {
+        guard let createdAt else { return "" }
+        return WireTime.absoluteLabel(createdAt)
+    }
+
+    var relativeLabel: String {
+        guard let createdAt else { return "" }
+        return AdminNode.relativeLabel(since: createdAt)
+    }
+
+    var displayResult: String {
+        let shown = resultText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !shown.isEmpty { return shown }
+        let fallback = msg.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !fallback.isEmpty { return fallback }
+        if let last = events.last(where: { !$0.text.isEmpty }) {
+            return last.text
+        }
+        return ""
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case intentId = "intent_id"
+        case text, status, msg
+        case createdAt = "created_at"
+        case resultText = "result_text"
+        case devTask = "dev_task"
+        case statusLog = "status_log"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let intId = try? c.decode(Int.self, forKey: .intentId) {
+            intentId = intId
+        } else if let textId = try c.decodeIfPresent(String.self, forKey: .intentId), let parsed = Int(textId) {
+            intentId = parsed
+        } else {
+            intentId = 0
+        }
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        status = try c.decodeIfPresent(String.self, forKey: .status) ?? ""
+        msg = try c.decodeIfPresent(String.self, forKey: .msg) ?? ""
+        resultText = try c.decodeIfPresent(String.self, forKey: .resultText) ?? ""
+        createdAt = WireTime.decode(c, key: .createdAt)
+        statusLog = try c.decodeIfPresent([AdminIntentStatusEvent].self, forKey: .statusLog) ?? []
+        let dev = try c.decodeIfPresent(AdminDevTaskMeta.self, forKey: .devTask) ?? AdminDevTaskMeta()
+        bridgeRunId = dev.bridgeRunId
+        bridgeStatus = dev.bridgeStatus
+        events = dev.events
+    }
+}
+
+private struct AdminDevTaskMeta: Decodable {
+    let bridgeRunId: String
+    let bridgeStatus: String
+    let events: [AdminDevEvent]
+
+    enum CodingKeys: String, CodingKey {
+        case bridgeRunId = "bridge_run_id"
+        case bridgeStatus = "bridge_status"
+        case events
+    }
+
+    init() {
+        bridgeRunId = ""
+        bridgeStatus = ""
+        events = []
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        bridgeRunId = try c.decodeIfPresent(String.self, forKey: .bridgeRunId) ?? ""
+        bridgeStatus = try c.decodeIfPresent(String.self, forKey: .bridgeStatus) ?? ""
+        events = try c.decodeIfPresent([AdminDevEvent].self, forKey: .events) ?? []
+    }
+}
+
+struct AdminDevEvent: Identifiable, Decodable, Equatable {
+    var id: String { "\(type)|\(text)|\(ts?.timeIntervalSince1970 ?? 0)" }
+    let type: String
+    let text: String
+    let ts: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case type, text, ts
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        type = try c.decodeIfPresent(String.self, forKey: .type) ?? ""
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        if let value = try? c.decode(Double.self, forKey: .ts), value > 10_000_000_000 {
+            ts = Date(timeIntervalSince1970: value / 1000)
+        } else {
+            ts = WireTime.decode(c, key: .ts)
+        }
+    }
+}

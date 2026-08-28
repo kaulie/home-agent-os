@@ -133,6 +133,86 @@ enum AdminClient {
         return parsed
     }
 
+    static func fetchDevTasks(
+        brainURL: String,
+        token: String,
+        limit: Int = 30,
+        beforeId: Int? = nil
+    ) async throws -> AdminDevTasksResponse {
+        var path = "/api/v1/admin/dev_tasks?limit=\(limit)"
+        if let beforeId {
+            path += "&before_id=\(beforeId)"
+        }
+        let url = try endpoint(brainURL, path: path)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        applyAuth(&request, token: token)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let parsed: AdminDevTasksResponse
+        do {
+            parsed = try JSONDecoder().decode(AdminDevTasksResponse.self, from: data)
+        } catch {
+            throw AdminClientError.decode
+        }
+        if parsed.ok == false {
+            throw AdminClientError.server(parsed.error ?? "加载失败")
+        }
+        return parsed
+    }
+
+    static func submitDevTask(
+        brainURL: String,
+        token: String,
+        text: String
+    ) async throws -> AdminDevTask {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/dev_task")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        applyAuth(&request, token: token)
+        let body: [String: Any] = ["text": text]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let task: AdminDevTask
+        do {
+            task = try JSONDecoder().decode(AdminDevTask.self, from: data)
+        } catch {
+            throw AdminClientError.decode
+        }
+        if task.intentId <= 0 {
+            throw AdminClientError.server("未返回 intent_id")
+        }
+        return task
+    }
+
+    static func fetchDevTask(
+        brainURL: String,
+        token: String,
+        intentId: Int
+    ) async throws -> AdminDevTask {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/dev_task/\(intentId)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        applyAuth(&request, token: token)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let task: AdminDevTask
+        do {
+            task = try JSONDecoder().decode(AdminDevTask.self, from: data)
+        } catch {
+            throw AdminClientError.decode
+        }
+        if task.intentId <= 0 {
+            throw AdminClientError.server("dev task not found")
+        }
+        return task
+    }
+
     private static func endpoint(_ brainURL: String, path: String) throws -> URL {
         let base = AdminSettings.normalize(brainURL)
         guard let url = URL(string: base + path) else {

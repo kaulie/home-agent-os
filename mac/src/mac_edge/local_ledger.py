@@ -46,6 +46,7 @@ class LocalLedger:
         self._lock = threading.Lock()
         self._flush_lock = threading.Lock()
         self._intents: dict[str, dict[str, Any]] = {}
+        self._ghost_guard: dict[str, dict[str, Any]] = {}
         self._load()
         self._hydrate_beats()
 
@@ -105,6 +106,12 @@ class LocalLedger:
                 if not iid:
                     continue
                 if iid not in self._intents:
+                    if self._is_stale_brain_ghost(item):
+                        log.info(
+                            "ledger: ignore stale Brain ghost intent %s (already synced locally)",
+                            iid,
+                        )
+                        continue
                     self._intents[iid] = _normalize_record(item, from_brain=True)
                     added += 1
                     dirty = True
@@ -304,8 +311,40 @@ class LocalLedger:
         # Only keep the record if a recurring series is still open.
         if _recurring_series_open(rec, iid, now):
             return
+        self._remember_ghost_unlocked(iid, rec)
         del self._intents[iid]
         log.info("ledger: drop terminal synced intent %s", iid)
+
+    def _remember_ghost_unlocked(self, iid: str, rec: dict[str, Any]) -> None:
+        self._ghost_guard[iid] = {
+            "base_ms": _intent_base_ms(rec),
+            "text": str(rec.get("text") or "").strip(),
+            "caps": _plan_caps(rec),
+            "wire": str(rec.get("status") or "").strip().lower(),
+            "dropped_at_ms": BRAIN_CLOCK.now_ms(),
+        }
+
+    def _is_stale_brain_ghost(self, item: dict[str, Any]) -> bool:
+        iid = str(item.get("id") or item.get("intent_id") or "").strip()
+        guard = self._ghost_guard.get(iid)
+        if guard is None:
+            return False
+        if BRAIN_CLOCK.now_ms() - int(guard.get("dropped_at_ms") or 0) > 120_000:
+            return False
+        peek_wire = str(
+            item.get("status") or item.get("intent_status") or ""
+        ).strip().lower()
+        if peek_wire in ("succeeded", "failed"):
+            self._ghost_guard.pop(iid, None)
+            return False
+        if guard.get("text") and str(item.get("text") or "").strip() != guard["text"]:
+            return False
+        if guard.get("caps") and _plan_caps(item) != guard["caps"]:
+            return False
+        peek_base = _intent_base_ms(item)
+        if guard.get("base_ms") is not None and peek_base != guard["base_ms"]:
+            return False
+        return True
 
     # --- flush ---
 

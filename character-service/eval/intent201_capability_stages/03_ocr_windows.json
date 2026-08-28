@@ -1,0 +1,48 @@
+[
+  {
+    "index": 0,
+    "size": 600,
+    "shift_along_ray": 0,
+    "ok": true,
+    "origin_xy": [
+      1027,
+      1301
+    ],
+    "scale": 1.0,
+    "jpeg_bytes": 84370,
+    "path": "/Users/gaolei/Projects/smart_home_control/character-service/eval/intent201_capability_stages/03_ocr_window_0_size600_shift0.jpg",
+    "center": [
+      1326.6,
+      1600.8
+    ],
+    "bbox_full": [
+      1027,
+      1301,
+      1627,
+      1901
+    ]
+  },
+  {
+    "index": 1,
+    "size": 600,
+    "shift_along_ray": 260,
+    "ok": true,
+    "origin_xy": [
+      767,
+      1300
+    ],
+    "scale": 1.0,
+    "jpeg_bytes": 72027,
+    "path": "/Users/gaolei/Projects/smart_home_control/character-service/eval/intent201_capability_stages/03_ocr_window_1_size600_shift260.jpg",
+    "center": [
+      1066.6,
+      1599.6
+    ],
+    "bbox_full": [
+      767,
+      1300,
+      1367,
+      1900
+    ]
+  }
+]

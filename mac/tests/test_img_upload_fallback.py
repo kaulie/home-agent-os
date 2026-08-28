@@ -23,7 +23,7 @@ class ImgUploadFallbackTests(unittest.TestCase):
         self.assertEqual(normalize_upload_dest("local"), "lan")
         self.assertEqual(normalize_upload_dest("img_server"), "lan")
 
-    def test_lan_ok_mirrors_to_cloud(self) -> None:
+    def test_lan_ok_does_not_mirror_to_cloud(self) -> None:
         calls: list[str] = []
 
         def fake_once(path: Path, dest: str) -> UploadResult:
@@ -36,13 +36,7 @@ class ImgUploadFallbackTests(unittest.TestCase):
                     public_base="http://192.168.3.65:8080",
                     local_path=str(path),
                 )
-            return UploadResult(
-                photo_url="http://115.190.153.53:8080/a-cloud.jpg",
-                saved_as="a-cloud.jpg",
-                dest="cloud",
-                public_base="http://115.190.153.53:8080",
-                local_path=str(path),
-            )
+            raise AssertionError("cloud must not be called after LAN success")
 
         with tempfile.NamedTemporaryFile(suffix=".jpg") as f:
             f.write(b"jpeg")
@@ -52,13 +46,12 @@ class ImgUploadFallbackTests(unittest.TestCase):
                 "mac_edge.asset.img_upload.probe_reachable", return_value=True
             ), patch("mac_edge.asset.img_upload._upload_once", side_effect=fake_once):
                 out = upload_image_file(path, preferred_dest="lan")
-        self.assertEqual(calls, ["lan", "cloud"])
+        self.assertEqual(calls, ["lan"])
         self.assertEqual(out.dest, "lan")
-        self.assertEqual(out.cloud_public_base, "http://115.190.153.53:8080")
-        self.assertEqual(out.cloud_saved_as, "a-cloud.jpg")
+        self.assertFalse(out.cloud_public_base)
+        self.assertFalse(out.cloud_saved_as)
 
     def test_lan_ok_no_fallback(self) -> None:
-        # retained name: LAN primary still returned; mirror may add second call
         with tempfile.NamedTemporaryFile(suffix=".jpg") as f:
             f.write(b"jpeg")
             f.flush()
@@ -67,27 +60,18 @@ class ImgUploadFallbackTests(unittest.TestCase):
                 "mac_edge.asset.img_upload.probe_reachable", return_value=True
             ), patch(
                 "mac_edge.asset.img_upload._upload_once",
-                side_effect=[
-                    UploadResult(
-                        photo_url="http://192.168.3.65:8080/a.jpg",
-                        saved_as="a.jpg",
-                        dest="lan",
-                        public_base="http://192.168.3.65:8080",
-                        local_path=str(path),
-                    ),
-                    UploadResult(
-                        photo_url="http://115.190.153.53:8080/a2.jpg",
-                        saved_as="a2.jpg",
-                        dest="cloud",
-                        public_base="http://115.190.153.53:8080",
-                        local_path=str(path),
-                    ),
-                ],
+                return_value=UploadResult(
+                    photo_url="http://192.168.3.65:8080/a.jpg",
+                    saved_as="a.jpg",
+                    dest="lan",
+                    public_base="http://192.168.3.65:8080",
+                    local_path=str(path),
+                ),
             ) as once:
                 out = upload_image_file(path, preferred_dest="lan")
         self.assertEqual(out.dest, "lan")
-        self.assertEqual(once.call_count, 2)
-        self.assertTrue(out.cloud_public_base)
+        self.assertEqual(once.call_count, 1)
+        self.assertFalse(out.cloud_public_base)
     def test_lan_fail_falls_back_to_cloud(self) -> None:
         calls: list[str] = []
 

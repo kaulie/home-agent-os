@@ -205,6 +205,23 @@ class PaddleOcrEngine:
             "lang": "ch",
             "ocr_version": "PP-OCRv5",
         }
+        # Cap the text-detection input side. On macOS, PaddlePaddle's C++
+        # inference engine segfaults when the det model runs on large inputs
+        # (observed at 1920px). limit_type="max" only downscales images whose
+        # longest side exceeds the limit, leaving smaller images untouched.
+        # Overridable via env so callers can tune without a code change.
+        _raw_limit = (os.environ.get("OCR_TEXT_DET_LIMIT_SIDE_LEN") or "").strip()
+        det_limit = 1280
+        if _raw_limit:
+            try:
+                det_limit = int(_raw_limit)
+            except ValueError:
+                det_limit = 1280
+        if det_limit > 0:
+            kwargs["text_det_limit_side_len"] = det_limit
+            kwargs["text_det_limit_type"] = os.environ.get(
+                "OCR_TEXT_DET_LIMIT_TYPE", "max"
+            ).strip() or "max"
         try:
             self._ocr = PaddleOCR(
                 use_doc_orientation_classify=False,

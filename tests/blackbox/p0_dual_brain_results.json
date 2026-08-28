@@ -1,0 +1,117 @@
+[
+  {
+    "id": "D",
+    "name": "dual_registration",
+    "ok": true,
+    "edge_id": "runtime-blackbox-dual-001",
+    "register1": {
+      "edge_id": "runtime-blackbox-dual-001",
+      "message": "ok",
+      "ok": true,
+      "participant_id": "runtime-blackbox-dual-001",
+      "runtime_id": "runtime-blackbox-dual-001",
+      "status": "approved",
+      "ts": 1787658208.064744
+    },
+    "register2": {
+      "edge_id": "runtime-blackbox-dual-001",
+      "message": "ok",
+      "ok": true,
+      "participant_id": "runtime-blackbox-dual-001",
+      "runtime_id": "runtime-blackbox-dual-001",
+      "status": "approved",
+      "ts": 1787658208.0671842
+    }
+  },
+  {
+    "id": "A",
+    "name": "capability_availability",
+    "ok": true,
+    "heartbeat_ok": true,
+    "gopro_schedulable": false,
+    "camera_schedulable": true,
+    "heartbeat": {
+      "brain_time_ms": 1787658208069,
+      "edge": {
+        "brain_time_ms": 1787658208069,
+        "client_time_ms": 1787658208068,
+        "clock_skew_ms": 1,
+        "edge_id": "runtime-blackbox-dual-001",
+        "online_status": "online",
+        "reported_at": 1787658208.070106,
+        "schedule_eligible": true,
+        "server_received_at": 1787658208.070106,
+        "services": [
+          {
+            "capabilities": [
+              {
+                "available": false,
+                "capability_id": "gopro.capture",
+                "observed_at": 1787658208.068414
+              },
+              {
+                "available": true,
+                "capability_id": "camera.capture",
+                "observed_at": 1787658208.068414
+              },
+              {
+                "available": true,
+                "capability_id": "terminal.execute",
+                "observed_at": 1787658208.068415
+              }
+            ],
+            "edge_id": "runtime-blackbox-dual-001",
+            "edge_name": null,
+            "service_id": "s1"
+          }
+        ]
+      },
+      "edge_id": "runtime-blackbox-dual-001",
+      "ok": true,
+      "online_status": "online",
+      "schedule_eligible": true,
+      "server_received_at": 1787658208.070106
+    }
+  },
+  {
+    "id": "X",
+    "name": "exposure_policy",
+    "ok": true,
+    "gopro_excluded_by_policy": true,
+    "admin_get_ok": true,
+    "admin_put_ok": true,
+    "terminal_excluded_after_restrict": true,
+    "camera_still_schedulable": true,
+    "get_body": {
+      "domain": "lan",
+      "exposure_policy": {
+        "cloud": [
+          "camera.capture"
+        ],
+        "lan": [
+          "camera.capture",
+          "terminal.execute"
+        ]
+      },
+      "ok": true,
+      "participant_id": "runtime-blackbox-dual-001"
+    },
+    "put_body": {
+      "domain": "lan",
+      "exposure_policy": {
+        "cloud": [],
+        "lan": [
+          "camera.capture"
+        ]
+      },
+      "ok": true,
+      "participant_id": "runtime-blackbox-dual-001"
+    }
+  },
+  {
+    "id": "D2",
+    "name": "dual_registration_idempotent",
+    "ok": true,
+    "occurrences": 1
+  }
+]

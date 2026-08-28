@@ -70,6 +70,45 @@ class AssetManagerTests(unittest.TestCase):
             "?intent_id=168&representation=original",
         )
 
+    def test_upload_file_posts_to_brain(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        brain = MagicMock()
+        brain.upload_asset.return_value = {
+            "ok": True,
+            "asset_id": "asset_up",
+            "asset_ref": {"asset_id": "asset_up", "type": "image", "mime_type": "image/jpeg"},
+        }
+        mgr = AssetManager(brain=brain, edge_id="edge-a")
+        with tempfile.NamedTemporaryFile(suffix=".jpg") as f:
+            f.write(b"jpeg-bytes")
+            f.flush()
+            ref = mgr.upload_file(
+                Path(f.name),
+                producer="asset.upload",
+                intent_id="71",
+            )
+        self.assertEqual(ref.asset_id, "asset_up")
+        brain.upload_asset.assert_called_once()
+        kwargs = brain.upload_asset.call_args.kwargs
+        self.assertEqual(kwargs["upload_intent"], "asset.upload")
+        self.assertEqual(kwargs["intent_id"], "71")
+        self.assertEqual(kwargs["edge_id"], "edge-a")
+        self.assertEqual(kwargs["file_bytes"], b"jpeg-bytes")
+
+    def test_upload_file_empty_fails(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from mac_edge.asset.types import AssetStorageError
+
+        mgr = AssetManager(brain=MagicMock(), edge_id="edge-a")
+        with tempfile.NamedTemporaryFile(suffix=".jpg") as f:
+            f.flush()
+            with self.assertRaises(AssetStorageError):
+                mgr.upload_file(Path(f.name), producer="asset.upload", intent_id="1")
+
     def test_resolve_missing_asset(self) -> None:
         brain = MagicMock()
         brain.fetch_asset.return_value = None
@@ -80,6 +119,78 @@ class AssetManagerTests(unittest.TestCase):
                 intent_id="42",
                 need="http_url",
             )
+
+    def test_materialize_file_caches_by_asset_id_no_redownload(self) -> None:
+        """materialize_file downloads a remote asset once and caches the local
+        path by asset_id; a second call for the same ref returns the cached file
+        without re-downloading. This is what stops later composite atoms from
+        re-fetching the full photo per atom."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        brain = MagicMock()
+        brain.config.brain_base_url = ""
+        brain.fetch_asset.return_value = {
+            "asset_id": "asset_remote",
+            "storage": {
+                "backend": "img_server",
+                "key": "p.jpg",
+                "public_base": "http://photos.local:8080",
+            },
+        }
+        mgr = AssetManager(brain=brain, edge_id="edge-a")
+        with tempfile.TemporaryDirectory() as td:
+            with patch.dict("os.environ", {"MAC_EDGE_DATA_DIR": td}):
+                # first call downloads
+                with patch(
+                    "mac_edge.asset.manager.urllib.request.urlopen"
+                ) as urlopen:
+                    resp = urlopen.return_value
+                    resp.__enter__.return_value.read.return_value = b"\xff\xd8jpeg"
+                    p1 = mgr.materialize_file(
+                        AssetRef(asset_id="asset_remote", type="image"),
+                        intent_id="42",
+                    )
+                self.assertTrue(p1.is_file())
+                self.assertEqual(p1.read_bytes(), b"\xff\xd8jpeg")
+                # second call must NOT download again (no urlopen patch → would
+                # raise if it tried network); returns same cached path
+                with patch(
+                    "mac_edge.asset.manager.urllib.request.urlopen",
+                    side_effect=AssertionError("should not re-download"),
+                ):
+                    p2 = mgr.materialize_file(
+                        AssetRef(asset_id="asset_remote", type="image"),
+                        intent_id="42",
+                    )
+                self.assertEqual(p2, p1)
+
+    def test_materialize_file_local_path_no_download(self) -> None:
+        """A locally-registered crop (backend=local) resolves to its local path
+        directly with no download — the path ocr/rank atoms read."""
+        import tempfile
+        from pathlib import Path
+
+        brain = MagicMock()
+        brain.fetch_asset.return_value = {
+            "asset_id": "asset_crop",
+            "storage": {"backend": "local", "key": ""},
+        }
+        mgr = AssetManager(brain=brain, edge_id="edge-a")
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            f.write(b"crop-bytes")
+            name = f.name
+        try:
+            brain.fetch_asset.return_value["storage"]["key"] = name
+            p = mgr.materialize_file(
+                AssetRef(asset_id="asset_crop", type="image"),
+                intent_id="42",
+            )
+            self.assertEqual(p, Path(name))
+            self.assertEqual(p.read_bytes(), b"crop-bytes")
+        finally:
+            Path(name).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

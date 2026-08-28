@@ -73,6 +73,12 @@ class CapAsset:
         )
         return rep.url
 
+    def materialize_file(self, ref: AssetRef) -> Path:
+        """Local Path for this asset: edge_fs / local crop → direct, else download
+        once (cached by asset_id). Capabilities read bytes from this path
+        instead of re-fetching per atom."""
+        return self.manager.materialize_file(ref, intent_id=self.intent_id)
+
     def register_local_file(
         self,
         path: str | Path,
@@ -180,26 +186,18 @@ class CapAsset:
         )
 
     def upload_to(self, ref: AssetRef, dest: str = "img_server") -> AssetRef:
-        """Copy an existing Asset to dest via Runtime backends. No filesystem identity."""
-        from mac_edge.asset.img_upload import (
-            require_implemented_dest,
-            upload_image_file,
-        )
+        """Copy an existing Asset to the active Brain (dest stubs still fail)."""
+        from mac_edge.asset.img_upload import require_implemented_dest
 
-        canonical = require_implemented_dest(dest)
+        require_implemented_dest(dest)
         path = self.manager.materialize_file(ref, intent_id=self.intent_id)
-        result = upload_image_file(
+        return self.manager.upload_file(
             path,
-            preferred_dest=canonical,
-            allow_cloud_fallback=False,
-        )
-        return self.register_from_upload_url(
-            photo_url=result.photo_url,
-            saved_as=result.saved_as,
             producer="asset.upload",
+            intent_id=self.intent_id,
             mime_type=ref.mime_type or "image/jpeg",
-            cloud_public_base=result.cloud_public_base or None,
-            cloud_saved_as=result.cloud_saved_as or None,
+            asset_type=ref.type or "image",
+            filename=f"{ref.asset_id}.jpg",
         )
 
     def upload_local_file(
@@ -208,23 +206,16 @@ class CapAsset:
         dest: str = "img_server",
         mime_type: str = "image/jpeg",
     ) -> AssetRef:
-        """Upload a local jpeg (inbox capture) then register a Brain Asset."""
-        from mac_edge.asset.img_upload import (
-            require_implemented_dest,
-            upload_image_file,
-        )
+        """Upload a local jpeg to the active Brain's /api/v1/assets/upload."""
+        from mac_edge.asset.img_upload import require_implemented_dest
 
-        canonical = require_implemented_dest(dest)
-        result = upload_image_file(
-            Path(path),
-            preferred_dest=canonical,
-            allow_cloud_fallback=False,
-        )
-        return self.register_from_upload_url(
-            photo_url=result.photo_url,
-            saved_as=result.saved_as,
+        require_implemented_dest(dest)
+        p = Path(path)
+        return self.manager.upload_file(
+            p,
             producer="asset.upload",
+            intent_id=self.intent_id,
             mime_type=mime_type,
-            cloud_public_base=result.cloud_public_base or None,
-            cloud_saved_as=result.cloud_saved_as or None,
+            asset_type="image",
+            filename=p.name or "upload.jpg",
         )

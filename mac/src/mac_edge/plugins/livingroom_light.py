@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from mac_edge.plugins.notify_speak import NotifySpeakError, speak
+from mac_edge.tts_playback import playback_session
 
 log = logging.getLogger("mac_edge.livingroom_light")
 
@@ -74,23 +75,24 @@ def play_clip(
     afplay = shutil.which("afplay") or AFPLAY_BIN
     if not afplay or not Path(afplay).exists():
         raise LivingRoomLightError("灯控失败：本机找不到 afplay，无法播放预录音频。")
-    try:
-        proc = subprocess.run(
-            [afplay, str(path)],
-            capture_output=True,
-            text=True,
-            timeout=timeout_sec,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as e:
-        raise LivingRoomLightError(
-            f"灯控失败：预录音频播放超时（{path.name}）。"
-        ) from e
-    except OSError as e:
-        raise LivingRoomLightError(f"灯控失败：预录音频播放失败（{e}）。") from e
-    if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
-        raise LivingRoomLightError(f"灯控失败：预录音频播放失败（{err}）。")
+    with playback_session():
+        try:
+            proc = subprocess.run(
+                [afplay, str(path)],
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as e:
+            raise LivingRoomLightError(
+                f"灯控失败：预录音频播放超时（{path.name}）。"
+            ) from e
+        except OSError as e:
+            raise LivingRoomLightError(f"灯控失败：预录音频播放失败（{e}）。") from e
+        if proc.returncode != 0:
+            err = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
+            raise LivingRoomLightError(f"灯控失败：预录音频播放失败（{err}）。")
 
 
 def utter(
@@ -137,9 +139,10 @@ def set_light(
     command_key = "on" if state == "on" else "off"
     command_text = COMMAND_ON if state == "on" else COMMAND_OFF
     try:
-        utter("wake", WAKE_PHRASE, speak_fn=speak_fn, play_clip_fn=play_clip_fn)
-        sleeper(WAIT_AFTER_WAKE_SEC)
-        utter(command_key, command_text, speak_fn=speak_fn, play_clip_fn=play_clip_fn)
+        with playback_session():
+            utter("wake", WAKE_PHRASE, speak_fn=speak_fn, play_clip_fn=play_clip_fn)
+            sleeper(WAIT_AFTER_WAKE_SEC)
+            utter(command_key, command_text, speak_fn=speak_fn, play_clip_fn=play_clip_fn)
     except NotifySpeakError as e:
         raise LivingRoomLightError(f"灯控失败：本机语音没发出去（{e}）") from e
     except LivingRoomLightError:

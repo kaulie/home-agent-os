@@ -22,6 +22,7 @@ import com.smarthome.livingroom_android.command.IntentStatusClient
 import com.smarthome.livingroom_android.command.dispatcher.LocalTaskDispatcher
 import com.smarthome.livingroom_android.command.runtime.EdgeRuntimeNode
 import com.smarthome.livingroom_android.command.runtime.LocalEdgeRuntime
+import com.smarthome.livingroom_android.edge.IntentRuntimeLog
 import com.smarthome.livingroom_android.data.AppSettings
 import com.smarthome.livingroom_android.data.EdgeIdStore
 import com.smarthome.livingroom_android.data.HouseholdDirectory
@@ -33,6 +34,7 @@ import com.smarthome.livingroom_android.intent.IntentPhase
 import com.smarthome.livingroom_android.intent.PlanStepRow
 import com.smarthome.livingroom_android.service.EdgeAgentController
 import com.smarthome.livingroom_android.service.EdgeAgentService
+import com.smarthome.livingroom_android.skill.AndroidCameraSkill
 import com.smarthome.livingroom_android.skill.AssetUploadSkill
 import com.smarthome.livingroom_android.skill.DocumentScanSkill
 import com.smarthome.livingroom_android.skill.GoProCameraSkill
@@ -63,7 +65,11 @@ class LivingRoomAndroidApp : Application() {
         private set
     lateinit var intentApi: IntentApi
         private set
+    lateinit var localRuntime: LocalEdgeRuntime
+        private set
     lateinit var reporter: HttpEdgeReporter
+        private set
+    lateinit var secondaryReporter: HttpEdgeReporter
         private set
 
     val clientHint: String
@@ -87,9 +93,16 @@ class LivingRoomAndroidApp : Application() {
 
         val initialBase = BrainEndpoint.normalizeBase(settings.cloudBrainUrl)
         reporter = HttpEdgeReporter(initialBase, enabled = true)
+        // P0 dual-Brain: also register/heartbeat with the LAN Brain so both Brains
+        // see this Runtime. The active routing Brain (reporter) stays primary for pull/status.
+        secondaryReporter = HttpEdgeReporter(
+            BrainEndpoint.normalizeBase(settings.lanBrainUrl),
+            enabled = true,
+        )
         brain = CompositeBrainClient(
             local = MockBrainClient(),
             remote = reporter,
+            secondaryRemote = secondaryReporter,
         )
         registry = SkillRegistry()
         val localNode = EdgeRuntimeNode(
@@ -110,6 +123,7 @@ class LivingRoomAndroidApp : Application() {
                 intentJourney.updatePlanStep(capability, status, detail)
             },
         )
+        this.localRuntime = localRuntime
         commandSource = HttpCommandSource(
             BrainEndpoint.livingRoomIntentsPullUrl(initialBase),
             intentStatusFilter = null,
@@ -121,6 +135,7 @@ class LivingRoomAndroidApp : Application() {
             localNode = localNode,
             intentStatusClient = intentStatusClient,
             onLog = { msg ->
+                IntentRuntimeLog.append(LivingRoomAndroidApp.extractIntentId(msg), msg)
                 agentRef.pipelineLog(msg)
                 pipelineLogSink?.invoke(msg)
             },
@@ -131,6 +146,7 @@ class LivingRoomAndroidApp : Application() {
             localRuntime = localRuntime,
             journeyStore = intentJourney,
             onLog = { msg ->
+                IntentRuntimeLog.append(LivingRoomAndroidApp.extractIntentId(msg), msg)
                 agentRef.pipelineLog(msg)
                 pipelineLogSink?.invoke(msg)
             },
@@ -160,15 +176,14 @@ class LivingRoomAndroidApp : Application() {
                 participantId = { edgeAgent.assignedEdgeId ?: clientHint },
                 api = intentApi,
             ),
+            AndroidCameraSkill(),
             GoProCameraSkill(
                 intentUrl = { BrainEndpoint.intentUrl(reporter.baseURL) },
-                cloudIntentUrl = { BrainEndpoint.intentUrl(settings.cloudBrainUrl) },
                 participantId = { edgeAgent.assignedEdgeId ?: clientHint },
                 api = intentApi,
             ),
             AssetUploadSkill(
                 intentUrl = { BrainEndpoint.intentUrl(reporter.baseURL) },
-                cloudIntentUrl = { BrainEndpoint.intentUrl(settings.cloudBrainUrl) },
                 participantId = { edgeAgent.assignedEdgeId ?: clientHint },
                 api = intentApi,
             ),
@@ -180,13 +195,25 @@ class LivingRoomAndroidApp : Application() {
         Log.i(TAG, "Console ready hint=$clientHint")
     }
 
-        fun applyBrainBase(base: String) {
+    fun applyBrainBase(base: String) {
         val root = BrainEndpoint.normalizeBase(base)
-        if (root == BrainEndpoint.normalizeBase(reporter.baseURL)) return
-        reporter.baseURL = root
-        commandSource.setPullURL(BrainEndpoint.livingRoomIntentsPullUrl(root))
-        intentStatusClient.intentBaseURL = BrainEndpoint.intentUrl(root)
-        Log.i(TAG, "Brain base → $root")
+        val lan = BrainEndpoint.normalizeBase(settings.lanBrainUrl)
+        val cloud = BrainEndpoint.normalizeBase(settings.cloudBrainUrl)
+        if (root != BrainEndpoint.normalizeBase(reporter.baseURL)) {
+            reporter.baseURL = root
+            commandSource.setPullURL(BrainEndpoint.livingRoomIntentsPullUrl(root))
+            intentStatusClient.intentBaseURL = BrainEndpoint.intentUrl(root)
+            Log.i(TAG, "Brain base → $root")
+        }
+        // The other slot (not the active routing Brain) gets best-effort register/heartbeat.
+        val other = when (root) {
+            lan -> cloud
+            cloud -> lan
+            else -> ""
+        }
+        if (other.isNotBlank() && other != root) {
+            secondaryReporter.baseURL = other
+        }
     }
 
     fun seedJourneyFromPull(snapshot: com.smarthome.livingroom_android.command.IntentsPullSnapshot) {
@@ -266,7 +293,11 @@ class LivingRoomAndroidApp : Application() {
 
     companion object {
         private const val TAG = "HomeAgentConsole"
+        private val intentIdPattern = Regex("""intent[_ ]?id[=:#\s]+(\d+)""", RegexOption.IGNORE_CASE)
         lateinit var instance: LivingRoomAndroidApp
             private set
+
+        fun extractIntentId(message: String): String? =
+            intentIdPattern.find(message)?.groupValues?.getOrNull(1)
     }
 }

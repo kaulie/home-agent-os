@@ -49,13 +49,53 @@ data class ClockPing(
 
 data class ClockSyncSample(
     val localAtMs: Long,
-    val serverAtMs: Long? = null,
-    val skewMs: Int? = null,
+    val lanServerAtMs: Long? = null,
+    val cloudServerAtMs: Long? = null,
+    /** Brain `skew_ms` = server − local. Positive = server ahead of this device. */
+    val lanSkewMs: Int? = null,
+    val cloudSkewMs: Int? = null,
+    val lanError: String = "",
+    val cloudError: String = "",
 )
 
 data class AssetUploadResult(
     val assetId: String,
     val assetRefJson: String,
+)
+
+data class DevTaskView(
+    val taskId: Int,
+    val text: String,
+    val status: String,
+    val resultText: String,
+    val msg: String,
+    val bridgeRunId: String = "",
+    val bridgeStatus: String = "",
+) {
+    val isTerminal: Boolean
+        get() = status == "succeeded" || status == "failed" || status == "error"
+
+    val displayResult: String
+        get() = resultText.takeIf { it.isNotBlank() } ?: msg
+}
+
+data class DevTaskResult(
+    val ok: Boolean,
+    val task: DevTaskView?,
+    val error: String,
+)
+
+data class DebugReportView(
+    val issueId: Int,
+    val intentId: Int,
+    val message: String,
+    val taskId: Int? = null,
+)
+
+data class DebugReportResult(
+    val ok: Boolean,
+    val report: DebugReportView?,
+    val error: String,
 )
 
 /**
@@ -178,9 +218,13 @@ class IntentApi(
         }
     }
 
-    suspend fun ping(intentOrBaseUrl: String, timeoutSec: Long = 2): ClockPing =
+    suspend fun ping(
+        intentOrBaseUrl: String,
+        timeoutSec: Long = 2,
+        clientTimeMs: Long? = null,
+    ): ClockPing =
         withContext(Dispatchers.IO) {
-            val localAt = System.currentTimeMillis()
+            val localAt = clientTimeMs ?: System.currentTimeMillis()
             val url = BrainEndpoint.pingUrl(intentOrBaseUrl, localAt)
             val req = Request.Builder().url(url).get().build()
             val pingClient = client.newBuilder()
@@ -256,6 +300,7 @@ class IntentApi(
         httpClient: OkHttpClient = client,
     ): AssetUploadResult = withContext(Dispatchers.IO) {
         val url = BrainEndpoint.apiUrl(intentUrl, "assets/upload")
+        android.util.Log.i("IntentApi", "uploadAsset POST $url upload_intent=$uploadIntent")
         val safeName = sanitizeUploadName(fileName, "upload.bin")
         val mime = mimeType.trim().ifEmpty { "application/octet-stream" }
         val kind = assetType.trim().ifEmpty { "file" }
@@ -410,6 +455,158 @@ class IntentApi(
         } catch (_: Throwable) {
             false
         }
+    }
+
+    suspend fun submitDebugReport(
+        intentUrl: String,
+        intentId: String,
+        participantId: String,
+        clientSnapshot: Map<String, Any>? = null,
+        userSummary: String = "",
+    ): DebugReportResult = withContext(Dispatchers.IO) {
+        val iid = intentId.trim().toIntOrNull()
+        if (iid == null || iid <= 0) {
+            return@withContext DebugReportResult(false, null, "invalid intent_id")
+        }
+        val pid = participantId.trim()
+        if (pid.isEmpty()) {
+            return@withContext DebugReportResult(false, null, "participant_id is required")
+        }
+        val url = BrainEndpoint.apiUrl(intentUrl, "debug/report")
+        val payload = JSONObject()
+            .put("intent_id", iid)
+            .put("participant_id", pid)
+            .put("source", "user_console")
+        if (userSummary.isNotBlank()) {
+            payload.put("user_summary", userSummary.trim())
+        }
+        if (clientSnapshot != null && clientSnapshot.isNotEmpty()) {
+            payload.put("client_snapshot", DebugClientSnapshot.toJsonObject(clientSnapshot))
+        }
+        val req = Request.Builder()
+            .url(url)
+            .post(payload.toString().toRequestBody(JSON_MEDIA))
+            .build()
+        try {
+            client.newCall(req).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                val json = runCatching { JSONObject(body) }.getOrNull()
+                    ?: return@withContext DebugReportResult(false, null, body.take(200))
+                if (!resp.isSuccessful || !json.optBoolean("ok", false)) {
+                    val err = json.optString("error").takeIf { it.isNotBlank() }
+                        ?: body.take(200)
+                    return@withContext DebugReportResult(false, null, err)
+                }
+                val issueId = json.optInt("issue_id", 0)
+                val message = json.optString("message").ifBlank { "已提交问题，正在分析。" }
+                DebugReportResult(
+                    ok = true,
+                    report = DebugReportView(
+                        issueId = issueId,
+                        intentId = iid,
+                        message = message,
+                        taskId = json.optInt("task_id", 0).takeIf { it > 0 },
+                    ),
+                    error = "",
+                )
+            }
+        } catch (t: Throwable) {
+            DebugReportResult(false, null, t.message ?: t.javaClass.simpleName)
+        }
+    }
+
+    suspend fun submitDevTask(
+        intentUrl: String,
+        adminToken: String?,
+        text: String,
+    ): DevTaskResult = withContext(Dispatchers.IO) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) {
+            return@withContext DevTaskResult(false, null, "text is empty")
+        }
+        val url = BrainEndpoint.apiUrl(intentUrl, "admin/dev_task")
+        val payload = JSONObject().put("text", trimmed)
+        val req = adminRequestBuilder(url, adminToken)
+            .post(payload.toString().toRequestBody(JSON_MEDIA))
+            .build()
+        try {
+            client.newCall(req).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) {
+                    val err = runCatching { JSONObject(body).optString("error") }
+                        .getOrNull()?.takeIf { it.isNotBlank() }
+                        ?: body.take(200)
+                    return@withContext DevTaskResult(false, null, "HTTP ${resp.code}: $err")
+                }
+                val json = runCatching { JSONObject(body) }.getOrNull()
+                    ?: return@withContext DevTaskResult(false, null, "invalid JSON")
+                val view = parseDevTask(json)
+                if (view == null) {
+                    return@withContext DevTaskResult(false, null, "missing task_id")
+                }
+                DevTaskResult(true, view, "")
+            }
+        } catch (t: Throwable) {
+            DevTaskResult(false, null, t.message ?: t.javaClass.simpleName)
+        }
+    }
+
+    suspend fun fetchDevTask(
+        intentUrl: String,
+        adminToken: String?,
+        taskId: Int,
+    ): DevTaskResult = withContext(Dispatchers.IO) {
+        val url = BrainEndpoint.apiUrl(intentUrl, "admin/dev_task/$taskId")
+        val req = adminRequestBuilder(url, adminToken).get().build()
+        try {
+            client.newCall(req).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                if (!resp.isSuccessful) {
+                    val err = runCatching { JSONObject(body).optString("error") }
+                        .getOrNull()?.takeIf { it.isNotBlank() }
+                        ?: body.take(200)
+                    return@withContext DevTaskResult(false, null, "HTTP ${resp.code}: $err")
+                }
+                val json = runCatching { JSONObject(body) }.getOrNull()
+                    ?: return@withContext DevTaskResult(false, null, "invalid JSON")
+                val view = parseDevTask(json)
+                if (view == null) {
+                    return@withContext DevTaskResult(false, null, "missing task_id")
+                }
+                DevTaskResult(true, view, "")
+            }
+        } catch (t: Throwable) {
+            DevTaskResult(false, null, t.message ?: t.javaClass.simpleName)
+        }
+    }
+
+    private fun adminRequestBuilder(url: String, adminToken: String?): Request.Builder {
+        val builder = Request.Builder().url(url)
+        val token = adminToken?.trim().orEmpty()
+        if (token.isNotEmpty()) {
+            builder.header("X-Admin-Token", token)
+        }
+        return builder
+    }
+
+    private fun parseDevTask(json: JSONObject): DevTaskView? {
+        val taskId = json.opt("task_id")?.toString()?.toIntOrNull()
+            ?: json.opt("intent_id")?.toString()?.toIntOrNull()
+        if (taskId == null || taskId <= 0) return null
+        val dev = json.optJSONObject("dev_task")
+        val resultText = json.optString("result_text").trim()
+            .ifBlank { json.optString("result").trim() }
+        val msg = json.optString("msg").trim()
+            .ifBlank { dev?.optString("error").orEmpty().trim() }
+        return DevTaskView(
+            taskId = taskId,
+            text = json.optString("text"),
+            status = json.optString("status"),
+            resultText = resultText,
+            msg = msg,
+            bridgeRunId = dev?.optString("bridge_run_id").orEmpty(),
+            bridgeStatus = dev?.optString("bridge_status").orEmpty(),
+        )
     }
 
     private inline fun executeJson(

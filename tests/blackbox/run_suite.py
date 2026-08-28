@@ -31,6 +31,7 @@ CASES: list[tuple[str, str, int, str]] = [
     ),
     ("C8", "一分钟后用语音说：该喝水了", 150, "delay ~60s"),
     ("C10", "拍张照", 180, "camera only"),
+    ("C10c", "拍张照片我看一下", 180, "capture_and_upload composite"),
     ("C11", "拍张照投到电视上", 210, "camera+display"),
     ("C12", "拍张照看看客厅里有没有人，然后用语音告诉我", 240, "camera+vision+speak"),
     ("C13", "晋字笔画怎么写，投到电视上", 180, "query image+display"),

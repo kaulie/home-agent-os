@@ -84,6 +84,15 @@ enum JourneyLocalCache {
         return record
     }
 
+    static func snapshotDictionary(_ intentId: String) -> [String: Any]? {
+        guard let record = load(intentId),
+              let data = try? JSONEncoder().encode(record),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return obj
+    }
+
     static func clear() {
         for key in loadIndex() {
             UserDefaults.standard.removeObject(forKey: storageKey(key))

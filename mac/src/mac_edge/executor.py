@@ -29,7 +29,8 @@ from mac_edge.plugins.xiaomi_tv_display import (
     photo_from_params as xiaomi_photo_from_params,
     slideshow_from_params as xiaomi_slideshow_from_params,
 )
-from mac_edge.capability_availability import is_available as capability_is_available
+from mac_edge.capability_ads import composition_of, decomposes_to
+from mac_edge.capability_availability import is_available
 from mac_edge.plugins.clock_now import ClockNowError, now_from_params
 from mac_edge.plugins.math_calculate import MathCalculateError, calculate_from_params
 from mac_edge.plugins.chat_smalltalk import ChatSmalltalkError, smalltalk_from_params
@@ -55,12 +56,22 @@ from mac_edge.plugins.xiaomi_lock import (
 )
 from mac_edge.plugins.livingroom_light import LivingRoomLightError, set_from_params
 from mac_edge.plugins.notify_speak import NotifySpeakError, prefetch_from_params, speak_from_params
-from mac_edge.plugins.voicewakeup_echo import VoiceWakeupEchoError, echo_from_params
+from mac_edge.plugins.xiaodu_speaker import XiaoduSpeakerError, speak_from_params as xiaodu_speak_from_params
+from mac_edge.plugins.tv_game import GameLaunchError, launch_from_params
 from mac_edge.plugins.voice_test.trial import VoiceTestError, run_trial_from_params
 from mac_edge.plugins.query_content import QueryContentError, query_from_params
 from mac_edge.plugins.search_images import SearchImagesError, search_from_params
 from mac_edge.plugins.vision_ask import VisionAskError, ask_from_params
 from mac_edge.plugins.vision_perceive import VisionPerceiveError, perceive_from_params
+from mac_edge.plugins.point_to_character import (
+    READING_STAGE_CAPS,
+    PointToCharacterError,
+    reading_stage_from_params,
+)
+from mac_edge.plugins.pronunciation_assess import (
+    PronunciationAssessError,
+    assess_from_params,
+)
 from mac_edge.runtime_context import (
     RuntimeContext,
     input_params_of,
@@ -84,6 +95,19 @@ _EXECUTING_STEPS: set[tuple[str, int]] = set()
 # Wall-clock start of the current local RUNNING attempt.
 _STEP_STARTED_AT_MS: dict[tuple[str, int], int] = {}
 _CAP_EXEC_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cap-exec")
+
+# Composite reading pipeline should fail faster than generic 5m wall clock.
+_CAP_TIMEOUT_SEC: dict[str, float] = {
+    "reading.point_to_character": 120.0,
+}
+
+
+def _capability_timeout_sec(cap: str, config: Config) -> float:
+    cid = str(cap or "").strip()
+    if cid in _CAP_TIMEOUT_SEC:
+        return max(30.0, min(float(_CAP_TIMEOUT_SEC[cid]), 3600.0))
+    timeout = float(getattr(config, "capability_timeout_sec", 300.0) or 300.0)
+    return max(30.0, min(timeout, 3600.0))
 
 # Deadline-aware idle sleep: never longer than this, and never more than half
 # the remaining time — so wakes get denser as exec_time approaches.
@@ -153,8 +177,7 @@ def _execute_capability_bounded(
     config: Config,
 ) -> tuple[bool, str, dict[str, Any]]:
     """Run capability with a wall-clock timeout; orphaned worker may still finish later."""
-    timeout = float(getattr(config, "capability_timeout_sec", 300.0) or 300.0)
-    timeout = max(30.0, min(timeout, 3600.0))
+    timeout = _capability_timeout_sec(cap, config)
     fut = _CAP_EXEC_POOL.submit(
         _execute_capability,
         cap,
@@ -437,20 +460,20 @@ def handle_intent(
             posted_terminal = True
             break
 
-        # Local RUNNING immediately. Ledger queues the event; flush in the
-        # background so capture/speak is not blocked on Brain HTTP.
+        # Local RUNNING immediately. Sync flush to Brain before long I/O so
+        # clients leave intent_dispatched without waiting minutes in the dark.
         step["status"] = STEP_RUNNING
         if ledger is not None:
             ledger.set_step_status(
                 iid, step_num, STEP_RUNNING, ts_ms=BRAIN_CLOCK.now_ms()
             )
             ledger.set_intent_status(iid, "running")
-            from mac_edge.brain_client import _submit_report
-
-            def _flush_running() -> None:
-                ledger.flush_to_brain(brain, eid)
-
-            _submit_report(f"ledger flush running {iid}/{step_num}", _flush_running)
+            _flush_ledger_to_brain(
+                ledger,
+                brain,
+                eid,
+                label=f"running {iid}/{step_num}",
+            )
         else:
             step_ep, intent_ep = brain.begin_running_reports(iid, step_num)
             brain.post_step_status_bg(
@@ -473,7 +496,7 @@ def handle_intent(
         _mark_step_started(iid, step_num)
         cap_asset = CapAsset(manager=asset_mgr, intent_id=iid, step_num=step_num)
         try:
-            avail = capability_is_available(cap, config=config)
+            avail = is_available(cap, config=config)
             if not avail.ok:
                 ok, message, outputs = False, avail.msg, {}
                 log.warning(
@@ -708,6 +731,26 @@ def skip_passed_interval_triggers(
     return skipped
 
 
+def _flush_ledger_to_brain(
+    ledger: Any,
+    brain: BrainClient | None,
+    edge_id: str,
+    *,
+    label: str,
+) -> bool:
+    """Best-effort synchronous ledger → Brain replay (RUNNING must not lag)."""
+    if brain is None:
+        return False
+    try:
+        posted = ledger.flush_to_brain(brain, edge_id)
+        if posted:
+            log.info("ledger: sync flush %s posted=%s", label, posted)
+        return posted > 0
+    except Exception as e:
+        log.warning("ledger: sync flush %s failed: %s", label, e)
+        return False
+
+
 def _try_post_step_status(
     brain: BrainClient | None,
     intent_id: str,
@@ -843,11 +886,12 @@ def _advance_skipped_beats(
     """
     now = BRAIN_CLOCK.now_ms()
     eid = edge_id.strip()
-    timeout_sec = float(
-        getattr(config, "capability_timeout_sec", 300.0) if config is not None else 300.0
+    default_timeout = (
+        float(getattr(config, "capability_timeout_sec", 300.0) or 300.0)
+        if config is not None
+        else 300.0
     )
-    timeout_sec = max(30.0, min(timeout_sec, 3600.0))
-    timeout_ms = int(timeout_sec * 1000)
+    default_timeout = max(30.0, min(default_timeout, 3600.0))
     for step in plan:
         assigned = str(step.get("assigned_edge_id") or "").strip()
         if assigned != eid:
@@ -855,9 +899,21 @@ def _advance_skipped_beats(
         n = int(step.get("step") or 0)
         st = step_status(step)
         cap = str(step.get("capability") or "").strip()
+        timeout_sec = (
+            _capability_timeout_sec(cap, config) if config is not None else default_timeout
+        )
+        timeout_ms = int(timeout_sec * 1000)
         # Wall-clock reclaim for stuck RUNNING (one-shot or recurring beat).
         if st == STEP_RUNNING:
             since = running_since_ms(intent, intent_id, n)
+            if not _is_locally_executing(intent_id, n) and since is None:
+                log.warning(
+                    "intent %s step %s: orphan RUNNING — reset to waiting",
+                    intent_id,
+                    n,
+                )
+                step["status"] = STEP_WAITING
+                continue
             if since is not None and now - since >= timeout_ms:
                 fail_msg = capability_timeout_msg(cap, timeout_sec)
                 log.error(
@@ -1098,7 +1154,17 @@ def _step_open_for_run(step: dict[str, Any], intent_id: str, step_num: int) -> b
     if _is_locally_executing(intent_id, step_num):
         return False
     if st == STEP_RUNNING:
-        return parse_execution_timing(step).is_recurring
+        if parse_execution_timing(step).is_recurring:
+            return True
+        # Crash / restart left RUNNING in the local ledger but this worker
+        # is idle — reopen so dispatch does not stall at intent_dispatched.
+        log.warning(
+            "intent %s step %s: stale one-shot RUNNING — reopen for run",
+            intent_id,
+            step_num,
+        )
+        step["status"] = STEP_WAITING
+        return True
     if st == STEP_FAILED and parse_execution_timing(step).is_recurring:
         return True
     return False
@@ -1286,6 +1352,85 @@ def _hydrate_context(context: RuntimeContext, intent: dict[str, Any]) -> None:
         _load_producer_bag(context, step.get("outputs"), constrict)
 
 
+def _composite_upload_failure_msg(msg: str) -> str:
+    text = str(msg or "").strip() or "上传失败"
+    if text.startswith("拍照成功"):
+        return text
+    if "上传" in text or "upload" in text.lower():
+        return f"拍照成功，照片已保存在本机；但{text}"
+    return f"拍照成功，照片已保存在本机；但上传失败：{text}"
+
+
+def _execute_composite(
+    cap: str,
+    asset: CapAsset,
+    *,
+    params: dict[str, str],
+    config: Config,
+) -> tuple[bool, str, dict[str, Any]]:
+    """Run decomposes_to atomics on this Runtime; report one step to Brain."""
+    parts = decomposes_to(cap)
+    if not parts:
+        return False, f"{cap} 缺少 decomposes_to", {}
+    merged: dict[str, Any] = {}
+    last_msg = ""
+    capture_ok = False
+    params_in = dict(params or {})
+    for atom in parts:
+        if composition_of(atom) == "composite":
+            return False, f"{cap} 的 decomposes_to 不能再嵌套 composite（{atom}）", {}
+        atom_params = dict(params_in)
+        has_asset = atom_params.get("asset_ref") is not None or merged.get("asset_ref") is not None
+        has_capture = (
+            atom_params.get("capture_ref") is not None or merged.get("capture_ref") is not None
+        )
+        if atom == "camera.capture" and (has_asset or has_capture):
+            continue
+        if atom == "asset.upload" and has_asset:
+            continue
+        # asset_ref: a prior atom may emit a smaller/different asset than the
+        # composite's original input (reading.detect_finger emits a finger crop
+        # that ocr/rank should read instead of the full photo). So when merged
+        # carries an asset_ref, it overrides params_in — not just fills None.
+        # Other keys (finger/chars/full_image_shape) stay fill-if-None so a
+        # caller-supplied value isn't silently replaced by a re-derived one.
+        if merged.get("asset_ref") is not None:
+            atom_params["asset_ref"] = merged["asset_ref"]
+        for key in ("capture_ref", "finger", "chars", "full_image_shape"):
+            if atom_params.get(key) is None and merged.get(key) is not None:
+                atom_params[key] = merged[key]
+        ok, message, outputs = _execute_capability(
+            atom, asset, params=atom_params, config=config
+        )
+        if not ok:
+            if capture_ok:
+                return False, _composite_upload_failure_msg(message), {}
+            return False, message, {}
+        if atom == "camera.capture":
+            capture_ok = True
+        if isinstance(outputs, dict):
+            merged.update(outputs)
+        last_msg = message
+    hide = {
+        "capture_ref",
+        "finger",
+        "chars",
+        "blocks",
+        "landmarks",
+        "timing",
+        "ocr_blocks",
+        "char_boxes",
+        "candidates",
+        "top3",
+        "replay",
+        "debug_png_base64",
+        "crop_origin",
+        "full_image_shape",
+    }
+    out = {k: v for k, v in merged.items() if k not in hide}
+    return True, last_msg, out
+
+
 def _execute_capability(
     cap: str,
     asset: CapAsset,
@@ -1298,6 +1443,16 @@ def _execute_capability(
     ``asset`` is the Runtime SDK Asset Manager session for this step.
     Params hold non-asset fields + AssetRef identities — never photo_url as identity.
     """
+    if composition_of(cap) == "composite":
+        return _execute_composite(cap, asset, params=params, config=config)
+    if cap == "game.launch":
+        try:
+            msg, outputs = launch_from_params(params)
+            return True, msg, outputs
+        except GameLaunchError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
     if cap == "display.photo":
         try:
             if display_backend() == "xiaomi":
@@ -1346,6 +1501,14 @@ def _execute_capability(
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}
+    if cap == "xiaodu.speak":
+        try:
+            msg = xiaodu_speak_from_params(params)
+            return True, msg, {}
+        except XiaoduSpeakerError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
     if cap == "voicewakeup.echo":
         try:
             msg, outputs = echo_from_params(params)
@@ -1375,6 +1538,31 @@ def _execute_capability(
             )
             return True, msg, outputs
         except (VisionAskError, AssetError) as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap in READING_STAGE_CAPS:
+        try:
+            msg, outputs = reading_stage_from_params(
+                cap,
+                params,
+                asset=asset,
+                timeout_sec=max(120.0, float(config.display_http_timeout_sec)),
+            )
+            return True, msg, outputs
+        except (PointToCharacterError, AssetError) as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "pronunciation.assess":
+        try:
+            msg, outputs = assess_from_params(
+                params,
+                asset=asset,
+                timeout_sec=max(180.0, float(config.display_http_timeout_sec)),
+            )
+            return True, msg, outputs
+        except (PronunciationAssessError, AssetError) as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}
