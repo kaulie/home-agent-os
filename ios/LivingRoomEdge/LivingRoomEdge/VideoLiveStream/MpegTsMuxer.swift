@@ -13,6 +13,7 @@ final class MpegTsMuxer {
     private var videoCc: UInt8 = 0
     private var audioCc: UInt8 = 0
     private var frameIndex = 0
+    private var audioFrameIndex = 0
     var includesAudio = true
 
     func reset() {
@@ -21,14 +22,17 @@ final class MpegTsMuxer {
         videoCc = 0
         audioCc = 0
         frameIndex = 0
+        audioFrameIndex = 0
     }
 
     func muxAudio(aacAdts: Data, pts90k: UInt64) -> Data {
+        guard !aacAdts.isEmpty else { return Data() }
         var out = Data()
-        if frameIndex % 30 == 0 {
+        if audioFrameIndex == 0 || audioFrameIndex % 30 == 0 {
             out.append(patPacket())
             out.append(pmtPacket())
         }
+        audioFrameIndex += 1
         let pes = Self.audioPesPacket(aacAdts: aacAdts, pts90k: pts90k)
         out.append(
             packetize(

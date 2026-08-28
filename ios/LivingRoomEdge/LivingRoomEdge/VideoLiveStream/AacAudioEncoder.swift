@@ -232,10 +232,15 @@ final class AacAudioEncoder {
 
         let isFloat = asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0
         let isNonInterleaved = asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0
-        let channels = max(1, Int(asbd.mChannelsPerFrame))
+        let channels: Int = {
+            if isNonInterleaved { return max(1, buffers.count) }
+            return max(1, Int(asbd.mChannelsPerFrame))
+        }()
         var mono = [Int16](repeating: 0, count: frames)
+        var extracted = false
 
         if isFloat {
+            extracted = true
             if isNonInterleaved {
                 let channelCount = min(buffers.count, channels)
                 for i in 0..<frames {
@@ -261,6 +266,7 @@ final class AacAudioEncoder {
         } else {
             let bits = Int(asbd.mBitsPerChannel)
             if bits == 16 {
+                extracted = true
                 if isNonInterleaved {
                     let channelCount = min(buffers.count, channels)
                     for i in 0..<frames {
@@ -286,6 +292,7 @@ final class AacAudioEncoder {
             }
         }
 
+        guard extracted else { return nil }
         return mono.withUnsafeBufferPointer { Data(buffer: $0) }
     }
 

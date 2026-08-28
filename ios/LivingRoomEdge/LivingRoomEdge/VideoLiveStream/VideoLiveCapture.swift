@@ -17,6 +17,7 @@ final class VideoLiveCapture: NSObject, ObservableObject {
     var onAudioSample: ((CMSampleBuffer) -> Void)?
 
     private(set) var wantsAudio = false
+    var audioCaptureActive: Bool { configured && configuredWithAudio && wantsAudio }
 
     private let sessionQueue = DispatchQueue(label: "homeagent.video.live.capture")
     private let output = AVCaptureVideoDataOutput()
@@ -50,6 +51,39 @@ final class VideoLiveCapture: NSObject, ObservableObject {
             self.session.stopRunning()
             DispatchQueue.main.async { self.isRunning = false }
         }
+    }
+
+    /// Blocks until the capture session matches `includeAudio` (mic input + audio output when true).
+    func waitUntilReady(includeAudio: Bool) async -> Bool {
+        wantsAudio = includeAudio
+        if configured && configuredWithAudio != includeAudio {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                sessionQueue.async { [weak self] in
+                    guard let self else {
+                        cont.resume()
+                        return
+                    }
+                    if self.session.isRunning {
+                        self.session.stopRunning()
+                    }
+                    self.removeAllSessionConnections()
+                    self.configured = false
+                    DispatchQueue.main.async { self.isRunning = false }
+                    cont.resume()
+                }
+            }
+        }
+        if !configured || !isRunning {
+            await startSession()
+        }
+        for _ in 0..<120 {
+            if configured && configuredWithAudio == includeAudio && isRunning {
+                if includeAudio { return audioAuthorization == .authorized }
+                return authorization == .authorized && hasDevice
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        return false
     }
 
     private func startSession() async {

@@ -116,19 +116,21 @@ final class VideoLiveStreamController: ObservableObject {
             errorMessage = "请先在设置里填写 Mac ingest URL"
             return
         }
-        guard capture.authorization == .authorized,
+        let captureReady = await capture.waitUntilReady(includeAudio: includeAudio)
+        guard captureReady,
+              capture.authorization == .authorized,
               capture.hasDevice,
               capture.isRunning else {
             phase = .error
-            errorMessage = capture.statusMessage.isEmpty ? "相机未就绪" : capture.statusMessage
+            errorMessage = capture.statusMessage.isEmpty
+                ? (includeAudio ? "相机或麦克风未就绪" : "相机未就绪")
+                : capture.statusMessage
             return
         }
-        if includeAudio {
-            guard capture.audioAuthorization == .authorized else {
-                phase = .error
-                errorMessage = capture.statusMessage.isEmpty ? "麦克风未就绪" : capture.statusMessage
-                return
-            }
+        if includeAudio, !capture.audioCaptureActive {
+            phase = .error
+            errorMessage = "麦克风采集未启动，请重试或检查权限"
+            return
         }
         streamIncludesAudio = includeAudio
         phase = .starting
