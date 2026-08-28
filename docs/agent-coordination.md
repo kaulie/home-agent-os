@@ -111,6 +111,18 @@ Cursor 停会话不会被 HTTP 叫醒；**Fleet worker** 由 agent-bridge `POST 
 - `@quality` 只打对外 API。修复须验收：实现方报完工后 `@quality` 请验收；结果写入 `tests/blackbox/`。不得自报结案。
 - 不要在 chat 里贴密钥、`.env`、完整 token。
 
+## 7.1 发布链路（强制）
+
+产品代码：**git 提交 → 测试 → 部署上线**。未 commit 不算交付；未记录节点不算上线。细则与 Chatbox 格式见 [`.cursor/rules/release-pipeline.mdc`](../.cursor/rules/release-pipeline.mdc)；commit 格式见 [`git-commit-convention.md`](git-commit-convention.md)。
+
+| 节点 | 谁 | 留痕 |
+|------|-----|------|
+| `committed` | 实现方（含 `@controller` 小改） | `[release] stage=committed sha=…` |
+| `tested` / `test_requested` | 实现方自测；对外行为 `@quality` | `[release] stage=tested\|test_requested sha=…` |
+| `deploy_requested` / `deployed` | 实现方申请；`@deploy`（或端上发布方）执行 | `[release] stage=deploy_* sha=… target=…` |
+
+禁止用工作区脏改动 / 私下 rsync 冒充上线。部署流水线管控后续接入；在此之前以 `[release]` + Dev Console **Deploy** Tab + git log 为审计源。结案前 `@controller` 须能看到完整节点（或合法 `stage=skipped` + 原因）。老板在 Deploy Tab「批准上线」= Deploy Authority。
+
 ## 8. 并发
 
 SQLite WAL + 进程内锁。**不要**再对 Markdown 信箱整文件覆盖。不要用 `docs/agent-mailbox.lock`。

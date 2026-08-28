@@ -57,7 +57,9 @@ def build_wake_prompt(
             "## Workflow",
             "1. GET pull_msg for your handle if needed.",
             "2. push_msg acknowledge, then implement within your layer.",
-            "3. push_msg completion; @quality if API acceptance needed.",
+            "3. Product code: git commit (see docs/git-commit-convention.md), then test, then deploy — never treat dirty workspace as shipped.",
+            "4. Record each node in Chatbox with [release] stage=committed|tested|deploy_requested|deployed (or skipped+note); @controller. See .cursor/rules/release-pipeline.mdc.",
+            "5. push_msg completion; @quality if API acceptance needed; @deploy only with commit sha after tests.",
         ]
     )
     return "\n".join(parts)

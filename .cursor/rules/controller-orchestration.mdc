@@ -59,11 +59,14 @@ curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9540/api/v1/runs/{run
 |------|------|
 | `[dev-task]` | 手机 Dev Task / bridge 任务 |
 | `[fleet]` | Fleet worker 事件；正文含 `handle=`、`run=` |
+| `[release]` | 发布节点：`stage=committed\|tested\|deploy_*` + `sha=`；见 [`release-pipeline.mdc`](release-pipeline.mdc) |
 
 长任务：每有 `[fleet] event=finished|failed` 向用户同步一句；不要沉默超过 ~15 分钟。
+
+产品改动：核对 `[release]` 是否齐（commit → test → deploy）；缺节点不要对用户报「已上线」。上云 wake `@deploy` 时正文必须带 sha。
 
 ## 禁止
 
 - 不要为 `@ui` / `@brain` 等让用户再开 IDE。
 - 不要改 Chatbox 水位 `.cursor/dev-inbox-state.json` 以外的协调逻辑。
-- 修复须 `@quality` 验收后再对用户报结案。
+- 修复须 `@quality` 验收、且发布节点齐全后，再对用户报结案。

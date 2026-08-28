@@ -9,6 +9,8 @@ alwaysApply: true
 
 本地测过的 Brain 版本可以同步到云。**只在测过后部署**，不要半成品上云。
 
+**发布门禁（与 [`release-pipeline.mdc`](release-pipeline.mdc) 一致）：** 部署前必须有可追溯 **git commit sha**（实现方已 `[release] stage=committed` + `tested` 或老板书面豁免）。禁止同步未提交工作区。部署前后 `push_msg`：`@controller [release] stage=deploy_requested|deployed sha=… target=cloud-brain`。`agent_access.log` 一行须含同一 sha。
+
 - SSH：`ssh cloud-server`（公钥，无密码）。
 - **唯一可写范围**：`/root/chat-gateway` 整棵项目树。禁止改该目录以外的文件（含 `/etc/systemd`）。
 - 同步：本地 `server/home_brain.py`、`server/prompts/` → `/root/chat-gateway/server/...`；仓库根 `home_brain.py` 入口 → `/root/chat-gateway/home_brain.py`。**不要** rsync `db.py`、`sql/`、`data/`（schema / 迁移归 `@dba`）。**不要** rsync `admin/`（现场管理页只在本机 `python3 admin/serve.py`，不上云）。排除 `.venv`、`__pycache__`、`llm_logs/`、`.env`、`gopropics/`、`agent_access.log`、测试库。

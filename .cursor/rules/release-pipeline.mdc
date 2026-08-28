@@ -1,0 +1,47 @@
+---
+description: Product code must go git commit → test → deploy; each stage recorded
+alwaysApply: true
+---
+
+# 发布链路（git → 测试 → 部署）
+
+产品代码改动 **禁止** 只改工作区、口头说「好了」就当上线。必须按节点推进，并把每个节点 **记录在案**（Chatbox `[release]`）。后续会接部署流水线管控；在此之前仍按本约定手记。
+
+## 适用范围
+
+- 写产品代码的 handle：`@brain` `@runtime` `@ui` `@capability` `@dba`，以及 `@controller` 自己做的小改。
+- `@quality`：只测不改产品代码；测完记 `stage=tested`。
+- `@deploy`：只在有可追溯 commit 且测试通过（或老板明确豁免）后部署；记 `stage=deployed`。
+- `@coordinator` / `@sre`：催办与核对节点，不跳过 git。
+
+文档-only、纯协调消息不强制走部署；但 **任何会影响运行环境的代码** 都走本链路。
+
+## 节点（顺序）
+
+1. **实现** — 本层改完，本地自检。
+2. **git 提交** — 按 [`docs/git-commit-convention.md`](docs/git-commit-convention.md) commit；拿到 `sha`。未提交 = 未交付。
+3. **测试** — 单测 / 相关黑盒；对外行为变更须 `@quality` 验收。
+4. **部署上线** — 云 Brain 等由 `@deploy`（见 `cloud-deploy.mdc`）；端上 App / Receiver 等按该面既有发布方式。部署前正文须带 **commit sha**。
+5. **结案** — 仅当部署节点已记录（或明确无需部署且已说明）后，才可对用户 / `@boss` 报「已上线」。
+
+禁止：改完不 commit 就叫 `@deploy`；未测就上云；rsync / 拷文件绕过 git 当正式上线。
+
+## 留痕（Chatbox）
+
+每完成一节点，`push_msg` 一条，带 `[release]`，并 `@controller`（实现方还可 `@quality` / `@deploy` 按需）：
+
+```text
+@controller [release] stage=committed sha=<short> scope=<git-scope> summary=<一句话>
+@controller @quality [release] stage=test_requested sha=<short>
+@controller [release] stage=tested sha=<short> result=pass|fail note=<可选>
+@controller @deploy [release] stage=deploy_requested sha=<short> target=cloud-brain|… 
+@controller [release] stage=deployed sha=<short> target=… health=<可选>
+```
+
+`stage` 取值：`committed` | `test_requested` | `tested` | `deploy_requested` | `deployed` | `skipped`（须在 `note=` 写清为何跳过部署，如仅 docs）。
+
+## Controller
+
+- 汇总进度时核对：缺 `committed` / `tested` / `deployed`（或合法 `skipped`）不要报上线完成。
+- 需要上云时 wake `@deploy`，任务正文必须含 sha。
+- **Dev Console → Deploy Tab**：老板在手机上看到待批准候选；点「批准上线」即 Deploy Authority，Brain 会记节点并 wake `@deploy`。流水线自动化落地前，以 Chatbox `[release]` + Deploy 列表 + git log 为审计源。

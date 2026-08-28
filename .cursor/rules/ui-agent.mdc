@@ -36,5 +36,6 @@ Fleet worker：**UI dev agent**。合并原 `@intent`（发出窗口、物流 UI
 - 发出端只发自然语言、只信 `intent_detail`；不注册 Edge、不执行 capability。
 - Chatbox 中 `@intent` / `@endpoint` 别名解析为 `@ui`。
 - 完工后 `push_msg` `@quality` 请验收（若动到对外 API 行为）。
+- **发布链路**：改动必须 **git commit → 测试 → 部署/发布上线**；每个节点 Chatbox `[release]` 留痕。详见 [`release-pipeline.mdc`](release-pipeline.mdc)。未 commit 不算交付；端上 App / Receiver 发布同样要记 `deployed`（或 `skipped` + 原因）。
 
 规范：[`docs/agent-coordination.md`](docs/agent-coordination.md)、[`docs/agent-roster.md`](docs/agent-roster.md)。

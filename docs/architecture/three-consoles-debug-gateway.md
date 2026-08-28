@@ -142,6 +142,8 @@ Issue → Analyze → Reproduce → Locate → Modify → Build → Sandbox → 
 
 展示 Issue 状态、Agent 进度、测试结果、Code Diff、「批准上线」— 无需人工重述问题。
 
+**Deploy Tab（已落地 MVP）：** 聚合 Chatbox `[release]` 节点（commit → test → approve → deploy）；`awaiting_approval` 时老板可批准/拒绝；批准后 wake `@deploy`。API：`GET/POST /api/v1/admin/releases*`。
+
 ## 6. Sandbox（Phase 1 后续）
 
 Agent 修改默认只进 Sandbox / Candidate：

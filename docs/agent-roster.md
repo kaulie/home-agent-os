@@ -24,7 +24,7 @@
 | UI dev agent | `@ui` | **全部用户交互面**：Intent 发出窗口、物流 UI、Endpoint/Cast 呈现、Receiver、管理端 UI。 |
 | capability dev agent | `@capability` | Plugin 契约与实现（非 UI 呈现面）。 |
 | quality agent | `@quality` | 黑盒验收：只打对外 API，不改产品代码。 |
-| deploy agent | `@deploy` | 云 Brain 部署（rsync + restart）；见 `cloud-deploy.mdc`。 |
+| deploy agent | `@deploy` | 云 Brain 部署（rsync + restart）；须带 git sha；见 `cloud-deploy.mdc` / `release-pipeline.mdc`。 |
 | sre agent | `@sre` | 本机/边缘运维、双 Brain、local-rt、架构 runbook。 |
 | dba agent | `@dba` | schema / SQL（Brain SQLite；Edge JSON 未经点名不改）。 |
 
@@ -67,7 +67,7 @@ curl -s -X POST -H "Authorization: Bearer $BRIDGE_TOKEN" \
   http://127.0.0.1:9540/api/v1/agents/brain/wake
 ```
 
-Dev Task 带 `target_handle` 时 bridge 直接 wake 对应 worker；进度推 Chatbox：`@controller [dev-task]` 或 `@controller [fleet] handle=…`。
+Dev Task 带 `target_handle` 时 bridge 直接 wake 对应 worker；进度推 Chatbox：`@controller [dev-task]` 或 `@controller [fleet] handle=…`。产品改动另推 `[release]` 节点（commit → test → deploy），见 [`.cursor/rules/release-pipeline.mdc`](../.cursor/rules/release-pipeline.mdc)。
 
 ## 日报
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cursor hook: pull @controller [dev-task] / [fleet] messages and optionally wake the agent."""
+"""Cursor hook: pull @controller [dev-task] / [release] / [fleet] messages and optionally wake the agent."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def main() -> None:
         if not isinstance(msg, dict):
             continue
         body = str(msg.get("body") or "").strip()
-        if "[dev-task]" in body:
+        if "[dev-task]" in body or "[release]" in body:
             sender = str(msg.get("from") or msg.get("from_handle") or "").strip()
             lines.append(f"- [{sender}] {body}")
             continue
@@ -78,8 +78,9 @@ def main() -> None:
 
     summary = "\n".join(lines)
     followup = (
-        "Agent Chatbox 有新进度（dev-task 或 fleet 终态）。请阅读并简短同步给用户，"
-        "必要时在 smart_home_control 仓库里继续跟进或 wake 对应 Fleet handle：\n\n"
+        "Agent Chatbox 有新进度（dev-task / release 节点 / fleet 终态）。请阅读并简短同步给用户，"
+        "必要时在 smart_home_control 仓库里继续跟进或 wake 对应 Fleet handle："
+        "产品改动须核对 [release] committed→tested→deployed。\n\n"
         f"{summary}"
     )
     print(json.dumps({"followup_message": followup}, ensure_ascii=False))
