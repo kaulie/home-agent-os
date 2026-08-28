@@ -57,6 +57,22 @@ try:
         submit_debug_report,
     )
     from agent_fleet import get_fleet_view, wake_fleet_agent
+    from release_pipeline import (
+        approve_release,
+        get_release,
+        list_releases,
+        reject_release,
+        sync_from_chat as sync_releases_from_chat,
+    )
+    from agent_chat import (
+        AgentChatError,
+        ack_boss_message,
+        get_chat_view,
+        promote_chat_to_dev_task,
+        related_background_from_messages,
+        send_boss_message,
+        unack_boss_message,
+    )
 except ImportError:  # pragma: no cover
     from server.dev_task import (  # type: ignore
         cancel_agent_task,
@@ -74,6 +90,22 @@ except ImportError:  # pragma: no cover
         submit_debug_report,
     )
     from server.agent_fleet import get_fleet_view, wake_fleet_agent  # type: ignore
+    from server.release_pipeline import (  # type: ignore
+        approve_release,
+        get_release,
+        list_releases,
+        reject_release,
+        sync_from_chat as sync_releases_from_chat,
+    )
+    from server.agent_chat import (  # type: ignore
+        AgentChatError,
+        ack_boss_message,
+        get_chat_view,
+        promote_chat_to_dev_task,
+        related_background_from_messages,
+        send_boss_message,
+        unack_boss_message,
+    )
 
 try:
     from shortcut_mode import InterceptResult, apply_mode_event, intercept as shortcut_intercept
@@ -1739,6 +1771,8 @@ def _presentation_kind_from_plan(intent):
     caps = _caps_in_plan(intent)
     if "clock.now" in caps:
         return "text", "time_text"
+    if "map.route.estimate" in caps:
+        return "text", "answer_text"
     if "math.calculate" in caps:
         return "text", "answer_text"
     if "chat.smalltalk" in caps:
@@ -6194,6 +6228,186 @@ def admin_wake_agent_fleet(handle: str):
     result = wake_fleet_agent(handle, text=text)
     if not result.get("ok"):
         return jsonify(result), 400
+    return jsonify(result), 202
+
+
+@app.route("/api/v1/admin/releases", methods=["GET"])
+def admin_list_releases():
+    """Deploy tab: release candidates (git → test → approve → deploy)."""
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    limit = request.args.get("limit", 50, type=int) or 50
+    status = str(request.args.get("status") or "").strip()
+    return jsonify(list_releases(limit=limit, status=status))
+
+
+@app.route("/api/v1/admin/releases/sync", methods=["POST"])
+def admin_sync_releases():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    return jsonify(sync_releases_from_chat())
+
+
+@app.route("/api/v1/admin/releases/<int:release_id>", methods=["GET"])
+def admin_get_release(release_id: int):
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    row = get_release(release_id)
+    if not row:
+        return jsonify(ok=False, error="release not found"), 404
+    return jsonify(ok=True, release=row)
+
+
+@app.route("/api/v1/admin/releases/<int:release_id>/approve", methods=["POST"])
+def admin_approve_release(release_id: int):
+    """Deploy Authority: approve and wake @deploy."""
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
+    note = str(data.get("note") or "").strip()
+    result = approve_release(release_id, by="boss", note=note)
+    if not result.get("ok"):
+        return jsonify(result), 400
+    return jsonify(result), 202
+
+
+@app.route("/api/v1/admin/releases/<int:release_id>/reject", methods=["POST"])
+def admin_reject_release(release_id: int):
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
+    note = str(data.get("note") or "").strip()
+    result = reject_release(release_id, by="boss", note=note)
+    if not result.get("ok"):
+        return jsonify(result), 400
+    return jsonify(result)
+
+
+@app.route("/api/v1/admin/agent_chat", methods=["GET"])
+def admin_get_agent_chat():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    since_id = request.args.get("since_id", 0, type=int) or 0
+    since_ack_at = request.args.get("since_ack_at", 0.0, type=float) or 0.0
+    view = get_chat_view(since_id=since_id, since_ack_at=since_ack_at)
+    status = 200 if view.get("ok") else 503
+    return jsonify(view), status
+
+
+@app.route("/api/v1/admin/agent_chat/send", methods=["POST"])
+def admin_post_agent_chat_send():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error="JSON object required"), 400
+    body = str(data.get("body") or data.get("text") or "").strip()
+    try:
+        msg = send_boss_message(body)
+    except AgentChatError as err:
+        return jsonify(ok=False, error=str(err)), 400
+    return jsonify(ok=True, message=msg)
+
+
+@app.route("/api/v1/admin/agent_chat/ack", methods=["POST"])
+def admin_post_agent_chat_ack():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error="JSON object required"), 400
+    raw_id = data.get("message_id") if data.get("message_id") is not None else data.get("id")
+    try:
+        message_id = int(raw_id)
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="message_id is required"), 400
+    ack_type = str(data.get("ack_type") or "ok")
+    try:
+        msg = ack_boss_message(message_id, ack_type=ack_type)
+    except AgentChatError as err:
+        return jsonify(ok=False, error=str(err)), 400
+    return jsonify(ok=True, message=msg)
+
+
+@app.route("/api/v1/admin/agent_chat/unack", methods=["POST"])
+def admin_post_agent_chat_unack():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error="JSON object required"), 400
+    raw_id = data.get("message_id") if data.get("message_id") is not None else data.get("id")
+    try:
+        message_id = int(raw_id)
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="message_id is required"), 400
+    try:
+        msg = unack_boss_message(message_id)
+    except AgentChatError as err:
+        return jsonify(ok=False, error=str(err)), 400
+    return jsonify(ok=True, message=msg)
+
+
+@app.route("/api/v1/admin/agent_chat/promote", methods=["POST"])
+def admin_post_agent_chat_promote():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error="JSON object required"), 400
+    text = str(data.get("text") or data.get("body") or "").strip()
+    target_handle = str(data.get("target_handle") or data.get("handle") or "").strip() or None
+    category = str(data.get("category") or "").strip() or None
+    background_ids_raw = data.get("background_message_ids") or data.get("message_ids") or []
+    background_ids: list[int] = []
+    if isinstance(background_ids_raw, list):
+        for item in background_ids_raw:
+            try:
+                background_ids.append(int(item))
+            except (TypeError, ValueError):
+                continue
+    anchor_raw = data.get("anchor_message_id")
+    anchor_id = None
+    if anchor_raw is not None:
+        try:
+            anchor_id = int(anchor_raw)
+        except (TypeError, ValueError):
+            anchor_id = None
+    chat_view = get_chat_view(since_id=0)
+    messages = chat_view.get("messages") or []
+    if not isinstance(messages, list):
+        messages = []
+    if background_ids:
+        background = related_background_from_messages(messages, message_ids=background_ids)
+    else:
+        background = related_background_from_messages(
+            messages,
+            anchor_id=anchor_id,
+            limit=8,
+        )
+    try:
+        result = promote_chat_to_dev_task(
+            task_text=text,
+            target_handle=target_handle,
+            category=category,
+            background_messages=background,
+        )
+    except AgentChatError as err:
+        return jsonify(ok=False, error=str(err)), 400
     return jsonify(result), 202
 
 

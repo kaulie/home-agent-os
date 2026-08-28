@@ -6,6 +6,7 @@ PROBLEM_TYPES: dict[str, str] = {
     "intent_understanding": "意图理解不准确",
     "execution_error": "执行报错",
     "slow_response": "响应速度太慢",
+    "missing_capability": "能力缺失",
     "other": "其他",
 }
 
