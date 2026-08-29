@@ -7,5 +7,6 @@
 # 正文（可选）：
 #
 #
+# agent: <handle>   # 必填：controller | ui | brain | capability | …
 # Refs: #<issue>
 # Scopes: <scope-a>, <scope-b>   # 仅跨 primary 时填写

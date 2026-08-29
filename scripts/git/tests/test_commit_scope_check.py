@@ -12,6 +12,10 @@ if str(SCRIPTS) not in sys.path:
 import commit_scope_check as csc  # noqa: E402
 
 
+def _msg(subject: str, agent: str = "controller") -> str:
+    return f"{subject}\n\nagent: {agent}"
+
+
 class CommitScopeCheckTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -19,12 +23,12 @@ class CommitScopeCheckTests(unittest.TestCase):
 
     def test_single_scope_ok(self) -> None:
         files = ["server/home_brain.py", "server/dev_task.py", "docs/agent-roster.md"]
-        ok, msg = csc.analyze(files, "feat: fleet api", rules=self.rules)
+        ok, msg = csc.analyze(files, _msg("feat(server): fleet api"), rules=self.rules)
         self.assertTrue(ok, msg)
 
     def test_multi_scope_rejected(self) -> None:
         files = ["server/dev_task.py", "character-service/geometry.py"]
-        ok, msg = csc.analyze(files, "mixed work", rules=self.rules)
+        ok, msg = csc.analyze(files, _msg("feat(server): mixed work"), rules=self.rules)
         self.assertFalse(ok)
         self.assertIn("character-service", msg)
         self.assertIn("server", msg)
@@ -33,21 +37,21 @@ class CommitScopeCheckTests(unittest.TestCase):
         files = ["server/dev_task.py", "ios/HomeAgentDev/HomeAgentDev/DevStore.swift"]
         ok, _ = csc.analyze(
             files,
-            "feat(ios-dev): Fleet UI\n\nScopes: server, ios-dev",
+            "feat(ios-dev): Fleet UI\n\nScopes: server, ios-dev\nagent: ui",
             rules=self.rules,
         )
         self.assertTrue(ok)
 
     def test_linked_group_allowed(self) -> None:
         files = ["agent-bridge/src/agent_bridge/server.py", "chat/mentions.py"]
-        ok, _ = csc.analyze(files, "fleet chat handles", rules=self.rules)
+        ok, _ = csc.analyze(files, _msg("feat(agent-bridge): fleet chat handles"), rules=self.rules)
         self.assertTrue(ok)
 
     def test_issue_branch_and_message_allowed(self) -> None:
         files = ["server/dev_task.py", "ios/HomeAgentDev/HomeAgentDev/DevStore.swift"]
         ok, _ = csc.analyze(
             files,
-            "fix(ios-dev): Fleet 页展示状态\n\nRefs: #42",
+            "fix(ios-dev): Fleet 页展示状态\n\nRefs: #42\nagent: ui",
             rules=self.rules,
             branch="feature/42-fleet-tab",
         )
@@ -61,19 +65,37 @@ class CommitMsgFormatTests(unittest.TestCase):
 
     def test_valid_subject(self) -> None:
         ok, msg = csc.validate_format(
-            "feat(server): 新增 agent_fleet API",
+            _msg("feat(server): 新增 agent_fleet API", "brain"),
             rules=self.rules,
             staged=["server/agent_fleet.py"],
         )
         self.assertTrue(ok, msg)
 
+    def test_missing_agent_footer(self) -> None:
+        ok, detail = csc.validate_format(
+            "feat(server): 新增 agent_fleet API",
+            rules=self.rules,
+            staged=["server/agent_fleet.py"],
+        )
+        self.assertFalse(ok)
+        self.assertIn("agent:", detail)
+
+    def test_unknown_agent_handle(self) -> None:
+        ok, detail = csc.validate_format(
+            _msg("feat(server): 新增 agent_fleet API", "nobody"),
+            rules=self.rules,
+            staged=["server/agent_fleet.py"],
+        )
+        self.assertFalse(ok)
+        self.assertIn("nobody", detail)
+
     def test_invalid_subject(self) -> None:
-        ok, _ = csc.validate_format("update stuff", rules=self.rules)
+        ok, _ = csc.validate_format(_msg("update stuff"), rules=self.rules)
         self.assertFalse(ok)
 
     def test_scope_mismatch(self) -> None:
         ok, detail = csc.validate_format(
-            "feat(server): wrong scope title",
+            _msg("feat(server): wrong scope title"),
             rules=self.rules,
             staged=["ios/HomeAgentDev/Foo.swift"],
         )
@@ -82,7 +104,7 @@ class CommitMsgFormatTests(unittest.TestCase):
 
     def test_docs_scope_for_docs_only(self) -> None:
         ok, _ = csc.validate_format(
-            "docs(agent-coordination): 更新 Fleet 说明",
+            _msg("docs(agent-coordination): 更新 Fleet 说明", "coordinator"),
             rules=self.rules,
             staged=["docs/agent-coordination.md"],
         )
@@ -90,7 +112,7 @@ class CommitMsgFormatTests(unittest.TestCase):
 
     def test_repo_scope_for_hooks(self) -> None:
         ok, _ = csc.validate_format(
-            "chore(repo): 增加 commit message 校验",
+            _msg("chore(repo): 增加 commit message 校验"),
             rules=self.rules,
             staged=["scripts/git/commit_scope_check.py"],
         )
@@ -100,7 +122,7 @@ class CommitMsgFormatTests(unittest.TestCase):
         files = ["server/dev_task.py", "character-service/geometry.py"]
         ok, _ = csc.analyze(
             files,
-            "fix (#42)",
+            _msg("fix(server): linked (#42)"),
             rules=self.rules,
             branch="main",
         )

@@ -22,7 +22,8 @@
     { "name": "docs", "prefixes": ["docs/"] },
     { "name": "cursor", "prefixes": [".cursor/"] },
     { "name": "git-hooks", "prefixes": [".githooks/", "scripts/git/"] },
-    { "name": "repo-meta", "prefixes": ["README.md", ".gitignore", "Makefile"] }
+    { "name": "repo-meta", "prefixes": ["README.md", ".gitignore", "Makefile"] },
+    { "name": "config", "prefixes": ["config/", "tools/"] }
   ],
   "linked_primary_groups": [
     ["agent-bridge", "chat", "server"],

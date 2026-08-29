@@ -34,6 +34,7 @@
 | `admin` | `admin/` |
 | `local-rt` | `local-rt/` |
 | `docs` | `docs/` |
+| `config` | `config/`、`tools/`（companion；标题也可用 `repo`） |
 | `repo` | `.githooks/`、`scripts/git/`、根目录元文件 |
 
 `docs/`、`.cursor/` 可与任一 primary **同次提交**；标题 scope 仍写本次主改动所在的 primary。
@@ -42,7 +43,22 @@
 
 空一行后写原因 / 风险 / 验收方式。每行建议 ≤ 72 字。
 
-## 页脚（可选）
+## 页脚
+
+### `agent:`（必填）
+
+```text
+agent: <handle>
+```
+
+| 字段 | 说明 |
+|------|------|
+| 标签 | 小写 `agent:`（无 `@`） |
+| `<handle>` | Fleet 名册：`controller` · `ui` · `brain` · `capability` · `runtime` · `quality` · `coordinator` · `deploy` · `sre` · `dba`（偶发 `boss`） |
+
+谁改的代码就写谁的 handle。commit-msg hook 缺此行或 handle 未知会拒提交。
+
+### 其它（可选）
 
 ```text
 Refs: #42
@@ -63,6 +79,7 @@ feat(server): 新增 agent_fleet 管理 API
 
 Brain 代理本机 bridge，供 HomeAgentDev Fleet 页调用。
 
+agent: brain
 Refs: #42
 ```
 
@@ -70,12 +87,16 @@ Refs: #42
 
 ```text
 docs(agent-coordination): 登记 Agent Fleet 单 IDE 模式
+
+agent: coordinator
 ```
 
 **修 hook / 脚本：**
 
 ```text
 chore(repo): 增加 commit scope 与 message 校验
+
+agent: controller
 ```
 
 **跨层同一 issue（分支名也需含 issue id，如 `feature/42-fleet`）：**
@@ -83,6 +104,7 @@ chore(repo): 增加 commit scope 与 message 校验
 ```text
 fix(ios-dev): Fleet 页展示 bridge 运行状态
 
+agent: ui
 Refs: #42
 Scopes: server, ios-dev
 ```
@@ -90,6 +112,7 @@ Scopes: server, ios-dev
 ## 禁止
 
 - 第一行无 `type(scope):`（Merge / Revert 除外）
+- 缺少页脚 `agent: <handle>`
 - 一次提交混入无关 primary（如 `server` + `character-service`）且未写 `Scopes:` / `Refs`
 - 用 `wip`、`update`、`fix bug` 等空洞摘要
 

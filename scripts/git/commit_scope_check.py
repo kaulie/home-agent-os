@@ -35,7 +35,23 @@ SCOPES_INLINE_RE = re.compile(r"\[scopes?:\s*([^\]]+)\]", re.IGNORECASE)
 SCOPES_FOOTER_RE = re.compile(r"^Scopes:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
 ISSUE_RE = re.compile(r"(?:\(#|#|fixes\s+#|issue\s+#?)(\d+)\b", re.IGNORECASE)
 REFS_FOOTER_RE = re.compile(r"^Refs:\s*#?(\d+)\b", re.IGNORECASE | re.MULTILINE)
+AGENT_FOOTER_RE = re.compile(r"^agent:\s*(?P<handle>[a-z0-9-]+)\s*$", re.IGNORECASE | re.MULTILINE)
 BRANCH_ISSUE_RE = re.compile(r"(?:^|[/_-])(?:issue[-_]?)?(\d+)(?:[/_-]|$)", re.IGNORECASE)
+KNOWN_AGENT_HANDLES = frozenset(
+    {
+        "controller",
+        "coordinator",
+        "brain",
+        "runtime",
+        "ui",
+        "capability",
+        "quality",
+        "deploy",
+        "sre",
+        "dba",
+        "boss",
+    }
+)
 
 COMMIT_TYPES = ("feat", "fix", "docs", "refactor", "test", "chore", "deploy", "perf")
 SUBJECT_RE = re.compile(
@@ -158,6 +174,36 @@ def _format_help(*lines: str) -> str:
     return "\n".join(lines)
 
 
+def parse_agent_handle(message: str) -> str | None:
+    match = AGENT_FOOTER_RE.search(message or "")
+    if not match:
+        return None
+    return match.group("handle").lower()
+
+
+def validate_agent_footer(message: str) -> tuple[bool, str]:
+    """Require footer `agent: <handle>` (skip markers bypass format+agent)."""
+    if should_skip_commit(message) or os.environ.get("SKIP_SCOPE_CHECK", "").strip() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return True, ""
+    handle = parse_agent_handle(message)
+    if not handle:
+        return False, _format_help(
+            "commit-msg-check: 缺少页脚 agent: <handle>。",
+            "示例: agent: controller",
+            "规范: docs/git-commit-convention.md",
+        )
+    if handle not in KNOWN_AGENT_HANDLES:
+        return False, _format_help(
+            f"commit-msg-check: 未知 agent handle «{handle}」。",
+            f"可选: {', '.join(sorted(KNOWN_AGENT_HANDLES))}",
+        )
+    return True, ""
+
+
 def validate_format(
     message: str,
     *,
@@ -167,6 +213,10 @@ def validate_format(
     rules = rules or load_rules()
     if should_skip_commit(message):
         return True, ""
+
+    ok_agent, agent_detail = validate_agent_footer(message)
+    if not ok_agent:
+        return False, agent_detail
 
     subject, _body = split_message(message)
     if not subject or subject.startswith("#"):
@@ -197,7 +247,7 @@ def validate_format(
     allowed = known_scopes(rules)
     if commit_type != "docs" and scope not in allowed:
         return False, _format_help(
-            f"commit-msg-check: 未知 scope «{scope}»。",
+            f"commit-msg-check: 未知 scope «{scope}》。",
             f"可选: {', '.join(sorted(allowed))}",
         )
     if commit_type == "docs" and not re.fullmatch(r"[a-z0-9-]+", scope):
@@ -210,7 +260,7 @@ def validate_format(
     primaries = primary_scopes_from_files(staged, rules)
     if len(primaries) == 1:
         primary = next(iter(primaries))
-        meta_scopes = {"docs", "repo", "cursor", "git-hooks", "repo-meta"}
+        meta_scopes = {"docs", "repo", "cursor", "git-hooks", "repo-meta", "config"}
         if scope != primary and scope not in meta_scopes:
             return False, _format_help(
                 "commit-msg-check: 标题 scope 与暂存区 primary 不一致。",
