@@ -81,7 +81,7 @@ enum PickupFeedbackClient {
         if !summary.isEmpty {
             payload["user_summary"] = summary
         } else {
-            payload["user_summary"] = "[拾音终端] \(problemType.label)"
+            payload["user_summary"] = "[Home Mic] \(problemType.label)"
         }
 
         guard let body = try? JSONSerialization.data(withJSONObject: payload) else {

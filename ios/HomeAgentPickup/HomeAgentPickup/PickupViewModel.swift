@@ -43,7 +43,7 @@ final class PickupViewModel: ObservableObject {
             return "需要麦克风权限\n请到 iPhone「设置」里允许本 App 使用麦克风"
         }
         if !isConnected, !lastError.isEmpty {
-            return "暂时连不上拾音服务\n请确认手机和家里 Wi‑Fi 正常"
+            return "暂时连不上 Home Mic\n请确认手机和家里 Wi‑Fi 正常"
         }
         return nil
     }

@@ -61,6 +61,7 @@ private struct MicMainView: View {
                         .padding(.bottom, 24)
                 }
             }
+            .navigationTitle("Home Mic")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

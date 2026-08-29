@@ -26,7 +26,7 @@ struct FeedbackSheetView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("选择问题类型并填写关联 Intent 编号（须与 User Console 该次对话一致）。我们会自动附带拾音现场信息。")
+                    Text("选择问题类型并填写关联 Intent 编号。我们会自动附带 Home Mic 现场信息。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -63,7 +63,7 @@ struct FeedbackSheetView: View {
                 }
 
                 Section("现场快照（将自动提交）") {
-                    LabeledContent("拾音服务", value: model.serverLabel)
+                    LabeledContent("服务", value: model.serverLabel)
                     LabeledContent("TCP", value: model.connectionLabel)
                     LabeledContent("采集", value: model.captureLabel)
                     LabeledContent("模式", value: model.modeLabel)
