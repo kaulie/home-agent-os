@@ -43,6 +43,7 @@ NO_SONG_MSG = "目前只支持按歌曲播放，请说出歌名"
 
 # Longer first: 「的歌曲」 before 「的歌」. Not play-verb prefixes.
 _PLAYLIST_SUFFIXES = ("的歌曲", "的歌")
+_TRAILING_PUNCT = "。．.！!？?，,、；;：:…~～"
 
 _MUSIC_CAPS = frozenset(
     {
@@ -118,7 +119,7 @@ def artist_from_playlist_remainder(remainder: str) -> str:
 
     Does not strip play verbs. Empty artist (remainder is only the suffix) is not this mode.
     """
-    text = str(remainder or "").strip()
+    text = str(remainder or "").strip().rstrip(_TRAILING_PUNCT).strip()
     if not text:
         return ""
     for suffix in _PLAYLIST_SUFFIXES:
@@ -478,6 +479,27 @@ def search_title_then_artist(
     return picked
 
 
+def search_artist_only(
+    *,
+    artist: str,
+    user_input: str | None = None,
+) -> dict[str, Any]:
+    singer = str(artist or "").strip()
+    if not singer:
+        raise NeteaseMusicError(NO_SONG_MSG)
+    records = search_records(keyword=singer, user_input=user_input)
+    if not records:
+        raise NeteaseMusicError(f"网易云未找到歌手「{singer}」的歌")
+    picked = pick_search_record_by_artist(records, artist=singer, song="")
+    log.info(
+        "ncm artist-only pick name=%r artist=%r id=%s",
+        _record_name(picked),
+        singer,
+        picked.get("originalId"),
+    )
+    return picked
+
+
 def play_record(record: dict[str, Any]) -> str:
     encrypted = str(record.get("id") or "").strip()
     original = record.get("originalId")
@@ -517,11 +539,11 @@ def _control(cap: str) -> str:
 
 def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[str, Any]]:
     t0 = time.perf_counter()
-    song = _str_param(params, "song")
-    artist = _str_param(params, "artist")
+    song = str(_str_param(params, "song") or "").strip().rstrip(_TRAILING_PUNCT).strip()
+    artist = str(_str_param(params, "artist") or "").strip().rstrip(_TRAILING_PUNCT).strip()
     user_input = _str_param(params, "user_input")
     intent_id = _str_param(params, "intent_id") or "-"
-    if not song:
+    if not song and not artist:
         raise NeteaseMusicError(NO_SONG_MSG)
     playlist_artist = artist_from_playlist_remainder(song)
     t_cache = time.perf_counter()
@@ -529,12 +551,14 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
         cached = _cached_record(song=song, artist="")
         if cached and not _names_equal(_record_name(cached), song):
             cached = None
-    else:
+    elif song:
         cached = _cached_record(song=song, artist=artist)
+    else:
+        cached = _cached_record(song="", artist=artist)
     cache_ms = int(round((time.perf_counter() - t_cache) * 1000))
     search_ms = 0
     if cached:
-        log.info("ncm_songs hit name=%s artist=%s", song, artist or "-")
+        log.info("ncm_songs hit name=%s artist=%s", song or "-", artist or "-")
         record = cached
         cache_label = "hit"
     else:
@@ -543,6 +567,11 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
             record = search_title_then_artist(
                 song=song,
                 artist=playlist_artist,
+                user_input=user_input or None,
+            )
+        elif not song and artist:
+            record = search_artist_only(
+                artist=artist,
                 user_input=user_input or None,
             )
         else:

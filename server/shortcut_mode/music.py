@@ -68,6 +68,7 @@ _PLAY_PREFIXES = (
 _PLAYLIST_SUFFIXES = ("的歌曲", "的歌")
 _BARE_VERBS_ANY_REMAINDER = ("播放", "放")
 _BARE_VERBS_PLAYLIST_ONLY = ("听", "播")
+_TRAILING_PUNCT = "。．.！!？?，,、；;：:…~～"
 
 _COURTESY_PREFIXES = (
     "请帮我",
@@ -130,6 +131,10 @@ def _remainder_after_play_prefix(text: str) -> tuple[str, str]:
     return "", text
 
 
+def _rstrip_punct(text: str) -> str:
+    return str(text or "").strip().rstrip(_TRAILING_PUNCT).strip()
+
+
 def _playlist_remainder(remainder: str) -> bool:
     """True when remainder is 「xxx的歌/歌曲」 with a non-empty xxx."""
     text = str(remainder or "").strip()
@@ -146,7 +151,7 @@ def match_control(text: str) -> MusicControlHit | None:
     utterance = str(text or "").strip()
     if not utterance:
         return None
-    stripped = _lstrip_courtesy(utterance)
+    stripped = _rstrip_punct(_lstrip_courtesy(utterance))
     if not stripped:
         return None
     for phrase, capability in _CONTROL_EXACT:
@@ -168,12 +173,13 @@ def match_play(text: str) -> MusicPlayHit | None:
     if matches_any(utterance, _EXCLUDE):
         return None
 
-    stripped = _lstrip_courtesy(utterance)
+    stripped = _rstrip_punct(_lstrip_courtesy(utterance))
     if not stripped:
         return None
 
     strong = matches_any(utterance, STRONG_TRIGGERS)
     prefix, remainder = _remainder_after_play_prefix(stripped)
+    remainder = _rstrip_punct(remainder)
 
     if prefix in _BARE_VERBS_ANY_REMAINDER:
         if not remainder:

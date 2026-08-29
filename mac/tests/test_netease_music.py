@@ -96,10 +96,42 @@ class NeteaseMusicTests(unittest.TestCase):
                     )
                 self.assertIn("JSON", str(ctx.exception))
 
-    def test_play_requires_song(self) -> None:
+    def test_play_requires_song_or_artist(self) -> None:
         with self.assertRaises(nm.NeteaseMusicError) as ctx:
-            nm.play_from_params({"artist": "陈奕迅"})
+            nm.play_from_params({})
         self.assertIn("请说出歌名", str(ctx.exception))
+
+    def test_play_artist_only_searches_keyword_artist(self) -> None:
+        records = [
+            {
+                "originalId": 1,
+                "id": "encA",
+                "name": "十年",
+                "artists": [{"name": "路人"}],
+            },
+            {
+                "originalId": 66842,
+                "id": "1B8FCF799FD5895F6F0586C7D19A0A3B",
+                "name": "浮夸",
+                "artists": [{"name": "陈奕迅"}],
+            },
+        ]
+        payload = json.dumps({"code": 200, "data": {"records": records}}, ensure_ascii=False)
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if "search" in cmd:
+                return _completed(payload)
+            return _completed(PLAY_STDOUT)
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm, "enter_music_mode"):
+                    nm.play_from_params({"artist": "陈奕迅"})
+        keywords = [c[c.index("--keyword") + 1] for c in calls if "search" in c]
+        self.assertEqual(keywords, ["陈奕迅"])
+        self.assertEqual(ncm_store.get_song(66842)["name"], "浮夸")
 
     def test_search_then_play_and_cache(self) -> None:
         calls: list[list[str]] = []

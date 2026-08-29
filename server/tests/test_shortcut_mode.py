@@ -166,7 +166,13 @@ class ShortcutModeTest(unittest.TestCase):
                 self.assertEqual(ic["song"], song)
                 self.assertNotIn("artist", ic)
 
-    def test_music_listen_bare_ting_without_playlist_is_not_play(self) -> None:
+    def test_music_trailing_punct_playlist(self) -> None:
+        ic = self._music_ic("听刘德华的歌。")
+        self.assertEqual(ic["song"], "刘德华的歌")
+        ic = self._music_ic("听歌曲。")
+        self.assertNotIn("song", ic)
+        ic = self._music_ic("播周杰伦的歌！")
+        self.assertEqual(ic["song"], "周杰伦的歌")
         self.assertIsNone(intercept("听天气预报"))
         self.assertIsNone(intercept("听十年"))
         self.assertIsNone(intercept("播新闻"))
