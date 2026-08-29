@@ -46,6 +46,15 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         'typical_triggers': ['暂停'],
         'do_not_dispatch': ['选歌', '蓝牙连接', 'TTS'],
     },
+    'music.resume': {
+        'kind': 'action',
+        'group': 'music',
+        'service_id': 'netease.music',
+        'role': '继续播放器',
+        'planner_recognize': '从暂停处继续刚才那首',
+        'typical_triggers': ['继续播放'],
+        'do_not_dispatch': ['选歌', '蓝牙连接', 'TTS'],
+    },
     'music.stop': {
         'kind': 'action',
         'group': 'music',

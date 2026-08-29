@@ -2791,6 +2791,38 @@ class HomeBrainPersistTest(unittest.TestCase):
         hb._REGISTERED_edges = brain_db.registration_ids()
         hb.rebuild_capability_maps()
 
+    def test_music_play_prefers_mac_over_android_issuer(self) -> None:
+        music_svc = {
+            "service_id": "netease.music",
+            "display_name": "网易云音乐",
+            "capabilities": [{"capability_id": "music.play"}],
+        }
+        brain_db.put_registration(
+            {
+                "participant_id": "android-music",
+                "device_type": "android",
+                "roles": ["runtime", "intent_source"],
+                "services": [music_svc],
+            }
+        )
+        brain_db.put_registration(
+            {
+                "participant_id": "mac-music",
+                "device_type": "mac",
+                "client_hint": "living-room-mac",
+                "roles": ["runtime"],
+                "services": [music_svc],
+            }
+        )
+        self._heartbeat("android-music")
+        self._heartbeat("mac-music")
+        hb._REGISTERED_edges = brain_db.registration_ids()
+        hb.rebuild_capability_maps()
+        step = {"step": 1, "capability": "music.play"}
+        intent = {"text": "播放陈奕迅的十年", "edge_id": "android-music"}
+        assigned = hb._assign_runtime_edge_id(step, "music.play", intent)
+        self.assertEqual(assigned, "mac-music")
+
     def _register_voice_runtime(
         self, pid: str, *, with_speak: bool = True, with_echo: bool = True
     ) -> None:

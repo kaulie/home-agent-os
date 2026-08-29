@@ -2919,6 +2919,8 @@ def online_capability_providers(capability_id):
                         "service_id": sid,
                         "display_name": _provider_display_name(svc, view, edge_id),
                         "edge_name": str(view.get("display_name") or "").strip(),
+                        "device_type": str(view.get("device_type") or "").strip(),
+                        "client_hint": str(view.get("client_hint") or "").strip(),
                     }
                 )
     return providers
@@ -2955,10 +2957,28 @@ def _ambiguous_capability_edge_msg(providers):
     )
 
 
-def _prefer_provider(candidates, intent, preferred_edge_id=None):
+def _is_mac_runtime_row(row):
+    dt = str((row or {}).get("device_type") or "").strip().lower()
+    if dt == "mac":
+        return True
+    hint = str((row or {}).get("client_hint") or "").strip().lower()
+    return "laptop" in hint or hint in ("living-room-mac", "livingroom-mac")
+
+
+def _prefer_provider(candidates, intent, preferred_edge_id=None, capability_id=None):
     rows = [row for row in (candidates or []) if isinstance(row, dict)]
     if not rows:
         return None
+    cid = str(capability_id or "").strip()
+    if cid.startswith("music."):
+        mac_rows = [row for row in rows if _is_mac_runtime_row(row)]
+        if mac_rows:
+            pref = str(preferred_edge_id or "").strip()
+            if pref:
+                for row in mac_rows:
+                    if str(row.get("edge_id") or "").strip() == pref:
+                        return row
+            return mac_rows[0]
     issuer = _issuer_participant_id(intent)
     if issuer:
         for row in rows:
@@ -3083,7 +3103,9 @@ def _assign_runtime_edge_id(step, cid, intent=None):
         return str((row or {}).get("edge_id") or "").strip()
 
     def _pick(rows):
-        return _prefer_provider(rows, intent, preferred_edge_id=existing)
+        return _prefer_provider(
+            rows, intent, preferred_edge_id=existing, capability_id=cid
+        )
 
     # Named instance is matched against every online ad. LLM assigned_edge_id
     # is only a preference among those rows — do not pin to an edge that does
