@@ -11,6 +11,7 @@ import logging
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -185,12 +186,40 @@ def _cached_record(*, song: str, artist: str) -> dict[str, Any] | None:
     return rec if isinstance(rec, dict) else None
 
 
-def search_record(*, song: str, artist: str | None = None) -> dict[str, Any]:
-    keyword = search_keyword(song=song, artist=artist)
-    payload = _run_ncm(
-        ["search", "song", "--keyword", keyword, "--limit", "1"],
-        timeout_sec=SEARCH_TIMEOUT_SEC,
+def _unknown_user_input_flag(err: Exception) -> bool:
+    msg = str(err or "").lower()
+    return (
+        "unknown option" in msg
+        or "unknown argument" in msg
+        or "unexpected argument" in msg
+        or "未识别" in msg
+        or "未返回 json" in msg
     )
+
+
+def search_record(
+    *,
+    song: str,
+    artist: str | None = None,
+    user_input: str | None = None,
+) -> dict[str, Any]:
+    keyword = search_keyword(song=song, artist=artist)
+    argv = ["search", "song"]
+    used_user_input = bool(str(user_input or "").strip())
+    if used_user_input:
+        argv.extend(["--userInput", str(user_input).strip()])
+    argv.extend(["--keyword", keyword, "--limit", "1"])
+    try:
+        payload = _run_ncm(argv, timeout_sec=SEARCH_TIMEOUT_SEC)
+    except NeteaseMusicError as e:
+        if used_user_input and _unknown_user_input_flag(e):
+            log.info("ncm-cli --userInput unsupported; retry keyword only")
+            payload = _run_ncm(
+                ["search", "song", "--keyword", keyword, "--limit", "1"],
+                timeout_sec=SEARCH_TIMEOUT_SEC,
+            )
+        else:
+            raise
     code = payload.get("code")
     if code not in (200, None, "200") and code != 200:
         try:
@@ -240,7 +269,10 @@ def _control(cap: str) -> str:
     argv = _CONTROL_CMD.get(cap)
     if not argv:
         raise NeteaseMusicError(f"unsupported capability {cap}")
+    t0 = time.perf_counter()
     payload = _run_ncm(list(argv), timeout_sec=CONTROL_TIMEOUT_SEC)
+    total_ms = int(round((time.perf_counter() - t0) * 1000))
+    log.info("%s ncm_cli_ms=%s total_ms=%s", cap, total_ms, total_ms)
     if payload.get("success") is not True:
         msg = str(payload.get("message") or "").strip()
         raise NeteaseMusicError(msg or f"{cap} 失败")
@@ -249,24 +281,56 @@ def _control(cap: str) -> str:
 
 
 def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[str, Any]]:
+    t0 = time.perf_counter()
     song = _str_param(params, "song")
     artist = _str_param(params, "artist")
+    user_input = _str_param(params, "user_input")
+    intent_id = _str_param(params, "intent_id") or "-"
     if not song:
         raise NeteaseMusicError(NO_SONG_MSG)
+    t_cache = time.perf_counter()
     cached = _cached_record(song=song, artist=artist)
+    cache_ms = int(round((time.perf_counter() - t_cache) * 1000))
+    search_ms = 0
     if cached:
         log.info("ncm_songs hit name=%s artist=%s", song, artist or "-")
         record = cached
+        cache_label = "hit"
     else:
-        record = search_record(song=song, artist=artist or None)
+        t_search = time.perf_counter()
+        record = search_record(
+            song=song,
+            artist=artist or None,
+            user_input=user_input or None,
+        )
+        search_ms = int(round((time.perf_counter() - t_search) * 1000))
+        cache_label = "miss"
+    t_play = time.perf_counter()
     msg = play_record(record)
+    play_ms = int(round((time.perf_counter() - t_play) * 1000))
     try:
         oid = upsert_record(record)
         mark_played(oid)
     except NcmSongsError as e:
         log.warning("ncm_songs write failed: %s", e)
     enter_music_mode(trigger_text=f"{song} {artist}".strip())
-    return msg, {}
+    total_ms = int(round((time.perf_counter() - t0) * 1000))
+    timing = {
+        "cache": cache_ms,
+        "search": search_ms,
+        "play": play_ms,
+        "total": total_ms,
+    }
+    log.info(
+        "music.play intent=%s cache_ms=%s search_ms=%s play_ms=%s total_ms=%s cache=%s",
+        intent_id,
+        cache_ms,
+        search_ms,
+        play_ms,
+        total_ms,
+        cache_label,
+    )
+    return msg, {"timing": timing}
 
 
 def run_from_params(

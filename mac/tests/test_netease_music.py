@@ -109,7 +109,11 @@ class NeteaseMusicTests(unittest.TestCase):
                 with patch.object(nm, "enter_music_mode"):
                     msg, outputs = nm.play_from_params({"song": "十年", "artist": "陈奕迅"})
                     self.assertIn("66842", msg)
-                    self.assertEqual(outputs, {})
+                    self.assertEqual(
+                        set(outputs.get("timing") or {}),
+                        {"cache", "search", "play", "total"},
+                    )
+                    self.assertGreaterEqual(outputs["timing"]["search"], 0)
                     self.assertEqual(
                         calls[0][1:5],
                         ["search", "song", "--keyword", "十年 陈奕迅"],
@@ -121,8 +125,9 @@ class NeteaseMusicTests(unittest.TestCase):
                     self.assertIsNotNone(got["played_at"])
 
                     calls.clear()
-                    msg2, _ = nm.play_from_params({"song": "十年", "artist": "陈奕迅"})
+                    msg2, outputs2 = nm.play_from_params({"song": "十年", "artist": "陈奕迅"})
                     self.assertIn("66842", msg2)
+                    self.assertEqual(outputs2["timing"]["search"], 0)
                     self.assertTrue(any("play" in c for c in calls))
                     self.assertFalse(any("search" in c for c in calls))
 
@@ -154,6 +159,68 @@ class NeteaseMusicTests(unittest.TestCase):
                     nm.run_from_params("music.next", {})
                     nm.run_from_params("music.previous", {})
         self.assertEqual(seen, ["pause", "resume", "stop", "next", "prev"])
+
+    def test_search_user_input_and_keyword_argv(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if "search" in cmd:
+                return _completed(SEARCH_JSON)
+            return _completed(PLAY_STDOUT)
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm, "enter_music_mode"):
+                    nm.play_from_params(
+                        {
+                            "song": "陈奕迅的十年",
+                            "user_input": "播放陈奕迅的十年",
+                        }
+                    )
+        search = calls[0]
+        self.assertEqual(
+            search[1:],
+            [
+                "search",
+                "song",
+                "--userInput",
+                "播放陈奕迅的十年",
+                "--keyword",
+                "陈奕迅的十年",
+                "--limit",
+                "1",
+            ],
+        )
+
+    def test_search_user_input_falls_back_to_keyword(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if "--userInput" in cmd:
+                return _completed(
+                    '{"success": false, "message": "unknown option \'--userInput\'"}',
+                    returncode=1,
+                )
+            if "search" in cmd:
+                return _completed(SEARCH_JSON)
+            return _completed(PLAY_STDOUT)
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm, "enter_music_mode"):
+                    nm.play_from_params(
+                        {"song": "十年", "user_input": "播放十年"}
+                    )
+        self.assertTrue(any("--userInput" in c for c in calls))
+        keyword_only = next(
+            c for c in calls if "search" in c and "--userInput" not in c
+        )
+        self.assertEqual(
+            keyword_only[1:],
+            ["search", "song", "--keyword", "十年", "--limit", "1"],
+        )
 
     def test_unavailable_without_cli(self) -> None:
         with patch.object(nm, "ncm_cli_bin", return_value=None):
