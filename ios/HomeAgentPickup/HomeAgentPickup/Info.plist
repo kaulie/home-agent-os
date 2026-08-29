@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Home Mic 需要持续采集麦克风音频并推送到家里 HomeAgent，本机不播放声音。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Home Mic 需要访问相册，以便在反馈里附上问题截图。</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchScreen</key>

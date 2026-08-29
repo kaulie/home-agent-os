@@ -57,7 +57,8 @@ enum PickupFeedbackClient {
         participantId: String,
         problemType: PickupFeedbackProblemType,
         userSummary: String,
-        clientSnapshot: [String: Any]
+        clientSnapshot: [String: Any],
+        attachments: [PickupFeedbackAttachment] = []
     ) async -> PickupFeedbackResult {
         guard intentId > 0 else {
             return PickupFeedbackResult(ok: false, issueId: nil, message: "", error: "请填写有效的 Intent 编号")
@@ -82,6 +83,9 @@ enum PickupFeedbackClient {
             payload["user_summary"] = summary
         } else {
             payload["user_summary"] = "[Home Mic] \(problemType.label)"
+        }
+        if !attachments.isEmpty {
+            payload["attachments"] = attachments.map { $0.apiPayload() }
         }
 
         guard let body = try? JSONSerialization.data(withJSONObject: payload) else {

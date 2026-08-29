@@ -264,18 +264,39 @@ final class PickupViewModel: ObservableObject {
         problemType: PickupFeedbackProblemType,
         intentIdText: String,
         userSummary: String,
+        attachments: [PendingPickupFeedbackAttachment] = [],
         completion: @escaping (Bool, String) -> Void
     ) {
         let intentId = Int(intentIdText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let participantId = PickupSettings.feedbackParticipantId
         feedbackBusy = true
         Task {
+            var uploaded: [PickupFeedbackAttachment] = []
+            if !attachments.isEmpty {
+                for (index, pending) in attachments.enumerated() {
+                    do {
+                        let item = try await PickupAssetUpload.uploadFeedbackImage(
+                            pending,
+                            brainURL: PickupSettings.brainIntentURL,
+                            intentId: String(intentId),
+                            participantId: participantId
+                        )
+                        uploaded.append(item)
+                    } catch {
+                        feedbackBusy = false
+                        completion(false, "图片 \(index + 1) 上传失败：\(error.localizedDescription)")
+                        return
+                    }
+                }
+            }
             let result = await PickupFeedbackClient.submit(
                 brainURL: PickupSettings.brainIntentURL,
                 intentId: intentId,
-                participantId: PickupSettings.feedbackParticipantId,
+                participantId: participantId,
                 problemType: problemType,
                 userSummary: userSummary,
-                clientSnapshot: clientSnapshot()
+                clientSnapshot: clientSnapshot(),
+                attachments: uploaded
             )
             feedbackBusy = false
             if result.ok {

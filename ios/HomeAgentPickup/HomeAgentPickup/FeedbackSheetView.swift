@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 struct FeedbackSheetView: View {
@@ -9,7 +10,10 @@ struct FeedbackSheetView: View {
     @State private var detail = ""
     @State private var localError = ""
     @State private var successMessage = ""
+    @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var pendingAttachments: [PendingPickupFeedbackAttachment] = []
 
+    private let maxAttachments = 3
     private var busy: Bool { model.feedbackBusy }
 
     private var canSubmit: Bool {
@@ -26,7 +30,7 @@ struct FeedbackSheetView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("选择问题类型并填写关联 Intent 编号。我们会自动附带 Home Mic 现场信息。")
+                    Text("选择问题类型并填写关联 Intent 编号。可添加照片帮助我们定位问题。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -62,13 +66,46 @@ struct FeedbackSheetView: View {
                     }
                 }
 
-                Section("现场快照（将自动提交）") {
-                    LabeledContent("服务", value: model.serverLabel)
-                    LabeledContent("TCP", value: model.connectionLabel)
-                    LabeledContent("采集", value: model.captureLabel)
-                    LabeledContent("模式", value: model.modeLabel)
-                    if !model.lastError.isEmpty {
-                        Text(model.lastError).font(.footnote).foregroundStyle(.red)
+                Section {
+                    HStack {
+                        Text("照片")
+                        Spacer()
+                        Text("\(pendingAttachments.count)/\(maxAttachments)")
+                            .foregroundStyle(.secondary)
+                    }
+                    if !pendingAttachments.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(pendingAttachments) { pending in
+                                    ZStack(alignment: .topTrailing) {
+                                        Image(uiImage: pending.preview)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 88, height: 88)
+                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        Button {
+                                            pendingAttachments.removeAll { $0.id == pending.id }
+                                            pickerItems = []
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 18))
+                                                .foregroundStyle(.white, Color.black.opacity(0.55))
+                                        }
+                                        .offset(x: 6, y: -6)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if pendingAttachments.count < maxAttachments {
+                        PhotosPicker(
+                            selection: $pickerItems,
+                            maxSelectionCount: maxAttachments - pendingAttachments.count,
+                            matching: .images
+                        ) {
+                            Label("从相册添加照片", systemImage: "photo.on.rectangle")
+                        }
+                        .disabled(busy)
                     }
                 }
 
@@ -88,12 +125,35 @@ struct FeedbackSheetView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("关闭") { dismiss() }
+                        .disabled(busy)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(busy ? "提交中…" : "提交") { submit() }
                         .disabled(!canSubmit || busy)
                 }
             }
+            .onChange(of: pickerItems) { items in
+                Task { await importPickerImages(items) }
+            }
+        }
+    }
+
+    private func importPickerImages(_ items: [PhotosPickerItem]) async {
+        guard !items.isEmpty else { return }
+        var imported: [PendingPickupFeedbackAttachment] = []
+        for item in items {
+            guard pendingAttachments.count + imported.count < maxAttachments else { break }
+            if let data = try? await item.loadTransferable(type: Data.self),
+               let image = UIImage(data: data) {
+                imported.append(.image(image))
+            }
+        }
+        await MainActor.run {
+            pendingAttachments.append(contentsOf: imported)
+            if pendingAttachments.count > maxAttachments {
+                pendingAttachments = Array(pendingAttachments.prefix(maxAttachments))
+            }
+            pickerItems = []
         }
     }
 
@@ -111,7 +171,8 @@ struct FeedbackSheetView: View {
         model.submitFeedback(
             problemType: selected,
             intentIdText: intentIdText,
-            userSummary: summary
+            userSummary: summary,
+            attachments: pendingAttachments
         ) { ok, message in
             if ok {
                 successMessage = message
