@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,7 @@ from mac_edge.ncm_songs import (
 log = logging.getLogger("mac_edge.netease_music")
 
 SEARCH_TIMEOUT_SEC = 30.0
+SEARCH_LIMIT = 10
 PLAY_TIMEOUT_SEC = 20.0
 CONTROL_TIMEOUT_SEC = 15.0
 
@@ -218,6 +220,70 @@ def _cached_record(*, song: str, artist: str) -> dict[str, Any] | None:
     return rec if isinstance(rec, dict) else None
 
 
+def _record_name(record: dict[str, Any]) -> str:
+    return str(record.get("name") or "").strip()
+
+
+def _overlap_keys(*, song: str, keyword: str) -> tuple[str, ...]:
+    keys: list[str] = []
+    for raw in (song, keyword):
+        text = str(raw or "").strip()
+        if text and text not in keys:
+            keys.append(text)
+    return tuple(keys) or ("",)
+
+
+def char_overlap_score(name: str, keyword: str) -> int:
+    """How many characters are shared (multiset), ignoring whitespace."""
+    left = "".join(str(name or "").split())
+    right = "".join(str(keyword or "").split())
+    if not left or not right:
+        return 0
+    return int(sum((Counter(left) & Counter(right)).values()))
+
+
+def pick_search_record(
+    records: list[Any],
+    *,
+    keyword: str,
+    song: str = "",
+) -> dict[str, Any]:
+    """Exact name == keyword/song first; else highest character-overlap score."""
+    dicts = [r for r in records if isinstance(r, dict)]
+    if not dicts:
+        raise NeteaseMusicError("网易云搜索结果无效")
+    keys = _overlap_keys(song=song, keyword=keyword)
+    for rec in dicts:
+        name = _record_name(rec)
+        if name and name in keys:
+            return rec
+    best: dict[str, Any] | None = None
+    best_score = -1
+    for rec in dicts:
+        name = _record_name(rec)
+        score = max(char_overlap_score(name, key) for key in keys)
+        if score > best_score:
+            best = rec
+            best_score = score
+    if best is None:
+        raise NeteaseMusicError("网易云搜索结果无效")
+    return best
+
+
+def cache_search_records(records: list[Any]) -> int:
+    """Upsert every search hit into ncm_songs + ncm_song_index. Returns stored count."""
+    stored = 0
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        try:
+            upsert_record(rec)
+            stored += 1
+        except NcmSongsError as e:
+            log.warning("ncm_songs skip search hit: %s", e)
+    return stored
+
+
 def _unknown_user_input_flag(err: Exception) -> bool:
     msg = str(err or "").lower()
     return (
@@ -240,14 +306,21 @@ def search_record(
     used_user_input = bool(str(user_input or "").strip())
     if used_user_input:
         argv.extend(["--userInput", str(user_input).strip()])
-    argv.extend(["--keyword", keyword, "--limit", "1"])
+    argv.extend(["--keyword", keyword, "--limit", str(SEARCH_LIMIT)])
     try:
         payload = _run_ncm(argv, timeout_sec=SEARCH_TIMEOUT_SEC)
     except NeteaseMusicError as e:
         if used_user_input and _unknown_user_input_flag(e):
             log.info("ncm-cli --userInput unsupported; retry keyword only")
             payload = _run_ncm(
-                ["search", "song", "--keyword", keyword, "--limit", "1"],
+                [
+                    "search",
+                    "song",
+                    "--keyword",
+                    keyword,
+                    "--limit",
+                    str(SEARCH_LIMIT),
+                ],
                 timeout_sec=SEARCH_TIMEOUT_SEC,
             )
         else:
@@ -269,10 +342,17 @@ def search_record(
     if not records:
         label = f"「{song} - {artist}」" if artist else f"「{song}」"
         raise NeteaseMusicError(f"网易云未找到歌曲{label}")
-    first = records[0]
-    if not isinstance(first, dict):
-        raise NeteaseMusicError("网易云搜索结果无效")
-    return first
+    stored = cache_search_records(records)
+    picked = pick_search_record(records, keyword=keyword, song=song)
+    log.info(
+        "ncm search keyword=%r hits=%s cached=%s picked=%r id=%s",
+        keyword,
+        len(records),
+        stored,
+        _record_name(picked),
+        picked.get("originalId"),
+    )
+    return picked
 
 
 def play_record(record: dict[str, Any]) -> str:
@@ -344,7 +424,7 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
         oid = upsert_record(record)
         mark_played(oid)
     except NcmSongsError as e:
-        log.warning("ncm_songs write failed: %s", e)
+        log.warning("ncm_songs mark_played failed: %s", e)
     enter_music_mode(trigger_text=f"{song} {artist}".strip())
     total_ms = int(round((time.perf_counter() - t0) * 1000))
     timing = {

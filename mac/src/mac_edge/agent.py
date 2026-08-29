@@ -255,6 +255,17 @@ class EdgeAgent:
             self._edge_id = None
             self._heartbeat_ok_edge_id = None
 
+    def _apply_music_linkage_hint(self, result) -> None:
+        try:
+            from mac_edge.music_linkage import apply_brain_hint
+
+            raw = getattr(result, "raw", None) or {}
+            hint = raw.get("music_linkage") if isinstance(raw, dict) else None
+            if apply_brain_hint(hint if isinstance(hint, dict) else None):
+                log.info("music linkage hint applied: %s", hint)
+        except Exception:
+            log.exception("music linkage hint failed")
+
     # --- channel 1: heartbeat ---
 
     def _heartbeat_loop(self) -> None:
@@ -270,8 +281,9 @@ class EdgeAgent:
                         eid = self._get_edge_id()
                         if eid:
                             try:
-                                brain.heartbeat(eid)
+                                result = brain.heartbeat(eid)
                                 self._set_heartbeat_ok(eid)
+                                self._apply_music_linkage_hint(result)
                             except BrainError as e:
                                 if e.is_unauthorized:
                                     log.warning(
