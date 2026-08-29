@@ -40,7 +40,7 @@ enum DevMarkdownBlock: Identifiable, Equatable {
         case .table(let headers, let rows):
             return "table-\(headers.joined())-\(rows.count)"
         case .divider:
-            return "hr-\(UUID().uuidString)"
+            return "hr"
         }
     }
 }
@@ -100,11 +100,14 @@ enum DevMarkdownParser {
                 continue
             }
 
-            if isTableRow(trimmed), index + 1 < lines.count, isTableSeparator(lines[index + 1]) {
+            // Only treat `|` lines as tables when a separator row follows.
+            // A lone `|` (e.g. `deploy_requested|deployed`) must stay a paragraph —
+            // otherwise the paragraph collector breaks without advancing `index` and hangs.
+            if isTableStart(lines: lines, index: index) {
                 let headers = splitTableRow(trimmed)
                 index += 2
                 var rows: [[String]] = []
-                while index < lines.count, isTableRow(lines[index].trimmingCharacters(in: .whitespaces)) {
+                while index < lines.count, looksLikeTableRow(lines[index].trimmingCharacters(in: .whitespaces)) {
                     rows.append(splitTableRow(lines[index].trimmingCharacters(in: .whitespaces)))
                     index += 1
                 }
@@ -112,7 +115,7 @@ enum DevMarkdownParser {
                 continue
             }
 
-            if let bullet = bulletPrefix(trimmed) {
+            if bulletPrefix(trimmed) != nil {
                 var items: [[DevMarkdownInline]] = []
                 while index < lines.count {
                     let row = lines[index].trimmingCharacters(in: .whitespaces)
@@ -124,7 +127,7 @@ enum DevMarkdownParser {
                 continue
             }
 
-            if let prefix = orderedPrefix(trimmed) {
+            if orderedPrefix(trimmed) != nil {
                 var items: [[DevMarkdownInline]] = []
                 while index < lines.count {
                     let row = lines[index].trimmingCharacters(in: .whitespaces)
@@ -142,11 +145,17 @@ enum DevMarkdownParser {
                 let t = row.trimmingCharacters(in: .whitespaces)
                 if t.isEmpty { break }
                 if t.hasPrefix("```") || isDivider(t) || headingLevel(t) != nil || t.hasPrefix(">")
-                    || isTableRow(t) || bulletPrefix(t) != nil || orderedPrefix(t) != nil {
+                    || isTableStart(lines: lines, index: index)
+                    || bulletPrefix(t) != nil || orderedPrefix(t) != nil {
                     break
                 }
                 paragraphLines.append(row)
                 index += 1
+            }
+            if paragraphLines.isEmpty {
+                // Defensive: never stall the outer loop on an unrecognized line.
+                index += 1
+                continue
             }
             let joined = paragraphLines.joined(separator: " ")
             blocks.append(.paragraph(inlines: parseInline(joined)))
@@ -159,10 +168,11 @@ enum DevMarkdownParser {
         guard !text.isEmpty else { return [] }
         var spans: [DevMarkdownInline] = []
         var cursor = text.startIndex
+        var plainStart = text.startIndex
 
-        func appendPlain(until end: String.Index) {
-            guard cursor < end else { return }
-            let chunk = String(text[cursor..<end])
+        func flushPlain(until end: String.Index) {
+            guard plainStart < end else { return }
+            let chunk = String(text[plainStart..<end])
             if !chunk.isEmpty {
                 spans.append(DevMarkdownInline(text: chunk, style: .plain))
             }
@@ -170,29 +180,34 @@ enum DevMarkdownParser {
 
         while cursor < text.endIndex {
             if text[cursor] == "`" {
-                appendPlain(until: cursor)
+                flushPlain(until: cursor)
                 cursor = text.index(after: cursor)
                 if let close = text[cursor...].firstIndex(of: "`") {
                     let code = String(text[cursor..<close])
                     spans.append(DevMarkdownInline(text: code, style: .code))
                     cursor = text.index(after: close)
+                    plainStart = cursor
                     continue
                 }
                 spans.append(DevMarkdownInline(text: "`", style: .plain))
+                plainStart = cursor
                 continue
             }
 
             if text[cursor] == "[" {
+                let afterBracket = text.index(after: cursor)
                 if let closeBracket = text[cursor...].firstIndex(of: "]"),
                    closeBracket < text.endIndex,
+                   text.index(after: closeBracket) < text.endIndex,
                    text[text.index(after: closeBracket)] == "(",
                    let closeParen = text[text.index(after: closeBracket)...].firstIndex(of: ")") {
-                    appendPlain(until: cursor)
-                    let label = String(text[text.index(after: cursor)..<closeBracket])
+                    flushPlain(until: cursor)
+                    let label = String(text[afterBracket..<closeBracket])
                     let urlStart = text.index(closeBracket, offsetBy: 2)
                     let url = String(text[urlStart..<closeParen])
                     spans.append(DevMarkdownInline(text: label, style: .link(url: url)))
                     cursor = text.index(after: closeParen)
+                    plainStart = cursor
                     continue
                 }
             }
@@ -200,46 +215,52 @@ enum DevMarkdownParser {
             if text[cursor] == "*" {
                 let next = text.index(after: cursor)
                 if next < text.endIndex, text[next] == "*" {
-                    appendPlain(until: cursor)
+                    flushPlain(until: cursor)
                     cursor = text.index(after: next)
                     if let close = text[cursor...].range(of: "**") {
                         let bold = String(text[cursor..<close.lowerBound])
                         spans.append(DevMarkdownInline(text: bold, style: .bold))
                         cursor = close.upperBound
+                        plainStart = cursor
                         continue
                     }
                     spans.append(DevMarkdownInline(text: "**", style: .plain))
+                    plainStart = cursor
                     continue
                 }
-                appendPlain(until: cursor)
+                flushPlain(until: cursor)
                 cursor = next
                 if let close = text[cursor...].firstIndex(of: "*") {
                     let italic = String(text[cursor..<close])
                     spans.append(DevMarkdownInline(text: italic, style: .italic))
                     cursor = text.index(after: close)
+                    plainStart = cursor
                     continue
                 }
                 spans.append(DevMarkdownInline(text: "*", style: .plain))
+                plainStart = cursor
                 continue
             }
 
             if text[cursor] == "_" {
-                appendPlain(until: cursor)
+                flushPlain(until: cursor)
                 cursor = text.index(after: cursor)
                 if let close = text[cursor...].firstIndex(of: "_") {
                     let italic = String(text[cursor..<close])
                     spans.append(DevMarkdownInline(text: italic, style: .italic))
                     cursor = text.index(after: close)
+                    plainStart = cursor
                     continue
                 }
                 spans.append(DevMarkdownInline(text: "_", style: .plain))
+                plainStart = cursor
                 continue
             }
 
             cursor = text.index(after: cursor)
         }
 
-        appendPlain(until: text.endIndex)
+        flushPlain(until: text.endIndex)
         return spans
     }
 
@@ -276,8 +297,15 @@ enum DevMarkdownParser {
         return String(line[..<line.index(dot, offsetBy: 2)])
     }
 
-    private static func isTableRow(_ line: String) -> Bool {
+    private static func looksLikeTableRow(_ line: String) -> Bool {
         line.contains("|")
+    }
+
+    private static func isTableStart(lines: [String], index: Int) -> Bool {
+        guard index < lines.count else { return false }
+        let row = lines[index].trimmingCharacters(in: .whitespaces)
+        guard looksLikeTableRow(row), index + 1 < lines.count else { return false }
+        return isTableSeparator(lines[index + 1].trimmingCharacters(in: .whitespaces))
     }
 
     private static func isTableSeparator(_ line: String) -> Bool {
