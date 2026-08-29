@@ -3889,11 +3889,13 @@ def _log_music_shortcut_timing(intent_id, plan, timing: dict) -> None:
         for step in (plan or [])
         if isinstance(step, dict)
     ]
-    if "music.play" not in caps:
+    music_caps = [c for c in caps if c.startswith("music.")]
+    if not music_caps:
         return
     log.info(
-        "music.shortcut intent=%s match_ms=%s plan_ms=%s enqueue_ms=%s",
+        "music.shortcut intent=%s cap=%s match_ms=%s plan_ms=%s enqueue_ms=%s",
         intent_id,
+        music_caps[0],
         timing.get("match"),
         timing.get("plan"),
         timing.get("enqueue"),

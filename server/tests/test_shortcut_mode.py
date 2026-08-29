@@ -146,6 +146,37 @@ class ShortcutModeTest(unittest.TestCase):
         self.assertIsNone(intercept("开灯"))
         self.assertIsNone(intercept("这首歌曲叫什么"))
 
+    def _music_ctrl(self, text: str, capability: str) -> dict:
+        hit = intercept(text)
+        assert hit is not None
+        self.assertEqual(hit.kind, "plan")
+        self.assertIsNone(hit.mode)
+        self.assertEqual(hit.plan[0]["capability"], capability)
+        self.assertEqual(hit.planner_meta.get("source"), "shortcut")
+        timing = (hit.planner_meta or {}).get("timing") or {}
+        self.assertIn("match", timing)
+        return hit.plan[0]["input_constrict"]
+
+    def test_music_control_before_play(self) -> None:
+        cases = (
+            ("暂停播放", "music.pause"),
+            ("暂停歌曲", "music.pause"),
+            ("切歌", "music.next"),
+            ("下一首歌", "music.next"),
+            ("停止播放", "music.stop"),
+        )
+        for text, cap in cases:
+            with self.subTest(text=text):
+                ic = self._music_ctrl(text, cap)
+                self.assertEqual(ic["user_input"], text)
+                self.assertNotIn("song", ic)
+
+    def test_music_control_skips_resume_and_previous(self) -> None:
+        self.assertIsNone(intercept("继续播放"))
+        self.assertIsNone(intercept("恢复播放"))
+        self.assertIsNone(intercept("上一首"))
+        self.assertIsNone(intercept("上一首歌"))
+
 
 if __name__ == "__main__":
     unittest.main()

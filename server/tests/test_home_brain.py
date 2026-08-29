@@ -2881,6 +2881,66 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertIn("plan", timing)
         self.assertIn("enqueue", timing)
 
+    def test_shortcut_music_transport_skips_llm_not_play(self) -> None:
+        music_svc = {
+            "service_id": "netease.music",
+            "display_name": "网易云音乐",
+            "capabilities": [
+                {"capability_id": "music.play"},
+                {"capability_id": "music.pause"},
+                {"capability_id": "music.stop"},
+                {"capability_id": "music.next"},
+            ],
+        }
+        brain_db.put_registration(
+            {
+                "participant_id": "android-music",
+                "device_type": "android",
+                "roles": ["runtime", "intent_source"],
+                "services": [music_svc],
+            }
+        )
+        brain_db.put_registration(
+            {
+                "participant_id": "mac-music",
+                "device_type": "mac",
+                "client_hint": "living-room-mac",
+                "roles": ["runtime"],
+                "services": [music_svc],
+            }
+        )
+        self._heartbeat("android-music")
+        self._heartbeat("mac-music")
+        hb._REGISTERED_edges = brain_db.registration_ids()
+        hb.rebuild_capability_maps()
+        client = hb.app.test_client()
+        before_qsize = hb.task_queue.qsize()
+        cases = (
+            ("停止播放", "music.stop"),
+            ("暂停播放", "music.pause"),
+            ("切歌", "music.next"),
+        )
+        for text, cap in cases:
+            with self.subTest(text=text):
+                resp = client.post(
+                    "/api/v1/intent",
+                    json={
+                        "text": text,
+                        "source": "voice",
+                        "participant_id": "android-music",
+                    },
+                )
+                self.assertEqual(resp.status_code, 200)
+                body = resp.get_json()
+                self.assertEqual(body["intent_status"], "intent_parsed")
+                self.assertEqual(body["task_kind"], "shortcut")
+                self.assertEqual(hb.task_queue.qsize(), before_qsize)
+                plan = hb.get_intent(body["intent_id"])["execution_plan"]
+                self.assertEqual(plan[0]["capability"], cap)
+                self.assertEqual(plan[0]["assigned_edge_id"], "mac-music")
+                self.assertEqual(plan[0]["input_constrict"].get("user_input"), text)
+                self.assertNotIn("song", plan[0]["input_constrict"])
+
     def _register_voice_runtime(
         self, pid: str, *, with_speak: bool = True, with_echo: bool = True
     ) -> None:

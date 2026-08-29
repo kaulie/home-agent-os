@@ -1,4 +1,4 @@
-"""Listen / play-song shortcut: strip prefixes, do not split artist vs title."""
+"""Listen / play-song / transport shortcut: strip prefixes, do not split artist vs title."""
 
 from __future__ import annotations
 
@@ -6,6 +6,16 @@ import time
 from dataclasses import dataclass
 
 from .matcher import matches_any
+
+# Exact utterances after courtesy strip. Longer tokens first.
+# Must run before play: 停止播放 / 暂停播放 contain 播放.
+_CONTROL_EXACT = (
+    ("暂停播放", "music.pause"),
+    ("暂停歌曲", "music.pause"),
+    ("下一首歌", "music.next"),
+    ("停止播放", "music.stop"),
+    ("切歌", "music.next"),
+)
 
 # Strong music talk — intercept even when remainder is empty (Mac then asks for a title).
 STRONG_TRIGGERS = (
@@ -77,6 +87,13 @@ class MusicPlayHit:
     match_ms: int
 
 
+@dataclass(frozen=True)
+class MusicControlHit:
+    capability: str
+    user_input: str
+    match_ms: int
+
+
 def _lstrip_first(text: str, prefixes: tuple[str, ...]) -> str:
     for prefix in prefixes:
         if prefix and text.startswith(prefix):
@@ -99,6 +116,25 @@ def _remainder_after_play_prefix(text: str) -> tuple[str, str]:
         if prefix and text.startswith(prefix):
             return prefix, text[len(prefix) :].lstrip()
     return "", text
+
+
+def match_control(text: str) -> MusicControlHit | None:
+    t0 = time.perf_counter()
+    utterance = str(text or "").strip()
+    if not utterance:
+        return None
+    stripped = _lstrip_courtesy(utterance)
+    if not stripped:
+        return None
+    for phrase, capability in _CONTROL_EXACT:
+        if stripped == phrase:
+            match_ms = int(round((time.perf_counter() - t0) * 1000))
+            return MusicControlHit(
+                capability=capability,
+                user_input=utterance,
+                match_ms=match_ms,
+            )
+    return None
 
 
 def match_play(text: str) -> MusicPlayHit | None:

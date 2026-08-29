@@ -62,6 +62,27 @@ def intercept(text: str, *, intent: dict[str, Any] | None = None) -> InterceptRe
             planner_meta={"goal": "reading pipeline", "source": "shortcut"},
         )
 
+    music_ctrl = music.match_control(utterance)
+    if music_ctrl is not None:
+        return InterceptResult(
+            kind="plan",
+            mode=None,
+            plan=[
+                {
+                    "step": 1,
+                    "capability": music_ctrl.capability,
+                    "input_constrict": {"user_input": music_ctrl.user_input},
+                    "output_constrict": {},
+                }
+            ],
+            presentation={"type": "text"},
+            planner_meta={
+                "goal": music_ctrl.capability,
+                "source": "shortcut",
+                "timing": {"match": music_ctrl.match_ms},
+            },
+        )
+
     music_hit = music.match_play(utterance)
     if music_hit is not None:
         constrict: dict[str, str] = {"user_input": music_hit.user_input}
