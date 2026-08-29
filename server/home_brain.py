@@ -614,6 +614,21 @@ def _primary_endpoint_id(rec, pres_type=None):
     return ids[0] if ids else ""
 
 
+def _ncm_play_issuer_id(intent):
+    """Intent Source participant for ncm_plays (not the Mac executor)."""
+    intent = intent or {}
+    ctx = intent.get("ctx_param") or intent.get("context") or {}
+    if not isinstance(ctx, dict):
+        ctx = {}
+    src = ctx.get("source_context") or intent.get("source_context") or {}
+    if isinstance(src, dict):
+        for key in ("input_participant_id", "device_id"):
+            pid = str(src.get(key) or "").strip()
+            if pid:
+                return pid
+    return str(intent.get("edge_id") or intent.get("participant_id") or "").strip()
+
+
 def _issuer_participant_id(intent):
     intent = intent or {}
     return str(intent.get("edge_id") or intent.get("participant_id") or "").strip()
@@ -3214,6 +3229,14 @@ def do_execution_plan(intent_id, execution_plan):
         _simple_step["assigned_edge_id"] = assigned_edge_id
         filled = _simple_step.get("input_constrict")
         if isinstance(filled, dict):
+            filled = dict(filled)
+            if cid == "music.play":
+                if not str(filled.get("participant_id") or "").strip():
+                    issuer = _ncm_play_issuer_id(intent)
+                    if issuer:
+                        filled["participant_id"] = issuer
+                if not str(filled.get("intent_id") or "").strip():
+                    filled["intent_id"] = str(intent_id)
             _simple_step["input_constrict"] = filled
 
         simple_plan.append(_simple_step)

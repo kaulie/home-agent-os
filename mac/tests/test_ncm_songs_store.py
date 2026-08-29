@@ -47,6 +47,7 @@ class NcmSongsStoreTests(unittest.TestCase):
             self.assertEqual(
                 cols,
                 {
+                    "id",
                     "original_id",
                     "encrypted_id",
                     "name",
@@ -71,6 +72,7 @@ class NcmSongsStoreTests(unittest.TestCase):
             self.assertEqual(
                 idx_cols,
                 {
+                    "id",
                     "song_original_id",
                     "song_name",
                     "song_name_norm",
@@ -100,8 +102,33 @@ class NcmSongsStoreTests(unittest.TestCase):
                 int(row[0])
                 for row in conn.execute("SELECT version FROM schema_migrations")
             }
+            play_cols = {row[1] for row in conn.execute("PRAGMA table_info(ncm_plays)")}
+            self.assertEqual(
+                play_cols,
+                {
+                    "id",
+                    "song_original_id",
+                    "participant_id",
+                    "intent_id",
+                    "played_at",
+                },
+            )
             self.assertIn(3, versions)
             self.assertIn(4, versions)
+            self.assertIn(5, versions)
+            self.assertIn(6, versions)
+            songs_pk = {
+                row[1]: int(row[5])
+                for row in conn.execute("PRAGMA table_info(ncm_songs)")
+            }
+            self.assertEqual(songs_pk["id"], 1)
+            self.assertEqual(songs_pk["original_id"], 0)
+            idx_pk = {
+                row[1]: int(row[5])
+                for row in conn.execute("PRAGMA table_info(ncm_song_index)")
+            }
+            self.assertEqual(idx_pk["id"], 1)
+            self.assertEqual(idx_pk["song_original_id"], 0)
         finally:
             conn.close()
 
@@ -136,31 +163,45 @@ class NcmSongsStoreTests(unittest.TestCase):
             ncm_store.upsert_record(self._record(id="ncm_new", name="晴天 (Live)"))
         got2 = ncm_store.get_song(12345)
         assert got2 is not None
-        self.assertEqual(got2["encrypted_id"], "ncm_new")
-        self.assertEqual(got2["name"], "晴天 (Live)")
+        self.assertEqual(got2["encrypted_id"], "ncm_enc_id_abc")
+        self.assertEqual(got2["name"], "晴天")
         self.assertEqual(got["create_time"], got2["create_time"])
-        self.assertGreater(got2["update_time"], got["update_time"])
+        self.assertEqual(got2["update_time"], got["update_time"])
 
         indexed2 = ncm_store.get_index_song(12345)
         assert indexed2 is not None
+        self.assertEqual(indexed2["song_encrypted_id"], "ncm_enc_id_abc")
+        self.assertEqual(indexed2["song_name"], "晴天")
         self.assertEqual(indexed["create_time"], indexed2["create_time"])
-        self.assertGreater(indexed2["update_time"], indexed["update_time"])
+        self.assertEqual(indexed2["update_time"], indexed["update_time"])
 
-    def test_mark_played_and_find_by_norm(self) -> None:
+    def test_record_play_and_find_by_norm(self) -> None:
         ncm_store.upsert_record(
             self._record(originalId=1, id="a", name="Hello", artists=[{"name": "Adele"}])
         )
         ncm_store.upsert_record(
             self._record(originalId=2, id="b", name="World", artists=[{"name": "Someone"}])
         )
-        ncm_store.mark_played(1, at=100.0)
+        play_id = ncm_store.record_play(
+            1, "iphone-origin", intent_id="intent-9", at=100.0
+        )
+        self.assertIsNotNone(play_id)
+        self.assertIsNone(ncm_store.get_song(1)["played_at"])
+        recent = ncm_store.list_recent_played()
+        self.assertEqual(len(recent), 1)
+        self.assertEqual(recent[0]["song_original_id"], 1)
+        self.assertEqual(recent[0]["participant_id"], "iphone-origin")
+        self.assertEqual(recent[0]["intent_id"], "intent-9")
+        self.assertEqual(recent[0]["played_at"], 100.0)
+        self.assertIsNone(ncm_store.record_play(1, "  "))
+        self.assertEqual(len(ncm_store.list_recent_played()), 1)
 
         hits = ncm_store.find_by_name_artist(name="Hello", artist="Adele")
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0]["original_id"], 1)
-        self.assertEqual(hits[0]["played_at"], 100.0)
+        self.assertIsNone(hits[0]["played_at"])
         self.assertIsNotNone(hits[0]["create_time"])
-        self.assertGreaterEqual(hits[0]["update_time"], hits[0]["create_time"])
+        self.assertEqual(hits[0]["update_time"], hits[0]["create_time"])
 
         only_name = ncm_store.find_by_norm(name_norm=ncm_store.normalize_text("World"))
         self.assertEqual(len(only_name), 1)
@@ -249,8 +290,8 @@ class NcmSongsStoreTests(unittest.TestCase):
         )
         indexed = ncm_store.get_index_song(12345)
         assert indexed is not None
-        self.assertEqual(indexed["song_encrypted_id"], "ncm_new")
-        self.assertEqual(indexed["song_name"], "晴天 (Live)")
+        self.assertEqual(indexed["song_encrypted_id"], "ncm_enc_id_abc")
+        self.assertEqual(indexed["song_name"], "晴天")
         self.assertEqual(indexed["duration"], 269000)
         self.assertEqual(indexed["album_original_id"], 18625)
 

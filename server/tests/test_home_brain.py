@@ -2895,6 +2895,8 @@ class HomeBrainPersistTest(unittest.TestCase):
         ic = plan[0]["input_constrict"]
         self.assertEqual(ic.get("song"), "陈奕迅的十年")
         self.assertEqual(ic.get("user_input"), "播放陈奕迅的十年")
+        self.assertEqual(ic.get("participant_id"), "android-music")
+        self.assertEqual(ic.get("intent_id"), str(body["intent_id"]))
         reviews = brain_db.list_intent_reviews(body["intent_id"])
         shortcut = next(row for row in reviews if row.get("planner") == "shortcut")
         payload = shortcut.get("request_payload") or shortcut.get("request_json") or {}
@@ -2904,6 +2906,81 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertIn("match", timing)
         self.assertIn("plan", timing)
         self.assertIn("enqueue", timing)
+
+    def test_ncm_play_issuer_prefers_source_device_id(self) -> None:
+        self.assertEqual(
+            hb._ncm_play_issuer_id(
+                {
+                    "edge_id": "mac-music",
+                    "participant_id": "mac-music",
+                    "source_context": {"device_id": "iphone-origin"},
+                }
+            ),
+            "iphone-origin",
+        )
+        self.assertEqual(
+            hb._ncm_play_issuer_id({"edge_id": "android-music"}),
+            "android-music",
+        )
+
+    def test_do_execution_plan_stamps_music_play_issuer(self) -> None:
+        music_svc = {
+            "service_id": "netease.music",
+            "display_name": "网易云音乐",
+            "capabilities": [{"capability_id": "music.play"}],
+        }
+        brain_db.put_registration(
+            {
+                "participant_id": "iphone-origin",
+                "device_type": "iphone",
+                "roles": ["intent_source"],
+                "services": [],
+            }
+        )
+        brain_db.put_registration(
+            {
+                "participant_id": "mac-music",
+                "device_type": "mac",
+                "client_hint": "living-room-mac",
+                "roles": ["runtime"],
+                "services": [music_svc],
+            }
+        )
+        self._heartbeat("mac-music")
+        hb._REGISTERED_edges = brain_db.registration_ids()
+        hb.rebuild_capability_maps()
+        iid = hb.new_intent(
+            {
+                "status": "intent_received",
+                "text": "播放十年",
+                "source": "text",
+                "edge_id": "mac-music",
+                "ctx_param": {
+                    "source_context": {"device_id": "iphone-origin"},
+                },
+            }
+        )
+        hb.do_execution_plan(
+            iid,
+            [
+                {
+                    "step": 1,
+                    "capability": "music.play",
+                    "assigned_edge_id": "mac-music",
+                    "input_constrict": {"song": "十年"},
+                    "output_constrict": {},
+                }
+            ],
+        )
+        play = next(
+            s
+            for s in hb.get_intent(iid)["execution_plan"]
+            if s.get("capability") == "music.play"
+        )
+        ic = play["input_constrict"]
+        self.assertEqual(ic.get("participant_id"), "iphone-origin")
+        self.assertEqual(ic.get("intent_id"), str(iid))
+        self.assertEqual(ic.get("song"), "十年")
 
     def test_shortcut_music_transport_skips_llm_not_play(self) -> None:
         music_svc = {

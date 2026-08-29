@@ -45,6 +45,9 @@ PLAY_STDOUT = """[orpheus] orpheus://eyJjbWQiOiJwbGF5IiwidHlwZSI6InNvbmciLCJpZCI
 """
 
 
+PLAY_ISSUER = "iphone-origin"
+
+
 def _completed(stdout: str, returncode: int = 0) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(
         args=["ncm-cli"],
@@ -62,6 +65,17 @@ class NeteaseMusicTests(unittest.TestCase):
     def tearDown(self) -> None:
         ncm_store.reset()
         self._tmp.cleanup()
+
+    def _with_issuer(self, params: dict) -> dict:
+        out = {"participant_id": PLAY_ISSUER, "intent_id": "intent-test"}
+        out.update(params)
+        return out
+
+    def _play_oids(self) -> list[int]:
+        return [
+            int(p["song_original_id"])
+            for p in ncm_store.list_recent_played(limit=50)
+        ]
 
     def test_keyword_one_arg(self) -> None:
         self.assertEqual(nm.search_keyword(song="十年", artist="陈奕迅"), "十年 陈奕迅")
@@ -145,7 +159,9 @@ class NeteaseMusicTests(unittest.TestCase):
         with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
             with patch.object(nm.subprocess, "run", side_effect=fake_run):
                 with patch.object(nm, "enter_music_mode"):
-                    msg, outputs = nm.play_from_params({"song": "十年", "artist": "陈奕迅"})
+                    msg, outputs = nm.play_from_params(
+                        self._with_issuer({"song": "十年", "artist": "陈奕迅"})
+                    )
                     self.assertIn("66842", msg)
                     self.assertEqual(
                         set(outputs.get("timing") or {}),
@@ -160,7 +176,12 @@ class NeteaseMusicTests(unittest.TestCase):
                     got = ncm_store.get_song(66842)
                     assert got is not None
                     self.assertEqual(got["name"], "十年")
-                    self.assertIsNotNone(got["played_at"])
+                    self.assertIsNone(got["played_at"])
+                    self.assertEqual(self._play_oids(), [66842])
+                    self.assertEqual(
+                        ncm_store.list_recent_played()[0]["participant_id"],
+                        PLAY_ISSUER,
+                    )
                     indexed = ncm_store.get_index_song(66842)
                     assert indexed is not None
                     self.assertEqual(indexed["song_encrypted_id"], "1B8FCF799FD5895F6F0586C7D19A0A3B")
@@ -170,11 +191,18 @@ class NeteaseMusicTests(unittest.TestCase):
                     self.assertEqual(indexed["album_encrypted_id"], "6AF3D73514E9BBA48FC1B1F0AA0A5D75")
 
                     calls.clear()
-                    msg2, outputs2 = nm.play_from_params({"song": "十年", "artist": "陈奕迅"})
+                    msg2, outputs2 = nm.play_from_params(
+                        self._with_issuer({"song": "十年", "artist": "陈奕迅"})
+                    )
                     self.assertIn("66842", msg2)
                     self.assertEqual(outputs2["timing"]["search"], 0)
                     self.assertTrue(any("play" in c for c in calls))
                     self.assertFalse(any("search" in c for c in calls))
+                    self.assertEqual(self._play_oids(), [66842, 66842])
+                    nm.run_from_params("music.next", {})
+                    self.assertEqual(self._play_oids(), [66842, 66842])
+                    nm.play_from_params({"song": "十年", "artist": "陈奕迅"})
+                    self.assertEqual(self._play_oids(), [66842, 66842])
 
     def test_play_failure_still_caches_search_hits(self) -> None:
         def fake_run(cmd, **_kwargs):
@@ -190,6 +218,7 @@ class NeteaseMusicTests(unittest.TestCase):
                 assert got is not None
                 self.assertEqual(got["name"], "十年")
                 self.assertIsNone(got["played_at"])
+                self.assertEqual(self._play_oids(), [])
                 self.assertIsNotNone(ncm_store.get_index_song(66842))
 
     def test_pause_resume_stop_next_prev(self) -> None:
@@ -314,11 +343,12 @@ class NeteaseMusicTests(unittest.TestCase):
         with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
             with patch.object(nm.subprocess, "run", side_effect=fake_run):
                 with patch.object(nm, "enter_music_mode"):
-                    nm.play_from_params({"song": "披荆斩棘"})
+                    nm.play_from_params(self._with_issuer({"song": "披荆斩棘"}))
         self.assertEqual(ncm_store.get_song(107)["name"], "披荆斩棘")
         self.assertEqual(len(ncm_store.list_library(limit=20)), 10)
-        self.assertIsNotNone(ncm_store.get_song(107)["played_at"])
+        self.assertIsNone(ncm_store.get_song(107)["played_at"])
         self.assertIsNone(ncm_store.get_song(100)["played_at"])
+        self.assertEqual(self._play_oids(), [107])
 
     def test_unavailable_without_cli(self) -> None:
         with patch.object(nm, "ncm_cli_bin", return_value=None):
@@ -374,11 +404,16 @@ class NeteaseMusicTests(unittest.TestCase):
         with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
             with patch.object(nm.subprocess, "run", side_effect=fake_run):
                 with patch.object(nm, "enter_music_mode"):
-                    nm.play_from_params({"song": "张三的歌", "user_input": "播放张三的歌"})
+                    nm.play_from_params(
+                        self._with_issuer(
+                            {"song": "张三的歌", "user_input": "播放张三的歌"}
+                        )
+                    )
         search_calls = [c for c in calls if "search" in c]
         self.assertEqual(len(search_calls), 1)
         self.assertEqual(ncm_store.get_song(204)["name"], "张三的歌")
-        self.assertIsNotNone(ncm_store.get_song(204)["played_at"])
+        self.assertIsNone(ncm_store.get_song(204)["played_at"])
+        self.assertEqual(self._play_oids(), [204])
         self.assertEqual(len(ncm_store.list_library(limit=20)), 10)
 
     def test_play_xxx_de_ge_falls_back_to_artist(self) -> None:
@@ -422,13 +457,14 @@ class NeteaseMusicTests(unittest.TestCase):
         with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
             with patch.object(nm.subprocess, "run", side_effect=fake_run):
                 with patch.object(nm, "enter_music_mode"):
-                    nm.play_from_params({"song": "张三的歌"})
+                    nm.play_from_params(self._with_issuer({"song": "张三的歌"}))
         keywords = [
             c[c.index("--keyword") + 1] for c in calls if "search" in c
         ]
         self.assertEqual(keywords, ["张三的歌", "张三"])
         self.assertEqual(ncm_store.get_song(401)["name"], "艺人歌1")
-        self.assertIsNotNone(ncm_store.get_song(401)["played_at"])
+        self.assertIsNone(ncm_store.get_song(401)["played_at"])
+        self.assertEqual(self._play_oids(), [401])
         self.assertIsNone(ncm_store.get_song(400)["played_at"])
         self.assertEqual(len(ncm_store.list_library(limit=40)), 20)
 
@@ -504,6 +540,7 @@ class NeteaseMusicTests(unittest.TestCase):
         # Last page is fully upserted (20) even though count stops at 50.
         self.assertEqual(len(ncm_store.list_library(limit=80)), 60)
         self.assertIsNone(ncm_store.get_song(5000)["played_at"])
+        self.assertEqual(self._play_oids(), [])
 
     def test_cache_fetch_audio_still_index_only(self) -> None:
         calls: list[list[str]] = []
@@ -574,13 +611,18 @@ class NeteaseMusicTests(unittest.TestCase):
                         self.assertEqual(cache_out.get("cached"), 20)
                         self.assertFalse(any("play" in c for c in calls))
                         calls.clear()
-                        _msg, outputs = nm.play_from_params({"song": "刘德华的歌"})
+                        _msg, outputs = nm.play_from_params(
+                            self._with_issuer({"song": "刘德华的歌"})
+                        )
         self.assertEqual(outputs["timing"]["search"], 0)
         self.assertTrue(any("play" in c for c in calls))
         self.assertFalse(any("search" in c for c in calls))
-        self.assertTrue(
-            any(ncm_store.get_song(8000 + i)["played_at"] is not None for i in range(20))
-        )
+        plays = ncm_store.list_recent_played()
+        self.assertEqual(len(plays), 1)
+        hit = int(plays[0]["song_original_id"])
+        self.assertTrue(8000 <= hit < 8020)
+        self.assertEqual(plays[0]["participant_id"], PLAY_ISSUER)
+        self.assertIsNone(ncm_store.get_song(hit)["played_at"])
         self.assertIsNone(ncm_store.get_song(7000)["played_at"])
 
 

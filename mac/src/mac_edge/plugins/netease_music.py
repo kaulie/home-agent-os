@@ -27,8 +27,8 @@ from mac_edge.ncm_songs import (
     find_by_name_artist,
     find_index_by_name_artist,
     init_db,
-    mark_played,
     normalize_text,
+    record_play,
     upsert_record,
 )
 
@@ -618,9 +618,13 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
     play_ms = int(round((time.perf_counter() - t_play) * 1000))
     try:
         oid = upsert_record(record)
-        mark_played(oid)
+        record_play(
+            oid,
+            str(_str_param(params, "participant_id") or "").strip(),
+            intent_id=_str_param(params, "intent_id") or None,
+        )
     except NcmSongsError as e:
-        log.warning("ncm_songs mark_played failed: %s", e)
+        log.warning("ncm_songs record_play failed: %s", e)
     enter_music_mode(trigger_text=f"{song} {artist}".strip())
     total_ms = int(round((time.perf_counter() - t0) * 1000))
     timing = {

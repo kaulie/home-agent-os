@@ -164,6 +164,15 @@ def _encrypted_id(record: dict[str, Any]) -> str:
     return str(raw).strip()
 
 
+def _row_int(row: sqlite3.Row, key: str) -> int | None:
+    if key not in row.keys() or row[key] is None:
+        return None
+    try:
+        return int(row[key])
+    except (TypeError, ValueError):
+        return None
+
+
 def _optional_int(raw: Any) -> int | None:
     if raw is None or raw == "":
         return None
@@ -211,6 +220,7 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     if not isinstance(record, dict):
         record = {}
     return {
+        "id": _row_int(row, "id"),
         "original_id": int(row["original_id"]),
         "encrypted_id": str(row["encrypted_id"]),
         "name": str(row["name"]),
@@ -229,6 +239,7 @@ def _index_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     duration = row["duration"]
     album_oid = row["album_original_id"]
     return {
+        "id": _row_int(row, "id"),
         "song_original_id": int(row["song_original_id"]),
         "song_name": str(row["song_name"]),
         "song_name_norm": str(row["song_name_norm"]),
@@ -266,6 +277,7 @@ def _index_as_song_dict(row: sqlite3.Row) -> dict[str, Any]:
     if album:
         record["album"] = album
     return {
+        "id": idx.get("id"),
         "original_id": idx["song_original_id"],
         "encrypted_id": idx["song_encrypted_id"] or "",
         "name": idx["song_name"],
@@ -302,20 +314,7 @@ def _upsert_index(
           album_original_id, album_name, album_encrypted_id,
           create_time, update_time
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(song_original_id) DO UPDATE SET
-          song_name = excluded.song_name,
-          song_name_norm = excluded.song_name_norm,
-          song_encrypted_id = COALESCE(excluded.song_encrypted_id, ncm_song_index.song_encrypted_id),
-          duration = COALESCE(excluded.duration, ncm_song_index.duration),
-          artist = COALESCE(excluded.artist, ncm_song_index.artist),
-          artist_norm = CASE
-            WHEN excluded.artist_norm != '' THEN excluded.artist_norm
-            ELSE ncm_song_index.artist_norm
-          END,
-          album_original_id = COALESCE(excluded.album_original_id, ncm_song_index.album_original_id),
-          album_name = COALESCE(excluded.album_name, ncm_song_index.album_name),
-          album_encrypted_id = COALESCE(excluded.album_encrypted_id, ncm_song_index.album_encrypted_id),
-          update_time = excluded.update_time
+        ON CONFLICT(song_original_id) DO NOTHING
         """,
         (
             original_id,
@@ -339,7 +338,8 @@ def upsert_record(
     *,
     played_at: float | None = None,
 ) -> int:
-    """Insert or replace by ``original_id``. Returns ``original_id``."""
+    """Insert by ``original_id``. Existing rows are left unchanged. Returns ``original_id``."""
+    del played_at  # play history lives in ncm_plays; catalog is insert-only
     if not isinstance(record, dict) or not record:
         raise NcmSongsError("record must be a non-empty object")
     original_id = _original_id(record)
@@ -359,15 +359,7 @@ def upsert_record(
               original_id, encrypted_id, name, name_norm, artist, artist_norm,
               record_json, played_at, create_time, update_time
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(original_id) DO UPDATE SET
-              encrypted_id = excluded.encrypted_id,
-              name = excluded.name,
-              name_norm = excluded.name_norm,
-              artist = excluded.artist,
-              artist_norm = excluded.artist_norm,
-              record_json = excluded.record_json,
-              played_at = COALESCE(excluded.played_at, ncm_songs.played_at),
-              update_time = excluded.update_time
+            ON CONFLICT(original_id) DO NOTHING
             """,
             (
                 original_id,
@@ -377,7 +369,7 @@ def upsert_record(
                 artist or None,
                 artist_norm,
                 payload,
-                played_at,
+                None,
                 ts,
                 ts,
             ),
@@ -432,7 +424,7 @@ def _index_lookup_rows(
         "LEFT JOIN ncm_songs s ON s.original_id = i.song_original_id "
         "WHERE "
         + " AND ".join(clauses)
-        + " ORDER BY COALESCE(s.played_at, 0) DESC, i.song_original_id DESC LIMIT ?"
+        + " ORDER BY i.song_original_id DESC LIMIT ?"
     )
     params.append(limit)
     return list(conn.execute(sql, params).fetchall())
@@ -476,7 +468,7 @@ def find_by_norm(
         sql = (
             "SELECT * FROM ncm_songs WHERE "
             + " AND ".join(clauses)
-            + " ORDER BY COALESCE(played_at, 0) DESC, original_id DESC LIMIT ?"
+            + " ORDER BY original_id DESC LIMIT ?"
         )
         params.append(cap)
         rows = conn.execute(sql, params).fetchall()
@@ -544,21 +536,45 @@ def find_index_by_name_artist(
     )
 
 
-def mark_played(original_id: int | str, *, at: float | None = None) -> None:
+def _play_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": _row_int(row, "id"),
+        "song_original_id": int(row["song_original_id"]),
+        "participant_id": str(row["participant_id"] or ""),
+        "intent_id": str(row["intent_id"] or "").strip() or None,
+        "played_at": row["played_at"],
+    }
+
+
+def record_play(
+    original_id: int | str,
+    participant_id: str,
+    *,
+    intent_id: str | int | None = None,
+    at: float | None = None,
+) -> int | None:
+    """Append one music.play hit. Does not update catalog rows."""
     try:
         oid = int(original_id)
     except (TypeError, ValueError) as exc:
         raise NcmSongsError("original_id required") from exc
+    pid = str(participant_id or "").strip()
+    if not pid:
+        log.warning("ncm_plays skip: participant_id required original_id=%s", oid)
+        return None
     ts = _now() if at is None else float(at)
-    written = _now()
+    iid = str(intent_id or "").strip() or None
     with _lock:
         init_db()
         cur = _connect().execute(
-            "UPDATE ncm_songs SET played_at = ?, update_time = ? WHERE original_id = ?",
-            (ts, written, oid),
+            """
+            INSERT INTO ncm_plays (
+              song_original_id, participant_id, intent_id, played_at
+            ) VALUES (?, ?, ?, ?)
+            """,
+            (oid, pid, iid, ts),
         )
-        if cur.rowcount <= 0:
-            raise NcmSongsError(f"unknown original_id: {oid}")
+    return int(cur.lastrowid) if cur.lastrowid else None
 
 
 def list_library(*, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
@@ -567,7 +583,7 @@ def list_library(*, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         rows = _connect().execute(
             """
             SELECT * FROM ncm_songs
-            ORDER BY COALESCE(played_at, 0) DESC, original_id DESC
+            ORDER BY original_id DESC
             LIMIT ? OFFSET ?
             """,
             (max(1, int(limit)), max(0, int(offset))),
@@ -576,18 +592,19 @@ def list_library(*, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
 
 
 def list_recent_played(*, limit: int = 20) -> list[dict[str, Any]]:
+    """Recent music.play hits (one row per intent play, newest first)."""
     with _lock:
         init_db()
         rows = _connect().execute(
             """
-            SELECT * FROM ncm_songs
-            WHERE played_at IS NOT NULL
-            ORDER BY played_at DESC
+            SELECT p.id, p.song_original_id, p.participant_id, p.intent_id, p.played_at
+            FROM ncm_plays p
+            ORDER BY p.played_at DESC, p.id DESC
             LIMIT ?
             """,
             (max(1, int(limit)),),
         ).fetchall()
-    return [_row_to_dict(row) for row in rows]
+    return [_play_row_to_dict(row) for row in rows]
 
 
 def main() -> None:

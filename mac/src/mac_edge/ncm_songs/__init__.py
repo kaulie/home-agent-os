@@ -13,8 +13,8 @@ from mac_edge.ncm_songs.store import (
     init_db,
     list_library,
     list_recent_played,
-    mark_played,
     normalize_text,
+    record_play,
     upsert_record,
 )
 
@@ -31,7 +31,7 @@ __all__ = [
     "init_db",
     "list_library",
     "list_recent_played",
-    "mark_played",
     "normalize_text",
+    "record_play",
     "upsert_record",
 ]
