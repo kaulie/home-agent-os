@@ -17,12 +17,14 @@ final class PcmCaptureEngine {
     private var converter: AVAudioConverter?
     private var targetFormat: AVAudioFormat?
     private var onPCM: ((Data) -> Void)?
+    private var onLevel: ((Float) -> Void)?
     private var interruptionObserver: NSObjectProtocol?
 
     var isRunning: Bool { engine.isRunning }
 
-    func start(onPCM: @escaping (Data) -> Void) throws {
+    func start(onPCM: @escaping (Data) -> Void, onLevel: ((Float) -> Void)? = nil) throws {
         self.onPCM = onPCM
+        self.onLevel = onLevel
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .voiceChat, options: [])
         try session.setPreferredSampleRate(44_100)
@@ -45,6 +47,7 @@ final class PcmCaptureEngine {
         converter = AVAudioConverter(from: inputFormat, to: format)
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
+            self?.reportLevel(buffer: buffer)
             self?.handle(buffer: buffer)
         }
 
@@ -60,11 +63,36 @@ final class PcmCaptureEngine {
         engine.inputNode.removeTap(onBus: 0)
         converter = nil
         onPCM = nil
+        onLevel = nil
         if let interruptionObserver {
             NotificationCenter.default.removeObserver(interruptionObserver)
             self.interruptionObserver = nil
         }
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private func reportLevel(buffer: AVAudioPCMBuffer) {
+        guard let onLevel else { return }
+        let frames = Int(buffer.frameLength)
+        guard frames > 0 else { return }
+        var rms: Float = 0
+        if let floats = buffer.floatChannelData?.pointee {
+            var sum: Float = 0
+            for i in 0 ..< frames {
+                let sample = floats[i]
+                sum += sample * sample
+            }
+            rms = sqrt(sum / Float(frames))
+        } else if let ints = buffer.int16ChannelData?.pointee {
+            var sum: Float = 0
+            for i in 0 ..< frames {
+                let sample = Float(ints[i]) / Float(Int16.max)
+                sum += sample * sample
+            }
+            rms = sqrt(sum / Float(frames))
+        }
+        let level = min(1, rms * 10)
+        onLevel(level)
     }
 
     private func handle(buffer: AVAudioPCMBuffer) {
