@@ -102,6 +102,54 @@ class DebugGatewayTests(unittest.TestCase):
         body = resp.get_json()
         self.assertFalse(body.get("ok"))
 
+    def test_post_debug_report_pickup_without_intent(self) -> None:
+        assert hb is not None
+        client = hb.app.test_client()
+        with patch("dev_task.bridge.submit_command") as submit:
+            submit.return_value = {"run_id": "run-pickup-1", "status": "queued"}
+            resp = client.post(
+                "/api/v1/debug/report",
+                json={
+                    "intent_id": 0,
+                    "participant_id": "pickup-iphone-test",
+                    "source": "pickup_terminal",
+                    "problem_type": "execution_error",
+                    "user_summary": "显示正在听但电平不动",
+                    "client_snapshot": {
+                        "source": "pickup_terminal",
+                        "device_id": "pickup-iphone-test",
+                        "user_listening": True,
+                        "audio_level": 0,
+                        "capture_state": "采集中",
+                    },
+                },
+            )
+        self.assertEqual(resp.status_code, 200, resp.get_json())
+        body = resp.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertEqual(body.get("intent_id"), 0)
+        issue_id = int(body["issue_id"])
+        detail = client.get(f"/api/v1/admin/debug/issue/{issue_id}")
+        issue = detail.get_json().get("issue") or detail.get_json()
+        self.assertEqual(issue.get("source"), "pickup_terminal")
+        snap = (issue.get("context") or {}).get("client_snapshot") or {}
+        self.assertEqual(snap.get("device_id"), "pickup-iphone-test")
+
+    def test_post_debug_report_rejects_zero_intent_for_console(self) -> None:
+        assert hb is not None
+        client = hb.app.test_client()
+        resp = client.post(
+            "/api/v1/debug/report",
+            json={
+                "intent_id": 0,
+                "participant_id": "living-room-android",
+                "source": "user_console",
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        body = resp.get_json()
+        self.assertFalse(body.get("ok"))
+
     def test_post_debug_report_with_other_problem_type(self) -> None:
         assert hb is not None
         intent_id = self._seed_intent()

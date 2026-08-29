@@ -206,6 +206,14 @@ def issue_to_admin_view(issue: DebugIssue, *, dev_task: dict[str, Any] | None = 
     return view
 
 
+_PICKUP_SOURCES = frozenset({"pickup_terminal", "home_mic", "pickup"})
+
+
+def _is_pickup_source(source: str) -> bool:
+    key = (source or "").strip().lower()
+    return key in _PICKUP_SOURCES or key.startswith("pickup")
+
+
 def submit_debug_report(
     *,
     intent_id: int,
@@ -217,28 +225,49 @@ def submit_debug_report(
     client_snapshot: dict[str, Any] | None = None,
     get_intent: GetIntentFn,
 ) -> dict[str, Any]:
-    """Create Issue + Dev Task from current intent execution现场."""
-    intent = get_intent(intent_id)
-    if not intent:
-        return {"ok": False, "error": "intent not found"}
-
+    """Create Issue + Dev Task from intent现场, or from pickup client_snapshot alone."""
     pid = participant_id.strip()
-    if not _participant_matches_intent(intent, pid):
-        return {"ok": False, "error": "participant_id does not match intent issuer"}
+    if not pid:
+        return {"ok": False, "error": "participant_id is required"}
 
     normalized_type = normalize_problem_type(problem_type)
     if problem_type.strip() and not normalized_type:
         return {"ok": False, "error": "invalid problem_type"}
 
-    context = merge_intent_context(build_intent_context(intent), client_snapshot)
+    src = source.strip() or "user_console"
+    resolved_intent_id = int(intent_id or 0)
+
+    if resolved_intent_id <= 0:
+        if not _is_pickup_source(src):
+            return {"ok": False, "error": "intent_id is required"}
+        snap = normalize_client_snapshot(client_snapshot)
+        context = merge_intent_context(
+            {
+                "intent_id": 0,
+                "session_id": str(snap.get("device_id") or pid),
+                "user_input": "",
+                "source": src,
+                "intent_status": "n/a",
+                "error": str(snap.get("last_error") or ""),
+            },
+            snap,
+        )
+    else:
+        intent = get_intent(resolved_intent_id)
+        if not intent:
+            return {"ok": False, "error": "intent not found"}
+        if not _participant_matches_intent(intent, pid):
+            return {"ok": False, "error": "participant_id does not match intent issuer"}
+        context = merge_intent_context(build_intent_context(intent), client_snapshot)
+
     summary = user_summary.strip()
     if not summary and normalized_type:
         summary = problem_type_label(normalized_type)
     store = get_store()
     issue = store.create(
-        intent_id=intent_id,
+        intent_id=resolved_intent_id,
         session_id=str(context.get("session_id") or ""),
-        source=source.strip() or "user_console",
+        source=src,
         participant_id=pid,
         user_summary=summary,
         problem_type=normalized_type,

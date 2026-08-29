@@ -73,6 +73,7 @@ try:
         send_boss_message,
         unack_boss_message,
     )
+    from docs_browser import DocsBrowserError, docs_root, list_documents, read_document
 except ImportError:  # pragma: no cover
     from server.dev_task import (  # type: ignore
         cancel_agent_task,
@@ -106,6 +107,7 @@ except ImportError:  # pragma: no cover
         send_boss_message,
         unack_boss_message,
     )
+    from server.docs_browser import DocsBrowserError, docs_root, list_documents, read_document  # type: ignore
 
 try:
     from shortcut_mode import InterceptResult, apply_mode_event, intercept as shortcut_intercept
@@ -6695,16 +6697,20 @@ def post_debug_report():
     data = request.get_json(silent=True) or {}
     if not isinstance(data, dict):
         return jsonify(ok=False, error="JSON object required"), 400
-    try:
-        intent_id = int(data.get("intent_id"))
-    except (TypeError, ValueError):
-        return jsonify(ok=False, error="intent_id must be an integer"), 400
+    source = str(data.get("source") or "user_console").strip() or "user_console"
+    raw_intent = data.get("intent_id")
+    if raw_intent in (None, ""):
+        intent_id = 0
+    else:
+        try:
+            intent_id = int(raw_intent)
+        except (TypeError, ValueError):
+            return jsonify(ok=False, error="intent_id must be an integer"), 400
     participant_id = str(
         data.get("participant_id") or data.get("edge_id") or ""
     ).strip()
     if not participant_id:
         return jsonify(ok=False, error="participant_id is required"), 400
-    source = str(data.get("source") or "user_console").strip() or "user_console"
     user_summary = str(data.get("user_summary") or data.get("summary") or "").strip()
     problem_type = str(data.get("problem_type") or data.get("feedback_type") or "").strip()
     attachments_raw = data.get("attachments")
@@ -6773,6 +6779,27 @@ def admin_get_debug_issue(issue_id):
     if not view:
         return jsonify(ok=False, error="issue not found"), 404
     return jsonify(ok=True, issue=view)
+
+
+@app.route("/api/v1/admin/docs", methods=["GET"])
+def admin_list_docs():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    docs = list_documents()
+    return jsonify(ok=True, docs=docs, count=len(docs), root=str(docs_root()))
+
+
+@app.route("/api/v1/admin/docs/<path:rel_path>", methods=["GET"])
+def admin_get_doc(rel_path):
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    try:
+        doc = read_document(rel_path)
+    except DocsBrowserError as e:
+        return jsonify(ok=False, error=str(e)), 400
+    return jsonify(ok=True, doc=doc)
 
 
 @app.route("/api/v1/edges", methods=["GET"])
