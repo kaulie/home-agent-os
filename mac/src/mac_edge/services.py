@@ -210,10 +210,10 @@ NETEASE_MUSIC_SERVICE: dict[str, Any] = {
                 },
             },
             planner_recognize=(
-                "按 song / artist / album 在网易云播放（Mac 本机 ncm-cli）。"
-                "入参 song/artist/album 至少一项。不负责暂停/切歌"
+                "从用户话里拆出歌名 song、可选作者 artist；不要把整句当 keyword。"
+                "本轮必须有 song，不能只按歌手或专辑点播。不负责暂停/切歌。"
             ),
-            typical_triggers=["放十年", "播放陈奕迅的十年", "播放歌曲", "放歌", "来首邓丽君"],
+            typical_triggers=["放十年", "播放陈奕迅的十年"],
             do_not_dispatch=["蓝牙连接", "TTS", "开灯", "暂停", "下一首"],
         ),
         attach("music.pause", input_schema={}, output_schema={}),

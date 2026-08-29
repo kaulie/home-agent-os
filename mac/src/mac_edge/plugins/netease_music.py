@@ -1,7 +1,7 @@
-"""Mac Edge netease.music via ncm-cli + local ``ncm_songs`` catalog.
+"""Mac Edge: netease.music via ncm-cli (desktop 网易云 App / orpheus).
 
-Contract: search/play use ncm-cli; catalog reads/writes only through
-``mac_edge.ncm_songs``. Does not touch Brain SQLite.
+LLM extracts song/artist. This plugin only assembles ncm-cli argv and
+reads/writes ``mac_edge.ncm_songs``. Keyword is one argv value.
 """
 
 from __future__ import annotations
@@ -11,67 +11,135 @@ import logging
 import os
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Any
 
-from mac_edge.config import Config
-from mac_edge.music_linkage import enter as music_mode_enter
+from mac_edge.capability_availability import Availability
+from mac_edge.music_linkage import enter as enter_music_mode
+from mac_edge.music_linkage import exit_mode as exit_music_mode
 from mac_edge.ncm_songs import (
     NcmSongsError,
     find_by_name_artist,
-    get_song,
     init_db,
     mark_played,
     upsert_record,
 )
-from mac_edge.capability_availability import Availability
 
 log = logging.getLogger("mac_edge.netease_music")
 
-_DEFAULT_TIMEOUT_SEC = 90.0
-_TRANSPORT_TIMEOUT_SEC = 30.0
+SEARCH_TIMEOUT_SEC = 30.0
+PLAY_TIMEOUT_SEC = 20.0
+CONTROL_TIMEOUT_SEC = 15.0
+
+NO_SONG_MSG = "目前只支持按歌曲播放，请说出歌名"
+
+_MUSIC_CAPS = frozenset(
+    {
+        "music.play",
+        "music.pause",
+        "music.resume",
+        "music.stop",
+        "music.next",
+        "music.previous",
+    }
+)
+
+_CONTROL_CMD = {
+    "music.pause": ("pause",),
+    "music.resume": ("resume",),
+    "music.stop": ("stop",),
+    "music.next": ("next",),
+    "music.previous": ("prev",),
+}
+
+_COMMON_BINS = (
+    "/usr/local/bin/ncm-cli",
+    "/opt/homebrew/bin/ncm-cli",
+    str(Path.home() / ".npm-global" / "bin" / "ncm-cli"),
+)
 
 
 class NeteaseMusicError(Exception):
     pass
 
 
-def _ncm_bin() -> str:
-    raw = (os.environ.get("MAC_EDGE_NCM_CLI") or os.environ.get("NCM_CLI") or "").strip()
-    if raw:
-        return raw
+def ncm_cli_bin() -> str | None:
+    override = (os.environ.get("MAC_EDGE_NCM_CLI") or os.environ.get("NCM_CLI") or "").strip()
+    if override:
+        path = Path(override).expanduser()
+        if path.is_file():
+            return str(path)
+        which = shutil.which(override)
+        return which
     found = shutil.which("ncm-cli")
-    if not found:
-        raise NeteaseMusicError("ncm-cli not found (install or set MAC_EDGE_NCM_CLI)")
-    return found
+    if found:
+        return found
+    for raw in _COMMON_BINS:
+        path = Path(raw).expanduser()
+        if path.is_file():
+            return str(path)
+    return None
 
 
-def netease_configured() -> bool:
-    try:
-        _ncm_bin()
-        return True
-    except NeteaseMusicError:
-        return False
+def ncm_cli_configured() -> bool:
+    return bool(ncm_cli_bin())
 
 
-def is_available(_config: Config | None = None) -> Availability:
-    if netease_configured():
-        return Availability.available("ncm-cli")
-    return Availability.unavailable("ncm-cli not installed (brew install ncm-cli)")
+netease_configured = ncm_cli_configured
 
 
-def _param_str(params: dict[str, Any], key: str) -> str:
-    raw = params.get(key)
-    if raw is None:
-        return ""
-    return str(raw).strip()
+def is_available(_config: Any = None) -> Availability:
+    if ncm_cli_bin():
+        return Availability.available()
+    return Availability.unavailable("网易云不可用：本机找不到 ncm-cli")
 
 
-def _run_ncm(
-    args: list[str],
-    *,
-    timeout_sec: float = _DEFAULT_TIMEOUT_SEC,
-) -> dict[str, Any]:
-    cmd = [_ncm_bin(), *args, "--output", "json"]
+def search_keyword(*, song: str, artist: str | None = None) -> str:
+    title = str(song or "").strip()
+    singer = str(artist or "").strip()
+    if singer:
+        return f"{title} {singer}"
+    return title
+
+
+def last_json_object(text: str) -> dict[str, Any]:
+    """Last *top-level* JSON object in CLI output (skip [orpheus] lines).
+
+    Nested ``{`` inside an already-decoded object are not candidates.
+    Search envelopes therefore stay intact (``data.records``), while play
+    still ignores the orpheus prefix and takes the trailing success JSON.
+    """
+    blob = str(text or "")
+    decoder = json.JSONDecoder()
+    last: dict[str, Any] | None = None
+    i = 0
+    n = len(blob)
+    while i < n:
+        if blob[i] != "{":
+            i += 1
+            continue
+        try:
+            obj, consumed = decoder.raw_decode(blob[i:])
+        except json.JSONDecodeError:
+            i += 1
+            continue
+        if isinstance(obj, dict):
+            last = obj
+        i += max(1, consumed)
+    if last is None:
+        raise NeteaseMusicError("ncm-cli 未返回 JSON")
+    return last
+
+
+def _rate_limited(text: str) -> bool:
+    return "请求总量超限" in (text or "")
+
+
+def _run_ncm(args: list[str], *, timeout_sec: float) -> dict[str, Any]:
+    bin_path = ncm_cli_bin()
+    if not bin_path:
+        raise NeteaseMusicError("网易云不可用：本机找不到 ncm-cli")
+    cmd = [bin_path, *args]
     log.info("ncm-cli %s", " ".join(args))
     try:
         proc = subprocess.run(
@@ -82,272 +150,138 @@ def _run_ncm(
             check=False,
         )
     except subprocess.TimeoutExpired as e:
-        raise NeteaseMusicError(f"ncm-cli timeout after {timeout_sec}s: {args[0]}") from e
-    stdout = (proc.stdout or "").strip()
-    stderr = (proc.stderr or "").strip()
-    if proc.returncode != 0:
-        detail = stderr or stdout or f"exit {proc.returncode}"
-        raise NeteaseMusicError(f"ncm-cli failed: {detail}")
-    if not stdout:
-        raise NeteaseMusicError("ncm-cli returned empty output")
+        raise NeteaseMusicError(f"ncm-cli 超时（>{int(timeout_sec)}s）") from e
+    except OSError as e:
+        raise NeteaseMusicError(f"ncm-cli 无法启动：{e}") from e
+    combined = f"{proc.stdout or ''}\n{proc.stderr or ''}"
+    if _rate_limited(combined):
+        raise NeteaseMusicError("请求总量超限")
     try:
-        data = json.loads(stdout)
-    except json.JSONDecodeError as e:
-        raise NeteaseMusicError(f"ncm-cli invalid JSON: {stdout[:240]}") from e
-    if not isinstance(data, dict):
-        raise NeteaseMusicError("ncm-cli JSON must be an object")
-    if data.get("success") is False:
-        msg = str(data.get("message") or data.get("error") or "ncm-cli error")
-        raise NeteaseMusicError(msg)
-    code = data.get("code")
-    if code is not None and int(code) != 200:
-        msg = str(data.get("message") or f"ncm-cli code={code}")
-        raise NeteaseMusicError(msg)
-    return data
+        payload = last_json_object(combined)
+    except NeteaseMusicError:
+        tail = combined.strip()[-400:] or "(empty)"
+        raise NeteaseMusicError(f"ncm-cli 未返回 JSON：{tail}") from None
+    if proc.returncode != 0 and payload.get("success") is not True:
+        msg = str(payload.get("message") or "").strip()
+        raise NeteaseMusicError(msg or f"ncm-cli 退出码 {proc.returncode}")
+    return payload
 
 
-def _songs_from_search_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    data = payload.get("data")
-    if not isinstance(data, dict):
-        return []
-    songs = data.get("songs")
-    if not isinstance(songs, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for item in songs:
-        if isinstance(item, dict):
-            out.append(item)
-    return out
+def _str_param(params: dict[str, Any] | None, *keys: str) -> str:
+    raw = params if isinstance(params, dict) else {}
+    for key in keys:
+        val = raw.get(key)
+        if val is not None and str(val).strip():
+            return str(val).strip()
+    return ""
 
 
-def _search_songs(keyword: str, *, limit: int = 10) -> list[dict[str, Any]]:
-    key = str(keyword or "").strip()
-    if not key:
-        return []
-    payload = _run_ncm(
-        ["search", "song", "--keyword", key, "--limit", str(max(1, int(limit)))],
-    )
-    return _songs_from_search_payload(payload)
-
-
-def _artist_names(record: dict[str, Any]) -> str:
-    artists = record.get("artists") or record.get("fullArtists") or []
-    if not isinstance(artists, list):
-        return ""
-    names: list[str] = []
-    for item in artists:
-        if isinstance(item, dict):
-            name = str(item.get("name") or "").strip()
-        else:
-            name = str(item or "").strip()
-        if name:
-            names.append(name)
-    return " / ".join(names)
-
-
-def _pick_best(
-    hits: list[dict[str, Any]],
-    *,
-    song: str = "",
-    artist: str = "",
-) -> dict[str, Any] | None:
+def _cached_record(*, song: str, artist: str) -> dict[str, Any] | None:
+    init_db()
+    hits = find_by_name_artist(name=song, artist=artist, limit=5)
     if not hits:
         return None
-    song_key = song.strip().casefold()
-    artist_key = artist.strip().casefold()
-    if song_key and artist_key:
-        for hit in hits:
-            name = str(hit.get("name") or "").strip().casefold()
-            artists = _artist_names(hit).casefold()
-            if song_key in name or name in song_key:
-                if artist_key in artists:
-                    return hit
-        for hit in hits:
-            name = str(hit.get("name") or "").strip().casefold()
-            artists = _artist_names(hit).casefold()
-            if song_key in name or name in song_key:
-                return hit
-    if song_key:
-        for hit in hits:
-            name = str(hit.get("name") or "").strip().casefold()
-            if song_key in name or name in song_key:
-                return hit
-    if artist_key:
-        for hit in hits:
-            artists = _artist_names(hit).casefold()
-            if artist_key in artists:
-                return hit
-    return hits[0]
+    rec = hits[0].get("record")
+    return rec if isinstance(rec, dict) else None
 
 
-def _resolve_from_catalog(
-    *,
-    song: str,
-    artist: str,
-) -> dict[str, Any] | None:
-    if song and artist:
-        rows = find_by_name_artist(name=song, artist=artist, limit=5)
-        if rows:
-            return rows[0]
-    if song:
-        rows = find_by_name_artist(name=song, limit=5)
-        if rows:
-            if artist:
-                artist_key = artist.casefold()
-                for row in rows:
-                    if artist_key in str(row.get("artist") or "").casefold():
-                        return row
-            return rows[0]
-    if artist and not song:
-        rows = find_by_name_artist(artist=artist, limit=5)
-        if rows:
-            return rows[0]
-    return None
+def search_record(*, song: str, artist: str | None = None) -> dict[str, Any]:
+    keyword = search_keyword(song=song, artist=artist)
+    payload = _run_ncm(
+        ["search", "song", "--keyword", keyword, "--limit", "1"],
+        timeout_sec=SEARCH_TIMEOUT_SEC,
+    )
+    code = payload.get("code")
+    if code not in (200, None, "200") and code != 200:
+        try:
+            if int(code) != 200:
+                msg = str(payload.get("message") or "").strip()
+                raise NeteaseMusicError(msg or f"网易云搜索失败 code={code}")
+        except (TypeError, ValueError, NeteaseMusicError):
+            msg = str(payload.get("message") or "").strip()
+            raise NeteaseMusicError(msg or f"网易云搜索失败 code={code}") from None
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    records = data.get("records") if isinstance(data, dict) else None
+    if not isinstance(records, list) or not records:
+        songs = data.get("songs") if isinstance(data, dict) else None
+        records = songs if isinstance(songs, list) else []
+    if not records:
+        label = f"「{song} - {artist}」" if artist else f"「{song}」"
+        raise NeteaseMusicError(f"网易云未找到歌曲{label}")
+    first = records[0]
+    if not isinstance(first, dict):
+        raise NeteaseMusicError("网易云搜索结果无效")
+    return first
 
 
-def _catalog_row_ids(row: dict[str, Any]) -> tuple[str, str]:
-    enc = str(row.get("encrypted_id") or "").strip()
-    oid = row.get("original_id")
-    if not enc or oid is None:
-        record = row.get("record")
-        if isinstance(record, dict):
-            enc = str(record.get("id") or record.get("encryptedId") or enc).strip()
-            oid = record.get("originalId") or record.get("original_id") or oid
-    if not enc or oid is None:
-        raise NeteaseMusicError("catalog row missing encrypted_id/original_id")
-    return enc, str(int(oid))
-
-
-def _play_ids(encrypted_id: str, original_id: str) -> str:
+def play_record(record: dict[str, Any]) -> str:
+    encrypted = str(record.get("id") or "").strip()
+    original = record.get("originalId")
+    if not encrypted or original in (None, ""):
+        raise NeteaseMusicError("搜索结果缺少 encrypted-id / original-id")
     payload = _run_ncm(
         [
             "play",
             "--song",
             "--encrypted-id",
-            encrypted_id,
+            encrypted,
             "--original-id",
-            original_id,
+            str(original),
         ],
+        timeout_sec=PLAY_TIMEOUT_SEC,
     )
-    msg = str(payload.get("message") or "playing")
-    return msg
+    if payload.get("success") is not True:
+        msg = str(payload.get("message") or "").strip()
+        raise NeteaseMusicError(msg or "网易云播放失败")
+    return str(payload.get("message") or "").strip() or f"已唤起云音乐播放歌曲 {original}"
 
 
-def _play_row(row: dict[str, Any], *, label: str) -> tuple[str, dict[str, Any]]:
-    enc, oid = _catalog_row_ids(row)
-    play_msg = _play_ids(enc, oid)
-    mark_played(int(oid))
-    music_mode_enter(trigger_text=label)
-    outputs = {
-        "song": str(row.get("name") or ""),
-        "artist": str(row.get("artist") or ""),
-        "original_id": int(oid),
-    }
-    return f"music.play {label}: {play_msg}", outputs
+def _control(cap: str) -> str:
+    argv = _CONTROL_CMD.get(cap)
+    if not argv:
+        raise NeteaseMusicError(f"unsupported capability {cap}")
+    payload = _run_ncm(list(argv), timeout_sec=CONTROL_TIMEOUT_SEC)
+    if payload.get("success") is not True:
+        msg = str(payload.get("message") or "").strip()
+        raise NeteaseMusicError(msg or f"{cap} 失败")
+    msg = str(payload.get("message") or "").strip()
+    return msg or cap
 
 
-def _play_hit(hit: dict[str, Any], *, label: str) -> tuple[str, dict[str, Any]]:
-    init_db()
-    oid = upsert_record(hit)
-    row = get_song(oid)
-    if row is None:
-        raise NeteaseMusicError(f"catalog upsert failed for original_id={oid}")
-    return _play_row(row, label=label)
-
-
-def _search_keyword(song: str, artist: str, album: str) -> str:
-    if song:
-        return f"{song} {artist}".strip() if artist else song
-    if album:
-        return f"{album} {artist}".strip() if artist else album
-    return artist
-
-
-def play_from_params(params: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    song = _param_str(params, "song")
-    artist = _param_str(params, "artist")
-    album = _param_str(params, "album")
-    if not song and not artist and not album:
-        raise NeteaseMusicError(
-            "music.play requires song, artist, or album",
-        )
-    init_db()
-    label = ""
-    if song:
-        label = f"「{song}」" if not artist else f"「{song} - {artist}」"
-    elif album:
-        label = f"专辑「{album}」"
+def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[str, Any]]:
+    song = _str_param(params, "song")
+    artist = _str_param(params, "artist")
+    if not song:
+        raise NeteaseMusicError(NO_SONG_MSG)
+    cached = _cached_record(song=song, artist=artist)
+    if cached:
+        log.info("ncm_songs hit name=%s artist=%s", song, artist or "-")
+        record = cached
     else:
-        label = f"歌手「{artist}」"
-
-    cached = _resolve_from_catalog(song=song, artist=artist)
-    if cached is not None:
-        return _play_row(cached, label=label)
-
-    keyword = _search_keyword(song, artist, album)
-    hits = _search_songs(keyword)
-    if not hits:
-        raise NeteaseMusicError(f"未搜到歌曲: {keyword}")
-    for hit in hits:
-        upsert_record(hit)
-    best = _pick_best(hits, song=song, artist=artist)
-    if best is None:
-        raise NeteaseMusicError(f"未搜到歌曲: {keyword}")
-    return _play_hit(best, label=label)
-
-
-def _transport(command: str) -> str:
-    payload = _run_ncm([command], timeout_sec=_TRANSPORT_TIMEOUT_SEC)
-    return str(payload.get("message") or command)
-
-
-def pause_from_params(params: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    del params
-    return f"music.pause: {_transport('pause')}", {}
-
-
-def resume_from_params(params: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    del params
-    return f"music.resume: {_transport('resume')}", {}
-
-
-def stop_from_params(params: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    del params
-    return f"music.stop: {_transport('stop')}", {}
-
-
-def next_from_params(params: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    del params
-    return f"music.next: {_transport('next')}", {}
-
-
-def previous_from_params(params: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    del params
-    return f"music.previous: {_transport('prev')}", {}
-
-
-def dispatch(capability_id: str, params: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    cap = str(capability_id or "").strip()
-    if cap == "music.play":
-        return play_from_params(params)
-    if cap == "music.pause":
-        return pause_from_params(params)
-    if cap == "music.resume":
-        return resume_from_params(params)
-    if cap == "music.stop":
-        return stop_from_params(params)
-    if cap == "music.next":
-        return next_from_params(params)
-    if cap == "music.previous":
-        return previous_from_params(params)
-    raise NeteaseMusicError(f"unsupported capability: {cap}")
+        record = search_record(song=song, artist=artist or None)
+    msg = play_record(record)
+    try:
+        oid = upsert_record(record)
+        mark_played(oid)
+    except NcmSongsError as e:
+        log.warning("ncm_songs write failed: %s", e)
+    enter_music_mode(trigger_text=f"{song} {artist}".strip())
+    return msg, {}
 
 
 def run_from_params(
     capability_id: str,
-    params: dict[str, Any],
+    params: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    return dispatch(capability_id, params)
+    cap = str(capability_id or "").strip()
+    if cap not in _MUSIC_CAPS:
+        raise NeteaseMusicError(f"unsupported capability {cap}")
+    if cap == "music.play":
+        return play_from_params(params)
+    msg = _control(cap)
+    if cap == "music.stop":
+        exit_music_mode(reason="music.stop")
+    return msg, {}
 
 
-ncm_cli_configured = netease_configured
+dispatch = run_from_params
