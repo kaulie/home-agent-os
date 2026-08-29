@@ -171,6 +171,63 @@ class ServiceAdvertiseTests(unittest.TestCase):
         with patch.dict(os.environ, env, clear=False):
             self.assertEqual(_ids(default_services()), [])
 
+    def test_laptop_advertises_netease_when_ncm_cli_found(self) -> None:
+        env = {
+            "MAC_EDGE_ROLE": "laptop",
+            "MAC_EDGE_SERVICE_WHITELIST": "",
+            "MAC_EDGE_GOPRO_SSID": "",
+            "MAC_EDGE_ADVERTISE_CAST": "0",
+            "MAC_EDGE_HISENSE_USERNAME": "",
+            "MAC_EDGE_HISENSE_PASSWORD": "",
+            "MAC_EDGE_XIAOMI_USERNAME": "",
+            "MAC_EDGE_XIAOMI_PASSWORD": "",
+            "MAC_EDGE_XIAOMI_TV": "",
+            "MAC_EDGE_DISPLAY_BACKEND": "",
+            "MAC_EDGE_XIAOMI_TV_HOST": "",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with patch(
+                "mac_edge.plugins.netease_music.ncm_cli_configured",
+                return_value=True,
+            ):
+                services = default_services()
+        ids = _ids(services)
+        self.assertIn("netease.music", ids)
+        play = None
+        for svc in services:
+            if svc.get("service_id") != "netease.music":
+                continue
+            for cap in svc.get("capabilities") or []:
+                if cap.get("capability_id") == "music.play":
+                    play = cap
+                    break
+        assert play is not None
+        self.assertEqual(play["typical_triggers"], ["放十年", "播放陈奕迅的十年"])
+        self.assertIn("拆出歌名", play["planner_recognize"])
+        self.assertNotIn("周杰伦", str(play["typical_triggers"]))
+
+    def test_laptop_skips_netease_without_ncm_cli(self) -> None:
+        env = {
+            "MAC_EDGE_ROLE": "laptop",
+            "MAC_EDGE_SERVICE_WHITELIST": "",
+            "MAC_EDGE_GOPRO_SSID": "",
+            "MAC_EDGE_ADVERTISE_CAST": "0",
+            "MAC_EDGE_HISENSE_USERNAME": "",
+            "MAC_EDGE_HISENSE_PASSWORD": "",
+            "MAC_EDGE_XIAOMI_USERNAME": "",
+            "MAC_EDGE_XIAOMI_PASSWORD": "",
+            "MAC_EDGE_XIAOMI_TV": "",
+            "MAC_EDGE_DISPLAY_BACKEND": "",
+            "MAC_EDGE_XIAOMI_TV_HOST": "",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with patch(
+                "mac_edge.plugins.netease_music.ncm_cli_configured",
+                return_value=False,
+            ):
+                ids = _ids(default_services())
+        self.assertNotIn("netease.music", ids)
+
 
 if __name__ == "__main__":
     unittest.main()

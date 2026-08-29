@@ -1,18 +1,21 @@
 id: netease-music
 service_id: netease.music
 group: music
-version: "0.3.0"
+version: "0.4.0"
 display_name: 网易云音乐
-description: 按歌曲 / 专辑 / 歌手播放网易云
+description: 按歌曲播放网易云（Mac 走 ncm-cli；Android/iOS 深链）
 
 capabilities:
   - capability_id: music.play
     description: >
-      能：按 song / album / artist 在网易云播放。用户要放歌时用本能力。
-      不能：用 query.content 或 notify.speak 顶替；无本能力时 plan=[]。
+      能：按 song（必填）播放；artist 可选收窄搜索。
+      不能：无歌名只点歌手；用 query.content 或 notify.speak 顶替。
   - capability_id: music.pause
     description: >
       能：暂停当前网易云播放。不能：开始播放（music.play）；搜歌；TTS。
+  - capability_id: music.resume
+    description: >
+      能：从暂停处继续。不能：换歌。
   - capability_id: music.stop
     description: >
       能：停止当前网易云播放。不能：开始播放（music.play）；搜歌；TTS。
@@ -26,3 +29,4 @@ capabilities:
 entry:
   android: android/NetEaseMusicSkill.kt
   ios: ios/NetEasePluginEntry.swift
+  mac: mac/src/mac_edge/plugins/netease_music.py
