@@ -1,6 +1,6 @@
 # Mac Edge `ncm_songs` SQLite（网易云本地歌曲库）
 
-**范围：** Mac Edge 本机独立库，**不进** Brain `brain.sqlite3`。实现：`mac/sql/001_ncm_songs.sql`（+ `002` 若曾应用旧 001）+ `mac/sql/003_ncm_song_index.sql` + `mac/src/mac_edge/ncm_songs/store.py`。
+**范围：** Mac Edge 本机独立库，**不进** Brain `brain.sqlite3`。实现：`mac/sql/001_ncm_songs.sql`（+ `002` 若曾应用旧 001）+ `mac/sql/003_ncm_song_index.sql` + `mac/sql/004_ncm_timestamps.sql` + `mac/src/mac_edge/ncm_songs/store.py`。
 
 ## 路径
 
@@ -37,7 +37,9 @@ CREATE TABLE ncm_songs (
   artist TEXT,
   artist_norm TEXT NOT NULL DEFAULT '',
   record_json TEXT NOT NULL,
-  played_at REAL
+  played_at REAL,
+  create_time REAL,
+  update_time REAL
 );
 
 CREATE INDEX idx_ncm_songs_name_norm ON ncm_songs(name_norm);
@@ -54,6 +56,8 @@ CREATE INDEX idx_ncm_songs_artist_norm ON ncm_songs(artist_norm);
 | `artist_norm` | `normalize_text(artist)` |
 | `record_json` | 完整 search record（单行 JSON object） |
 | `played_at` | 最近一次 play 成功，Unix **秒**；未播过 NULL |
+| `create_time` | 首次写入，Unix **秒**；upsert 不改 |
+| `update_time` | 最近一次写入（含 play 标记），Unix **秒** |
 
 `normalize_text`：trim → 空白折叠 → `casefold()`。
 
@@ -74,7 +78,9 @@ CREATE TABLE ncm_song_index (
   artist_norm TEXT NOT NULL DEFAULT '',
   album_original_id INTEGER,
   album_name TEXT,
-  album_encrypted_id TEXT
+  album_encrypted_id TEXT,
+  create_time REAL,
+  update_time REAL
 );
 
 CREATE INDEX idx_ncm_song_index_song_name ON ncm_song_index(song_name);
@@ -96,6 +102,8 @@ CREATE INDEX idx_ncm_song_index_name_artist ON ncm_song_index(song_name_norm, ar
 | `album_original_id` | INTEGER | `album.originalId`（`album` 为 object 时） |
 | `album_name` | TEXT | `album.name`；若 `album` 是字符串则整段当名称 |
 | `album_encrypted_id` | TEXT | `album.id` |
+| `create_time` | REAL Unix 秒 | 首次写入；upsert 不改 |
+| `update_time` | REAL Unix 秒 | 最近一次索引写入 |
 
 缺字段 → NULL，**禁止编造**。索引表 **不复制** `record_json`。
 

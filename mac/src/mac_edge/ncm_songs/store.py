@@ -220,6 +220,8 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "record": record,
         "record_json": str(row["record_json"]),
         "played_at": row["played_at"],
+        "create_time": row["create_time"] if "create_time" in row.keys() else None,
+        "update_time": row["update_time"] if "update_time" in row.keys() else None,
     }
 
 
@@ -237,6 +239,8 @@ def _index_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "album_original_id": int(album_oid) if album_oid is not None else None,
         "album_name": _optional_text(row["album_name"]),
         "album_encrypted_id": _optional_text(row["album_encrypted_id"]),
+        "create_time": row["create_time"] if "create_time" in row.keys() else None,
+        "update_time": row["update_time"] if "update_time" in row.keys() else None,
     }
 
 
@@ -271,6 +275,8 @@ def _index_as_song_dict(row: sqlite3.Row) -> dict[str, Any]:
         "record": record,
         "record_json": _dumps(record),
         "played_at": None,
+        "create_time": idx.get("create_time"),
+        "update_time": idx.get("update_time"),
     }
 
 
@@ -284,6 +290,7 @@ def _upsert_index(
     artist: str,
     name_norm: str,
     artist_norm: str,
+    now: float,
 ) -> None:
     duration = _duration_ms(record)
     album_oid, album_name, album_enc = _album_fields(record)
@@ -292,8 +299,9 @@ def _upsert_index(
         INSERT INTO ncm_song_index (
           song_original_id, song_name, song_name_norm, song_encrypted_id,
           duration, artist, artist_norm,
-          album_original_id, album_name, album_encrypted_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          album_original_id, album_name, album_encrypted_id,
+          create_time, update_time
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(song_original_id) DO UPDATE SET
           song_name = excluded.song_name,
           song_name_norm = excluded.song_name_norm,
@@ -306,7 +314,8 @@ def _upsert_index(
           END,
           album_original_id = COALESCE(excluded.album_original_id, ncm_song_index.album_original_id),
           album_name = COALESCE(excluded.album_name, ncm_song_index.album_name),
-          album_encrypted_id = COALESCE(excluded.album_encrypted_id, ncm_song_index.album_encrypted_id)
+          album_encrypted_id = COALESCE(excluded.album_encrypted_id, ncm_song_index.album_encrypted_id),
+          update_time = excluded.update_time
         """,
         (
             original_id,
@@ -319,6 +328,8 @@ def _upsert_index(
             album_oid,
             album_name,
             album_enc,
+            now,
+            now,
         ),
     )
 
@@ -338,6 +349,7 @@ def upsert_record(
     name_norm = normalize_text(name)
     artist_norm = normalize_text(artist)
     payload = _dumps(record)
+    ts = _now()
     with _lock:
         init_db()
         conn = _connect()
@@ -345,8 +357,8 @@ def upsert_record(
             """
             INSERT INTO ncm_songs (
               original_id, encrypted_id, name, name_norm, artist, artist_norm,
-              record_json, played_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              record_json, played_at, create_time, update_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(original_id) DO UPDATE SET
               encrypted_id = excluded.encrypted_id,
               name = excluded.name,
@@ -354,7 +366,8 @@ def upsert_record(
               artist = excluded.artist,
               artist_norm = excluded.artist_norm,
               record_json = excluded.record_json,
-              played_at = COALESCE(excluded.played_at, ncm_songs.played_at)
+              played_at = COALESCE(excluded.played_at, ncm_songs.played_at),
+              update_time = excluded.update_time
             """,
             (
                 original_id,
@@ -365,6 +378,8 @@ def upsert_record(
                 artist_norm,
                 payload,
                 played_at,
+                ts,
+                ts,
             ),
         )
         _upsert_index(
@@ -376,6 +391,7 @@ def upsert_record(
             artist=artist,
             name_norm=name_norm,
             artist_norm=artist_norm,
+            now=ts,
         )
     return original_id
 
@@ -534,11 +550,12 @@ def mark_played(original_id: int | str, *, at: float | None = None) -> None:
     except (TypeError, ValueError) as exc:
         raise NcmSongsError("original_id required") from exc
     ts = _now() if at is None else float(at)
+    written = _now()
     with _lock:
         init_db()
         cur = _connect().execute(
-            "UPDATE ncm_songs SET played_at = ? WHERE original_id = ?",
-            (ts, oid),
+            "UPDATE ncm_songs SET played_at = ?, update_time = ? WHERE original_id = ?",
+            (ts, written, oid),
         )
         if cur.rowcount <= 0:
             raise NcmSongsError(f"unknown original_id: {oid}")

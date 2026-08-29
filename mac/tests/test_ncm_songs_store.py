@@ -55,6 +55,8 @@ class NcmSongsStoreTests(unittest.TestCase):
                     "artist_norm",
                     "record_json",
                     "played_at",
+                    "create_time",
+                    "update_time",
                 },
             )
             indexes = {
@@ -79,6 +81,8 @@ class NcmSongsStoreTests(unittest.TestCase):
                     "album_original_id",
                     "album_name",
                     "album_encrypted_id",
+                    "create_time",
+                    "update_time",
                 },
             )
             idx_indexes = {
@@ -97,6 +101,7 @@ class NcmSongsStoreTests(unittest.TestCase):
                 for row in conn.execute("SELECT version FROM schema_migrations")
             }
             self.assertIn(3, versions)
+            self.assertIn(4, versions)
         finally:
             conn.close()
 
@@ -112,6 +117,8 @@ class NcmSongsStoreTests(unittest.TestCase):
         self.assertEqual(got["name_norm"], ncm_store.normalize_text("晴天"))
         self.assertEqual(got["record"]["album"]["name"], "叶惠美")
         self.assertIsNone(got["played_at"])
+        self.assertIsNotNone(got["create_time"])
+        self.assertEqual(got["create_time"], got["update_time"])
 
         indexed = ncm_store.get_index_song(12345)
         assert indexed is not None
@@ -122,12 +129,22 @@ class NcmSongsStoreTests(unittest.TestCase):
         self.assertEqual(indexed["album_original_id"], 18625)
         self.assertEqual(indexed["album_name"], "叶惠美")
         self.assertEqual(indexed["album_encrypted_id"], "ALBUM_ENC_YEHUIMEI")
+        self.assertIsNotNone(indexed["create_time"])
+        self.assertEqual(indexed["create_time"], indexed["update_time"])
 
-        ncm_store.upsert_record(self._record(id="ncm_new", name="晴天 (Live)"))
+        with mock.patch.object(ncm_store, "_now", return_value=got["create_time"] + 5.0):
+            ncm_store.upsert_record(self._record(id="ncm_new", name="晴天 (Live)"))
         got2 = ncm_store.get_song(12345)
         assert got2 is not None
         self.assertEqual(got2["encrypted_id"], "ncm_new")
         self.assertEqual(got2["name"], "晴天 (Live)")
+        self.assertEqual(got["create_time"], got2["create_time"])
+        self.assertGreater(got2["update_time"], got["update_time"])
+
+        indexed2 = ncm_store.get_index_song(12345)
+        assert indexed2 is not None
+        self.assertEqual(indexed["create_time"], indexed2["create_time"])
+        self.assertGreater(indexed2["update_time"], indexed["update_time"])
 
     def test_mark_played_and_find_by_norm(self) -> None:
         ncm_store.upsert_record(
@@ -142,6 +159,8 @@ class NcmSongsStoreTests(unittest.TestCase):
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0]["original_id"], 1)
         self.assertEqual(hits[0]["played_at"], 100.0)
+        self.assertIsNotNone(hits[0]["create_time"])
+        self.assertGreaterEqual(hits[0]["update_time"], hits[0]["create_time"])
 
         only_name = ncm_store.find_by_norm(name_norm=ncm_store.normalize_text("World"))
         self.assertEqual(len(only_name), 1)
