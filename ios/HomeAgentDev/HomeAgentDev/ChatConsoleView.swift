@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ChatConsoleView: View {
     @EnvironmentObject private var store: DevStore
@@ -11,6 +12,10 @@ struct ChatConsoleView: View {
     @FocusState private var inputFocused: Bool
     @State private var mentionQuery: String?
     @State private var showMentionPicker = false
+    @State private var docAutocompleteQuery: String?
+    @State private var showDocAutocomplete = false
+    @State private var showDocPickerSheet = false
+    @State private var inlineDocPath: String?
     /// Long-press reaction float target (nil = hidden).
     @State private var reactionMessageId: Int?
 
@@ -41,7 +46,13 @@ struct ChatConsoleView: View {
                             .zIndex(2)
                     }
                     .overlay(alignment: .bottom) {
-                        if showMentionPicker, let query = mentionQuery {
+                        if showDocAutocomplete, let query = docAutocompleteQuery {
+                            docSuggestions(query: query)
+                                .frame(maxWidth: .infinity)
+                                .padding(.horizontal, 10)
+                                .padding(.bottom, composerBarHeight + 8)
+                                .zIndex(3)
+                        } else if showMentionPicker, let query = mentionQuery {
                             mentionSuggestions(query: query)
                                 .frame(maxWidth: .infinity)
                                 .padding(.horizontal, 10)
@@ -62,22 +73,42 @@ struct ChatConsoleView: View {
                     reactionFloat(for: reactionMsg)
                         .padding(.horizontal, 28)
                         .transition(.scale(scale: 0.92).combined(with: .opacity))
+                        .zIndex(100)
                 }
             }
+            .zIndex(reactionMessageId == nil ? 0 : 1)
             .navigationTitle("Chat")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(DevTheme.ink, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .onChange(of: draft) { _ in
-                syncMentionPicker()
+                syncAutocompletePickers()
             }
             .refreshable {
                 await store.loadChat(reset: true, showSpinner: false)
             }
+            .task {
+                await store.loadDocs(showSpinner: false)
+            }
             .sheet(item: $promoteMessage) { msg in
                 promoteSheet(message: msg)
             }
-            .devDismissKeyboardOnTap($inputFocused)
+            .sheet(isPresented: $showDocPickerSheet) {
+                ChatDocPickerSheet { entry in
+                    insertDocReference(path: entry.path)
+                }
+                .environmentObject(store)
+            }
+            .sheet(isPresented: Binding(
+                get: { inlineDocPath != nil },
+                set: { if !$0 { inlineDocPath = nil } }
+            )) {
+                if let path = inlineDocPath {
+                    InlineDocSheet(docPath: path)
+                        .environmentObject(store)
+                }
+            }
+            .devDismissKeyboardOnTap($inputFocused, enabled: reactionMessageId == nil)
             .devKeyboardDoneToolbar($inputFocused)
         }
     }
@@ -91,7 +122,7 @@ struct ChatConsoleView: View {
             Text("Agent 群聊")
                 .font(.system(size: 18, weight: .semibold, design: .rounded))
                 .foregroundStyle(DevTheme.mist)
-            Text("发消息用 @ 选择 Agent；未 @ 的消息仅自己可见。\n在家连 LAN Brain；在外连云端 Brain（需家里 Mac 开 chat + 隧道）。")
+            Text("发消息用 @ 选择 Agent；输入 [[ 或点 📄 引用项目文档并内联打开。\n未 @ 的消息仅自己可见。")
                 .font(.system(size: 13, design: .rounded))
                 .foregroundStyle(DevTheme.dim)
                 .multilineTextAlignment(.center)
@@ -112,12 +143,13 @@ struct ChatConsoleView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 16)
             }
-                            .onChange(of: store.chatMessages.count) { _ in
-                                scrollToBottom(proxy: proxy)
-                            }
-                            .onChange(of: store.chatMessages.last?.id) { _ in
-                                scrollToBottom(proxy: proxy)
-                            }
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: store.chatMessages.count) { _ in
+                scrollToBottom(proxy: proxy)
+            }
+            .onChange(of: store.chatMessages.last?.id) { _ in
+                scrollToBottom(proxy: proxy)
+            }
             .onAppear {
                 scrollToBottom(proxy: proxy)
             }
@@ -154,33 +186,7 @@ struct ChatConsoleView: View {
                         .foregroundStyle(DevTheme.dim)
                 }
 
-                Group {
-                    if msg.recalled {
-                        Text("（已撤回）")
-                            .font(.system(size: 14, design: .rounded))
-                            .foregroundStyle(DevTheme.dim)
-                    } else {
-                        Text(msg.body)
-                            .font(.system(size: 15, design: .rounded))
-                            .foregroundStyle(msg.isFromBoss ? DevTheme.ink : DevTheme.mist)
-                            .textSelection(.enabled)
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(msg.isFromBoss ? DevTheme.sand : DevTheme.panel)
-                        .opacity(msg.isPending ? 0.72 : 1)
-                )
-                .onLongPressGesture(minimumDuration: 1.0) {
-                    guard !msg.isPending, !msg.recalled else { return }
-                    inputFocused = false
-                    DevKeyboard.dismiss()
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                        reactionMessageId = msg.id
-                    }
-                }
+                messageBubble(for: msg)
 
                 if !msg.acks.isEmpty {
                     sharedAckChip(
@@ -209,6 +215,54 @@ struct ChatConsoleView: View {
                 Spacer(minLength: 36)
             }
         }
+    }
+
+    private func messageBubble(for msg: AgentChatMessage) -> some View {
+        Group {
+            if msg.recalled {
+                Text("（已撤回）")
+                    .font(.system(size: 14, design: .rounded))
+                    .foregroundStyle(DevTheme.dim)
+            } else {
+                ChatMessageBodyView(
+                    bodyText: msg.body,
+                    textColor: msg.isFromBoss ? DevTheme.ink : DevTheme.mist,
+                    linkColor: msg.isFromBoss ? DevTheme.ink.opacity(0.85) : DevTheme.sand,
+                    allowsTextSelection: false
+                ) { path in
+                    inlineDocPath = path
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: msg.isFromBoss ? .trailing : .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(msg.isFromBoss ? DevTheme.sand : DevTheme.panel)
+                .opacity(msg.isPending ? 0.72 : 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .onLongPressGesture(minimumDuration: 0.45, maximumDistance: 20) {
+            presentReaction(for: msg)
+        }
+    }
+
+    private func presentReaction(for msg: AgentChatMessage) {
+        guard !msg.isPending, !msg.recalled else { return }
+        inputFocused = false
+        DevKeyboard.dismiss()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+            reactionMessageId = msg.id
+        }
+    }
+
+    private func openPromote(for msg: AgentChatMessage) {
+        reactionMessageId = nil
+        promoteMessage = msg
+        promoteText = msg.body
+        selectedBackgroundIds = defaultBackgroundSelection(anchor: msg)
     }
 
     private func avatar(for handle: String) -> some View {
@@ -268,10 +322,7 @@ struct ChatConsoleView: View {
             }
 
             Button {
-                reactionMessageId = nil
-                promoteMessage = msg
-                promoteText = msg.body
-                selectedBackgroundIds = defaultBackgroundSelection(anchor: msg)
+                openPromote(for: msg)
             } label: {
                 Text("转为 Dev Task")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -342,6 +393,19 @@ struct ChatConsoleView: View {
             .background(DevTheme.ink)
     }
 
+    private func syncAutocompletePickers() {
+        if let query = ChatDocAutocomplete.activeQuery(in: draft) {
+            docAutocompleteQuery = query
+            showDocAutocomplete = true
+            showMentionPicker = false
+            mentionQuery = nil
+            return
+        }
+        showDocAutocomplete = false
+        docAutocompleteQuery = nil
+        syncMentionPicker()
+    }
+
     private func syncMentionPicker() {
         if let query = ChatMentionAutocomplete.activeQuery(in: draft) {
             mentionQuery = query
@@ -356,7 +420,16 @@ struct ChatConsoleView: View {
 
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            TextField("消息… 输入 @ 选择 Agent", text: $draft, axis: .vertical)
+            Button {
+                showDocPickerSheet = true
+            } label: {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(DevTheme.sand)
+                    .frame(width: 36, height: 36)
+            }
+            .accessibilityLabel("引用文档")
+            TextField("消息… @ Agent · [[ 文档", text: $draft, axis: .vertical)
                 .lineLimit(1...6)
                 .focused($inputFocused)
                 .font(.system(size: 15, design: .rounded))
@@ -389,6 +462,81 @@ struct ChatConsoleView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    private func insertDocReference(path: String) {
+        if ChatDocAutocomplete.activeQuery(in: draft) != nil {
+            ChatDocAutocomplete.apply(path: path, to: &draft)
+            syncAutocompletePickers()
+        } else {
+            let token = ChatDocReference.token(path: path)
+            if draft.isEmpty {
+                draft = token + " "
+            } else if draft.hasSuffix(" ") || draft.hasSuffix("\n") {
+                draft += token + " "
+            } else {
+                draft += " " + token + " "
+            }
+        }
+        inputFocused = true
+    }
+
+    @ViewBuilder
+    private func docSuggestions(query: String) -> some View {
+        let key = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let matches = store.docsEntries.filter { entry in
+            if key.isEmpty { return true }
+            return entry.path.lowercased().contains(key)
+                || entry.title.lowercased().contains(key)
+        }.prefix(12)
+        if matches.isEmpty {
+            EmptyView()
+        } else {
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(Array(matches)) { entry in
+                        Button {
+                            insertDocReference(path: entry.path)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "doc.text")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(DevTheme.sand)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(entry.title)
+                                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(DevTheme.mist)
+                                    Text(entry.path)
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(DevTheme.dim)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 11)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if entry.id != matches.last?.id {
+                            Divider().overlay(DevTheme.panelStroke)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(maxHeight: 260)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(DevTheme.panel)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(DevTheme.panelStroke, lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.42), radius: 16, y: 8)
+            )
+        }
     }
 
     @ViewBuilder
@@ -460,7 +608,7 @@ struct ChatConsoleView: View {
                 }
                 Section("派给") {
                     Picker("Handle", selection: $promoteHandle) {
-                        ForEach(ChatMentionCatalog.agents.filter { $0.handle != "all" }, id: \.handle) { agent in
+                        ForEach(ChatMentionCatalog.fleetAssignees, id: \.handle) { agent in
                             Text(agent.pickerLabel).tag(agent.handle)
                         }
                     }

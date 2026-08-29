@@ -28,6 +28,14 @@ enum ChatMentionCatalog {
         ChatMentionAgent(handle: "dba", displayName: "dba agent"),
     ]
 
+    static var fleetAssignees: [ChatMentionAgent] {
+        agents.filter { $0.handle != "all" }
+    }
+
+    static func agent(handle: String) -> ChatMentionAgent? {
+        fleetAssignees.first { $0.handle == handle }
+    }
+
     static func filtered(query: String) -> [ChatMentionAgent] {
         let key = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if key.isEmpty {

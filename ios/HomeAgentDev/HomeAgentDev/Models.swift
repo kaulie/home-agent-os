@@ -667,6 +667,7 @@ struct DevTask: Identifiable, Decodable, Equatable {
     let threadTokenUsage: DevTokenUsage
     let attachments: [DebugAttachment]
     let attachmentScope: String
+    let targetHandle: String
 
     var isRoot: Bool { parentTaskId == nil }
 
@@ -796,6 +797,7 @@ struct DevTask: Identifiable, Decodable, Equatable {
         bridgeRunId = dev.bridgeRunId
         bridgeStatus = dev.bridgeStatus
         events = dev.events
+        targetHandle = dev.targetHandle
     }
 }
 
@@ -804,12 +806,14 @@ private struct DevTaskMeta: Decodable {
     let bridgeStatus: String
     let events: [DevEvent]
     let tokenUsage: DevTokenUsage
+    let targetHandle: String
 
     enum CodingKeys: String, CodingKey {
         case bridgeRunId = "bridge_run_id"
         case bridgeStatus = "bridge_status"
         case events
         case tokenUsage = "token_usage"
+        case targetHandle = "target_handle"
     }
 
     init() {
@@ -817,6 +821,7 @@ private struct DevTaskMeta: Decodable {
         bridgeStatus = ""
         events = []
         tokenUsage = .empty
+        targetHandle = ""
     }
 
     init(from decoder: Decoder) throws {
@@ -825,6 +830,7 @@ private struct DevTaskMeta: Decodable {
         bridgeStatus = try c.decodeIfPresent(String.self, forKey: .bridgeStatus) ?? ""
         events = try c.decodeIfPresent([DevEvent].self, forKey: .events) ?? []
         tokenUsage = (try? c.decode(DevTokenUsage.self, forKey: .tokenUsage)) ?? .empty
+        targetHandle = try c.decodeIfPresent(String.self, forKey: .targetHandle) ?? ""
     }
 }
 

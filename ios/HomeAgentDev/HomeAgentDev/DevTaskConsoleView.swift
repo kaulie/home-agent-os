@@ -147,6 +147,7 @@ struct DevNewTaskSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var category = "tech_discuss"
+    @State private var targetHandle = "controller"
     @State private var localError = ""
     @State private var pendingAttachments: [PendingDevAttachment] = []
     @FocusState private var inputFocused: Bool
@@ -170,6 +171,28 @@ struct DevNewTaskSheet: View {
                         VStack(alignment: .leading, spacing: 12) {
                             DevTheme.sectionLabel("任务类型")
                             DevCategoryPickerGrid(selection: $category)
+                        }
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            DevTheme.sectionLabel("派给")
+                            Picker("Handle", selection: $targetHandle) {
+                                ForEach(ChatMentionCatalog.fleetAssignees) { agent in
+                                    Text(agent.pickerLabel).tag(agent.handle)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .tint(DevTheme.sand)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(DevTheme.chip)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(DevTheme.panelStroke, lineWidth: 1)
+                                    )
+                            )
                         }
 
                         VStack(alignment: .leading, spacing: 12) {
@@ -244,7 +267,7 @@ struct DevNewTaskSheet: View {
                     if store.isSendingDevTask {
                         ProgressView().tint(DevTheme.ink)
                     }
-                    Text(store.isSendingDevTask ? "下发中…" : "下发到 Agent")
+                    Text(store.isSendingDevTask ? "下发中…" : "下发到 @\(targetHandle)")
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
                 }
                 .frame(maxWidth: .infinity)
@@ -283,6 +306,7 @@ struct DevNewTaskSheet: View {
             if await store.sendDevTask(
                 text: trimmed,
                 category: category,
+                targetHandle: targetHandle,
                 pendingAttachments: pendingAttachments
             ) != nil {
                 pendingAttachments = []
@@ -332,6 +356,11 @@ struct DevTaskRowView: View {
                 .font(.system(size: 15, weight: .medium, design: .rounded))
                 .foregroundStyle(DevTheme.mist)
                 .lineLimit(3)
+            if !task.targetHandle.isEmpty {
+                Text("@\(task.targetHandle)")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(DevTheme.sand.opacity(0.9))
+            }
             Text("会话 #\(task.threadId)")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(DevTheme.dim)

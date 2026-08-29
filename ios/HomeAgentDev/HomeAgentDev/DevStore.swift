@@ -42,6 +42,10 @@ final class DevStore: ObservableObject {
     @Published var isLoadingDeploy = false
     @Published var isApprovingDeploy = false
 
+    @Published private(set) var docsEntries: [DevDocEntry] = []
+    @Published var docsError: String?
+    @Published var isLoadingDocs = false
+
     @Published private(set) var chatMessages: [AgentChatMessage] = []
     @Published var chatError: String?
     @Published var isLoadingChat = false
@@ -325,6 +329,31 @@ final class DevStore: ObservableObject {
         } catch {
             deployError = error.localizedDescription
         }
+    }
+
+    func loadDocs(showSpinner: Bool = true) async {
+        if showSpinner && docsEntries.isEmpty {
+            isLoadingDocs = true
+        }
+        defer { isLoadingDocs = false }
+        do {
+            let response = try await DevClient.fetchDocsIndex(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken
+            )
+            docsEntries = response.docs ?? []
+            docsError = nil
+        } catch {
+            docsError = error.localizedDescription
+        }
+    }
+
+    func fetchDoc(path: String) async throws -> DevDocContent {
+        try await DevClient.fetchDoc(
+            brainURL: activeBrainURL,
+            token: DevSettings.adminToken,
+            path: path
+        )
     }
 
     /// Refresh one release for the detail page. On failure returns `seed` so UI can still show cached list data.
@@ -668,6 +697,7 @@ final class DevStore: ObservableObject {
     func sendDevTask(
         text: String? = nil,
         category: String? = nil,
+        targetHandle: String? = nil,
         continueTaskId: Int? = nil,
         pendingAttachments: [PendingDevAttachment] = []
     ) async -> DevTask? {
@@ -684,6 +714,7 @@ final class DevStore: ObservableObject {
                 text: trimmed,
                 continueTaskId: continueTaskId,
                 category: continueTaskId == nil ? chosenCategory : nil,
+                targetHandle: continueTaskId == nil ? targetHandle : nil,
                 attachments: uploaded
             )
             if text == nil {

@@ -106,6 +106,7 @@ enum DevClient {
         continueTaskId: Int? = nil,
         threadId: Int? = nil,
         category: String? = nil,
+        targetHandle: String? = nil,
         attachments: [DebugAttachment] = []
     ) async throws -> DevTask {
         let url = try endpoint(brainURL, path: "/api/v1/admin/dev_task")
@@ -123,6 +124,9 @@ enum DevClient {
         }
         if let category, !category.isEmpty {
             body["category"] = category
+        }
+        if let targetHandle, !targetHandle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["target_handle"] = targetHandle.trimmingCharacters(in: .whitespacesAndNewlines)
         }
         if !attachments.isEmpty {
             body["attachments"] = attachments.map { $0.apiPayload() }
@@ -557,6 +561,47 @@ enum DevClient {
             allTime: .empty,
             recentTasks: []
         )
+    }
+
+    static func fetchDocsIndex(
+        brainURL: String,
+        token: String
+    ) async throws -> DevDocsIndexResponse {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/docs")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        applyAuth(&request, token: token)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let parsed = try JSONDecoder().decode(DevDocsIndexResponse.self, from: data)
+        if parsed.ok == false {
+            throw DevClientError.server(parsed.error ?? "加载文档列表失败")
+        }
+        return parsed
+    }
+
+    static func fetchDoc(
+        brainURL: String,
+        token: String,
+        path: String
+    ) async throws -> DevDocContent {
+        let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+        let url = try endpoint(brainURL, path: "/api/v1/admin/docs/\(encoded)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 30
+        applyAuth(&request, token: token)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        let parsed = try JSONDecoder().decode(DevDocContentResponse.self, from: data)
+        if parsed.ok == false {
+            throw DevClientError.server(parsed.error ?? "加载文档失败")
+        }
+        guard let doc = parsed.doc else {
+            throw DevClientError.server("文档不存在")
+        }
+        return doc
     }
 
     private static func endpoint(_ brainURL: String, path: String) throws -> URL {

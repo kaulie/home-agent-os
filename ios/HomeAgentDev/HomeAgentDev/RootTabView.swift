@@ -12,6 +12,7 @@ struct RootTabView: View {
         case chat
         case fleet
         case deploy
+        case docs
         case stats
         case connection
     }
@@ -47,6 +48,12 @@ struct RootTabView: View {
                     Label("Deploy", systemImage: "arrow.up.circle")
                 }
                 .tag(DevTab.deploy)
+
+            DocsConsoleView()
+                .tabItem {
+                    Label("文档", systemImage: "book.pages")
+                }
+                .tag(DevTab.docs)
 
             DevStatsView()
                 .tabItem {
@@ -100,6 +107,8 @@ struct RootTabView: View {
             store.startFleetPolling()
         case .deploy:
             store.startDeployPolling()
+        case .docs:
+            break
         case .stats:
             store.startStatsPolling()
         case .connection:

@@ -14,13 +14,14 @@ enum DevKeyboard {
 
 private struct DevDismissKeyboardOnTapModifier: ViewModifier {
     @FocusState.Binding var isFocused: Bool
+    var enabled: Bool
 
     func body(content: Content) -> some View {
         content
             .scrollDismissesKeyboard(.interactively)
             .simultaneousGesture(
                 TapGesture().onEnded {
-                    guard isFocused else { return }
+                    guard enabled, isFocused else { return }
                     isFocused = false
                     DevKeyboard.dismiss()
                 }
@@ -52,8 +53,8 @@ private struct DevKeyboardDoneToolbarModifier: ViewModifier {
 }
 
 extension View {
-    func devDismissKeyboardOnTap(_ isFocused: FocusState<Bool>.Binding) -> some View {
-        modifier(DevDismissKeyboardOnTapModifier(isFocused: isFocused))
+    func devDismissKeyboardOnTap(_ isFocused: FocusState<Bool>.Binding, enabled: Bool = true) -> some View {
+        modifier(DevDismissKeyboardOnTapModifier(isFocused: isFocused, enabled: enabled))
     }
 
     func devKeyboardDoneToolbar(_ isFocused: FocusState<Bool>.Binding) -> some View {
