@@ -19,7 +19,6 @@ from typing import Any
 log = logging.getLogger("mac_edge.ncm_songs")
 
 _SQL_DIR = Path(__file__).resolve().parents[3] / "sql"
-_MIGRATION_VERSION = 1
 
 _lock = threading.RLock()
 _connection: sqlite3.Connection | None = None
@@ -45,6 +44,11 @@ def db_path() -> Path:
     if _path_override is not None:
         return _path_override
     return data_dir() / "ncm_songs.sqlite3"
+
+
+def connect() -> sqlite3.Connection:
+    """Open (or reuse) the catalog connection after ``init_db()``."""
+    return _connect()
 
 
 def reset(*, path: Path | None = None) -> None:
@@ -105,16 +109,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
         """
     )
     applied = {int(row[0]) for row in conn.execute("SELECT version FROM schema_migrations")}
-    if _MIGRATION_VERSION in applied:
-        return
-    sql_path = _SQL_DIR / "001_ncm_songs.sql"
-    if not sql_path.is_file():
-        raise NcmSongsError(f"migration missing: {sql_path}")
-    conn.executescript(sql_path.read_text(encoding="utf-8"))
-    conn.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (?, datetime('now'))",
-        (_MIGRATION_VERSION,),
-    )
+    for sql_path in sorted(_SQL_DIR.glob("*.sql")):
+        version = int(sql_path.name.split("_", 1)[0])
+        if version in applied:
+            continue
+        conn.executescript(sql_path.read_text(encoding="utf-8"))
+        conn.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?, datetime('now'))",
+            (version,),
+        )
 
 
 def init_db() -> Path:
@@ -124,49 +127,41 @@ def init_db() -> Path:
     return db_path()
 
 
-def _pick_str(record: dict[str, Any], *keys: str) -> str:
-    for key in keys:
+def _song_name(record: dict[str, Any]) -> str:
+    for key in ("name", "songName", "song_name", "title"):
         raw = record.get(key)
-        if raw is None:
-            continue
-        text = str(raw).strip()
-        if text:
-            return text
-    return ""
+        if raw is not None and str(raw).strip():
+            return str(raw).strip()
+    raise NcmSongsError("search record missing name")
 
 
 def _artist_name(record: dict[str, Any]) -> str:
-    direct = _pick_str(record, "artist", "artistName", "artist_name", "singer")
-    if direct:
-        return direct
-    artists = record.get("artists") or record.get("ar")
-    if isinstance(artists, list):
-        names: list[str] = []
-        for item in artists:
-            if isinstance(item, dict):
-                name = str(item.get("name") or item.get("artistName") or "").strip()
-            else:
-                name = str(item or "").strip()
-            if name:
-                names.append(name)
-        if names:
-            return " / ".join(names)
+    artists = record.get("artists")
+    if isinstance(artists, list) and artists:
+        first = artists[0]
+        if isinstance(first, dict):
+            return str(first.get("name") or "").strip()
+        return str(first or "").strip()
     return ""
 
 
-def _song_name(record: dict[str, Any]) -> str:
-    return _pick_str(record, "name", "songName", "song_name", "title")
-
-
-def _original_id(record: dict[str, Any]) -> str:
-    oid = _pick_str(record, "original_id", "originalId", "id", "songId", "song_id")
-    if not oid:
-        raise NcmSongsError("search record missing original_id/id")
-    return oid
+def _original_id(record: dict[str, Any]) -> int:
+    raw = record.get("originalId")
+    if raw is None:
+        raw = record.get("original_id")
+    if raw is None:
+        raise NcmSongsError("search record missing originalId")
+    try:
+        return int(raw)
+    except (TypeError, ValueError) as exc:
+        raise NcmSongsError(f"invalid originalId: {raw!r}") from exc
 
 
 def _encrypted_id(record: dict[str, Any]) -> str:
-    return _pick_str(record, "encrypted_id", "encryptedId", "enc_id", "encId")
+    raw = record.get("id")
+    if raw is None or not str(raw).strip():
+        raise NcmSongsError("search record missing id")
+    return str(raw).strip()
 
 
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
@@ -174,15 +169,15 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     if not isinstance(record, dict):
         record = {}
     return {
-        "original_id": str(row["original_id"]),
-        "encrypted_id": str(row["encrypted_id"] or ""),
-        "name_norm": str(row["name_norm"] or ""),
+        "original_id": int(row["original_id"]),
+        "encrypted_id": str(row["encrypted_id"]),
+        "name": str(row["name"]),
+        "name_norm": str(row["name_norm"]),
+        "artist": str(row["artist"] or ""),
         "artist_norm": str(row["artist_norm"] or ""),
         "record": record,
         "record_json": str(row["record_json"]),
         "played_at": row["played_at"],
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
     }
 
 
@@ -190,50 +185,53 @@ def upsert_record(
     record: dict[str, Any],
     *,
     played_at: float | None = None,
-) -> str:
-    """Insert or update by ``original_id``. Returns ``original_id``."""
+) -> int:
+    """Insert or replace by ``original_id``. Returns ``original_id``."""
     if not isinstance(record, dict) or not record:
         raise NcmSongsError("record must be a non-empty object")
     original_id = _original_id(record)
     encrypted_id = _encrypted_id(record)
-    name_norm = normalize_text(_song_name(record))
-    artist_norm = normalize_text(_artist_name(record))
+    name = _song_name(record)
+    artist = _artist_name(record)
+    name_norm = normalize_text(name)
+    artist_norm = normalize_text(artist)
     payload = _dumps(record)
-    now = _now()
     with _lock:
         init_db()
         conn = _connect()
         conn.execute(
             """
             INSERT INTO ncm_songs (
-              original_id, encrypted_id, name_norm, artist_norm,
-              record_json, played_at, created_at, updated_at
+              original_id, encrypted_id, name, name_norm, artist, artist_norm,
+              record_json, played_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(original_id) DO UPDATE SET
               encrypted_id = excluded.encrypted_id,
+              name = excluded.name,
               name_norm = excluded.name_norm,
+              artist = excluded.artist,
               artist_norm = excluded.artist_norm,
               record_json = excluded.record_json,
-              played_at = COALESCE(excluded.played_at, ncm_songs.played_at),
-              updated_at = excluded.updated_at
+              played_at = COALESCE(excluded.played_at, ncm_songs.played_at)
             """,
             (
                 original_id,
-                encrypted_id or None,
+                encrypted_id,
+                name,
                 name_norm,
+                artist or None,
                 artist_norm,
                 payload,
                 played_at,
-                now,
-                now,
             ),
         )
     return original_id
 
 
-def get_song(original_id: str) -> dict[str, Any] | None:
-    oid = str(original_id or "").strip()
-    if not oid:
+def get_song(original_id: int | str) -> dict[str, Any] | None:
+    try:
+        oid = int(original_id)
+    except (TypeError, ValueError):
         return None
     with _lock:
         init_db()
@@ -265,7 +263,7 @@ def find_by_norm(
     sql = (
         "SELECT * FROM ncm_songs WHERE "
         + " AND ".join(clauses)
-        + " ORDER BY COALESCE(played_at, 0) DESC, updated_at DESC LIMIT ?"
+        + " ORDER BY COALESCE(played_at, 0) DESC, original_id DESC LIMIT ?"
     )
     params.append(max(1, int(limit)))
     with _lock:
@@ -274,20 +272,30 @@ def find_by_norm(
     return [_row_to_dict(row) for row in rows]
 
 
-def mark_played(original_id: str, *, at: float | None = None) -> None:
-    oid = str(original_id or "").strip()
-    if not oid:
-        raise NcmSongsError("original_id required")
+def find_by_name_artist(
+    *,
+    name: str = "",
+    artist: str = "",
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    return find_by_norm(
+        name_norm=normalize_text(name),
+        artist_norm=normalize_text(artist),
+        limit=limit,
+    )
+
+
+def mark_played(original_id: int | str, *, at: float | None = None) -> None:
+    try:
+        oid = int(original_id)
+    except (TypeError, ValueError) as exc:
+        raise NcmSongsError("original_id required") from exc
     ts = _now() if at is None else float(at)
     with _lock:
         init_db()
         cur = _connect().execute(
-            """
-            UPDATE ncm_songs
-            SET played_at = ?, updated_at = ?
-            WHERE original_id = ?
-            """,
-            (ts, ts, oid),
+            "UPDATE ncm_songs SET played_at = ? WHERE original_id = ?",
+            (ts, oid),
         )
         if cur.rowcount <= 0:
             raise NcmSongsError(f"unknown original_id: {oid}")
@@ -299,7 +307,7 @@ def list_library(*, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         rows = _connect().execute(
             """
             SELECT * FROM ncm_songs
-            ORDER BY updated_at DESC
+            ORDER BY COALESCE(played_at, 0) DESC, original_id DESC
             LIMIT ? OFFSET ?
             """,
             (max(1, int(limit)), max(0, int(offset))),

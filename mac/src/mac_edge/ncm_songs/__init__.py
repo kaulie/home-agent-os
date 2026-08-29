@@ -2,7 +2,9 @@
 
 from mac_edge.ncm_songs.store import (
     NcmSongsError,
+    connect,
     db_path,
+    find_by_name_artist,
     find_by_norm,
     get_song,
     init_db,
@@ -15,7 +17,9 @@ from mac_edge.ncm_songs.store import (
 
 __all__ = [
     "NcmSongsError",
+    "connect",
     "db_path",
+    "find_by_name_artist",
     "find_by_norm",
     "get_song",
     "init_db",
