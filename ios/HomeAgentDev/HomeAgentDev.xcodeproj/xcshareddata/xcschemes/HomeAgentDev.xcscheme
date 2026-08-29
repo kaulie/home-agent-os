@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "F2FA10240DCA4CC7A5A32907"
+               BlueprintIdentifier = "4E97C4B0EBFF43808A37C7A8"
                BuildableName = "HomeAgentDev.app"
                BlueprintName = "HomeAgentDev"
                ReferencedContainer = "container:HomeAgentDev.xcodeproj">
@@ -28,6 +28,18 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES"
       shouldAutocreateTestPlan = "YES">
+      <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "8E945D11DE4C49EA9A0C4631"
+               BuildableName = "HomeAgentDevUITests.xctest"
+               BlueprintName = "HomeAgentDevUITests"
+               ReferencedContainer = "container:HomeAgentDev.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -43,7 +55,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F2FA10240DCA4CC7A5A32907"
+            BlueprintIdentifier = "4E97C4B0EBFF43808A37C7A8"
             BuildableName = "HomeAgentDev.app"
             BlueprintName = "HomeAgentDev"
             ReferencedContainer = "container:HomeAgentDev.xcodeproj">
@@ -60,7 +72,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F2FA10240DCA4CC7A5A32907"
+            BlueprintIdentifier = "4E97C4B0EBFF43808A37C7A8"
             BuildableName = "HomeAgentDev.app"
             BlueprintName = "HomeAgentDev"
             ReferencedContainer = "container:HomeAgentDev.xcodeproj">

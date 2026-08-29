@@ -28,6 +28,28 @@ open ios/HomeAgentDev/HomeAgentDev.xcodeproj
 | **统计** | Dev Task token 消耗总览、按类别拆分、最近计量任务 |
 | **连接** | Brain URL + 管理员令牌 |
 
+## XCUITest（@quality）
+
+`HomeAgentDevUITests` target；用例在 `HomeAgentDevUITests/`。稳定选择器见 `HomeAgentDev/DevAccessibilityID.swift`（由 `@ui` 维护）。
+
+**前提：** 模拟器/真机能访问 Dev Brain（默认 LAN `192.168.3.73:9527` 或云端）；本机 Brain / `home_brain.py` 已起。
+
+```bash
+cd ios/HomeAgentDev
+
+# P0 冒烟：进入「文档」Tab 并加载列表
+xcodebuild test -scheme HomeAgentDev \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:HomeAgentDevUITests/HomeAgentDevSmokeUITests
+
+# P1：Markdown 阅读器（打开 / 大纲 / 字号 / Chat [[doc:]]）
+xcodebuild test -scheme HomeAgentDev \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:HomeAgentDevUITests/MarkdownReaderUITests
+```
+
+说明与职责边界：[`docs/testing/xcuitest.md`](../../docs/testing/xcuitest.md)。
+
 ## API
 
 默认：与 User Console 相同 — **按网络自动**（在家且 LAN `/api/v1/ping` 通则局域网，否则云端）。顶栏始终显示当前实际环境；切换需进确认页。

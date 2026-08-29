@@ -44,6 +44,8 @@
 		1DA8FD0F9DA84F2095D80432 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62B051ED330144A4BDA9B891 /* Theme.swift */; };
 		F80A4CBEBD374B1C8975EE35 /* WireTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D649C32CF74066B3809011 /* WireTime.swift */; };
 		A095BF4514424D8E8DC01BDC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E0289EE5DA624C87A5F9602D /* Assets.xcassets */; };
+		771FB4FD56D74E59B131D667 /* MarkdownReaderUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0774128A204A4A028582D91A /* MarkdownReaderUITests.swift */; };
+		A1B2C3D4E5F6478990ABCDEF /* HomeAgentDevSmokeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A748901234567 /* HomeAgentDevSmokeUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -87,6 +89,9 @@
 		C5D649C32CF74066B3809011 /* WireTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireTime.swift; sourceTree = "<group>"; };
 		5F7F9EA8B1494458AC95AEBB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		E0289EE5DA624C87A5F9602D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		309D7B45A8414BC29F103AB7 /* HomeAgentDevUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HomeAgentDevUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		0774128A204A4A028582D91A /* MarkdownReaderUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownReaderUITests.swift; sourceTree = "<group>"; };
+		B2C3D4E5F6A748901234567 /* HomeAgentDevSmokeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAgentDevSmokeUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -104,6 +109,7 @@
 			isa = PBXGroup;
 			children = (
 				D7589A73BDD648DDBBE59C02 /* HomeAgentDev */,
+				0C4A399045A34E869958CBE3 /* HomeAgentDevUITests */,
 				BA743925EA084E1681BA3970 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -112,6 +118,7 @@
 			isa = PBXGroup;
 			children = (
 				FFF42CB4C6BB4282B54EA188 /* HomeAgentDev.app */,
+				309D7B45A8414BC29F103AB7 /* HomeAgentDevUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -162,6 +169,15 @@
 			path = HomeAgentDev;
 			sourceTree = "<group>";
 		};
+		0C4A399045A34E869958CBE3 /* HomeAgentDevUITests */ = {
+			isa = PBXGroup;
+			children = (
+				0774128A204A4A028582D91A /* MarkdownReaderUITests.swift */,
+				B2C3D4E5F6A748901234567 /* HomeAgentDevSmokeUITests.swift */,
+			);
+			path = HomeAgentDevUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -183,6 +199,24 @@
 			productName = HomeAgentDev;
 			productReference = FFF42CB4C6BB4282B54EA188 /* HomeAgentDev.app */;
 			productType = "com.apple.product-type.application";
+		};
+		8E945D11DE4C49EA9A0C4631 /* HomeAgentDevUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A41FC2DF0D7A4D0687D08BFB /* Build configuration list for PBXNativeTarget "HomeAgentDevUITests" */;
+			buildPhases = (
+				BC2424F0C19141AB932A6B4A /* Sources */,
+				51521FFA8CD344C0AC260194 /* Frameworks */,
+				64C89038A92045B5B88C13B9 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2D0B5BE5E4D34D4CB55A2327 /* PBXTargetDependency */,
+			);
+			name = HomeAgentDevUITests;
+			productName = HomeAgentDevUITests;
+			productReference = 309D7B45A8414BC29F103AB7 /* HomeAgentDevUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -210,10 +244,29 @@
 			projectRoot = "";
 			targets = (
 				4E97C4B0EBFF43808A37C7A8 /* HomeAgentDev */,
+				8E945D11DE4C49EA9A0C4631 /* HomeAgentDevUITests */,
 			);
 			};
 /* End PBXProject section */
 
+
+/* Begin PBXContainerItemProxy section */
+		E8CB04F6391C424EA1D94386 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A9FC646AC3C44CA2B5D0AC02 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4E97C4B0EBFF43808A37C7A8;
+			remoteInfo = HomeAgentDev;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		2D0B5BE5E4D34D4CB55A2327 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4E97C4B0EBFF43808A37C7A8 /* HomeAgentDev */;
+			targetProxy = E8CB04F6391C424EA1D94386 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 /* Begin PBXResourcesBuildPhase section */
 		4B194A44B4A54052B6667322 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
@@ -267,6 +320,30 @@
 				D7D0EFBD39C441A78A8299B2 /* RootTabView.swift in Sources */,
 				1DA8FD0F9DA84F2095D80432 /* Theme.swift in Sources */,
 				F80A4CBEBD374B1C8975EE35 /* WireTime.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
+		51521FFA8CD344C0AC260194 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		64C89038A92045B5B88C13B9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BC2424F0C19141AB932A6B4A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				771FB4FD56D74E59B131D667 /* MarkdownReaderUITests.swift in Sources */,
+				A1B2C3D4E5F6478990ABCDEF /* HomeAgentDevSmokeUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -354,6 +431,44 @@
 			};
 			name = Release;
 		};
+		D6B6935549F24219B473E695 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.homeagent.dev.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = HomeAgentDev;
+
+			};
+			name = Debug;
+		};
+		E0D0C79EC53F4B49BDA12AE2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.homeagent.dev.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = HomeAgentDev;
+
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -371,6 +486,15 @@
 			buildConfigurations = (
 				B9C63FBAA6D848DCA962A1D7 /* Debug */,
 				A0CCE3DD886C43F59159BFD6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A41FC2DF0D7A4D0687D08BFB /* Build configuration list for PBXNativeTarget "HomeAgentDevUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D6B6935549F24219B473E695 /* Debug */,
+				E0D0C79EC53F4B49BDA12AE2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
