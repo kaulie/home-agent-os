@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from . import music, reading
+from . import music, reading, rules
 from .state import READING_MODE, enter_mode, exit_mode, get_active_mode
 
 InterceptKind = Literal["enter_mode", "exit_mode", "plan"]
@@ -60,6 +60,21 @@ def intercept(text: str, *, intent: dict[str, Any] | None = None) -> InterceptRe
             plan=reading.copy_plan(reading.READING_PIPELINE_PLAN),
             presentation=dict(reading.READING_PIPELINE_PRESENTATION),
             planner_meta={"goal": "reading pipeline", "source": "shortcut"},
+        )
+
+    rule_hit = rules.match_rules(utterance)
+    if rule_hit is not None:
+        return InterceptResult(
+            kind="plan",
+            mode=None,
+            plan=rules.copy_plan(rule_hit.plan),
+            presentation=dict(rule_hit.presentation),
+            planner_meta={
+                "goal": rule_hit.goal,
+                "source": "shortcut",
+                "rule": rule_hit.rule,
+                "timing": {"match": rule_hit.match_ms},
+            },
         )
 
     music_ctrl = music.match_control(utterance)

@@ -13,9 +13,14 @@ from .matcher import matches_any
 _CONTROL_EXACT = (
     ("暂停播放", "music.pause"),
     ("暂停歌曲", "music.pause"),
+    ("继续播放", "music.resume"),
+    ("恢复播放", "music.resume"),
+    ("接着播放", "music.resume"),
     ("下一首歌", "music.next"),
+    ("上一首歌", "music.previous"),
     ("停止播放", "music.stop"),
     ("切歌", "music.next"),
+    ("上一首", "music.previous"),
 )
 
 # Strong music talk — intercept even when remainder is empty (Mac then asks for a title).

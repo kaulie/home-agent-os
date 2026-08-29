@@ -203,9 +203,13 @@ class ShortcutModeTest(unittest.TestCase):
         cases = (
             ("暂停播放", "music.pause"),
             ("暂停歌曲", "music.pause"),
+            ("继续播放", "music.resume"),
+            ("恢复播放", "music.resume"),
             ("切歌", "music.next"),
             ("下一首歌", "music.next"),
             ("停止播放", "music.stop"),
+            ("上一首", "music.previous"),
+            ("上一首歌", "music.previous"),
         )
         for text, cap in cases:
             with self.subTest(text=text):
@@ -213,11 +217,8 @@ class ShortcutModeTest(unittest.TestCase):
                 self.assertEqual(ic["user_input"], text)
                 self.assertNotIn("song", ic)
 
-    def test_music_control_skips_resume_and_previous(self) -> None:
-        self.assertIsNone(intercept("继续播放"))
-        self.assertIsNone(intercept("恢复播放"))
-        self.assertIsNone(intercept("上一首"))
-        self.assertIsNone(intercept("上一首歌"))
+    def test_music_control_skips_ambiguous_play(self) -> None:
+        self.assertIsNone(intercept("播放"))
 
     def _music_cache(self, text: str) -> dict:
         hit = intercept(text)
@@ -271,6 +272,80 @@ class ShortcutModeTest(unittest.TestCase):
         self.assertIsNone(intercept("下载冰雨"))
         self.assertIsNone(intercept("下载天气预报"))
         self.assertIsNone(intercept("下载幻灯片"))
+
+    def _rule_hit(self, text: str, *, rule: str, goal: str) -> list[dict]:
+        hit = intercept(text)
+        assert hit is not None
+        self.assertEqual(hit.kind, "plan")
+        self.assertIsNone(hit.mode)
+        self.assertEqual(hit.planner_meta.get("source"), "shortcut")
+        self.assertEqual(hit.planner_meta.get("rule"), rule)
+        self.assertEqual(hit.planner_meta.get("goal"), goal)
+        timing = (hit.planner_meta or {}).get("timing") or {}
+        self.assertIn("match", timing)
+        return hit.plan
+
+    def test_clock_now_shortcut(self) -> None:
+        for text in ("现在几点了", "几点了", "帮我报时"):
+            with self.subTest(text=text):
+                plan = self._rule_hit(text, rule="clock_now", goal="clock.now")
+                self.assertEqual(plan[0]["capability"], "clock.now")
+                self.assertEqual(plan[0]["output_constrict"], {"time_text": {}})
+                hit = intercept(text)
+                assert hit is not None
+                self.assertEqual(hit.presentation, {"type": "audio", "from": "time_text"})
+
+    def test_clock_now_skips_schedule_questions(self) -> None:
+        self.assertIsNone(intercept("明天几点开会"))
+
+    def test_climate_on_off_shortcut(self) -> None:
+        plan = self._rule_hit("打开客厅空调", rule="climate_on", goal="climate.set")
+        self.assertEqual(plan[0]["capability"], "climate.set")
+        self.assertEqual(plan[0]["input_constrict"], {"power": "on", "appliance": "客厅空调"})
+
+        plan = self._rule_hit("关掉儿童房空调", rule="climate_off_on", goal="climate.set")
+        self.assertEqual(plan[0]["input_constrict"]["power"], "off")
+        self.assertEqual(plan[0]["input_constrict"]["appliance"], "儿童房空调")
+
+    def test_climate_skips_complex_adjustments(self) -> None:
+        self.assertIsNone(intercept("打开客厅空调，风速调为最大"))
+
+    def test_photo_latest_view_shortcut(self) -> None:
+        plan = self._rule_hit("看最新照片", rule="photo_latest", goal="latest photo")
+        self.assertEqual([s["capability"] for s in plan], ["asset.inventory"])
+        inv = plan[0]["input_constrict"]
+        self.assertEqual(inv.get("type"), "image")
+        self.assertEqual(inv.get("order"), "newest_first")
+        self.assertEqual(inv.get("index"), 1)
+        hit = intercept("看最新照片")
+        assert hit is not None
+        self.assertEqual(hit.presentation, {"type": "image", "from": "asset_ref"})
+
+    def test_photo_latest_cast_shortcut(self) -> None:
+        plan = self._rule_hit(
+            "把最新照片投到电视上",
+            rule="photo_latest_cast",
+            goal="latest photo",
+        )
+        self.assertEqual(
+            [s["capability"] for s in plan],
+            ["asset.inventory", "display.photo"],
+        )
+        self.assertEqual(plan[1]["input_constrict"]["asset_ref"], "$asset_ref")
+
+    def test_photo_latest_defers_to_reading_pipeline(self) -> None:
+        enter_mode("reading")
+        hit = intercept("看下最新的一张照片里手指的那个字是什么")
+        assert hit is not None
+        self.assertEqual(hit.planner_meta.get("goal"), "reading existing photo pipeline")
+
+        hit = intercept("最新照片里这个字怎么读")
+        assert hit is not None
+        self.assertEqual(hit.mode, "reading")
+        self.assertEqual(hit.planner_meta.get("goal"), "reading existing photo pipeline")
+
+    def test_photo_latest_skips_counting(self) -> None:
+        self.assertIsNone(intercept("我今天拍了几张照片"))
 
 
 if __name__ == "__main__":
