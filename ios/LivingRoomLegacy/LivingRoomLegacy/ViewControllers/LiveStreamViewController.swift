@@ -48,6 +48,7 @@ final class LiveStreamViewController: UIViewController {
             controller.stopPreview()
         }
         previewStarted = false
+        setKeepScreenAwake(false)
         onStreamActive?(false)
     }
 
@@ -149,22 +150,26 @@ final class LiveStreamViewController: UIViewController {
             stopButton.isHidden = true
             durationTimer?.invalidate()
             durationTimer = nil
+            setKeepScreenAwake(false)
             onStreamActive?(false)
         case .starting:
             statusLabel.text = "STARTING"
             startButton.isHidden = true
             stopButton.isHidden = true
+            setKeepScreenAwake(true)
         case .streaming:
             statusLabel.text = "● LIVE"
             detailLabel.text = "\(controller.streamId)\n\(controller.connectedHost)"
             startButton.isHidden = true
             stopButton.isHidden = false
+            setKeepScreenAwake(true)
             onStreamActive?(true)
             startDurationTimer()
         case .stopping:
             statusLabel.text = "STOPPING"
             startButton.isHidden = true
             stopButton.isHidden = true
+            setKeepScreenAwake(true)
         case .error:
             statusLabel.text = "ERROR"
             detailLabel.text = controller.errorMessage
@@ -172,8 +177,13 @@ final class LiveStreamViewController: UIViewController {
             stopButton.isHidden = true
             durationTimer?.invalidate()
             durationTimer = nil
+            setKeepScreenAwake(false)
             onStreamActive?(false)
         }
+    }
+
+    private func setKeepScreenAwake(_ awake: Bool) {
+        UIApplication.shared.isIdleTimerDisabled = awake
     }
 
     private func startDurationTimer() {
