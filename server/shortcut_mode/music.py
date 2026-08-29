@@ -18,6 +18,7 @@ _CONTROL_EXACT = (
 )
 
 # Strong music talk — intercept even when remainder is empty (Mac then asks for a title).
+# Longer tokens first. 听歌曲 before 听歌 so 「听歌曲」 is not song=「曲」.
 STRONG_TRIGGERS = (
     "听听歌",
     "听会歌",
@@ -25,6 +26,8 @@ STRONG_TRIGGERS = (
     "听一下",
     "播放歌曲",
     "播放音乐",
+    "听歌曲",
+    "播歌曲",
     "放歌曲",
     "放音乐",
     "放一首",
@@ -36,10 +39,12 @@ STRONG_TRIGGERS = (
     "放歌",
 )
 
-# Longer tokens first so 听听歌 / 听一下 win over 听歌 / 听下.
+# Longer tokens first so 听听歌 / 听一下 / 听歌曲 win over 听歌 / 听.
 _PLAY_PREFIXES = (
     "播放歌曲",
     "播放音乐",
+    "听歌曲",
+    "播歌曲",
     "放歌曲",
     "放音乐",
     "听听歌",
@@ -54,8 +59,15 @@ _PLAY_PREFIXES = (
     "听歌",
     "放歌",
     "播放",
+    "播",
     "放",
+    "听",
 )
+
+# 「听」/「播」太短，只收 「xxx的歌/歌曲」，避免「听天气预报」误伤。
+_PLAYLIST_SUFFIXES = ("的歌曲", "的歌")
+_BARE_VERBS_ANY_REMAINDER = ("播放", "放")
+_BARE_VERBS_PLAYLIST_ONLY = ("听", "播")
 
 _COURTESY_PREFIXES = (
     "请帮我",
@@ -118,6 +130,17 @@ def _remainder_after_play_prefix(text: str) -> tuple[str, str]:
     return "", text
 
 
+def _playlist_remainder(remainder: str) -> bool:
+    """True when remainder is 「xxx的歌/歌曲」 with a non-empty xxx."""
+    text = str(remainder or "").strip()
+    if not text:
+        return False
+    for suffix in _PLAYLIST_SUFFIXES:
+        if text.endswith(suffix) and text[: -len(suffix)].strip():
+            return True
+    return False
+
+
 def match_control(text: str) -> MusicControlHit | None:
     t0 = time.perf_counter()
     utterance = str(text or "").strip()
@@ -152,8 +175,12 @@ def match_play(text: str) -> MusicPlayHit | None:
     strong = matches_any(utterance, STRONG_TRIGGERS)
     prefix, remainder = _remainder_after_play_prefix(stripped)
 
-    if prefix in ("播放", "放"):
+    if prefix in _BARE_VERBS_ANY_REMAINDER:
         if not remainder:
+            return None
+        song = remainder
+    elif prefix in _BARE_VERBS_PLAYLIST_ONLY:
+        if not _playlist_remainder(remainder):
             return None
         song = remainder
     elif prefix:

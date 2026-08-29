@@ -144,11 +144,32 @@ class ShortcutModeTest(unittest.TestCase):
             "听听",
             "听下",
             "听一下",
+            "听歌曲",
+            "放歌曲",
+            "播歌曲",
         ):
             with self.subTest(text=text):
                 ic = self._music_ic(text)
                 self.assertNotIn("song", ic)
                 self.assertEqual(ic["user_input"], text)
+
+    def test_music_short_verbs_xxx_de_ge(self) -> None:
+        for text, song in (
+            ("听张三的歌", "张三的歌"),
+            ("播周杰伦的歌", "周杰伦的歌"),
+            ("放陈奕迅的歌", "陈奕迅的歌"),
+            ("听周杰伦的歌曲", "周杰伦的歌曲"),
+            ("播张三的歌曲", "张三的歌曲"),
+        ):
+            with self.subTest(text=text):
+                ic = self._music_ic(text)
+                self.assertEqual(ic["song"], song)
+                self.assertNotIn("artist", ic)
+
+    def test_music_listen_bare_ting_without_playlist_is_not_play(self) -> None:
+        self.assertIsNone(intercept("听天气预报"))
+        self.assertIsNone(intercept("听十年"))
+        self.assertIsNone(intercept("播新闻"))
 
     def test_music_listen_yixia_with_remainder(self) -> None:
         ic = self._music_ic("听一下十年")
