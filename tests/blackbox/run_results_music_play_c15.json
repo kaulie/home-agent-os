@@ -1,0 +1,177 @@
+{
+  "case": "C15",
+  "sha": "d426dab",
+  "intent_id": 364,
+  "detail": {
+    "base_time": 1787992509610,
+    "better_capabilities": [],
+    "context": {
+      "output_affinity": {
+        "participant_id": "edge-node-blackbox-q01",
+        "reason": "input_source"
+      },
+      "source_context": {
+        "capability_id": "text.input",
+        "device_id": "edge-node-blackbox-q01",
+        "endpoint_id": "keyboard",
+        "input_participant_id": "edge-node-blackbox-q01"
+      }
+    },
+    "created_at": 1787992509.641254,
+    "ctx_param": {
+      "output_affinity": {
+        "participant_id": "edge-node-blackbox-q01",
+        "reason": "input_source"
+      },
+      "source_context": {
+        "capability_id": "text.input",
+        "device_id": "edge-node-blackbox-q01",
+        "endpoint_id": "keyboard",
+        "input_participant_id": "edge-node-blackbox-q01"
+      }
+    },
+    "edge_id": "edge-node-blackbox-q01",
+    "edge_node_id": "edge-node-SJZ1SMuX",
+    "execution_plan": [
+      {
+        "assigned_edge_id": "edge-node-SJZ1SMuX",
+        "capability": "music.play",
+        "execution_timing": {
+          "mode": "immediate"
+        },
+        "input_constrict": {
+          "appliance": "网易云音乐",
+          "artist": "陈奕迅",
+          "song": "十年"
+        },
+        "output_constrict": {},
+        "status": 2,
+        "step": 1
+      }
+    ],
+    "exposed_outputs": {
+      "channel": "iphone",
+      "endpoint": "edge-node-blackbox-q01",
+      "endpoint_id": "iphone.display",
+      "type": "text"
+    },
+    "id": 364,
+    "intent_base_time": 1787992509610,
+    "intent_id": 364,
+    "intent_origin": "lan",
+    "intent_status": "succeeded",
+    "job_id": "364",
+    "missing_capabilities": [],
+    "output_affinity": {
+      "participant_id": "edge-node-blackbox-q01",
+      "reason": "input_source"
+    },
+    "outputs": {
+      "channel": "iphone",
+      "endpoint": "edge-node-blackbox-q01",
+      "endpoint_id": "iphone.display",
+      "type": "text"
+    },
+    "planner_cost_ms": 5030,
+    "planner_has_request_payload": true,
+    "presentation": {
+      "channel": "iphone",
+      "endpoint": "edge-node-blackbox-q01",
+      "endpoint_id": "iphone.display",
+      "type": "text"
+    },
+    "source": "text",
+    "source_context": {
+      "capability_id": "text.input",
+      "device_id": "edge-node-blackbox-q01",
+      "endpoint_id": "keyboard",
+      "input_participant_id": "edge-node-blackbox-q01"
+    },
+    "status": "succeeded",
+    "status_log": [
+      {
+        "status": "intent_received",
+        "ts": 1787992509640
+      },
+      {
+        "status": "intent_parsed",
+        "ts": 1787992520602
+      },
+      {
+        "status": "intent_scheduled",
+        "ts": 1787992521529
+      },
+      {
+        "status": "intent_dispatched",
+        "ts": 1787992523062
+      },
+      {
+        "status": "running",
+        "ts": 1787992528021
+      },
+      {
+        "status": "succeeded",
+        "ts": 1787992536183
+      }
+    ],
+    "step_log": [
+      {
+        "edge_id": "edge-node-SJZ1SMuX",
+        "msg": null,
+        "status": 1,
+        "step": 1,
+        "ts": 1787992544226
+      },
+      {
+        "edge_id": "edge-node-SJZ1SMuX",
+        "msg": null,
+        "status": 2,
+        "step": 1,
+        "ts": 1787992554824
+      }
+    ],
+    "step_outputs": {
+      "1": {}
+    },
+    "steps": [
+      {
+        "at": 1787992509.64141,
+        "detail": "播放陈奕迅的十年",
+        "intent_status": "intent_received",
+        "status": "intent_received"
+      },
+      {
+        "at": 1787992520.6021671,
+        "detail": "",
+        "intent_status": "intent_parsed",
+        "status": "intent_parsed"
+      },
+      {
+        "at": 1787992521.52995,
+        "detail": "",
+        "intent_status": "intent_scheduled",
+        "status": "intent_scheduled"
+      },
+      {
+        "at": 1787992523.0629601,
+        "detail": "",
+        "intent_status": "intent_dispatched",
+        "status": "intent_dispatched"
+      },
+      {
+        "at": 1787992528.021218,
+        "detail": "",
+        "intent_status": "running",
+        "status": "running"
+      },
+      {
+        "at": 1787992536.183764,
+        "detail": "",
+        "intent_status": "succeeded",
+        "status": "succeeded"
+      }
+    ],
+    "text": "播放陈奕迅的十年",
+    "updated_at": 1787992536.568146
+  }
+}

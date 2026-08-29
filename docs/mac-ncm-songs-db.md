@@ -105,7 +105,7 @@ CREATE INDEX idx_ncm_song_index_name_artist ON ncm_song_index(song_name_norm, ar
 
 | 函数 | 用途 |
 |------|------|
-| `upsert_record(record, played_at=None)` | play 成功后写入 **两张表**；按 `originalId` upsert；`ncm_songs.played_at` 保留已有值；index 可选列用 `COALESCE` 避免空值覆盖 |
+| `upsert_record(record, played_at=None)` | 写入 **两张表**；按 `originalId` upsert。搜索命中的 10 首都会写；play 成功再 `mark_played` |
 | `get_song(original_id)` | 读备份表 |
 | `get_index_song(original_id)` | 读索引表 |
 | `find_by_name_artist(name=, artist=, limit=20)` | 精确歌名/歌手：先 `ncm_song_index`，再 hydrate `ncm_songs`；index 未命中则回退 `ncm_songs` |
@@ -116,7 +116,7 @@ CREATE INDEX idx_ncm_song_index_name_artist ON ncm_song_index(song_name_norm, ar
 ### 流程
 
 1. **本地命中**：`find_index_by_name_artist(song, artist)` 有行 → 用 `song_encrypted_id` 调 `ncm-cli play`；否则回退 `find_by_name_artist` 的 `record.id`。成功则 `upsert_record` + `mark_played`（两表都写）。
-2. **未命中**：`ncm-cli search --keyword "整段关键词"`（可选 `--userInput`）→ play → 成功后 `upsert_record(hit)` → `mark_played`。
+2. **未命中**：`ncm-cli search song --keyword … --limit 10`（可选 `--userInput`）→ **10 首全部 upsert** 进两表 → 歌名与关键字完全相同则播该首，否则按相同字数（字符多重集交集）选最高分 → play 成功再 `mark_played`。
 3. **pause/resume/stop/next/prev**：只调 ncm-cli，不必写库。
 
 ### record 必填字段（备份表）

@@ -371,3 +371,75 @@ Brain：`http://115.190.153.53:9527`
 - **mp4**：`ffmpeg -c copy` → video 3673 KiB，**audio 0 KiB**；mp4 无 audio stream
 - **结论**：**失败**（非 VL1 通过）；需 `@ui` 修 AAC 帧写入 mux 后重测。快照 [`run_results_video_live_vl1.json`](run_results_video_live_vl1.json)
 
+---
+
+## 2026-08-29 VL1 复测（#109 / deploy a174070；最新 fix e4502a9）
+
+- **云部署**：#109 确认 a174070 仅 iOS，无 `home_brain` 变更 → 未 rsync（与 VL1 无关）
+- **现场**：00:28 轮询 2min，无 23:45 后新 `.ts`；`bytes_received` 无增长
+- **artifact**：仍 `video_stream_68f21751.ts`（33.7MB，~104s，**23:45 修复前**）
+- **ffprobe / 包计数**：h264 OK（178930 包 @0x100）；**PID 0x101 → 0 包**；mp4 audio 0 KiB
+- **结论**：**失败** — 无法验收 a174070/5ad4b99/e4502a9 修复；需新包 **视频+音频** Start/Stop 后再测
+
+---
+
+## 2026-08-29 C15 — music.play（@capability #178 / sha d426dab）
+
+- **指令**：`播放陈奕迅的十年`
+- **下发**：LAN `POST /api/v1/intent` → intent **364**（participant `edge-node-blackbox-q01`）
+- **plan**：单步 `music.play` → `edge-node-SJZ1SMuX`（netease.music）；`song=十年` `artist=陈奕迅` `appliance=网易云音乐`
+- **物流**：received → parsed（~10s）→ scheduled → dispatched → running → **succeeded** @~27s；步 status=2
+- **现场播音**：API 未证实（执行未证实）
+- **结论**：**通过** C15 P2。快照 [`run_results_music_play_c15.json`](run_results_music_play_c15.json)
+
+---
+
+## 2026-08-29 C15 复验 — music.play（#184 / sha 13ec60e）
+
+- **指令**：`播放陈奕迅的十年`
+- **下发**：intent **365**；plan 单步 `music.play` → `edge-node-SJZ1SMuX`；`song=十年` `artist=陈奕迅`
+- **物流**：parsed → scheduled → dispatched → running → **succeeded** @~36s；步 status=2
+- **备注**：Mac Edge 仍未广告 `netease.music`（Brain prefer-Mac 未提交/未部署）；选边仍 Chromecast
+- **现场播音**：执行未证实
+- **结论**：**通过**（Chromecast 旧选边；无独立快照）
+
+---
+
+## 2026-08-29 C15 — music.play prefer-Mac（#188 / sha b088131）
+
+- **指令**：`播放陈奕迅的十年` → intent **366**
+- **plan**：`music.play` → **edge-node-SJZ1SMuX**（Chromecast，非 Mac）
+- **物流**：**succeeded** @~36s；步 status=2
+- **b088131 验收项**：prefer-Mac **未达** — Mac Edge（`IAtuhLSy`）未广告 `netease.music`；云 Brain `b088131` deploy 未见 `[release] stage=deployed`
+- **结论**：**失败**（相对 b088131 选边目标）；C15 执行面仍 succeeded。366 无独立快照
+
+---
+
+## 2026-08-29 C15 — LAN prefer-Mac（#193 / Mac Edge 重启）
+
+- **指令**：`播放陈奕迅的十年` → intent **368**（LAN `127.0.0.1:9527`）
+- **选边**：`music.play` → **edge-node-IAtuhLSy**（客厅 · Mac Edge）✓
+- **入参**：`song=十年` `artist=陈奕迅`
+- **物流**：**succeeded** @~69s；步 status=2
+- **现场播音**：#207 @boss 确认出声（PID 66842）
+- **结论**：**通过** prefer-Mac + C15。canonical 快照见 #205 intent 371
+
+---
+
+## 2026-08-29 C15 prefer-Mac 正式复验（#200 / b088131 + 13ec60e）
+
+- **指令**：`播放陈奕迅的十年` → intent **370**
+- **选边**：**edge-node-IAtuhLSy**（非 SJZ1SMuX）✓
+- **物流**：succeeded @~48s；步 status=2
+- **结论**：**通过**。canonical 快照见 #205 intent 371
+
+---
+
+## 2026-08-29 C15 prefer-Mac 新跑（#205 / 勿复用 366）
+
+- **指令**：`播放陈奕迅的十年` → intent **371**
+- **选边**：**edge-node-IAtuhLSy**（非 SJZ1SMuX）✓
+- **物流**：succeeded；步 status=2
+- **结论**：**通过**。快照 [`run_results_music_play_c15_b088131.json`](run_results_music_play_c15_b088131.json)（覆盖 366 失败快照）
+- **现场播音**：#207 @boss 确认 intent 368/369 本机网易云已出声（PID 66842）
+

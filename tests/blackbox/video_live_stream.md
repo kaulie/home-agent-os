@@ -82,5 +82,7 @@
 
 | 日期 | 结果 | 备注 |
 |------|------|------|
+| 2026-08-29 | **失败** | #121 sha `5ad4b99`；无新 capture；`68f21751` 仍 PID 0x101=0 包 |
+| 2026-08-29 | **失败** | 无 a174070+ 新 capture；复测 `68f21751`（23:45，~104s）仍 PID 0x101 **0 包**、mp4 无 audio。#109 云部署 no-op（iOS-only） |
 | 2026-08-28 | **失败** | sha `ce42234`；`video_stream_258b158e`（~12.5s）：h264 OK；ffprobe 见 aac PID 0x101 但 **0 个 audio TS 包**、channels=0；mp4 无 audio。见 [`run_results_video_live_vl1.json`](run_results_video_live_vl1.json) |
 | 2026-08-28 | **待执行** | `@controller` #88 派单；iOS 代码侧已有 `AacAudioEncoder` + `muxAudio`；待装包 + 现场 Start Stream |

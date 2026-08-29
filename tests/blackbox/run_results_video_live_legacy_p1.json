@@ -1,0 +1,35 @@
+{
+  "case_id": "VL-P1",
+  "date": "2026-08-29",
+  "sha": "b4dbff6",
+  "scope": "ios-living-legacy",
+  "verdict": "fail",
+  "verdict_detail": "no_legacy_capture",
+  "environment": {
+    "mac_ingest": "http://127.0.0.1:8790",
+    "mac_lan": "192.168.3.73",
+    "iphone_app": "LivingRoomLegacy",
+    "wifi": "same LAN (192.168.3.x)"
+  },
+  "steps": {
+    "baseline_status": {
+      "url": "http://127.0.0.1:8790/api/v1/video-live/status",
+      "status": "streaming",
+      "note": "Larix placeholder only; bytes_received=0"
+    },
+    "bytes_received_poll": {
+      "result": "not_observed",
+      "note": "2026-08-29 00:49 polled 2min; no new .ts after 68f21751 (23:45)"
+    },
+    "ffprobe_ts": {
+      "result": "skipped",
+      "note": "No Legacy b4dbff6 capture on disk; existing .ts are pre-Legacy LivingRoomEdge"
+    },
+    "deploy_note": {
+      "chatbox": "#124",
+      "sha": "b4dbff6",
+      "cloud": "no rsync/restart; iOS-only LivingRoomLegacy VideoLiveStream"
+    }
+  },
+  "conclusion": "FAIL VL-P1 #124: no LivingRoomLegacy iPhone capture. Need Start→LIVE→Stop on Legacy app then retest ffprobe h264 640x480."
+}
