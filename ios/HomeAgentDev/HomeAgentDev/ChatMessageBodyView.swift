@@ -34,6 +34,8 @@ struct InlineDocSheet: View {
     @State private var error = ""
     @State private var loading = true
 
+    private let palette = DevMarkdownReadingPalette.paperDark
+
     private var title: String {
         ChatDocReference.label(path: docPath)
     }
@@ -41,11 +43,11 @@ struct InlineDocSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                DevTheme.ink.ignoresSafeArea()
+                palette.canvas.ignoresSafeArea()
                 Group {
                     if loading {
                         ProgressView("读取 \(docPath)…")
-                            .tint(DevTheme.sand)
+                            .tint(palette.accent)
                     } else if !error.isEmpty {
                         Text(error)
                             .font(.system(size: 14, design: .rounded))
@@ -58,12 +60,11 @@ struct InlineDocSheet: View {
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(DevTheme.ink, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .devMarkdownReadingChrome(palette: palette)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }
-                        .foregroundStyle(DevTheme.sand)
+                        .foregroundStyle(palette.accent)
                 }
             }
             .task(id: docPath) {

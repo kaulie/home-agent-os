@@ -25,29 +25,11 @@ struct RootTabView: View {
                 }
                 .tag(DevTab.issues)
 
-            DevTaskConsoleView()
-                .tabItem {
-                    Label("Dev Task", systemImage: "terminal")
-                }
-                .tag(DevTab.tasks)
-
             ChatConsoleView()
                 .tabItem {
                     Label("Chat", systemImage: "bubble.left.and.bubble.right")
                 }
                 .tag(DevTab.chat)
-
-            FleetConsoleView()
-                .tabItem {
-                    Label("Fleet", systemImage: "person.3")
-                }
-                .tag(DevTab.fleet)
-
-            DeployConsoleView()
-                .tabItem {
-                    Label("Deploy", systemImage: "arrow.up.circle")
-                }
-                .tag(DevTab.deploy)
 
             DocsConsoleView()
                 .accessibilityIdentifier(DevAccessibilityID.tabDocs)
@@ -55,6 +37,24 @@ struct RootTabView: View {
                     Label("文档", systemImage: "book.pages")
                 }
                 .tag(DevTab.docs)
+
+            DevTaskConsoleView()
+                .tabItem {
+                    Label("Dev Task", systemImage: "terminal")
+                }
+                .tag(DevTab.tasks)
+
+            DeployConsoleView()
+                .tabItem {
+                    Label("Deploy", systemImage: "arrow.up.circle")
+                }
+                .tag(DevTab.deploy)
+
+            FleetConsoleView()
+                .tabItem {
+                    Label("Fleet", systemImage: "person.3")
+                }
+                .tag(DevTab.fleet)
 
             DevStatsView()
                 .tabItem {

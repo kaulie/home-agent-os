@@ -76,11 +76,12 @@ struct MarkdownReaderView: View {
             .accessibilityIdentifier(DevAccessibilityID.markdownFontSmaller)
             .disabled(fontScale <= DevMarkdownFontScaleStore.minScale)
 
-            Text(DevMarkdownFontScaleStore.label(for: fontScale))
-                .font(.system(size: 12, weight: .medium, design: .rounded))
+            Text(DevMarkdownFontScaleStore.displayLabel(for: fontScale))
+                .font(.system(size: 11, weight: .medium, design: .rounded))
                 .foregroundStyle(readingStyle.palette.dim)
-                .frame(minWidth: 28)
+                .frame(minWidth: 52)
                 .accessibilityIdentifier(DevAccessibilityID.markdownFontLabel)
+                .accessibilityLabel("字号 \(DevMarkdownFontScaleStore.displayLabel(for: fontScale))")
 
             Button {
                 fontScale = DevMarkdownFontScaleStore.clamp(fontScale + DevMarkdownFontScaleStore.step)

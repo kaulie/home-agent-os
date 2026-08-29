@@ -90,13 +90,15 @@ private struct DocDetailView: View {
     @State private var error = ""
     @State private var loading = true
 
+    private let palette = DevMarkdownReadingPalette.paperDark
+
     var body: some View {
         ZStack {
-            DevTheme.ink.ignoresSafeArea()
+            palette.canvas.ignoresSafeArea()
             Group {
                 if loading {
                     ProgressView("读取 \(entry.path)…")
-                        .tint(DevTheme.sand)
+                        .tint(palette.accent)
                 } else if !error.isEmpty {
                     Text(error)
                         .font(.system(size: 14, design: .rounded))
@@ -110,8 +112,7 @@ private struct DocDetailView: View {
         }
         .navigationTitle(entry.title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(DevTheme.ink, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .devMarkdownReadingChrome(palette: palette)
         .task(id: entry.path) {
             loading = true
             error = ""

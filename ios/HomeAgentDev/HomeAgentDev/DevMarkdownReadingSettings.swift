@@ -99,4 +99,18 @@ enum DevMarkdownFontScaleStore {
         default: return "特大"
         }
     }
+
+    static func displayLabel(for scale: Double) -> String {
+        let pct = Int((scale * 100).rounded())
+        return "\(label(for: scale)) · \(pct)%"
+    }
+}
+
+extension View {
+    /// Navigation chrome aligned with Markdown reading palette (canvas + accent).
+    func devMarkdownReadingChrome(palette: DevMarkdownReadingPalette = .paperDark) -> some View {
+        background(palette.canvas.ignoresSafeArea())
+            .toolbarBackground(palette.canvas, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+    }
 }
