@@ -1,5 +1,95 @@
 import SwiftUI
 
+/// Shared Markdown reader: soft background, font scale, TOC — used by Docs detail and Chat inline sheet.
+struct MarkdownReaderView: View {
+    let markdown: String
+
+    @AppStorage(DevMarkdownFontScaleStore.key) private var fontScale: Double = DevMarkdownFontScaleStore.defaultScale
+    @State private var showTOC = false
+
+    private let blocks: [DevMarkdownBlock]
+    private let outline: [DevMarkdownOutlineItem]
+
+    init(markdown: String) {
+        self.markdown = markdown
+        blocks = DevMarkdownParser.parse(markdown)
+        outline = DevMarkdownOutline.items(from: blocks)
+    }
+
+    private var readingStyle: DevMarkdownReadingStyle {
+        DevMarkdownReadingStyle(
+            palette: .paperDark,
+            fontScale: CGFloat(fontScale),
+            lineSpacing: 5
+        )
+    }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                MarkdownDocumentView(blocks: blocks)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 16)
+            }
+            .background(readingStyle.palette.canvas)
+            .environment(\.devMarkdownReadingStyle, readingStyle)
+            .toolbar {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if !outline.isEmpty {
+                        Button {
+                            showTOC = true
+                        } label: {
+                            Label("目录", systemImage: "list.bullet.indent")
+                        }
+                        .foregroundStyle(readingStyle.palette.accent)
+                    }
+                    fontScaleControls
+                }
+            }
+            .sheet(isPresented: $showTOC) {
+                DevMarkdownTOCSheet(
+                    items: outline,
+                    palette: readingStyle.palette,
+                    onSelect: { item in
+                        showTOC = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                proxy.scrollTo(item.id, anchor: .top)
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    private var fontScaleControls: some View {
+        HStack(spacing: 6) {
+            Button {
+                fontScale = DevMarkdownFontScaleStore.clamp(fontScale - DevMarkdownFontScaleStore.step)
+            } label: {
+                Image(systemName: "textformat.size.smaller")
+            }
+            .disabled(fontScale <= DevMarkdownFontScaleStore.minScale)
+
+            Text(DevMarkdownFontScaleStore.label(for: fontScale))
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(readingStyle.palette.dim)
+                .frame(minWidth: 28)
+
+            Button {
+                fontScale = DevMarkdownFontScaleStore.clamp(fontScale + DevMarkdownFontScaleStore.step)
+            } label: {
+                Image(systemName: "textformat.size.larger")
+            }
+            .disabled(fontScale >= DevMarkdownFontScaleStore.maxScale)
+        }
+        .foregroundStyle(readingStyle.palette.accent)
+        .buttonStyle(.plain)
+    }
+}
+
 struct MarkdownDocumentView: View {
     private let blocks: [DevMarkdownBlock]
 
@@ -7,10 +97,14 @@ struct MarkdownDocumentView: View {
         blocks = DevMarkdownParser.parse(markdown)
     }
 
+    fileprivate init(blocks: [DevMarkdownBlock]) {
+        self.blocks = blocks
+    }
+
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                DevMarkdownBlockView(block: block)
+            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                DevMarkdownBlockView(block: block, blockIndex: index)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -18,8 +112,67 @@ struct MarkdownDocumentView: View {
     }
 }
 
+private struct DevMarkdownTOCSheet: View {
+    let items: [DevMarkdownOutlineItem]
+    let palette: DevMarkdownReadingPalette
+    var onSelect: (DevMarkdownOutlineItem) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(items) { item in
+                    Button {
+                        onSelect(item)
+                    } label: {
+                        HStack(spacing: 0) {
+                            Text(item.title)
+                                .font(.system(
+                                    size: tocFontSize(item.level),
+                                    weight: item.level == 1 ? .semibold : .regular,
+                                    design: .rounded
+                                ))
+                                .foregroundStyle(item.level == 1 ? palette.heading : palette.text)
+                                .lineLimit(2)
+                                .padding(.leading, CGFloat(item.level - 1) * 14)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .listRowBackground(palette.codeBackground)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(palette.canvas.ignoresSafeArea())
+            .navigationTitle("目录")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(palette.canvas, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("关闭") { dismiss() }
+                        .foregroundStyle(palette.accent)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func tocFontSize(_ level: Int) -> CGFloat {
+        switch level {
+        case 1: return 16
+        case 2: return 15
+        default: return 14
+        }
+    }
+}
+
 private struct DevMarkdownBlockView: View {
+    @Environment(\.devMarkdownReadingStyle) private var style
     let block: DevMarkdownBlock
+    let blockIndex: Int
 
     var body: some View {
         Group {
@@ -28,16 +181,17 @@ private struct DevMarkdownBlockView: View {
                 DevMarkdownInlineText(inlines: inlines, role: headingRole(level))
                     .padding(.top, level == 1 ? 8 : 14)
                     .padding(.bottom, 6)
+                    .id(DevMarkdownAnchor.heading(blockIndex))
             case .paragraph(let inlines):
                 DevMarkdownInlineText(inlines: inlines, role: .body)
                     .padding(.vertical, 6)
             case .unorderedList(let items):
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 8 * style.fontScale) {
                     ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                         HStack(alignment: .top, spacing: 10) {
                             Text("•")
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                                .foregroundStyle(DevTheme.sand.opacity(0.9))
+                                .font(.system(size: style.scaledBodySize(16), weight: .bold, design: .rounded))
+                                .foregroundStyle(style.palette.accent.opacity(0.9))
                                 .padding(.top, 2)
                             DevMarkdownInlineText(inlines: item, role: .body)
                         }
@@ -45,12 +199,12 @@ private struct DevMarkdownBlockView: View {
                 }
                 .padding(.vertical, 8)
             case .orderedList(let items):
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 8 * style.fontScale) {
                     ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                         HStack(alignment: .top, spacing: 10) {
                             Text("\(index + 1).")
-                                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                .foregroundStyle(DevTheme.sand.opacity(0.9))
+                                .font(.system(size: style.scaledBodySize(16), weight: .semibold, design: .rounded))
+                                .foregroundStyle(style.palette.accent.opacity(0.9))
                                 .frame(minWidth: 24, alignment: .trailing)
                             DevMarkdownInlineText(inlines: item, role: .body)
                         }
@@ -61,13 +215,13 @@ private struct DevMarkdownBlockView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if let language, !language.isEmpty {
                         Text(language.uppercased())
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(DevTheme.dim)
+                            .font(.system(size: style.scaledBodySize(11), weight: .semibold, design: .monospaced))
+                            .foregroundStyle(style.palette.dim)
                     }
                     ScrollView(.horizontal, showsIndicators: false) {
                         Text(code)
-                            .font(.system(size: 14, weight: .regular, design: .monospaced))
-                            .foregroundStyle(DevTheme.mist.opacity(0.95))
+                            .font(.system(size: style.scaledBodySize(14), weight: .regular, design: .monospaced))
+                            .foregroundStyle(style.palette.text.opacity(0.95))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -75,33 +229,33 @@ private struct DevMarkdownBlockView: View {
                 .padding(14)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(DevTheme.panel)
+                        .fill(style.palette.codeBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(DevTheme.panelStroke, lineWidth: 1)
+                                .stroke(style.palette.codeBorder, lineWidth: 1)
                         )
                 )
                 .padding(.vertical, 10)
             case .blockquote(let inner):
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(inner.enumerated()), id: \.offset) { _, child in
-                        DevMarkdownBlockView(block: child)
+                    ForEach(Array(inner.enumerated()), id: \.offset) { idx, child in
+                        DevMarkdownBlockView(block: child, blockIndex: blockIndex * 1000 + idx)
                     }
                 }
                 .padding(.leading, 14)
                 .padding(.vertical, 8)
                 .overlay(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(DevTheme.sand.opacity(0.55))
+                        .fill(style.palette.quoteBar)
                         .frame(width: 3)
                 }
-                .foregroundStyle(DevTheme.mist.opacity(0.88))
+                .foregroundStyle(style.palette.text.opacity(0.88))
             case .table(let headers, let rows):
                 DevMarkdownTableView(headers: headers, rows: rows)
                     .padding(.vertical, 10)
             case .divider:
                 Rectangle()
-                    .fill(DevTheme.panelStroke)
+                    .fill(style.palette.codeBorder)
                     .frame(height: 1)
                     .padding(.vertical, 14)
             }
@@ -122,11 +276,13 @@ private enum DevMarkdownTextRole {
 }
 
 private struct DevMarkdownInlineText: View {
+    @Environment(\.devMarkdownReadingStyle) private var style
     let inlines: [DevMarkdownInline]
     let role: DevMarkdownTextRole
 
     var body: some View {
         Text(attributed)
+            .lineSpacing(style.scaledLineSpacing())
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -144,13 +300,13 @@ private struct DevMarkdownInlineText: View {
                 run.font = baseUIFont.withTraits(.traitItalic)
             case .code:
                 run.font = .monospacedSystemFont(ofSize: bodySize - 1, weight: .medium)
-                run.backgroundColor = UIColor(DevTheme.chip)
-                run.foregroundColor = UIColor(DevTheme.mist.opacity(0.95))
+                run.backgroundColor = UIColor(style.palette.codeBackground)
+                run.foregroundColor = UIColor(style.palette.text.opacity(0.95))
             case .link(let url):
                 if let link = URL(string: url) ?? URL(string: url.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? url) {
                     run.link = link
                 }
-                run.foregroundColor = UIColor(DevTheme.sand)
+                run.foregroundColor = UIColor(style.palette.accent)
                 run.underlineStyle = .single
             }
             result.append(run)
@@ -164,40 +320,39 @@ private struct DevMarkdownInlineText: View {
     }
 
     private var bodySize: CGFloat {
-        switch role {
-        case .h1: return 26
-        case .h2: return 21
-        case .h3: return 18
-        case .body: return 16
+        let base: CGFloat = switch role {
+        case .h1: 26
+        case .h2: 21
+        case .h3: 18
+        case .body: 16
         }
+        return style.scaledBodySize(base)
     }
 
     private var textColor: Color {
         switch role {
-        case .h1: return DevTheme.sand
-        case .h2, .h3: return DevTheme.mist.opacity(0.95)
-        case .body: return DevTheme.mist
+        case .h1: return style.palette.heading
+        case .h2, .h3: return style.palette.headingMuted
+        case .body: return style.palette.text
         }
     }
 
     private var baseUIFont: UIFont {
-        let weight: UIFont.Weight = {
-            switch role {
-            case .h1: return .bold
-            case .h2, .h3: return .semibold
-            case .body: return .regular
-            }
-        }()
-        let size = bodySize
-        let base = UIFont.systemFont(ofSize: size, weight: weight)
+        let weight: UIFont.Weight = switch role {
+        case .h1: .bold
+        case .h2, .h3: .semibold
+        case .body: .regular
+        }
+        let base = UIFont.systemFont(ofSize: bodySize, weight: weight)
         if let rounded = base.fontDescriptor.withDesign(.rounded) {
-            return UIFont(descriptor: rounded, size: size)
+            return UIFont(descriptor: rounded, size: bodySize)
         }
         return base
     }
 }
 
 private struct DevMarkdownTableView: View {
+    @Environment(\.devMarkdownReadingStyle) private var style
     let headers: [String]
     let rows: [[String]]
 
@@ -211,12 +366,12 @@ private struct DevMarkdownTableView: View {
                 tableRow(cells: padded(headers), isHeader: true)
                 ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
                     tableRow(cells: padded(row), isHeader: false)
-                        .background(index.isMultiple(of: 2) ? Color.clear : DevTheme.panel.opacity(0.45))
+                        .background(index.isMultiple(of: 2) ? Color.clear : style.palette.tableStripe)
                 }
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(DevTheme.panelStroke, lineWidth: 1)
+                    .stroke(style.palette.codeBorder, lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
@@ -232,24 +387,28 @@ private struct DevMarkdownTableView: View {
         HStack(spacing: 0) {
             ForEach(Array(cells.enumerated()), id: \.offset) { index, cell in
                 Text(cell)
-                    .font(.system(size: isHeader ? 13 : 14, weight: isHeader ? .semibold : .regular, design: .rounded))
-                    .foregroundStyle(isHeader ? DevTheme.sand.opacity(0.95) : DevTheme.mist)
+                    .font(.system(
+                        size: style.scaledBodySize(isHeader ? 13 : 14),
+                        weight: isHeader ? .semibold : .regular,
+                        design: .rounded
+                    ))
+                    .foregroundStyle(isHeader ? style.palette.heading : style.palette.text)
                     .multilineTextAlignment(.leading)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                     .frame(minWidth: 96, alignment: .leading)
                 if index < cells.count - 1 {
                     Rectangle()
-                        .fill(DevTheme.panelStroke)
+                        .fill(style.palette.codeBorder)
                         .frame(width: 1)
                 }
             }
         }
-        .background(isHeader ? DevTheme.panel : Color.clear)
+        .background(isHeader ? style.palette.codeBackground : Color.clear)
         .overlay(alignment: .bottom) {
             if isHeader {
                 Rectangle()
-                    .fill(DevTheme.panelStroke)
+                    .fill(style.palette.codeBorder)
                     .frame(height: 1)
             }
         }

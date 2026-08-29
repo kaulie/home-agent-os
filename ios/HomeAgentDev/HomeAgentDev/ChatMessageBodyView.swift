@@ -52,11 +52,7 @@ struct InlineDocSheet: View {
                             .foregroundStyle(DevTheme.off)
                             .padding()
                     } else if let doc {
-                        ScrollView {
-                            MarkdownDocumentView(markdown: doc.content)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(16)
-                        }
+                        MarkdownReaderView(markdown: doc.content)
                     }
                 }
             }
