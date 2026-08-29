@@ -70,6 +70,12 @@ def _check_camera_capture_and_upload(config: Config | None = None) -> Availabili
     return Availability.available()
 
 
+def _check_netease_music(_config: Config | None = None) -> Availability:
+    from mac_edge.plugins.netease_music import is_available as ncm_available
+
+    return ncm_available(_config)
+
+
 _CHECKERS: dict[str, Checker] = {
     "camera.capture": _check_camera_capture,
     "camera.capture_and_upload": _check_camera_capture_and_upload,
@@ -77,6 +83,12 @@ _CHECKERS: dict[str, Checker] = {
     "reading.ocr_at_finger": _check_reading_stage,
     "reading.rank_pointed": _check_reading_stage,
     "reading.point_to_character": _check_reading_point_to_character,
+    "music.play": _check_netease_music,
+    "music.pause": _check_netease_music,
+    "music.resume": _check_netease_music,
+    "music.stop": _check_netease_music,
+    "music.next": _check_netease_music,
+    "music.previous": _check_netease_music,
 }
 
 

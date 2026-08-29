@@ -32,6 +32,7 @@ from mac_edge.plugins.xiaomi_tv_display import (
 from mac_edge.capability_ads import composition_of, decomposes_to
 from mac_edge.capability_availability import is_available
 from mac_edge.plugins.clock_now import ClockNowError, now_from_params
+from mac_edge.plugins.netease_music import NeteaseMusicError, run_from_params as music_from_params
 from mac_edge.plugins.math_calculate import MathCalculateError, calculate_from_params
 from mac_edge.plugins.chat_smalltalk import ChatSmalltalkError, smalltalk_from_params
 from mac_edge.plugins.asset_upload import AssetUploadError, upload_from_params
@@ -1595,6 +1596,14 @@ def _execute_capability(
             msg, outputs = now_from_params(params)
             return True, msg, outputs
         except ClockNowError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap.startswith("music."):
+        try:
+            msg, outputs = music_from_params(cap, params)
+            return True, msg, outputs
+        except NeteaseMusicError as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}

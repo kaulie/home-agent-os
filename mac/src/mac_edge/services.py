@@ -167,6 +167,63 @@ XIAODU_SPEAKER_SERVICE: dict[str, Any] = {
     ],
 }
 
+NETEASE_MUSIC_SERVICE: dict[str, Any] = {
+    "service_id": "netease.music",
+    "display_name": "网易云音乐",
+    "version": "0.4.0",
+    "group": "music",
+    "capabilities": [
+        attach(
+            "music.play",
+            input_schema={
+                "song": {
+                    "type": "string",
+                    "required": False,
+                    "description": "歌名（本机 Mac 本轮必填）",
+                },
+                "artist": {
+                    "type": "string",
+                    "required": False,
+                    "description": "作者，仅收窄搜索",
+                },
+                "album": {
+                    "type": "string",
+                    "required": False,
+                    "description": "专辑（本轮忽略）",
+                },
+            },
+            output_schema={
+                "song": {
+                    "type": "string",
+                    "required": False,
+                    "description": "正在播放的歌名",
+                },
+                "artist": {
+                    "type": "string",
+                    "required": False,
+                    "description": "歌手",
+                },
+                "original_id": {
+                    "type": "number",
+                    "required": False,
+                    "description": "网易云 original_id",
+                },
+            },
+            planner_recognize=(
+                "按 song / artist / album 在网易云播放（Mac 本机 ncm-cli）。"
+                "入参 song/artist/album 至少一项。不负责暂停/切歌"
+            ),
+            typical_triggers=["放十年", "播放陈奕迅的十年", "播放歌曲", "放歌", "来首邓丽君"],
+            do_not_dispatch=["蓝牙连接", "TTS", "开灯", "暂停", "下一首"],
+        ),
+        attach("music.pause", input_schema={}, output_schema={}),
+        attach("music.resume", input_schema={}, output_schema={}),
+        attach("music.stop", input_schema={}, output_schema={}),
+        attach("music.next", input_schema={}, output_schema={}),
+        attach("music.previous", input_schema={}, output_schema={}),
+    ],
+}
+
 LOCAL_QUERY_SERVICE: dict[str, Any] = {
     "service_id": "local.query",
     "display_name": "Local Query",
@@ -1229,6 +1286,7 @@ _LAPTOP_SERVICE_ORDER = (
     CHROMECAST_DISPLAY_SERVICE,
     LOCAL_NOTIFY_SERVICE,
     XIAODU_SPEAKER_SERVICE,
+    NETEASE_MUSIC_SERVICE,
     LOCAL_VISION_SERVICE,
     LOCAL_CHARACTER_SERVICE,
     LOCAL_PRONUNCIATION_SERVICE,
@@ -1345,6 +1403,14 @@ def default_services() -> list[dict[str, Any]]:
             log.info("advertise xiaodu.speaker (MAC_EDGE_XIAODU_IP set)")
         else:
             log.info("skip xiaodu.speaker — MAC_EDGE_XIAODU_IP unset")
+    if _allow_service(NETEASE_MUSIC_SERVICE["service_id"], allowed_set):
+        from mac_edge.plugins.netease_music import ncm_cli_configured
+
+        if ncm_cli_configured():
+            services.append(dict(NETEASE_MUSIC_SERVICE))
+            log.info("advertise netease.music (ncm-cli found)")
+        else:
+            log.info("skip netease.music — ncm-cli not found")
     if _allow_service(LOCAL_VISION_SERVICE["service_id"], allowed_set):
         services.append(dict(LOCAL_VISION_SERVICE))
     if _allow_service(LOCAL_CHARACTER_SERVICE["service_id"], allowed_set):
