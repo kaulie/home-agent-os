@@ -6,15 +6,9 @@ struct MarkdownReaderView: View {
 
     @AppStorage(DevMarkdownFontScaleStore.key) private var fontScale: Double = DevMarkdownFontScaleStore.defaultScale
     @State private var showTOC = false
-
-    private let blocks: [DevMarkdownBlock]
-    private let outline: [DevMarkdownOutlineItem]
-
-    init(markdown: String) {
-        self.markdown = markdown
-        blocks = DevMarkdownParser.parse(markdown)
-        outline = DevMarkdownOutline.items(from: blocks)
-    }
+    @State private var blocks: [DevMarkdownBlock] = []
+    @State private var outline: [DevMarkdownOutlineItem] = []
+    @State private var parseReady = false
 
     private var readingStyle: DevMarkdownReadingStyle {
         DevMarkdownReadingStyle(
@@ -25,6 +19,29 @@ struct MarkdownReaderView: View {
     }
 
     var body: some View {
+        Group {
+            if !parseReady {
+                ProgressView("排版中…")
+                    .tint(readingStyle.palette.accent)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(readingStyle.palette.canvas)
+            } else {
+                readerBody
+            }
+        }
+        .task(id: markdown) {
+            parseReady = false
+            let source = markdown
+            let parsed = await Task.detached(priority: .userInitiated) {
+                DevMarkdownParser.parse(source)
+            }.value
+            blocks = parsed
+            outline = DevMarkdownOutline.items(from: parsed)
+            parseReady = true
+        }
+    }
+
+    private var readerBody: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 MarkdownDocumentView(blocks: blocks)
@@ -364,62 +381,35 @@ private struct DevMarkdownTableView: View {
     let headers: [String]
     let rows: [[String]]
 
-    private var columnCount: Int {
-        max(headers.count, rows.map(\.count).max() ?? 0)
+    /// Avoid nested horizontal ScrollViews (dozens of tables freeze the main thread on Docs).
+    /// Monospace pipe rows stay selectable and scroll with the outer reader.
+    private var plain: String {
+        var lines: [String] = []
+        if !headers.isEmpty {
+            lines.append(headers.joined(separator: " · "))
+            lines.append(String(repeating: "─", count: min(28, max(8, headers.joined(separator: " · ").count))))
+        }
+        for row in rows {
+            lines.append(row.joined(separator: " · "))
+        }
+        return lines.joined(separator: "\n")
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 0) {
-                tableRow(cells: padded(headers), isHeader: true)
-                ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                    tableRow(cells: padded(row), isHeader: false)
-                        .background(index.isMultiple(of: 2) ? Color.clear : style.palette.tableStripe)
-                }
-            }
-            .overlay(
+        Text(plain)
+            .font(.system(size: style.scaledBodySize(13), weight: .regular, design: .monospaced))
+            .foregroundStyle(style.palette.text)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(style.palette.codeBorder, lineWidth: 1)
+                    .fill(style.palette.codeBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(style.palette.codeBorder, lineWidth: 1)
+                    )
             )
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-    }
-
-    private func padded(_ cells: [String]) -> [String] {
-        var out = cells
-        while out.count < columnCount { out.append("") }
-        return Array(out.prefix(columnCount))
-    }
-
-    private func tableRow(cells: [String], isHeader: Bool) -> some View {
-        HStack(spacing: 0) {
-            ForEach(Array(cells.enumerated()), id: \.offset) { index, cell in
-                Text(cell)
-                    .font(.system(
-                        size: style.scaledBodySize(isHeader ? 13 : 14),
-                        weight: isHeader ? .semibold : .regular,
-                        design: .rounded
-                    ))
-                    .foregroundStyle(isHeader ? style.palette.heading : style.palette.text)
-                    .multilineTextAlignment(.leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(minWidth: 96, alignment: .leading)
-                if index < cells.count - 1 {
-                    Rectangle()
-                        .fill(style.palette.codeBorder)
-                        .frame(width: 1)
-                }
-            }
-        }
-        .background(isHeader ? style.palette.codeBackground : Color.clear)
-        .overlay(alignment: .bottom) {
-            if isHeader {
-                Rectangle()
-                    .fill(style.palette.codeBorder)
-                    .frame(height: 1)
-            }
-        }
+            .padding(.vertical, 8)
     }
 }
 

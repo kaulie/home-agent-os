@@ -89,7 +89,7 @@
 | `down` | 连续失败、进程不存在、health HTTP ≥500 或连接拒绝 |
 | `unknown` | 尚未完成首次探针或 Observer 自身不可用 |
 
-**Downtime 事件：** 从 `up|degraded` → `down` 记 `started_at`；回到 `up` 记 `ended_at` 并闭合 incident。`degraded` 单独记 **degraded incident**（可选，P0 可合并进 downtime 备注）。
+**Downtime 事件：** 从「up / degraded」变为 `down` 时记 `started_at`；回到 `up` 记 `ended_at` 并闭合 incident。`degraded` 单独记 **degraded incident**（可选，P0 可合并进 downtime 备注）。
 
 ### 3.3 与现有信号的关系
 
