@@ -310,10 +310,8 @@ def set_cache(q, ans, source="", *, catalog_fingerprint: str = ""):
 
 _DELIVERY_CAPS = {"endpoint.present", "endpoint.feedback", "notify.speak"}
 _DISPLAY_CAPS = {"display.photo", "display.slideshow"}
-WAKE_ACK_TEXT = "又咋了"
 WAKE_PLANNER = "voice.stream.wake"
 WAKE_ECHO_CAPABILITY = "voicewakeup.echo"
-_WAKE_ACK_UTTERANCES = frozenset({"又咋了", "又咋啦", "我在呢", "在呢", "咋了"})
 _PRESENTATION_SCHEMA = {
     "type": "text | image | audio — audio means the user should hear the result spoken; the control plane turns that into an execution step on the issuing runtime",
     "from": "summary | answer_text | time_text | asset_ref | state — which execution field fills the payload",
@@ -440,10 +438,18 @@ _PLANNER_OUTPUT_SCHEMA = {
 }
 
 
+def _wake_ack_text() -> str:
+    from voice_settings import get_wake_ack
+
+    return get_wake_ack()
+
+
 def _is_wake_ack_utterance(text):
     """True when the whole utterance is the wake reply — not a user intent."""
+    from voice_settings import wake_ack_utterances
+
     compact = re.sub(r"[\s，。！？,.!?\"'“”‘’]", "", str(text or ""))
-    return compact in _WAKE_ACK_UTTERANCES
+    return compact in wake_ack_utterances()
 
 
 def _user_asked_tv(text):
@@ -1167,7 +1173,7 @@ def _commit_voice_wake_plan(intent_id, issuer_id):
         msg = f"唤醒应答失败：发起端 {pid} 没有在线的 {WAKE_ECHO_CAPABILITY}"
         mark_intent_failed(intent_id, msg)
         return False, msg
-    plan = [_wake_echo_plan_step(pid, WAKE_ACK_TEXT, step=1)]
+    plan = [_wake_echo_plan_step(pid, _wake_ack_text(), step=1)]
     intent = get_intent(intent_id)
     if not intent:
         return False, "intent not exist"
@@ -4316,16 +4322,61 @@ def dispatch_voice_wake():
     if rejected is not None:
         return rejected
 
-    log.info("voice wake ack is local echo; no intent edge=%s", edge_id)
+    ack = _wake_ack_text()
+    log.info("voice wake ack is local echo; no intent edge=%s ack=%r", edge_id, ack)
     return jsonify(
         ok=True,
-        text=WAKE_ACK_TEXT,
+        text=ack,
         source="voice",
         edge_id=edge_id,
         local=True,
         intent_id=None,
-        echo=WAKE_ACK_TEXT,
+        echo=ack,
     )
+
+
+@app.route("/api/v1/voice/settings", methods=["GET"])
+def voice_settings_view():
+    from voice_settings import public_settings
+
+    return jsonify(public_settings())
+
+
+@app.route("/api/v1/admin/voice/settings", methods=["GET"])
+def admin_get_voice_settings():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    from voice_settings import public_settings
+
+    return jsonify(public_settings())
+
+
+@app.route("/api/v1/admin/voice/settings", methods=["PUT", "POST"])
+def admin_put_voice_settings():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify(ok=False, error="JSON object required"), 400
+    ack = str(body.get("wake_ack") or "").strip()
+    if not ack:
+        return jsonify(ok=False, error="wake_ack required"), 400
+    from voice_settings import set_wake_ack
+
+    try:
+        saved = set_wake_ack(ack)
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    except RuntimeError as exc:
+        return jsonify(ok=False, error=str(exc)), 501
+    _record_admin_op(
+        action="voice_settings_update",
+        extra={"wake_ack": saved},
+        summary=f"唤醒应答改为「{saved}」",
+    )
+    return jsonify(ok=True, wake_ack=saved)
 
 
 @app.route("/api/v1/intent_detail", methods=["GET"])

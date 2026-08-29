@@ -107,6 +107,26 @@ def _parse_aliases(raw: str) -> tuple[str, ...]:
     return parts or DEFAULT_WAKE_ALIASES
 
 
+def _brain_wake_ack(brain_url: str) -> str | None:
+    try:
+        import httpx
+    except ImportError:
+        return None
+    url = f"{brain_url.rstrip('/')}/api/v1/voice/settings"
+    try:
+        with httpx.Client(timeout=3.0) as client:
+            resp = client.get(url)
+        if resp.status_code >= 400:
+            return None
+        data = resp.json()
+    except Exception:
+        return None
+    if not isinstance(data, dict) or not data.get("ok"):
+        return None
+    ack = str(data.get("wake_ack") or "").strip()
+    return ack or None
+
+
 def load_config() -> VoiceConfig:
     root = _project_root()
     _load_dotenv(root)
@@ -133,6 +153,11 @@ def load_config() -> VoiceConfig:
             f"MAC_VOICE_LISTEN_MODE={mode!r} invalid; expected one of {sorted(LISTEN_MODES)}"
         )
     wake_word = _env("MAC_VOICE_WAKE_WORD", DEFAULT_WAKE_WORD) or DEFAULT_WAKE_WORD
+    wake_ack_env = _env("MAC_VOICE_WAKE_ACK")
+    if wake_ack_env:
+        wake_ack = wake_ack_env
+    else:
+        wake_ack = _brain_wake_ack(brain) or DEFAULT_WAKE_ACK
     return VoiceConfig(
         brain_url=brain.rstrip("/"),
         client_hint=client_hint,
@@ -188,7 +213,7 @@ def load_config() -> VoiceConfig:
             lo=400,
             hi=4000,
         ),
-        wake_ack=_env("MAC_VOICE_WAKE_ACK", DEFAULT_WAKE_ACK) or DEFAULT_WAKE_ACK,
+        wake_ack=wake_ack,
         pickup_ingest_enabled=_env("MAC_VOICE_PICKUP_INGEST", "1").lower()
         not in ("0", "false", "no", "off"),
         pickup_ingest_host=_env("MAC_VOICE_PICKUP_INGEST_HOST", "0.0.0.0") or "0.0.0.0",

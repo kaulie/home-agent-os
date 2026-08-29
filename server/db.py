@@ -65,6 +65,34 @@ def locked() -> Iterator[None]:
         yield
 
 
+def meta_get(key: str, default: str = "") -> str:
+    k = str(key or "").strip()
+    if not k:
+        return default
+    with _lock:
+        conn = _connect()
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (k,)).fetchone()
+    if not row:
+        return default
+    return str(row[0] if not isinstance(row, sqlite3.Row) else row["value"] or default)
+
+
+def meta_set(key: str, value: str) -> None:
+    k = str(key or "").strip()
+    if not k:
+        raise ValueError("meta key required")
+    with _lock:
+        conn = _connect()
+        conn.execute(
+            """
+            INSERT INTO meta(key, value) VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+            """,
+            (k, str(value)),
+        )
+        conn.commit()
+
+
 def _dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
 

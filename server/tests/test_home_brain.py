@@ -3018,13 +3018,53 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200, resp.get_json())
         body = resp.get_json()
         self.assertTrue(body["ok"])
-        self.assertEqual(body["text"], "又咋了")
-        self.assertEqual(body["echo"], "又咋了")
+        self.assertEqual(body["text"], "我在呢")
+        self.assertEqual(body["echo"], "我在呢")
         self.assertEqual(body["edge_id"], "mac-voice-1")
         self.assertTrue(body["local"])
         self.assertIsNone(body.get("intent_id"))
         self.assertEqual(hb.task_queue.qsize(), queued)
         self.assertNotIn("execution_plan", body)
+
+    def test_voice_settings_default_and_admin_update(self) -> None:
+        client = hb.app.test_client()
+        pub = client.get("/api/v1/voice/settings")
+        self.assertEqual(pub.status_code, 200, pub.get_json())
+        self.assertEqual(pub.get_json()["wake_ack"], "我在呢")
+
+        admin_get = client.get("/api/v1/admin/voice/settings")
+        self.assertEqual(admin_get.status_code, 200)
+        self.assertEqual(admin_get.get_json()["wake_ack"], "我在呢")
+
+        updated = client.put(
+            "/api/v1/admin/voice/settings",
+            json={"wake_ack": "来了"},
+        )
+        self.assertEqual(updated.status_code, 200, updated.get_json())
+        self.assertEqual(updated.get_json()["wake_ack"], "来了")
+
+        self._register_voice_runtime("mac-voice-1")
+        wake = client.post(
+            "/api/v1/voice/wake",
+            json={"event": "wake", "participant_id": "mac-voice-1"},
+        )
+        self.assertEqual(wake.get_json()["echo"], "来了")
+
+        self._register_live_issuer("iphone-origin")
+        reject = client.post(
+            "/api/v1/intent",
+            json={
+                "text": "来了",
+                "source": "voice",
+                "participant_id": "iphone-origin",
+            },
+        )
+        self.assertEqual(reject.status_code, 400)
+
+    def test_admin_voice_settings_rejects_empty(self) -> None:
+        client = hb.app.test_client()
+        bad = client.put("/api/v1/admin/voice/settings", json={"wake_ack": "  "})
+        self.assertEqual(bad.status_code, 400)
 
     def test_post_intent_rejects_wake_ack_utterance(self) -> None:
         self._register_live_issuer("iphone-origin")

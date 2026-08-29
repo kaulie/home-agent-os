@@ -69,7 +69,16 @@
     }
     .switch input:checked + .slider { background: #246b4a; }
     .switch input:checked + .slider:before { transform: translateX(18px); }
-    .switch input:disabled + .slider { opacity: .4; cursor: not-allowed; }
+    .voice-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+    .voice-form input {
+      flex: 1 1 180px; min-width: 140px;
+      background: var(--bg); border: 1px solid var(--line); color: var(--text);
+      border-radius: 8px; padding: 8px 10px;
+    }
+    .voice-form button {
+      background: var(--accent); color: #111; border: 0; border-radius: 8px;
+      padding: 8px 12px; font-weight: 700; cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -118,6 +127,46 @@
       return `<label class="switch"><input type="checkbox" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} ${attrs}><span class="slider"></span></label>`;
     }
 
+    async function loadVoiceSettings() {
+      try {
+        const res = await fetch("/api/v1/admin/voice/settings", { headers: headers() });
+        const data = await res.json();
+        if (!res.ok) return "";
+        const ack = (data.wake_ack || "").replace(/"/g, "&quot;");
+        return `<article class="card" id="voiceCard">
+          <div class="head"><div><div class="name">语音唤醒应答</div>
+          <div class="meta">唤醒成功后设备本地播报的回复语（非 STT 唤醒词「面条」）。保存后 Mac voice 下次启动时从 Brain 拉取；未设环境变量 <code>MAC_VOICE_WAKE_ACK</code> 时生效。</div></div></div>
+          <div class="voice-form">
+            <input id="wakeAck" type="text" maxlength="32" value="${ack}" placeholder="我在呢" />
+            <button type="button" id="saveWakeAck">保存</button>
+          </div>
+        </article>`;
+      } catch (_) {
+        return "";
+      }
+    }
+
+    async function saveVoiceSettings() {
+      const input = document.getElementById("wakeAck");
+      const ack = (input && input.value || "").trim();
+      if (!ack) { alert("唤醒应答不能为空"); return; }
+      try {
+        const res = await fetch("/api/v1/admin/voice/settings", {
+          method: "PUT",
+          headers: headers(),
+          body: JSON.stringify({ wake_ack: ack }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.error || "保存失败");
+          return;
+        }
+        await load();
+      } catch (e) {
+        alert(String(e));
+      }
+    }
+
     async function load() {
       const err = document.getElementById("err");
       err.hidden = true;
@@ -129,6 +178,7 @@
           if (hint && info.brain) hint.textContent = " 连 Brain " + info.brain;
         }
       } catch (_) {}
+      const voiceCard = await loadVoiceSettings();
       const res = await fetch("/api/v1/admin/nodes", { headers: headers() });
       const data = await res.json();
       if (!res.ok) {
@@ -139,10 +189,12 @@
       const nodes = data.nodes || [];
       const el = document.getElementById("list");
       if (!nodes.length) {
-        el.innerHTML = '<div class="muted">还没有注册节点。</div>';
+        el.innerHTML = voiceCard + '<div class="muted">还没有注册节点。</div>';
+        const btn = document.getElementById("saveWakeAck");
+        if (btn) btn.addEventListener("click", saveVoiceSettings);
         return;
       }
-      el.innerHTML = nodes.map(n => {
+      el.innerHTML = voiceCard + nodes.map(n => {
         const roles = (n.roles || []).map(r => {
           const label = ROLE_LABEL[r.id] || r.id;
           const hint = r.id === "intent_source"
@@ -168,6 +220,8 @@
           <div class="section"><h2>Runtime 能力</h2>${capHtml}</div>
         </article>`;
       }).join("");
+      const btn = document.getElementById("saveWakeAck");
+      if (btn) btn.addEventListener("click", saveVoiceSettings);
     }
 
     async function toggle(input) {

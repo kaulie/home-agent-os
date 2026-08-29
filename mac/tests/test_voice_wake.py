@@ -530,9 +530,26 @@ class ConfigDefaultTests(unittest.TestCase):
         self.assertEqual(cfg.wake_word, "面条")
         self.assertEqual(cfg.wake_repeat, 2)
         self.assertIn("棉条", cfg.wake_aliases)
-        self.assertEqual(cfg.wake_ack, "又咋了")
+        self.assertEqual(cfg.wake_ack, "我在呢")
         self.assertEqual(cfg.command_window_ms, 5000)
         self.assertEqual(cfg.double_wake_ms, 1100)
+
+    def test_load_config_fetches_wake_ack_from_brain_when_env_unset(self) -> None:
+        from mac_voice.config import load_config
+
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if not k.startswith("MAC_VOICE_")
+        }
+        env["MAC_VOICE_BRAIN_URL"] = "http://brain.test:9527"
+        with patch("mac_voice.config._load_dotenv"), patch.dict("os.environ", env, clear=True):
+            with patch(
+                "mac_voice.config._brain_wake_ack",
+                return_value="来了",
+            ):
+                cfg = load_config()
+        self.assertEqual(cfg.wake_ack, "来了")
 
 
 class PipelineWakeAckTests(unittest.TestCase):

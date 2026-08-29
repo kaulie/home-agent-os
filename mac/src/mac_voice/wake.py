@@ -12,7 +12,7 @@ DEFAULT_WAKE_REPEAT = 2
 DEFAULT_WAKE_ALIASES = ("miantiao", "棉条", "面跳", "免条")
 DEFAULT_COMMAND_WINDOW_MS = 5000
 DEFAULT_PARTIAL_WAKE_MS = 2500
-DEFAULT_WAKE_ACK = "又咋了"
+DEFAULT_WAKE_ACK = "我在呢"
 # Give up waiting for 又咋了 and open the 5s command window anyway.
 DEFAULT_ACK_WAIT_MS = 15000
 # One 面条 is ~0.4–0.7s. Two in one utterance is typically ≥1.1s; STT often
