@@ -1675,6 +1675,12 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 404, resp.get_json())
         self.assertIn("intent not exist", resp.get_json().get("err_msg", ""))
 
+    def test_intent_detail_missing_returns_404(self) -> None:
+        client = hb.app.test_client()
+        resp = client.get("/api/v1/intent_detail?intent_id=999999")
+        self.assertEqual(resp.status_code, 404, resp.get_json())
+        self.assertIn("intent not exist", resp.get_json().get("err_msg", ""))
+
     def test_status_does_not_regress_from_failed(self) -> None:
         iid = hb.new_intent(
             {

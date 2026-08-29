@@ -4396,7 +4396,7 @@ def get_intent_detail():
     if not intent:
         return jsonify(
             err_msg="intent not exist"
-        )
+        ), 404
 
     return jsonify(intent)
 
