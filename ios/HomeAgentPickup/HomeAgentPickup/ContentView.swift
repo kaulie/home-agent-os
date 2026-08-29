@@ -32,22 +32,23 @@ private struct MicMainView: View {
                 )
                 .ignoresSafeArea()
 
-                VStack(spacing: 28) {
+                VStack(spacing: 24) {
                     connectionPill
                         .padding(.top, 8)
 
+                    if let error = model.prominentErrorMessage {
+                        ErrorBannerView(message: error, showSettingsLink: !model.micPermissionGranted)
+                    }
+
                     Spacer()
 
-                    if let error = model.prominentErrorMessage {
-                        ProminentErrorView(message: error)
-                    } else {
-                        micButton
-                        statusBlock
-                        if model.userListeningEnabled {
-                            AudioLevelBars(level: model.audioLevel)
-                                .padding(.horizontal, 40)
-                            liveBadge
-                        }
+                    micButton
+                    statusBlock
+
+                    if model.userListeningEnabled {
+                        AudioLevelBars(level: model.audioLevel)
+                            .padding(.horizontal, 40)
+                        hearingBadge
                     }
 
                     Spacer()
@@ -91,8 +92,8 @@ private struct MicMainView: View {
             Circle()
                 .fill(model.isConnected ? Color.green : Color.orange)
                 .frame(width: 10, height: 10)
-            Text(model.isConnected ? "已连接 \(model.serverLabel)" : model.connectionLabel)
-                .font(.footnote)
+            Text(model.isConnected ? "已就绪" : model.userConnectionStatus)
+                .font(.footnote.weight(.medium))
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 14)
@@ -118,20 +119,24 @@ private struct MicMainView: View {
                     Circle()
                         .stroke(Color.red.opacity(0.55), lineWidth: 2)
                         .frame(width: 190, height: 190)
+                } else {
+                    Circle()
+                        .stroke(Color.white.opacity(0.12), lineWidth: 2)
+                        .frame(width: 190, height: 190)
                 }
 
                 Circle()
                     .fill(
                         model.userListeningEnabled
                             ? LinearGradient(colors: [.red, Color(red: 0.85, green: 0.15, blue: 0.2)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                            : LinearGradient(colors: [Color(white: 0.28), Color(white: 0.16)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            : LinearGradient(colors: [Color(white: 0.32), Color(white: 0.18)], startPoint: .topLeading, endPoint: .bottomTrailing)
                     )
                     .frame(width: 160, height: 160)
                     .shadow(color: model.userListeningEnabled ? .red.opacity(0.45) : .clear, radius: 24)
 
-                Image(systemName: model.userListeningEnabled ? "mic.fill" : "mic.slash.fill")
+                Image(systemName: "mic.fill")
                     .font(.system(size: 64, weight: .medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.white.opacity(model.userListeningEnabled ? 1 : 0.85))
             }
         }
         .buttonStyle(.plain)
@@ -140,44 +145,51 @@ private struct MicMainView: View {
     }
 
     private var statusBlock: some View {
-        VStack(spacing: 8) {
-            Text(model.statusHeadline)
-                .font(.system(size: 40, weight: .bold, design: .rounded))
-                .foregroundStyle(model.userListeningEnabled ? Color.red : Color(white: 0.75))
-            if model.userListeningEnabled, model.isConnected {
-                Text("LIVE")
-                    .font(.caption.weight(.heavy))
-                    .tracking(3)
-                    .foregroundStyle(.red.opacity(0.85))
-            }
-        }
+        Text(model.statusHeadline)
+            .font(.system(size: 40, weight: .bold, design: .rounded))
+            .foregroundStyle(model.userListeningEnabled ? Color.red : Color(white: 0.75))
     }
 
-    private var liveBadge: some View {
-        Text("正在听")
+    private var hearingBadge: some View {
+        Text(model.userCaptureStatus)
             .font(.headline.weight(.semibold))
             .foregroundStyle(.white)
             .padding(.horizontal, 18)
             .padding(.vertical, 8)
-            .background(Color.red.opacity(0.85), in: Capsule())
+            .background(
+                model.audioLevel > 0.06 ? Color.green.opacity(0.85) : Color.red.opacity(0.85),
+                in: Capsule()
+            )
+            .animation(.easeInOut(duration: 0.2), value: model.audioLevel > 0.06)
     }
 }
 
-private struct ProminentErrorView: View {
+private struct ErrorBannerView: View {
     let message: String
+    let showSettingsLink: Bool
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.orange)
+        VStack(spacing: 12) {
             Text(message)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .font(.title3.weight(.bold))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white)
-                .padding(.horizontal, 20)
+            if showSettingsLink {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    Link("去系统设置开启", destination: url)
+                        .font(.headline)
+                }
+            }
         }
-        .padding(.vertical, 32)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .background(Color.orange.opacity(0.22), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.orange.opacity(0.45), lineWidth: 1)
+        )
+        .padding(.horizontal, 20)
     }
 }
 

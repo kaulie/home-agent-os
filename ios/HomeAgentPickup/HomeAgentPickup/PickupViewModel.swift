@@ -40,26 +40,49 @@ final class PickupViewModel: ObservableObject {
 
     var prominentErrorMessage: String? {
         if !micPermissionGranted {
-            return "无法使用麦克风\n请在「设置」中允许 HomeAgentPickup 访问麦克风"
+            return "需要麦克风权限\n请到 iPhone「设置」里允许本 App 使用麦克风"
         }
         if !isConnected, !lastError.isEmpty {
-            return "连接失败\n\(lastError)"
+            return "暂时连不上拾音服务\n请确认手机和家里 Wi‑Fi 正常"
         }
         return nil
     }
 
+    var userConnectionStatus: String {
+        if isConnected { return "正常" }
+        if connectionLabel.contains("连接中") || connectionLabel.contains("重连") {
+            return "正在连接…"
+        }
+        if !lastError.isEmpty { return "连不上" }
+        return "未连接"
+    }
+
+    var userCaptureStatus: String {
+        if !userListeningEnabled { return "已关闭" }
+        if !isConnected { return "等待连接" }
+        if audioLevel > 0.06 { return "能听到你说话" }
+        return "正在听，请说话"
+    }
+
+    var hearingHint: String {
+        guard userListeningEnabled, isConnected else { return "" }
+        if audioLevel > 0.06 { return "电平在动，说明听到了" }
+        return "对着话筒说几句，看电平条会不会跳"
+    }
+
     var statusHeadline: String {
         if userListeningEnabled {
-            return isConnected ? "拾音中" : "拾音中 · 连接中…"
+            return isConnected ? "正在听" : "准备听"
         }
-        return "已关闭"
+        return "话筒已关"
     }
 
     var statusHint: String {
         if userListeningEnabled {
-            return isConnected ? "正在听，请对着话筒说话" : "等待连接服务端…"
+            if !isConnected { return "正在连接，连上就开始听" }
+            return hearingHint
         }
-        return "轻触话筒开始拾音"
+        return "点一下大按钮，开始拾音"
     }
 
     func toggleListening() {
