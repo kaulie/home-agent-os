@@ -437,9 +437,16 @@ ADS: dict[str, dict[str, Any]] = {
     "music.play": _ad(
         kind="action",
         role="音乐播放器",
-        planner_recognize="按歌名/歌手/专辑开始放歌（网易云）。入参 song/artist/album。不负责连蓝牙音箱，不负责暂停/切歌",
+        planner_recognize="按歌名/歌手/专辑开始放歌（网易云）。入参 song/artist/album。不负责连蓝牙音箱，不负责暂停/切歌，不负责下载/缓存索引",
         typical_triggers=["放一首周杰伦", "播放歌曲", "放歌", "放十年", "来首邓丽君"],
-        do_not_dispatch=["蓝牙连接", "TTS", "开灯", "暂停", "下一首"],
+        do_not_dispatch=["蓝牙连接", "TTS", "开灯", "暂停", "下一首", "下载", "缓存"],
+    ),
+    "music.cache": _ad(
+        kind="action",
+        role="音乐索引预取器",
+        planner_recognize="闲时把歌名/歌手搜索结果写入本机索引，不播放、不下载音频。入参 song/artist，可选 count（1–200，默认 100）、fetch_audio（本轮忽略）。用户说「下载/缓存xxx的歌」用本步，不是 music.play",
+        typical_triggers=["下载刘德华的歌", "缓存歌曲冰雨", "下载刘德华的歌50首"],
+        do_not_dispatch=["开始播放", "暂停", "TTS", "蓝牙连接", "下载音频文件"],
     ),
     "music.pause": _ad(
         kind="action",

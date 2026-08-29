@@ -219,6 +219,59 @@ class ShortcutModeTest(unittest.TestCase):
         self.assertIsNone(intercept("上一首"))
         self.assertIsNone(intercept("上一首歌"))
 
+    def _music_cache(self, text: str) -> dict:
+        hit = intercept(text)
+        assert hit is not None
+        self.assertEqual(hit.kind, "plan")
+        self.assertIsNone(hit.mode)
+        self.assertEqual(hit.plan[0]["capability"], "music.cache")
+        self.assertEqual(hit.planner_meta.get("source"), "shortcut")
+        timing = (hit.planner_meta or {}).get("timing") or {}
+        self.assertIn("match", timing)
+        return hit.plan[0]["input_constrict"]
+
+    def test_music_cache_playlist_default_count_omitted(self) -> None:
+        ic = self._music_cache("下载刘德华的歌")
+        self.assertEqual(ic["song"], "刘德华的歌")
+        self.assertEqual(ic["user_input"], "下载刘德华的歌")
+        self.assertNotIn("count", ic)
+        self.assertNotIn("artist", ic)
+
+        ic = self._music_cache("请帮我下载刘德华的歌。")
+        self.assertEqual(ic["song"], "刘德华的歌")
+
+        ic = self._music_cache("缓存周杰伦的歌曲")
+        self.assertEqual(ic["song"], "周杰伦的歌曲")
+        self.assertNotIn("count", ic)
+
+    def test_music_cache_playlist_count(self) -> None:
+        ic = self._music_cache("下载刘德华的歌50首")
+        self.assertEqual(ic["song"], "刘德华的歌")
+        self.assertEqual(ic["count"], 50)
+        ic = self._music_cache("缓存刘德华的歌 20 首")
+        self.assertEqual(ic["song"], "刘德华的歌")
+        self.assertEqual(ic["count"], 20)
+
+    def test_music_cache_song_prefix(self) -> None:
+        ic = self._music_cache("缓存歌曲冰雨")
+        self.assertEqual(ic["song"], "冰雨")
+        self.assertEqual(ic["user_input"], "缓存歌曲冰雨")
+        self.assertNotIn("count", ic)
+        ic = self._music_cache("下载歌曲十年")
+        self.assertEqual(ic["song"], "十年")
+
+    def test_music_cache_does_not_steal_play(self) -> None:
+        ic = self._music_ic("听刘德华的歌")
+        self.assertEqual(ic["song"], "刘德华的歌")
+
+    def test_music_cache_rejects_bare_and_unrelated(self) -> None:
+        self.assertIsNone(intercept("下载歌曲"))
+        self.assertIsNone(intercept("缓存歌曲"))
+        self.assertIsNone(intercept("下载"))
+        self.assertIsNone(intercept("下载冰雨"))
+        self.assertIsNone(intercept("下载天气预报"))
+        self.assertIsNone(intercept("下载幻灯片"))
+
 
 if __name__ == "__main__":
     unittest.main()

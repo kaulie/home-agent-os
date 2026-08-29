@@ -170,7 +170,7 @@ XIAODU_SPEAKER_SERVICE: dict[str, Any] = {
 NETEASE_MUSIC_SERVICE: dict[str, Any] = {
     "service_id": "netease.music",
     "display_name": "网易云音乐",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "group": "music",
     "capabilities": [
         attach(
@@ -214,7 +214,39 @@ NETEASE_MUSIC_SERVICE: dict[str, Any] = {
                 "本轮必须有 song，不能只按歌手或专辑点播。不负责暂停/切歌。"
             ),
             typical_triggers=["放十年", "播放陈奕迅的十年"],
-            do_not_dispatch=["蓝牙连接", "TTS", "开灯", "暂停", "下一首"],
+            do_not_dispatch=["蓝牙连接", "TTS", "开灯", "暂停", "下一首", "下载", "缓存"],
+        ),
+        attach(
+            "music.cache",
+            input_schema={
+                "song": {
+                    "type": "string",
+                    "required": False,
+                    "description": "歌名或「xxx的歌/歌曲」",
+                },
+                "artist": {
+                    "type": "string",
+                    "required": False,
+                    "description": "歌手",
+                },
+                "count": {
+                    "type": "number",
+                    "required": False,
+                    "description": "预取条数，1–200，默认 100",
+                },
+                "fetch_audio": {
+                    "type": "boolean",
+                    "required": False,
+                    "description": "本轮忽略；true 时仍只写索引并说明未下载音频",
+                },
+            },
+            output_schema={
+                "cached": {
+                    "type": "number",
+                    "required": False,
+                    "description": "本次写入索引的歌曲数",
+                },
+            },
         ),
         attach("music.pause", input_schema={}, output_schema={}),
         attach("music.resume", input_schema={}, output_schema={}),

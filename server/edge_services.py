@@ -17,7 +17,7 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         'role': '音乐播放器',
         'planner_recognize': '按歌名/歌手/专辑放歌',
         'typical_triggers': ['放一首周杰伦'],
-        'do_not_dispatch': ['蓝牙连接', 'TTS', '开灯'],
+        'do_not_dispatch': ['蓝牙连接', 'TTS', '开灯', '下载', '缓存'],
         'input_schema': {
             'song': {
                 'type': 'string',
@@ -33,6 +33,38 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
                 'type': 'string',
                 'required': False,
                 'description': '专辑',
+            },
+        },
+        'output_schema': {},
+    },
+    'music.cache': {
+        'kind': 'action',
+        'group': 'music',
+        'service_id': 'netease.music',
+        'role': '音乐索引预取器',
+        'planner_recognize': '闲时写入本机歌曲索引，不播放',
+        'typical_triggers': ['下载刘德华的歌', '缓存歌曲冰雨'],
+        'do_not_dispatch': ['开始播放', 'TTS', '下载音频文件'],
+        'input_schema': {
+            'song': {
+                'type': 'string',
+                'required': False,
+                'description': '歌名或「xxx的歌」',
+            },
+            'artist': {
+                'type': 'string',
+                'required': False,
+                'description': '歌手',
+            },
+            'count': {
+                'type': 'number',
+                'required': False,
+                'description': '预取条数，1–200，默认 100',
+            },
+            'fetch_audio': {
+                'type': 'boolean',
+                'required': False,
+                'description': '本轮忽略；true 时仍只写索引并说明未下载音频',
             },
         },
         'output_schema': {},

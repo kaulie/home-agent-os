@@ -452,6 +452,137 @@ class NeteaseMusicTests(unittest.TestCase):
             "陈奕迅的十年",
         )
 
+    def test_clamp_cache_count(self) -> None:
+        self.assertEqual(nm.clamp_cache_count(None), 100)
+        self.assertEqual(nm.clamp_cache_count(""), 100)
+        self.assertEqual(nm.clamp_cache_count("x"), 100)
+        self.assertEqual(nm.clamp_cache_count(50), 50)
+        self.assertEqual(nm.clamp_cache_count("50"), 50)
+        self.assertEqual(nm.clamp_cache_count(0), 1)
+        self.assertEqual(nm.clamp_cache_count(500), 200)
+
+    def _cache_page_json(self, offset: int, *, artist: str, n: int = 20) -> str:
+        records = [
+            {
+                "originalId": 5000 + offset + i,
+                "id": f"encC{offset + i}",
+                "name": f"冰雨{offset + i}",
+                "artists": [{"name": artist}],
+            }
+            for i in range(n)
+        ]
+        return json.dumps({"code": 200, "data": {"records": records}}, ensure_ascii=False)
+
+    def test_cache_pages_limit_20_no_play(self) -> None:
+        sleeps: list[float] = []
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if "play" in cmd:
+                self.fail("music.cache must not play")
+            self.assertEqual(cmd[cmd.index("--limit") + 1], "20")
+            offset = int(cmd[cmd.index("--offset") + 1])
+            return _completed(self._cache_page_json(offset, artist="刘德华"))
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm.time, "sleep", side_effect=lambda s: sleeps.append(s)):
+                    msg, outputs = nm.run_from_params(
+                        "music.cache",
+                        {"song": "冰雨", "count": 50},
+                    )
+        self.assertIn("未下载音频", msg)
+        self.assertEqual(outputs.get("cached"), 50)
+        search_calls = [c for c in calls if "search" in c]
+        self.assertEqual(len(search_calls), 3)
+        self.assertEqual(
+            [int(c[c.index("--offset") + 1]) for c in search_calls],
+            [0, 20, 40],
+        )
+        self.assertEqual(sleeps, [10.0, 10.0])
+        # Last page is fully upserted (20) even though count stops at 50.
+        self.assertEqual(len(ncm_store.list_library(limit=80)), 60)
+        self.assertIsNone(ncm_store.get_song(5000)["played_at"])
+
+    def test_cache_fetch_audio_still_index_only(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if "play" in cmd:
+                self.fail("music.cache must not play")
+            return _completed(self._cache_page_json(0, artist="刘德华", n=1))
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm.time, "sleep"):
+                    msg, outputs = nm.cache_from_params(
+                        {"song": "冰雨", "count": 1, "fetch_audio": True}
+                    )
+        self.assertIn("未下载音频", msg)
+        self.assertEqual(outputs.get("fetch_audio"), False)
+        self.assertFalse(any("play" in c for c in calls))
+
+    def test_cache_playlist_then_play_hits_artist_without_search(self) -> None:
+        title_records = [
+            {
+                "originalId": 7000 + i,
+                "id": f"encT{i}",
+                "name": f"无关歌名{i}",
+                "artists": [{"name": "路人"}],
+            }
+            for i in range(20)
+        ]
+        artist_records = [
+            {
+                "originalId": 8000 + i,
+                "id": f"encL{i}",
+                "name": f"天意{i}",
+                "artists": [{"name": "刘德华"}],
+            }
+            for i in range(20)
+        ]
+        title_json = json.dumps(
+            {"code": 200, "data": {"records": title_records}}, ensure_ascii=False
+        )
+        artist_json = json.dumps(
+            {"code": 200, "data": {"records": artist_records}}, ensure_ascii=False
+        )
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if "play" in cmd:
+                return _completed(PLAY_STDOUT)
+            kw = cmd[cmd.index("--keyword") + 1]
+            self.assertEqual(cmd[cmd.index("--limit") + 1], "20")
+            if kw == "刘德华的歌":
+                return _completed(title_json)
+            if kw == "刘德华":
+                return _completed(artist_json)
+            self.fail(f"unexpected keyword {kw}")
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm.time, "sleep"):
+                    with patch.object(nm, "enter_music_mode"):
+                        cache_msg, cache_out = nm.cache_from_params(
+                            {"song": "刘德华的歌", "count": 20}
+                        )
+                        self.assertIn("未下载音频", cache_msg)
+                        self.assertEqual(cache_out.get("cached"), 20)
+                        self.assertFalse(any("play" in c for c in calls))
+                        calls.clear()
+                        _msg, outputs = nm.play_from_params({"song": "刘德华的歌"})
+        self.assertEqual(outputs["timing"]["search"], 0)
+        self.assertTrue(any("play" in c for c in calls))
+        self.assertFalse(any("search" in c for c in calls))
+        self.assertTrue(
+            any(ncm_store.get_song(8000 + i)["played_at"] is not None for i in range(20))
+        )
+        self.assertIsNone(ncm_store.get_song(7000)["played_at"])
+
 
 if __name__ == "__main__":
     unittest.main()

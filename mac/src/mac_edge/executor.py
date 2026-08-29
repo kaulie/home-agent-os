@@ -100,6 +100,7 @@ _CAP_EXEC_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cap-exec"
 # Composite reading pipeline should fail faster than generic 5m wall clock.
 _CAP_TIMEOUT_SEC: dict[str, float] = {
     "reading.point_to_character": 120.0,
+    "music.cache": 360.0,
 }
 
 

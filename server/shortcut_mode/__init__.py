@@ -83,9 +83,35 @@ def intercept(text: str, *, intent: dict[str, Any] | None = None) -> InterceptRe
             },
         )
 
+    music_cache = music.match_cache(utterance)
+    if music_cache is not None:
+        constrict: dict[str, Any] = {"user_input": music_cache.user_input}
+        if music_cache.song:
+            constrict["song"] = music_cache.song
+        if music_cache.count is not None:
+            constrict["count"] = music_cache.count
+        return InterceptResult(
+            kind="plan",
+            mode=None,
+            plan=[
+                {
+                    "step": 1,
+                    "capability": "music.cache",
+                    "input_constrict": constrict,
+                    "output_constrict": {},
+                }
+            ],
+            presentation={"type": "text"},
+            planner_meta={
+                "goal": "cache songs",
+                "source": "shortcut",
+                "timing": {"match": music_cache.match_ms},
+            },
+        )
+
     music_hit = music.match_play(utterance)
     if music_hit is not None:
-        constrict: dict[str, str] = {"user_input": music_hit.user_input}
+        constrict = {"user_input": music_hit.user_input}
         if music_hit.song:
             constrict["song"] = music_hit.song
         return InterceptResult(

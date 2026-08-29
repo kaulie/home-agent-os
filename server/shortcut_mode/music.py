@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 
@@ -70,6 +71,11 @@ _BARE_VERBS_ANY_REMAINDER = ("播放", "放")
 _BARE_VERBS_PLAYLIST_ONLY = ("听", "播")
 _TRAILING_PUNCT = "。．.！!？?，,、；;：:…~～"
 
+# Longer first: 下载歌曲 before 下载. Empty remainder after 下载歌曲 must not intercept.
+_CACHE_SONG_PREFIXES = ("下载歌曲", "缓存歌曲")
+_CACHE_BARE_PREFIXES = ("下载", "缓存")
+_COUNT_TAIL = re.compile(r"(\d+)\s*首$")
+
 _COURTESY_PREFIXES = (
     "请帮我",
     "请给我",
@@ -104,6 +110,14 @@ class MusicPlayHit:
 class MusicControlHit:
     capability: str
     user_input: str
+    match_ms: int
+
+
+@dataclass(frozen=True)
+class MusicCacheHit:
+    song: str
+    user_input: str
+    count: int | None
     match_ms: int
 
 
@@ -144,6 +158,16 @@ def _playlist_remainder(remainder: str) -> bool:
         if text.endswith(suffix) and text[: -len(suffix)].strip():
             return True
     return False
+
+
+def _split_trailing_count(remainder: str) -> tuple[str, int | None]:
+    """Strip trailing Arabic 「N首」. Chinese numerals are out of scope."""
+    text = str(remainder or "").strip()
+    matched = _COUNT_TAIL.search(text)
+    if not matched:
+        return text, None
+    rest = text[: matched.start()].strip()
+    return rest, int(matched.group(1))
 
 
 def match_control(text: str) -> MusicControlHit | None:
@@ -198,3 +222,48 @@ def match_play(text: str) -> MusicPlayHit | None:
 
     match_ms = int(round((time.perf_counter() - t0) * 1000))
     return MusicPlayHit(song=song, user_input=utterance, match_ms=match_ms)
+
+
+def match_cache(text: str) -> MusicCacheHit | None:
+    """下载/缓存 index prefetch. Must run before match_play."""
+    t0 = time.perf_counter()
+    utterance = str(text or "").strip()
+    if not utterance:
+        return None
+    if matches_any(utterance, _EXCLUDE):
+        return None
+
+    stripped = _rstrip_punct(_lstrip_courtesy(utterance))
+    if not stripped:
+        return None
+
+    for prefix in _CACHE_SONG_PREFIXES:
+        if stripped.startswith(prefix):
+            remainder, count = _split_trailing_count(
+                _rstrip_punct(stripped[len(prefix) :].lstrip())
+            )
+            if not remainder:
+                return None
+            match_ms = int(round((time.perf_counter() - t0) * 1000))
+            return MusicCacheHit(
+                song=remainder,
+                user_input=utterance,
+                count=count,
+                match_ms=match_ms,
+            )
+
+    for prefix in _CACHE_BARE_PREFIXES:
+        if stripped.startswith(prefix):
+            remainder, count = _split_trailing_count(
+                _rstrip_punct(stripped[len(prefix) :].lstrip())
+            )
+            if not _playlist_remainder(remainder):
+                return None
+            match_ms = int(round((time.perf_counter() - t0) * 1000))
+            return MusicCacheHit(
+                song=remainder,
+                user_input=utterance,
+                count=count,
+                match_ms=match_ms,
+            )
+    return None

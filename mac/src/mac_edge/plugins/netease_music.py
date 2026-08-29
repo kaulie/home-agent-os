@@ -36,6 +36,10 @@ log = logging.getLogger("mac_edge.netease_music")
 
 SEARCH_TIMEOUT_SEC = 30.0
 SEARCH_LIMIT = 10
+CACHE_PAGE = 20
+CACHE_DEFAULT_COUNT = 100
+CACHE_MAX_COUNT = 200
+CACHE_PAGE_SLEEP_SEC = 10.0
 PLAY_TIMEOUT_SEC = 20.0
 CONTROL_TIMEOUT_SEC = 15.0
 
@@ -48,6 +52,7 @@ _TRAILING_PUNCT = "。．.！!？?，,、；;：:…~～"
 _MUSIC_CAPS = frozenset(
     {
         "music.play",
+        "music.cache",
         "music.pause",
         "music.resume",
         "music.stop",
@@ -200,6 +205,27 @@ def _str_param(params: dict[str, Any] | None, *keys: str) -> str:
         if val is not None and str(val).strip():
             return str(val).strip()
     return ""
+
+
+def _truthy(raw: Any) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    return str(raw or "").strip().lower() in ("1", "true", "yes", "y")
+
+
+def clamp_cache_count(raw: Any) -> int:
+    if raw is None or raw == "":
+        return CACHE_DEFAULT_COUNT
+    if isinstance(raw, bool):
+        return CACHE_DEFAULT_COUNT
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        try:
+            n = int(float(str(raw).strip()))
+        except (TypeError, ValueError):
+            return CACHE_DEFAULT_COUNT
+    return max(1, min(CACHE_MAX_COUNT, n))
 
 
 def _record_from_index(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -380,31 +406,34 @@ def search_records(
     *,
     keyword: str,
     user_input: str | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
 ) -> list[dict[str, Any]]:
     keyword = str(keyword or "").strip()
     if not keyword:
         return []
+    use_limit = SEARCH_LIMIT if limit is None else max(1, int(limit))
+    use_offset = 0 if offset is None else max(0, int(offset))
     argv = ["search", "song"]
     used_user_input = bool(str(user_input or "").strip())
     if used_user_input:
         argv.extend(["--userInput", str(user_input).strip()])
-    argv.extend(["--keyword", keyword, "--limit", str(SEARCH_LIMIT)])
+    argv.extend(["--keyword", keyword, "--limit", str(use_limit)])
+    if offset is not None:
+        argv.extend(["--offset", str(use_offset)])
+
+    def _keyword_only_argv() -> list[str]:
+        out = ["search", "song", "--keyword", keyword, "--limit", str(use_limit)]
+        if offset is not None:
+            out.extend(["--offset", str(use_offset)])
+        return out
+
     try:
         payload = _run_ncm(argv, timeout_sec=SEARCH_TIMEOUT_SEC)
     except NeteaseMusicError as e:
         if used_user_input and _unknown_user_input_flag(e):
             log.info("ncm-cli --userInput unsupported; retry keyword only")
-            payload = _run_ncm(
-                [
-                    "search",
-                    "song",
-                    "--keyword",
-                    keyword,
-                    "--limit",
-                    str(SEARCH_LIMIT),
-                ],
-                timeout_sec=SEARCH_TIMEOUT_SEC,
-            )
+            payload = _run_ncm(_keyword_only_argv(), timeout_sec=SEARCH_TIMEOUT_SEC)
         else:
             raise
     code = payload.get("code")
@@ -551,6 +580,8 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
         cached = _cached_record(song=song, artist="")
         if cached and not _names_equal(_record_name(cached), song):
             cached = None
+        if cached is None:
+            cached = _cached_record(song="", artist=playlist_artist)
     elif song:
         cached = _cached_record(song=song, artist=artist)
     else:
@@ -610,6 +641,117 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
     return msg, {"timing": timing}
 
 
+def paged_search_records(
+    *,
+    keyword: str,
+    user_input: str | None = None,
+    target: int,
+    sleep_fn: Any = None,
+) -> list[dict[str, Any]]:
+    """Cache-only paging: always --limit 20 + --offset. Sleep between pages."""
+    sleeper = time.sleep if sleep_fn is None else sleep_fn
+    want = max(1, int(target))
+    collected: list[dict[str, Any]] = []
+    seen: set[Any] = set()
+    offset = 0
+    page_i = 0
+    while len(collected) < want:
+        if page_i > 0:
+            sleeper(CACHE_PAGE_SLEEP_SEC)
+        batch = search_records(
+            keyword=keyword,
+            user_input=user_input if page_i == 0 else None,
+            limit=CACHE_PAGE,
+            offset=offset,
+        )
+        if not batch:
+            break
+        before = len(collected)
+        for rec in batch:
+            oid = rec.get("originalId")
+            if oid in seen:
+                continue
+            seen.add(oid)
+            collected.append(rec)
+            if len(collected) >= want:
+                break
+        if len(collected) == before:
+            break
+        if len(batch) < CACHE_PAGE:
+            break
+        offset += CACHE_PAGE
+        page_i += 1
+    return collected[:want]
+
+
+def cache_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[str, Any]]:
+    """Write ncm_songs index only. Does not play or download audio this round."""
+    t0 = time.perf_counter()
+    raw = params if isinstance(params, dict) else {}
+    song = str(_str_param(raw, "song") or "").strip().rstrip(_TRAILING_PUNCT).strip()
+    artist = str(_str_param(raw, "artist") or "").strip().rstrip(_TRAILING_PUNCT).strip()
+    user_input = _str_param(raw, "user_input")
+    intent_id = _str_param(raw, "intent_id") or "-"
+    if not song and not artist:
+        raise NeteaseMusicError(NO_SONG_MSG)
+    count = clamp_cache_count(raw.get("count"))
+    fetch_audio = _truthy(raw.get("fetch_audio"))
+    playlist_artist = artist_from_playlist_remainder(song)
+    sleeper = time.sleep
+
+    if playlist_artist:
+        search_records(
+            keyword=song,
+            user_input=user_input or None,
+            limit=CACHE_PAGE,
+            offset=0,
+        )
+        sleeper(CACHE_PAGE_SLEEP_SEC)
+        collected = paged_search_records(
+            keyword=playlist_artist,
+            user_input=user_input or None,
+            target=count,
+            sleep_fn=sleeper,
+        )
+        label = playlist_artist
+    elif not song and artist:
+        collected = paged_search_records(
+            keyword=artist,
+            user_input=user_input or None,
+            target=count,
+            sleep_fn=sleeper,
+        )
+        label = artist
+    else:
+        keyword = search_keyword(song=song, artist=artist or None)
+        collected = paged_search_records(
+            keyword=keyword,
+            user_input=user_input or None,
+            target=count,
+            sleep_fn=sleeper,
+        )
+        label = song or keyword
+
+    cached_n = len(collected)
+    total_ms = int(round((time.perf_counter() - t0) * 1000))
+    audio_note = "本轮未下载音频" if fetch_audio else "未下载音频"
+    msg = f"已缓存 {cached_n} 首「{label}」索引（{audio_note}）"
+    log.info(
+        "music.cache intent=%s label=%s cached=%s count=%s fetch_audio=%s total_ms=%s",
+        intent_id,
+        label,
+        cached_n,
+        count,
+        fetch_audio,
+        total_ms,
+    )
+    return msg, {
+        "cached": cached_n,
+        "fetch_audio": False,
+        "timing": {"total": total_ms},
+    }
+
+
 def run_from_params(
     capability_id: str,
     params: dict[str, Any] | None = None,
@@ -619,6 +761,8 @@ def run_from_params(
         raise NeteaseMusicError(f"unsupported capability {cap}")
     if cap == "music.play":
         return play_from_params(params)
+    if cap == "music.cache":
+        return cache_from_params(params)
     msg = _control(cap)
     if cap == "music.stop":
         exit_music_mode(reason="music.stop")

@@ -84,6 +84,7 @@ _CHECKERS: dict[str, Checker] = {
     "reading.rank_pointed": _check_reading_stage,
     "reading.point_to_character": _check_reading_point_to_character,
     "music.play": _check_netease_music,
+    "music.cache": _check_netease_music,
     "music.pause": _check_netease_music,
     "music.resume": _check_netease_music,
     "music.stop": _check_netease_music,
