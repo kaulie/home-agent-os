@@ -32,6 +32,7 @@ struct MarkdownReaderView: View {
                     .padding(.horizontal, 18)
                     .padding(.vertical, 16)
             }
+            .accessibilityIdentifier(DevAccessibilityID.markdownReader)
             .background(readingStyle.palette.canvas)
             .environment(\.devMarkdownReadingStyle, readingStyle)
             .toolbar {
@@ -42,6 +43,7 @@ struct MarkdownReaderView: View {
                         } label: {
                             Label("目录", systemImage: "list.bullet.indent")
                         }
+                        .accessibilityIdentifier(DevAccessibilityID.markdownTOC)
                         .foregroundStyle(readingStyle.palette.accent)
                     }
                     fontScaleControls
@@ -71,18 +73,21 @@ struct MarkdownReaderView: View {
             } label: {
                 Image(systemName: "textformat.size.smaller")
             }
+            .accessibilityIdentifier(DevAccessibilityID.markdownFontSmaller)
             .disabled(fontScale <= DevMarkdownFontScaleStore.minScale)
 
             Text(DevMarkdownFontScaleStore.label(for: fontScale))
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(readingStyle.palette.dim)
                 .frame(minWidth: 28)
+                .accessibilityIdentifier(DevAccessibilityID.markdownFontLabel)
 
             Button {
                 fontScale = DevMarkdownFontScaleStore.clamp(fontScale + DevMarkdownFontScaleStore.step)
             } label: {
                 Image(systemName: "textformat.size.larger")
             }
+            .accessibilityIdentifier(DevAccessibilityID.markdownFontLarger)
             .disabled(fontScale >= DevMarkdownFontScaleStore.maxScale)
         }
         .foregroundStyle(readingStyle.palette.accent)
@@ -122,7 +127,7 @@ private struct DevMarkdownTOCSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(items) { item in
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                     Button {
                         onSelect(item)
                     } label: {
@@ -139,9 +144,11 @@ private struct DevMarkdownTOCSheet: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .accessibilityIdentifier(DevAccessibilityID.markdownTOCItem(index: index))
                     .listRowBackground(palette.codeBackground)
                 }
             }
+            .accessibilityIdentifier(DevAccessibilityID.markdownTOCSheet)
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(palette.canvas.ignoresSafeArea())

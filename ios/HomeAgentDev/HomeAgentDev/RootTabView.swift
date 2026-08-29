@@ -50,6 +50,7 @@ struct RootTabView: View {
                 .tag(DevTab.deploy)
 
             DocsConsoleView()
+                .accessibilityIdentifier(DevAccessibilityID.tabDocs)
                 .tabItem {
                     Label("文档", systemImage: "book.pages")
                 }

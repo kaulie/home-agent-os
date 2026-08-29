@@ -29,6 +29,7 @@ struct DocsConsoleView: View {
                                         NavigationLink(value: entry) {
                                             docRow(entry)
                                         }
+                                        .accessibilityIdentifier(DevAccessibilityID.docsRow(path: entry.path))
                                     }
                                 } header: {
                                     Text("项目 Markdown")
@@ -37,6 +38,7 @@ struct DocsConsoleView: View {
                                 }
                                 .listRowBackground(DevTheme.panel)
                             }
+                            .accessibilityIdentifier(DevAccessibilityID.docsList)
                             .listStyle(.insetGrouped)
                             .scrollContentBackground(.hidden)
                         }
@@ -102,6 +104,7 @@ private struct DocDetailView: View {
                         .padding()
                 } else if let doc {
                     MarkdownReaderView(markdown: doc.content)
+                        .accessibilityIdentifier(DevAccessibilityID.docsDetail)
                 }
             }
         }
