@@ -19,8 +19,17 @@ def post_intent(
     text: str,
     participant_id: str,
     source: str = "voice",
+    input_participant_id: str = "",
+    ingress: str = "",
     timeout_sec: float = 60.0,
 ) -> dict[str, Any]:
+    """Post voice intent.
+
+    ``participant_id`` / ``edge_id`` = Mac Runtime hosting voice.stream (processor).
+    ``input_participant_id`` = Input Source identity (who the user spoke to) —
+    Mac edge for USB mic, iPhone Runtime edge_id for Home Mic. Never invent
+    static channel labels like home_mic/usb_mic as identity.
+    """
     trimmed = (text or "").strip()
     if not trimmed:
         raise ValueError("text is empty; refuse POST /intent")
@@ -28,15 +37,36 @@ def post_intent(
     if not pid:
         raise ValueError("participant_id required")
     src = "voice" if source == "voice" else "text"
+    input_pid = (input_participant_id or "").strip() or pid
+    ingress_l = (ingress or "").strip().lower()
     url = f"{cfg.brain_url}/api/v1/intent"
+    source_context: dict[str, Any] = {
+        # Input Source Affinity: the speaking Runtime's participant_id
+        "device_id": input_pid,
+        "input_participant_id": input_pid,
+        "capability_id": "voice.stream",
+        "endpoint_id": "microphone",
+        # Host that ran STT (Mac voice hub)
+        "voice_host_participant_id": pid,
+    }
+    if ingress_l:
+        source_context["ingress"] = ingress_l
     payload = {
         "text": trimmed,
         "source": src,
         "client_hint": cfg.client_hint,
         "participant_id": pid,
         "edge_id": pid,
+        "source_context": source_context,
     }
-    log.info("POST intent source=%s text=%r", src, trimmed[:120])
+    log.info(
+        "POST intent source=%s input_participant=%s voice_host=%s ingress=%s text=%r",
+        src,
+        input_pid,
+        pid,
+        ingress_l or "-",
+        trimmed[:120],
+    )
     with httpx.Client(timeout=timeout_sec) as client:
         resp = client.post(url, json=payload)
     try:

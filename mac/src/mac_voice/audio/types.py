@@ -31,6 +31,10 @@ class AudioUtterance:
     path: Path | None = None
     speech_start: float | None = None  # monotonic; energy crossed threshold
     speech_end: float | None = None  # monotonic; last voice before trailing silence
+    # Input Source = Runtime participant_id that owns this mic (from edge heartbeat).
+    input_participant_id: str = ""
+    # Transport only (not identity): mac_usb | phone_hap1
+    ingress: str = ""
 
     @classmethod
     def from_wav_path(cls, path: str | Path) -> AudioUtterance:
@@ -54,6 +58,8 @@ class AudioUtterance:
         format: AudioFormat = PCM_16K_MONO,
         speech_start: float | None = None,
         speech_end: float | None = None,
+        input_participant_id: str = "",
+        ingress: str = "",
     ) -> AudioUtterance:
         return cls(
             format=format,
@@ -61,6 +67,8 @@ class AudioUtterance:
             path=None,
             speech_start=speech_start,
             speech_end=speech_end,
+            input_participant_id=input_participant_id,
+            ingress=ingress,
         )
 
     def ensure_pcm(self) -> bytes:

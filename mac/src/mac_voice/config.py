@@ -79,6 +79,9 @@ class VoiceConfig:
     partial_wake_ms: int
     double_wake_ms: int
     wake_ack: str
+    pickup_ingest_enabled: bool
+    pickup_ingest_host: str
+    pickup_ingest_port: int
 
 
 def _parse_device(raw: str) -> int | str | None:
@@ -109,9 +112,14 @@ def load_config() -> VoiceConfig:
     _load_dotenv(root)
     data_dir = Path(_env("MAC_VOICE_DATA_DIR", str(root / "data" / "mac_voice"))).expanduser()
     edge_data = Path(_env("MAC_EDGE_DATA_DIR", str(root / "data"))).expanduser()
-    brain_raw = _env("MAC_VOICE_BRAIN_URL") or _env("MAC_EDGE_BRAIN_URL", "http://127.0.0.1:9527")
-    from mac_edge.config import primary_brain_url
-    brain = primary_brain_url(brain_raw)
+    brain_raw = _env("MAC_VOICE_BRAIN_URL") or _env("MAC_EDGE_BRAIN_URL")
+    from mac_edge.config import _resolve_brain_urls, primary_brain_url
+
+    if brain_raw:
+        brain = primary_brain_url(brain_raw)
+    else:
+        urls, _ = _resolve_brain_urls()
+        brain = urls[0] if urls else "http://127.0.0.1:9527"
     seg = int(_env("MAC_VOICE_SAUC_SEG_DURATION_MS", "200") or "200")
     # Same hint as Mac Runtime — voice is not a separate participant.
     client_hint = (
@@ -181,4 +189,13 @@ def load_config() -> VoiceConfig:
             hi=4000,
         ),
         wake_ack=_env("MAC_VOICE_WAKE_ACK", DEFAULT_WAKE_ACK) or DEFAULT_WAKE_ACK,
+        pickup_ingest_enabled=_env("MAC_VOICE_PICKUP_INGEST", "1").lower()
+        not in ("0", "false", "no", "off"),
+        pickup_ingest_host=_env("MAC_VOICE_PICKUP_INGEST_HOST", "0.0.0.0") or "0.0.0.0",
+        pickup_ingest_port=_parse_int(
+            _env("MAC_VOICE_PICKUP_INGEST_PORT"),
+            8792,
+            lo=1,
+            hi=65535,
+        ),
     )

@@ -20,6 +20,7 @@
 
 1. 初始化进入系统后按 listen_mode 开麦（默认 wake_word：USB 麦常开，未唤醒不发 intent）
 2. 能量切句 → STT → 唤醒门（面条 ×2）→ 可选 POST intent
+2b. **Home Mic 合流**：iPhone 直连本机 HAP1 ingest（默认 `0.0.0.0:8792`），重采样 16 kHz 后进入同一套切句 / STT / 唤醒。身份来自 iPhone Runtime 心跳登记的 `participant_id`（HAP1 hello 带上），不是写死的 `usb_mic`/`home_mic` 频道名。`source_context.device_id` / `input_participant_id` = 说话那台 Runtime；`ingress` 仅标记传输（`mac_usb` | `phone_hap1`）；`voice_host_participant_id` = 跑 STT 的 Mac。**不经 Brain 转 PCM**；Brain 只接收 STT 后的 Intent
 3. **不要**作为用户任务的计划逐步执行；误派则失败并带可读 msg
 
 唤醒应答是本机回复语，**不进入意图理解**：`mac_voice` 在本地 `say`「又咋了」，不建 intent、不跑规划器。`POST /api/v1/voice/wake` 若仍被调用，Brain 只确认 wake 事件、**不落 job**。麦回录的整句「又咋了」也不会 `POST /api/v1/intent`。普通播报仍用 `notify.speak`。正文指令仍走 `POST /api/v1/intent`。

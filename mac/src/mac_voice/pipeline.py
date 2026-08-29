@@ -19,6 +19,8 @@ def handle_transcript(
     text: str,
     *,
     post: bool,
+    input_participant_id: str = "",
+    ingress: str = "",
 ) -> dict[str, Any] | None:
     text = (text or "").strip()
     print(text, flush=True)
@@ -34,10 +36,25 @@ def handle_transcript(
     if not post:
         return None
     # kind=input may call Brain intent API under the hosting Runtime edge_id.
-    participant_id = require_parent_edge_id(cfg)
-    result = post_intent(cfg, text=text, participant_id=participant_id, source="voice")
+    voice_host = require_parent_edge_id(cfg)
+    input_pid = (input_participant_id or "").strip() or voice_host
+    result = post_intent(
+        cfg,
+        text=text,
+        participant_id=voice_host,
+        source="voice",
+        input_participant_id=input_pid,
+        ingress=ingress,
+    )
     intent_id = result.get("intent_id")
-    log.info("intent posted intent_id=%s ok=%s edge_id=%s", intent_id, result.get("ok"), participant_id)
+    log.info(
+        "intent posted intent_id=%s ok=%s input_participant=%s voice_host=%s ingress=%s",
+        intent_id,
+        result.get("ok"),
+        input_pid,
+        voice_host,
+        (ingress or "-"),
+    )
     print(f"intent_id={intent_id}", file=sys.stderr, flush=True)
     return result
 

@@ -13,10 +13,12 @@ import time
 from typing import Any
 
 from mac_edge.tts_playback import PlaybackMute
+from mac_voice.audio.pickup_ingest import PickupIngestServer
 from mac_voice.audio.segmenter import _rms_s16le, iter_utterances
 from mac_voice.audio.source import SoundDeviceAudioSource
 from mac_voice.audio.types import AudioUtterance, PCM_16K_MONO
 from mac_voice.config import VoiceConfig
+from mac_voice.edge_id import resolve_parent_edge_id
 from mac_voice.mic_lock import acquire_listen_lock
 from mac_voice.pipeline import handle_transcript, handle_wake
 from mac_voice.stt.base import SpeechToText
@@ -124,6 +126,7 @@ def _capture_loop(
                     return
         else:
             return
+        mac_pid = resolve_parent_edge_id(cfg)
         chunks = source.iter_pcm()
 
         def watched() -> Any:
@@ -137,7 +140,8 @@ def _capture_loop(
                 now = time.time()
                 if now - last_energy_log >= 5.0:
                     log.info(
-                        "mic alive peak_rms=%.0f threshold=%.0f (queue=%d)",
+                        "mac_usb alive participant=%s peak_rms=%.0f threshold=%.0f (queue=%d)",
+                        mac_pid or "-",
                         peak,
                         cfg.energy_threshold,
                         out_q.qsize(),
@@ -155,7 +159,14 @@ def _capture_loop(
                     activity.note("high")
                 yield chunk
 
-        mute = PlaybackMute()
+        # Only mute while local TTS is playing (又咋了 / notify.speak).
+        # Music mode must NOT mute: 面条 wake has to work while a song is on.
+        # Idle WakeGate still drops non-wake STT (lyrics) so they are not intents.
+        tts_mute = PlaybackMute()
+
+        def muted() -> bool:
+            return tts_mute()
+
         for utt in iter_utterances(
             watched_levels(),
             format=PCM_16K_MONO,
@@ -164,11 +175,14 @@ def _capture_loop(
             silence_ms=cfg.silence_ms,
             min_speech_ms=cfg.min_speech_ms,
             max_speech_ms=cfg.max_speech_ms,
-            muted=mute,
+            muted=muted,
             on_activity=activity.note,
         ):
             if stop.is_set():
                 break
+            # USB mic lives on the Mac Runtime — Input Source = Mac participant_id.
+            utt.input_participant_id = mac_pid
+            utt.ingress = "mac_usb"
             _put_latest(out_q, utt)
     except Exception:
         log.exception("capture loop died")
@@ -178,6 +192,93 @@ def _capture_loop(
         except queue.Full:
             pass
         source.close()
+
+
+def _home_mic_capture_loop(
+    ingest: PickupIngestServer,
+    cfg: VoiceConfig,
+    out_q: queue.Queue[AudioUtterance | None],
+    stop: threading.Event,
+    activity: _CaptureActivity,
+) -> None:
+    """Home Mic PCM (via Brain relay) → same utterance queue as USB mic."""
+    last_energy_log = 0.0
+    peak = 0.0
+    # Home Mic AGC raises the noise floor a lot; use a high absolute gate so
+    # continuous PCM does not dump 8s noise clips into Volcano STT.
+    energy = 4000.0
+    start_th = 6500.0
+    noise_ema = 800.0
+    try:
+        chunks = ingest.iter_pcm()
+
+        def watched() -> Any:
+            nonlocal last_energy_log, peak, noise_ema
+            for chunk in chunks:
+                if stop.is_set():
+                    return
+                level = _rms_s16le(chunk)
+                if level > peak:
+                    peak = level
+                # Track quiet-ish baseline; adapt gate above it.
+                if level < max(noise_ema * 1.8, start_th):
+                    noise_ema = noise_ema * 0.97 + level * 0.03
+                now = time.time()
+                if now - last_energy_log >= 5.0:
+                    dyn = max(energy, noise_ema * 3.0)
+                    log.info(
+                        "phone_hap1 alive participant=%s peak_rms=%.0f gate=%.0f noise=%.0f pcm_in=%d (queue=%d)",
+                        ingest.participant_id or "-",
+                        peak,
+                        dyn,
+                        noise_ema,
+                        ingest.pcm_bytes,
+                        out_q.qsize(),
+                    )
+                    peak = 0.0
+                    last_energy_log = now
+                yield chunk
+
+        def watched_levels() -> Any:
+            for chunk in watched():
+                level = _rms_s16le(chunk)
+                dyn_start = max(start_th, noise_ema * 4.0)
+                if level >= dyn_start:
+                    activity.note("high")
+                yield chunk
+
+        def dynamic_threshold() -> float:
+            return max(energy, noise_ema * 3.0)
+
+        # iter_utterances takes fixed thresholds; approximate with high floor.
+        gate_energy = energy
+        gate_start = start_th
+
+        for utt in iter_utterances(
+            watched_levels(),
+            format=PCM_16K_MONO,
+            energy_threshold=gate_energy,
+            start_threshold=gate_start,
+            silence_ms=cfg.silence_ms,
+            min_speech_ms=cfg.min_speech_ms,
+            max_speech_ms=cfg.max_speech_ms,
+            muted=lambda: False,
+            on_activity=activity.note,
+        ):
+            if stop.is_set():
+                break
+            # Identity = iPhone Runtime participant_id from HAP1 hello (heartbeat registration).
+            input_pid = (ingest.participant_id or "").strip()
+            log.info(
+                "phone_hap1 utterance participant=%s bytes=%d",
+                input_pid or "-",
+                len(utt.ensure_pcm()),
+            )
+            utt.input_participant_id = input_pid
+            utt.ingress = "phone_hap1"
+            _put_latest(out_q, utt)
+    except Exception:
+        log.exception("home_mic capture loop died")
 
 
 async def _ack_wake(cfg: VoiceConfig, gate: WakeGate, post_intent: bool) -> None:
@@ -282,9 +383,32 @@ async def _run_live_locked(
         name="mac-voice-capture",
         daemon=True,
     )
+    ingest: PickupIngestServer | None = None
+    pickup_thread: threading.Thread | None = None
+    if cfg.pickup_ingest_enabled:
+        ingest = PickupIngestServer(
+            host=cfg.pickup_ingest_host,
+            port=cfg.pickup_ingest_port,
+            chunk_ms=100,
+        )
+        try:
+            ingest.start()
+            pickup_thread = threading.Thread(
+                target=_home_mic_capture_loop,
+                args=(ingest, cfg, utt_q, stop, activity),
+                name="mac-voice-home-mic",
+                daemon=True,
+            )
+        except OSError:
+            log.exception(
+                "home_mic ingest bind failed %s:%s — USB mic only",
+                cfg.pickup_ingest_host,
+                cfg.pickup_ingest_port,
+            )
+            ingest = None
     if gate is not None:
         log.info(
-            "live listen mode=%s wake=%r x%d window_ms=%s device=%s energy>=%s silence_ms=%s (Ctrl+C to stop)",
+            "live listen mode=%s wake=%r x%d window_ms=%s device=%s energy>=%s silence_ms=%s home_mic=%s (Ctrl+C to stop)",
             cfg.listen_mode,
             cfg.wake_word,
             cfg.wake_repeat,
@@ -292,16 +416,20 @@ async def _run_live_locked(
             device if device is not None else cfg.input_device,
             cfg.energy_threshold,
             cfg.silence_ms,
+            "on" if ingest is not None else "off",
         )
     else:
         log.info(
-            "live listen mode=%s device=%s energy>=%s silence_ms=%s (Ctrl+C to stop)",
+            "live listen mode=%s device=%s energy>=%s silence_ms=%s home_mic=%s (Ctrl+C to stop)",
             cfg.listen_mode,
             device if device is not None else cfg.input_device,
             cfg.energy_threshold,
             cfg.silence_ms,
+            "on" if ingest is not None else "off",
         )
     thread.start()
+    if pickup_thread is not None:
+        pickup_thread.start()
     wake_task: asyncio.Task[None] | None = None
     try:
         while True:
@@ -325,24 +453,43 @@ async def _run_live_locked(
                 continue
             if utt is None:
                 break
+            input_pid = (utt.input_participant_id or "").strip()
+            ingress = (utt.ingress or "").strip() or "-"
             now = time.monotonic()
             if _is_stale(utt, now):
                 log.info(
-                    "skip stale utterance age=%.1fs bytes=%d",
+                    "skip stale utterance input=%s ingress=%s age=%.1fs bytes=%d",
+                    input_pid or "-",
+                    ingress,
                     now - (utt.speech_end or now),
                     len(utt.ensure_pcm()),
                 )
                 continue
-            log.info("STT start bytes=%d", len(utt.ensure_pcm()))
+            log.info(
+                "STT start input=%s ingress=%s bytes=%d",
+                input_pid or "-",
+                ingress,
+                len(utt.ensure_pcm()),
+            )
             try:
                 text = await stt.transcribe(utt)
             except asyncio.TimeoutError:
-                log.error("STT timed out bytes=%d", len(utt.ensure_pcm()))
+                log.error(
+                    "STT timed out input=%s ingress=%s bytes=%d",
+                    input_pid or "-",
+                    ingress,
+                    len(utt.ensure_pcm()),
+                )
                 continue
             except Exception as e:
-                log.error("STT failed: %s", e)
+                log.error("STT failed input=%s ingress=%s: %s", input_pid or "-", ingress, e)
                 continue
-            log.info("STT text=%r", text)
+            log.info(
+                "STT text=%r input=%s ingress=%s",
+                text,
+                input_pid or "-",
+                ingress,
+            )
             command = _gate_transcript(
                 gate,
                 text,
@@ -355,10 +502,20 @@ async def _run_live_locked(
                 wake_task = asyncio.create_task(_ack_wake(cfg, gate, post_intent))
             if command is None:
                 continue
-            handle_transcript(cfg, command, post=post_intent)
+            handle_transcript(
+                cfg,
+                command,
+                post=post_intent,
+                input_participant_id=input_pid,
+                ingress=utt.ingress,
+            )
     finally:
         if wake_task is not None and not wake_task.done():
             wake_task.cancel()
         stop.set()
+        if ingest is not None:
+            ingest.stop()
         source.close()
         thread.join(timeout=2.0)
+        if pickup_thread is not None:
+            pickup_thread.join(timeout=2.0)
