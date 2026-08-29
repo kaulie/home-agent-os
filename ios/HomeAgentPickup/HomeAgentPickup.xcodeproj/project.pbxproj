@@ -1,0 +1,281 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		199EA0DF800143409D1E6A5F /* PcmCaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91139F5E21D9430CB9D01747 /* PcmCaptureEngine.swift */; };
+		66FD068E6F1F47F3B28E6842 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 948681F217244BD18BDC143A /* ContentView.swift */; };
+		F2B8CE3015644E759B0A6155 /* FeedbackSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 243899B4BE4D45DC8015B79B /* FeedbackSheetView.swift */; };
+		5A0DFE80F19645D49888AD94 /* HomeAgentPickupApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C8A69952ABD44B49CC16FA9 /* HomeAgentPickupApp.swift */; };
+		8BFD2CB7DA664029B02BD560 /* AudioPickupClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4AB87B1CE09404BB4285454 /* AudioPickupClient.swift */; };
+		79AEA189ECD243C386C4233A /* PickupFeedbackClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E37A8D0816B0459CBF3DB7A5 /* PickupFeedbackClient.swift */; };
+		3F4314E2A1D043BBAAAC788F /* PickupSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAF348FBF464499A90FB473A /* PickupSettings.swift */; };
+		5AE5BD14D5E14DAD8AD5EE2D /* PickupViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3640EE36A3B64CB2ACBE3367 /* PickupViewModel.swift */; };
+		1ABE25F7091742558BEAF1C6 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6EEDF22DAC2340B989EACF8B /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		EF536263F3B3456696713DD4 /* HomeAgentPickup.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomeAgentPickup.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		91139F5E21D9430CB9D01747 /* PcmCaptureEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PcmCaptureEngine.swift; sourceTree = "<group>"; };
+		948681F217244BD18BDC143A /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		243899B4BE4D45DC8015B79B /* FeedbackSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackSheetView.swift; sourceTree = "<group>"; };
+		6C8A69952ABD44B49CC16FA9 /* HomeAgentPickupApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAgentPickupApp.swift; sourceTree = "<group>"; };
+		C4AB87B1CE09404BB4285454 /* AudioPickupClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPickupClient.swift; sourceTree = "<group>"; };
+		E37A8D0816B0459CBF3DB7A5 /* PickupFeedbackClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickupFeedbackClient.swift; sourceTree = "<group>"; };
+		EAF348FBF464499A90FB473A /* PickupSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickupSettings.swift; sourceTree = "<group>"; };
+		3640EE36A3B64CB2ACBE3367 /* PickupViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickupViewModel.swift; sourceTree = "<group>"; };
+		9E4038C4922042DC82CDA645 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		6EEDF22DAC2340B989EACF8B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		9EBE6A383AF54D489C4A4B60 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A2EFC700735344BA82ADF97E = {
+			isa = PBXGroup;
+			children = (
+				911FAFBA5FEA44A79F11C9AA /* HomeAgentPickup */,
+				991AA915D1DD4BB78FFB16B4 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		991AA915D1DD4BB78FFB16B4 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				EF536263F3B3456696713DD4 /* HomeAgentPickup.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		911FAFBA5FEA44A79F11C9AA /* HomeAgentPickup */ = {
+			isa = PBXGroup;
+			children = (
+				D2D50D919FE44943B8D04349,
+				102727EF7665401EBC30AD80,
+				948681F217244BD18BDC143A,
+				243899B4BE4D45DC8015B79B,
+				6C8A69952ABD44B49CC16FA9,
+				3640EE36A3B64CB2ACBE3367,
+				9E4038C4922042DC82CDA645,
+				6EEDF22DAC2340B989EACF8B,
+			);
+			path = HomeAgentPickup;
+			sourceTree = "<group>";
+		};
+		D2D50D919FE44943B8D04349 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				91139F5E21D9430CB9D01747,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		102727EF7665401EBC30AD80 /* Net */ = {
+			isa = PBXGroup;
+			children = (
+				C4AB87B1CE09404BB4285454,
+				E37A8D0816B0459CBF3DB7A5,
+				EAF348FBF464499A90FB473A,
+			);
+			path = Net;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9A672DFDA1254A8E9A9177BA /* HomeAgentPickup */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 947C2DF404DE4FC9890E5793 /* Build configuration list for PBXNativeTarget "HomeAgentPickup" */;
+			buildPhases = (
+				CEAF99F8AF3A4BFFA66190FB /* Sources */,
+				9EBE6A383AF54D489C4A4B60 /* Frameworks */,
+				11B84124202640C1A1819217 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HomeAgentPickup;
+			packageProductDependencies = (
+			);
+			productName = HomeAgentPickup;
+			productReference = EF536263F3B3456696713DD4 /* HomeAgentPickup.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5083B3AA9A914357BED37824 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = C7DD876FB7AF4FE4A8D1D56E /* Build configuration list for PBXProject "HomeAgentPickup" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A2EFC700735344BA82ADF97E;
+			packageReferences = (
+			);
+			productRefGroup = 991AA915D1DD4BB78FFB16B4 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9A672DFDA1254A8E9A9177BA /* HomeAgentPickup */,
+			);
+			};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		11B84124202640C1A1819217 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1ABE25F7091742558BEAF1C6 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		CEAF99F8AF3A4BFFA66190FB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				199EA0DF800143409D1E6A5F /* PcmCaptureEngine.swift in Sources */,
+				66FD068E6F1F47F3B28E6842 /* ContentView.swift in Sources */,
+				F2B8CE3015644E759B0A6155 /* FeedbackSheetView.swift in Sources */,
+				5A0DFE80F19645D49888AD94 /* HomeAgentPickupApp.swift in Sources */,
+				8BFD2CB7DA664029B02BD560 /* AudioPickupClient.swift in Sources */,
+				79AEA189ECD243C386C4233A /* PickupFeedbackClient.swift in Sources */,
+				3F4314E2A1D043BBAAAC788F /* PickupSettings.swift in Sources */,
+				5AE5BD14D5E14DAD8AD5EE2D /* PickupViewModel.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		288FEFCB7592413B9FADDBA0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf";
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		1129BD3D9F404AE0ACF8C222 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CBF06D0C70BF44DE8B53B3B9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HomeAgentPickup/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.homeagent.pickup;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6CB352158C0B4AA99C21AD95 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HomeAgentPickup/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.homeagent.pickup;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C7DD876FB7AF4FE4A8D1D56E /* Build configuration list for PBXProject "HomeAgentPickup" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				288FEFCB7592413B9FADDBA0 /* Debug */,
+				1129BD3D9F404AE0ACF8C222 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		947C2DF404DE4FC9890E5793 /* Build configuration list for PBXNativeTarget "HomeAgentPickup" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CBF06D0C70BF44DE8B53B3B9 /* Debug */,
+				6CB352158C0B4AA99C21AD95 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5083B3AA9A914357BED37824 /* Project object */;
+}
