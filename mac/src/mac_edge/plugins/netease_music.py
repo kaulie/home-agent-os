@@ -21,6 +21,7 @@ from mac_edge.music_linkage import exit_mode as exit_music_mode
 from mac_edge.ncm_songs import (
     NcmSongsError,
     find_by_name_artist,
+    find_index_by_name_artist,
     init_db,
     mark_played,
     upsert_record,
@@ -177,8 +178,39 @@ def _str_param(params: dict[str, Any] | None, *keys: str) -> str:
     return ""
 
 
+def _record_from_index(row: dict[str, Any]) -> dict[str, Any] | None:
+    enc = str(row.get("song_encrypted_id") or "").strip()
+    oid = row.get("song_original_id")
+    if not enc or oid in (None, ""):
+        return None
+    rec: dict[str, Any] = {
+        "id": enc,
+        "originalId": oid,
+        "name": row.get("song_name") or "",
+    }
+    if row.get("artist"):
+        rec["artists"] = [{"name": row["artist"]}]
+    if row.get("duration") is not None:
+        rec["duration"] = row["duration"]
+    album: dict[str, Any] = {}
+    if row.get("album_original_id") is not None:
+        album["originalId"] = row["album_original_id"]
+    if row.get("album_encrypted_id"):
+        album["id"] = row["album_encrypted_id"]
+    if row.get("album_name"):
+        album["name"] = row["album_name"]
+    if album:
+        rec["album"] = album
+    return rec
+
+
 def _cached_record(*, song: str, artist: str) -> dict[str, Any] | None:
     init_db()
+    indexed = find_index_by_name_artist(name=song, artist=artist, limit=5)
+    if indexed:
+        rec = _record_from_index(indexed[0])
+        if rec is not None:
+            return rec
     hits = find_by_name_artist(name=song, artist=artist, limit=5)
     if not hits:
         return None

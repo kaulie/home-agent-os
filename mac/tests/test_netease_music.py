@@ -22,7 +22,13 @@ SEARCH_JSON = json.dumps(
                     "originalId": 66842,
                     "id": "1B8FCF799FD5895F6F0586C7D19A0A3B",
                     "name": "十年",
+                    "duration": 205423,
                     "artists": [{"name": "陈奕迅"}],
+                    "album": {
+                        "originalId": 6548,
+                        "id": "6AF3D73514E9BBA48FC1B1F0AA0A5D75",
+                        "name": "黑白灰",
+                    },
                     "visible": False,
                 }
             ],
@@ -123,6 +129,13 @@ class NeteaseMusicTests(unittest.TestCase):
                     assert got is not None
                     self.assertEqual(got["name"], "十年")
                     self.assertIsNotNone(got["played_at"])
+                    indexed = ncm_store.get_index_song(66842)
+                    assert indexed is not None
+                    self.assertEqual(indexed["song_encrypted_id"], "1B8FCF799FD5895F6F0586C7D19A0A3B")
+                    self.assertEqual(indexed["duration"], 205423)
+                    self.assertEqual(indexed["album_original_id"], 6548)
+                    self.assertEqual(indexed["album_name"], "黑白灰")
+                    self.assertEqual(indexed["album_encrypted_id"], "6AF3D73514E9BBA48FC1B1F0AA0A5D75")
 
                     calls.clear()
                     msg2, outputs2 = nm.play_from_params({"song": "十年", "artist": "陈奕迅"})
@@ -142,6 +155,7 @@ class NeteaseMusicTests(unittest.TestCase):
                 with self.assertRaises(nm.NeteaseMusicError):
                     nm.play_from_params({"song": "十年"})
                 self.assertIsNone(ncm_store.get_song(66842))
+                self.assertIsNone(ncm_store.get_index_song(66842))
 
     def test_pause_resume_stop_next_prev(self) -> None:
         seen: list[str] = []

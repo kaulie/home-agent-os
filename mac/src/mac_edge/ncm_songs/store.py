@@ -164,6 +164,48 @@ def _encrypted_id(record: dict[str, Any]) -> str:
     return str(raw).strip()
 
 
+def _optional_int(raw: Any) -> int | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_text(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
+
+
+def _duration_ms(record: dict[str, Any]) -> int | None:
+    """ncm-cli search records store duration in milliseconds."""
+    for key in ("duration", "durationMs", "duration_ms"):
+        if key in record:
+            return _optional_int(record.get(key))
+    return None
+
+
+def _album_fields(record: dict[str, Any]) -> tuple[int | None, str | None, str | None]:
+    """Map album originalId / name / encrypted id. Missing → NULL, never invent."""
+    album = record.get("album")
+    if isinstance(album, dict):
+        oid = album.get("originalId")
+        if oid is None:
+            oid = album.get("original_id")
+        name = album.get("name") or album.get("album_name")
+        enc = album.get("id") or album.get("encrypted_id") or album.get("encryptedId")
+        return _optional_int(oid), _optional_text(name), _optional_text(enc)
+    if isinstance(album, str) and album.strip():
+        return None, album.strip(), None
+    oid = record.get("album_original_id") or record.get("albumId") or record.get("albumOriginalId")
+    name = record.get("album_name") or record.get("albumName")
+    enc = record.get("album_encrypted_id") or record.get("albumEncryptedId")
+    return _optional_int(oid), _optional_text(name), _optional_text(enc)
+
+
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     record = _loads(row["record_json"])
     if not isinstance(record, dict):
@@ -179,6 +221,106 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "record_json": str(row["record_json"]),
         "played_at": row["played_at"],
     }
+
+
+def _index_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    duration = row["duration"]
+    album_oid = row["album_original_id"]
+    return {
+        "song_original_id": int(row["song_original_id"]),
+        "song_name": str(row["song_name"]),
+        "song_name_norm": str(row["song_name_norm"]),
+        "song_encrypted_id": _optional_text(row["song_encrypted_id"]),
+        "duration": int(duration) if duration is not None else None,
+        "artist": str(row["artist"] or ""),
+        "artist_norm": str(row["artist_norm"] or ""),
+        "album_original_id": int(album_oid) if album_oid is not None else None,
+        "album_name": _optional_text(row["album_name"]),
+        "album_encrypted_id": _optional_text(row["album_encrypted_id"]),
+    }
+
+
+def _index_as_song_dict(row: sqlite3.Row) -> dict[str, Any]:
+    """Minimal ncm_songs-shaped row when backup table has no match."""
+    idx = _index_row_to_dict(row)
+    record: dict[str, Any] = {
+        "originalId": idx["song_original_id"],
+        "id": idx["song_encrypted_id"] or "",
+        "name": idx["song_name"],
+    }
+    if idx["artist"]:
+        record["artists"] = [{"name": idx["artist"]}]
+    if idx["duration"] is not None:
+        record["duration"] = idx["duration"]
+    album: dict[str, Any] = {}
+    if idx["album_original_id"] is not None:
+        album["originalId"] = idx["album_original_id"]
+    if idx["album_encrypted_id"]:
+        album["id"] = idx["album_encrypted_id"]
+    if idx["album_name"]:
+        album["name"] = idx["album_name"]
+    if album:
+        record["album"] = album
+    return {
+        "original_id": idx["song_original_id"],
+        "encrypted_id": idx["song_encrypted_id"] or "",
+        "name": idx["song_name"],
+        "name_norm": idx["song_name_norm"],
+        "artist": idx["artist"],
+        "artist_norm": idx["artist_norm"],
+        "record": record,
+        "record_json": _dumps(record),
+        "played_at": None,
+    }
+
+
+def _upsert_index(
+    conn: sqlite3.Connection,
+    record: dict[str, Any],
+    *,
+    original_id: int,
+    encrypted_id: str,
+    name: str,
+    artist: str,
+    name_norm: str,
+    artist_norm: str,
+) -> None:
+    duration = _duration_ms(record)
+    album_oid, album_name, album_enc = _album_fields(record)
+    conn.execute(
+        """
+        INSERT INTO ncm_song_index (
+          song_original_id, song_name, song_name_norm, song_encrypted_id,
+          duration, artist, artist_norm,
+          album_original_id, album_name, album_encrypted_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(song_original_id) DO UPDATE SET
+          song_name = excluded.song_name,
+          song_name_norm = excluded.song_name_norm,
+          song_encrypted_id = COALESCE(excluded.song_encrypted_id, ncm_song_index.song_encrypted_id),
+          duration = COALESCE(excluded.duration, ncm_song_index.duration),
+          artist = COALESCE(excluded.artist, ncm_song_index.artist),
+          artist_norm = CASE
+            WHEN excluded.artist_norm != '' THEN excluded.artist_norm
+            ELSE ncm_song_index.artist_norm
+          END,
+          album_original_id = COALESCE(excluded.album_original_id, ncm_song_index.album_original_id),
+          album_name = COALESCE(excluded.album_name, ncm_song_index.album_name),
+          album_encrypted_id = COALESCE(excluded.album_encrypted_id, ncm_song_index.album_encrypted_id)
+        """,
+        (
+            original_id,
+            name,
+            name_norm,
+            encrypted_id or None,
+            duration,
+            artist or None,
+            artist_norm,
+            album_oid,
+            album_name,
+            album_enc,
+        ),
+    )
 
 
 def upsert_record(
@@ -225,6 +367,16 @@ def upsert_record(
                 played_at,
             ),
         )
+        _upsert_index(
+            conn,
+            record,
+            original_id=original_id,
+            encrypted_id=encrypted_id,
+            name=name,
+            artist=artist,
+            name_norm=name_norm,
+            artist_norm=artist_norm,
+        )
     return original_id
 
 
@@ -242,6 +394,34 @@ def get_song(original_id: int | str) -> dict[str, Any] | None:
     return _row_to_dict(row) if row else None
 
 
+def _index_lookup_rows(
+    conn: sqlite3.Connection,
+    *,
+    name_key: str,
+    artist_key: str,
+    limit: int,
+) -> list[sqlite3.Row]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    if name_key:
+        clauses.append("i.song_name_norm = ?")
+        params.append(name_key)
+    if artist_key:
+        clauses.append("i.artist_norm = ?")
+        params.append(artist_key)
+    if not clauses:
+        return []
+    sql = (
+        "SELECT i.* FROM ncm_song_index i "
+        "LEFT JOIN ncm_songs s ON s.original_id = i.song_original_id "
+        "WHERE "
+        + " AND ".join(clauses)
+        + " ORDER BY COALESCE(s.played_at, 0) DESC, i.song_original_id DESC LIMIT ?"
+    )
+    params.append(limit)
+    return list(conn.execute(sql, params).fetchall())
+
+
 def find_by_norm(
     *,
     name_norm: str = "",
@@ -250,25 +430,40 @@ def find_by_norm(
 ) -> list[dict[str, Any]]:
     name_key = normalize_text(name_norm)
     artist_key = normalize_text(artist_norm)
-    clauses: list[str] = []
-    params: list[Any] = []
-    if name_key:
-        clauses.append("name_norm = ?")
-        params.append(name_key)
-    if artist_key:
-        clauses.append("artist_norm = ?")
-        params.append(artist_key)
-    if not clauses:
+    if not name_key and not artist_key:
         return []
-    sql = (
-        "SELECT * FROM ncm_songs WHERE "
-        + " AND ".join(clauses)
-        + " ORDER BY COALESCE(played_at, 0) DESC, original_id DESC LIMIT ?"
-    )
-    params.append(max(1, int(limit)))
+    cap = max(1, int(limit))
     with _lock:
         init_db()
-        rows = _connect().execute(sql, params).fetchall()
+        conn = _connect()
+        index_rows = _index_lookup_rows(
+            conn, name_key=name_key, artist_key=artist_key, limit=cap
+        )
+        if index_rows:
+            result: list[dict[str, Any]] = []
+            for idx_row in index_rows:
+                oid = int(idx_row["song_original_id"])
+                song = conn.execute(
+                    "SELECT * FROM ncm_songs WHERE original_id = ?",
+                    (oid,),
+                ).fetchone()
+                result.append(_row_to_dict(song) if song else _index_as_song_dict(idx_row))
+            return result
+        clauses: list[str] = []
+        params: list[Any] = []
+        if name_key:
+            clauses.append("name_norm = ?")
+            params.append(name_key)
+        if artist_key:
+            clauses.append("artist_norm = ?")
+            params.append(artist_key)
+        sql = (
+            "SELECT * FROM ncm_songs WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY COALESCE(played_at, 0) DESC, original_id DESC LIMIT ?"
+        )
+        params.append(cap)
+        rows = conn.execute(sql, params).fetchall()
     return [_row_to_dict(row) for row in rows]
 
 
@@ -279,6 +474,54 @@ def find_by_name_artist(
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     return find_by_norm(
+        name_norm=normalize_text(name),
+        artist_norm=normalize_text(artist),
+        limit=limit,
+    )
+
+
+def get_index_song(original_id: int | str) -> dict[str, Any] | None:
+    try:
+        oid = int(original_id)
+    except (TypeError, ValueError):
+        return None
+    with _lock:
+        init_db()
+        row = _connect().execute(
+            "SELECT * FROM ncm_song_index WHERE song_original_id = ?",
+            (oid,),
+        ).fetchone()
+    return _index_row_to_dict(row) if row else None
+
+
+def find_index_by_norm(
+    *,
+    name_norm: str = "",
+    artist_norm: str = "",
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    name_key = normalize_text(name_norm)
+    artist_key = normalize_text(artist_norm)
+    if not name_key and not artist_key:
+        return []
+    with _lock:
+        init_db()
+        rows = _index_lookup_rows(
+            _connect(),
+            name_key=name_key,
+            artist_key=artist_key,
+            limit=max(1, int(limit)),
+        )
+    return [_index_row_to_dict(row) for row in rows]
+
+
+def find_index_by_name_artist(
+    *,
+    name: str = "",
+    artist: str = "",
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    return find_index_by_norm(
         name_norm=normalize_text(name),
         artist_norm=normalize_text(artist),
         limit=limit,
