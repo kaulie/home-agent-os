@@ -109,6 +109,21 @@ class ShortcutModeTest(unittest.TestCase):
         ic = self._music_ic("播放陈奕迅的十年")
         self.assertEqual(ic["song"], "陈奕迅的十年")
         self.assertEqual(ic["user_input"], "播放陈奕迅的十年")
+        self.assertNotIn("artist", ic)
+
+    def test_music_play_xxx_de_ge_keeps_song_not_artist(self) -> None:
+        ic = self._music_ic("播放张三的歌")
+        self.assertEqual(ic["song"], "张三的歌")
+        self.assertEqual(ic["user_input"], "播放张三的歌")
+        self.assertNotIn("artist", ic)
+
+        ic = self._music_ic("听听陈奕迅的歌")
+        self.assertEqual(ic["song"], "陈奕迅的歌")
+        self.assertNotIn("artist", ic)
+
+        ic = self._music_ic("听一下周杰伦的歌曲")
+        self.assertEqual(ic["song"], "周杰伦的歌曲")
+        self.assertNotIn("artist", ic)
 
     def test_music_play_without_de_particle(self) -> None:
         ic = self._music_ic("播放陈奕迅十年")

@@ -2,6 +2,9 @@
 
 LLM extracts song/artist. This plugin only assembles ncm-cli argv and
 reads/writes ``mac_edge.ncm_songs``. Keyword is one argv value.
+
+「xxx的歌/歌曲」: exact title search first; if no same-name hit, search
+keyword=xxx and pick by ``artists`` (NetEase order).
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from mac_edge.ncm_songs import (
     find_index_by_name_artist,
     init_db,
     mark_played,
+    normalize_text,
     upsert_record,
 )
 
@@ -36,6 +40,9 @@ PLAY_TIMEOUT_SEC = 20.0
 CONTROL_TIMEOUT_SEC = 15.0
 
 NO_SONG_MSG = "目前只支持按歌曲播放，请说出歌名"
+
+# Longer first: 「的歌曲」 before 「的歌」. Not play-verb prefixes.
+_PLAYLIST_SUFFIXES = ("的歌曲", "的歌")
 
 _MUSIC_CAPS = frozenset(
     {
@@ -104,6 +111,20 @@ def search_keyword(*, song: str, artist: str | None = None) -> str:
     if singer:
         return f"{title} {singer}"
     return title
+
+
+def artist_from_playlist_remainder(remainder: str) -> str:
+    """If remainder is 「xxx的歌/歌曲」, return xxx; else empty.
+
+    Does not strip play verbs. Empty artist (remainder is only the suffix) is not this mode.
+    """
+    text = str(remainder or "").strip()
+    if not text:
+        return ""
+    for suffix in _PLAYLIST_SUFFIXES:
+        if text.endswith(suffix):
+            return text[: -len(suffix)].strip()
+    return ""
 
 
 def last_json_object(text: str) -> dict[str, Any]:
@@ -224,6 +245,34 @@ def _record_name(record: dict[str, Any]) -> str:
     return str(record.get("name") or "").strip()
 
 
+def _names_equal(left: str, right: str) -> bool:
+    key = normalize_text(left)
+    return bool(key) and key == normalize_text(right)
+
+
+def _artist_names(record: dict[str, Any]) -> tuple[str, ...]:
+    raw = record.get("artists")
+    if not isinstance(raw, list):
+        return ()
+    names: list[str] = []
+    for item in raw:
+        if isinstance(item, dict):
+            name = str(item.get("name") or "").strip()
+        else:
+            name = str(item or "").strip()
+        if name:
+            names.append(name)
+    return tuple(names)
+
+
+def find_exact_title(records: list[Any], title: str) -> dict[str, Any] | None:
+    """First record whose name equals title (normalized)."""
+    for rec in records:
+        if isinstance(rec, dict) and _names_equal(_record_name(rec), title):
+            return rec
+    return None
+
+
 def _overlap_keys(*, song: str, keyword: str) -> tuple[str, ...]:
     keys: list[str] = []
     for raw in (song, keyword):
@@ -270,6 +319,37 @@ def pick_search_record(
     return best
 
 
+def pick_search_record_by_artist(
+    records: list[Any],
+    *,
+    artist: str,
+    song: str = "",
+) -> dict[str, Any]:
+    """Exact artists[].name first in NetEase order; else max artist char-overlap.
+
+    All-zero artist scores fall back to title pick.
+    """
+    dicts = [r for r in records if isinstance(r, dict)]
+    if not dicts:
+        raise NeteaseMusicError("网易云搜索结果无效")
+    singer = str(artist or "").strip()
+    if singer:
+        for rec in dicts:
+            if any(_names_equal(name, singer) for name in _artist_names(rec)):
+                return rec
+        best: dict[str, Any] | None = None
+        best_score = -1
+        for rec in dicts:
+            names = _artist_names(rec)
+            score = max((char_overlap_score(n, singer) for n in names), default=0)
+            if score > best_score:
+                best = rec
+                best_score = score
+        if best is not None and best_score > 0:
+            return best
+    return pick_search_record(dicts, keyword=singer or song, song=song)
+
+
 def cache_search_records(records: list[Any]) -> int:
     """Upsert every search hit into ncm_songs + ncm_song_index. Returns stored count."""
     stored = 0
@@ -295,13 +375,14 @@ def _unknown_user_input_flag(err: Exception) -> bool:
     )
 
 
-def search_record(
+def search_records(
     *,
-    song: str,
-    artist: str | None = None,
+    keyword: str,
     user_input: str | None = None,
-) -> dict[str, Any]:
-    keyword = search_keyword(song=song, artist=artist)
+) -> list[dict[str, Any]]:
+    keyword = str(keyword or "").strip()
+    if not keyword:
+        return []
     argv = ["search", "song"]
     used_user_input = bool(str(user_input or "").strip())
     if used_user_input:
@@ -339,17 +420,59 @@ def search_record(
     if not isinstance(records, list) or not records:
         songs = data.get("songs") if isinstance(data, dict) else None
         records = songs if isinstance(songs, list) else []
+    dicts = [r for r in records if isinstance(r, dict)] if isinstance(records, list) else []
+    stored = cache_search_records(dicts)
+    log.info("ncm search keyword=%r hits=%s cached=%s", keyword, len(dicts), stored)
+    return dicts
+
+
+def search_record(
+    *,
+    song: str,
+    artist: str | None = None,
+    user_input: str | None = None,
+) -> dict[str, Any]:
+    keyword = search_keyword(song=song, artist=artist)
+    records = search_records(keyword=keyword, user_input=user_input)
     if not records:
         label = f"「{song} - {artist}」" if artist else f"「{song}」"
         raise NeteaseMusicError(f"网易云未找到歌曲{label}")
-    stored = cache_search_records(records)
     picked = pick_search_record(records, keyword=keyword, song=song)
     log.info(
-        "ncm search keyword=%r hits=%s cached=%s picked=%r id=%s",
-        keyword,
-        len(records),
-        stored,
+        "ncm search picked=%r id=%s keyword=%r",
         _record_name(picked),
+        picked.get("originalId"),
+        keyword,
+    )
+    return picked
+
+
+def search_title_then_artist(
+    *,
+    song: str,
+    artist: str,
+    user_input: str | None = None,
+) -> dict[str, Any]:
+    """Exact song title first; if none, search keyword=artist and pick by artists."""
+    title = str(song or "").strip()
+    singer = str(artist or "").strip()
+    records = search_records(keyword=title, user_input=user_input)
+    exact = find_exact_title(records, title)
+    if exact is not None:
+        log.info(
+            "ncm exact title hit name=%r id=%s",
+            _record_name(exact),
+            exact.get("originalId"),
+        )
+        return exact
+    records2 = search_records(keyword=singer, user_input=user_input)
+    if not records2:
+        raise NeteaseMusicError(f"网易云未找到歌曲「{title}」")
+    picked = pick_search_record_by_artist(records2, artist=singer, song=title)
+    log.info(
+        "ncm artist pick name=%r artist=%r id=%s",
+        _record_name(picked),
+        singer,
         picked.get("originalId"),
     )
     return picked
@@ -400,8 +523,14 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
     intent_id = _str_param(params, "intent_id") or "-"
     if not song:
         raise NeteaseMusicError(NO_SONG_MSG)
+    playlist_artist = artist_from_playlist_remainder(song)
     t_cache = time.perf_counter()
-    cached = _cached_record(song=song, artist=artist)
+    if playlist_artist:
+        cached = _cached_record(song=song, artist="")
+        if cached and not _names_equal(_record_name(cached), song):
+            cached = None
+    else:
+        cached = _cached_record(song=song, artist=artist)
     cache_ms = int(round((time.perf_counter() - t_cache) * 1000))
     search_ms = 0
     if cached:
@@ -410,11 +539,18 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
         cache_label = "hit"
     else:
         t_search = time.perf_counter()
-        record = search_record(
-            song=song,
-            artist=artist or None,
-            user_input=user_input or None,
-        )
+        if playlist_artist:
+            record = search_title_then_artist(
+                song=song,
+                artist=playlist_artist,
+                user_input=user_input or None,
+            )
+        else:
+            record = search_record(
+                song=song,
+                artist=artist or None,
+                user_input=user_input or None,
+            )
         search_ms = int(round((time.perf_counter() - t_search) * 1000))
         cache_label = "miss"
     t_play = time.perf_counter()

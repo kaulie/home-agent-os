@@ -293,6 +293,133 @@ class NeteaseMusicTests(unittest.TestCase):
             avail = nm.is_available()
             self.assertFalse(avail.ok)
 
+    def test_artist_from_playlist_remainder(self) -> None:
+        self.assertEqual(nm.artist_from_playlist_remainder("张三的歌"), "张三")
+        self.assertEqual(nm.artist_from_playlist_remainder("周杰伦的歌曲"), "周杰伦")
+        self.assertEqual(nm.artist_from_playlist_remainder("陈奕迅的十年"), "")
+        self.assertEqual(nm.artist_from_playlist_remainder("我的歌声里"), "")
+        self.assertEqual(nm.artist_from_playlist_remainder("的歌"), "")
+        self.assertEqual(nm.artist_from_playlist_remainder("的歌曲"), "")
+
+    def test_pick_search_record_by_artist_first_exact(self) -> None:
+        records = [
+            {"originalId": 1, "id": "a", "name": "十年", "artists": [{"name": "路人"}]},
+            {"originalId": 2, "id": "b", "name": "浮夸", "artists": [{"name": "陈奕迅"}]},
+            {"originalId": 3, "id": "c", "name": "K歌之王", "artists": [{"name": "陈奕迅"}]},
+        ]
+        picked = nm.pick_search_record_by_artist(records, artist="陈奕迅")
+        self.assertEqual(picked["originalId"], 2)
+
+    def test_pick_search_record_by_artist_overlap_then_title(self) -> None:
+        records = [
+            {"originalId": 1, "id": "a", "name": "hello", "artists": [{"name": "abc"}]},
+            {"originalId": 2, "id": "b", "name": "周杰伦精选", "artists": [{"name": "周杰"}]},
+        ]
+        picked = nm.pick_search_record_by_artist(records, artist="周杰伦")
+        self.assertEqual(picked["originalId"], 2)
+
+    def test_play_exact_title_xxx_de_ge_skips_artist_search(self) -> None:
+        records = [
+            {
+                "originalId": 200 + i,
+                "id": f"encT{i}",
+                "name": "张三的歌" if i == 4 else f"张三的歌谣{i}",
+                "artists": [{"name": "路人" if i == 4 else "张三"}],
+            }
+            for i in range(10)
+        ]
+        payload = json.dumps({"code": 200, "data": {"records": records}}, ensure_ascii=False)
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if "search" in cmd:
+                kw = cmd[cmd.index("--keyword") + 1]
+                self.assertEqual(kw, "张三的歌")
+                return _completed(payload)
+            return _completed(PLAY_STDOUT)
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm, "enter_music_mode"):
+                    nm.play_from_params({"song": "张三的歌", "user_input": "播放张三的歌"})
+        search_calls = [c for c in calls if "search" in c]
+        self.assertEqual(len(search_calls), 1)
+        self.assertEqual(ncm_store.get_song(204)["name"], "张三的歌")
+        self.assertIsNotNone(ncm_store.get_song(204)["played_at"])
+        self.assertEqual(len(ncm_store.list_library(limit=20)), 10)
+
+    def test_play_xxx_de_ge_falls_back_to_artist(self) -> None:
+        title_records = [
+            {
+                "originalId": 300 + i,
+                "id": f"encA{i}",
+                "name": f"无关歌名{i}",
+                "artists": [{"name": "路人"}],
+            }
+            for i in range(10)
+        ]
+        artist_records = [
+            {
+                "originalId": 400 + i,
+                "id": f"encB{i}",
+                "name": f"艺人歌{i}",
+                "artists": [{"name": "张三" if i == 1 else "路人"}],
+            }
+            for i in range(10)
+        ]
+        title_json = json.dumps(
+            {"code": 200, "data": {"records": title_records}}, ensure_ascii=False
+        )
+        artist_json = json.dumps(
+            {"code": 200, "data": {"records": artist_records}}, ensure_ascii=False
+        )
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if "search" in cmd:
+                kw = cmd[cmd.index("--keyword") + 1]
+                if kw == "张三的歌":
+                    return _completed(title_json)
+                if kw == "张三":
+                    return _completed(artist_json)
+                self.fail(f"unexpected keyword {kw}")
+            return _completed(PLAY_STDOUT)
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm, "enter_music_mode"):
+                    nm.play_from_params({"song": "张三的歌"})
+        keywords = [
+            c[c.index("--keyword") + 1] for c in calls if "search" in c
+        ]
+        self.assertEqual(keywords, ["张三的歌", "张三"])
+        self.assertEqual(ncm_store.get_song(401)["name"], "艺人歌1")
+        self.assertIsNotNone(ncm_store.get_song(401)["played_at"])
+        self.assertIsNone(ncm_store.get_song(400)["played_at"])
+        self.assertEqual(len(ncm_store.list_library(limit=40)), 20)
+
+    def test_eason_de_shinian_is_title_search_not_playlist(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if "search" in cmd:
+                return _completed(SEARCH_JSON)
+            return _completed(PLAY_STDOUT)
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm, "enter_music_mode"):
+                    nm.play_from_params({"song": "陈奕迅的十年"})
+        search_calls = [c for c in calls if "search" in c]
+        self.assertEqual(len(search_calls), 1)
+        self.assertEqual(
+            search_calls[0][search_calls[0].index("--keyword") + 1],
+            "陈奕迅的十年",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
