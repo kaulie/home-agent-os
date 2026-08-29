@@ -3883,6 +3883,23 @@ def _classification_public_payload(result):
     }
 
 
+def _log_music_shortcut_timing(intent_id, plan, timing: dict) -> None:
+    caps = [
+        str(step.get("capability") or "")
+        for step in (plan or [])
+        if isinstance(step, dict)
+    ]
+    if "music.play" not in caps:
+        return
+    log.info(
+        "music.shortcut intent=%s match_ms=%s plan_ms=%s enqueue_ms=%s",
+        intent_id,
+        timing.get("match"),
+        timing.get("plan"),
+        timing.get("enqueue"),
+    )
+
+
 def _dispatch_shortcut_intent(
     intent_id,
     text,
@@ -3911,9 +3928,16 @@ def _dispatch_shortcut_intent(
     if isinstance(intercepted.presentation, dict) and intercepted.presentation:
         intent["presentation"] = intercepted.presentation
     _save_intent(intent)
+    t_plan = time.perf_counter()
     plan = _prepare_shortcut_execution_plan(intercepted.plan, intent)
     execution_plan = make_execution_plan(plan)
+    plan_ms = int(round((time.perf_counter() - t_plan) * 1000))
     meta = intercepted.planner_meta if isinstance(intercepted.planner_meta, dict) else {}
+    timing_meta = meta.get("timing") if isinstance(meta.get("timing"), dict) else {}
+    try:
+        match_ms = int(timing_meta.get("match") or 0)
+    except (TypeError, ValueError):
+        match_ms = 0
     review_parsed = {
         "goal": meta.get("goal"),
         "reason": "shortcut intercept",
@@ -3923,32 +3947,40 @@ def _dispatch_shortcut_intent(
         "missing_capabilities": [],
         "better_capabilities": [],
     }
-    review_kwargs = dict(
-        text=text,
-        raw=json.dumps(meta, ensure_ascii=False),
-        parsed=review_parsed,
-        session_id=intent.get("session_id"),
-        source=source,
-        edge_id=edge_id,
-        cost_ms=0,
-        planner="shortcut",
-        request_payload={"shortcut": True, "kind": intercepted.kind, "mode": intercepted.mode},
-        response_json=meta,
-    )
+    enqueue_ms = 0
+    t_enq = time.perf_counter()
     try:
         do_execution_plan(intent_id, execution_plan)
+        enqueue_ms = int(round((time.perf_counter() - t_enq) * 1000))
     except (CaptureUploadSplitError, AmbiguousCapabilityEdge) as e:
+        enqueue_ms = int(round((time.perf_counter() - t_enq) * 1000))
         fail_msg = str(e)
         mark_intent_failed(intent_id, fail_msg)
         intent = get_intent(intent_id)
         if intent:
             _apply_failure_presentation(intent, fail_msg)
             _save_intent(intent)
+        timing = {"match": match_ms, "plan": plan_ms, "enqueue": enqueue_ms}
+        _log_music_shortcut_timing(intent_id, plan, timing)
         _record_intent_review(
             intent_id,
             plan=[],
             error=fail_msg,
-            **review_kwargs,
+            text=text,
+            raw=json.dumps(meta, ensure_ascii=False),
+            parsed=review_parsed,
+            session_id=intent.get("session_id") if intent else None,
+            source=source,
+            edge_id=edge_id,
+            cost_ms=0,
+            planner="shortcut",
+            request_payload={
+                "shortcut": True,
+                "kind": intercepted.kind,
+                "mode": intercepted.mode,
+                "timing": timing,
+            },
+            response_json=meta,
         )
         return jsonify(
             ok=True,
@@ -3964,12 +3996,28 @@ def _dispatch_shortcut_intent(
             error=fail_msg,
             asset_ref=ctx_param.get("asset_ref"),
         )
+    timing = {"match": match_ms, "plan": plan_ms, "enqueue": enqueue_ms}
+    _log_music_shortcut_timing(intent_id, plan, timing)
     update_intent_status(intent_id, "intent_parsed")
     _record_intent_review(
         intent_id,
         plan=get_intent(intent_id).get("execution_plan") or [],
         error=None,
-        **review_kwargs,
+        text=text,
+        raw=json.dumps(meta, ensure_ascii=False),
+        parsed=review_parsed,
+        session_id=intent.get("session_id"),
+        source=source,
+        edge_id=edge_id,
+        cost_ms=0,
+        planner="shortcut",
+        request_payload={
+            "shortcut": True,
+            "kind": intercepted.kind,
+            "mode": intercepted.mode,
+            "timing": timing,
+        },
+        response_json=meta,
     )
     return jsonify(
         ok=True,

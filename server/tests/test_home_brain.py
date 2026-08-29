@@ -2823,6 +2823,64 @@ class HomeBrainPersistTest(unittest.TestCase):
         assigned = hb._assign_runtime_edge_id(step, "music.play", intent)
         self.assertEqual(assigned, "mac-music")
 
+    def test_shortcut_music_play_skips_llm_prefers_mac(self) -> None:
+        music_svc = {
+            "service_id": "netease.music",
+            "display_name": "网易云音乐",
+            "capabilities": [{"capability_id": "music.play"}],
+        }
+        brain_db.put_registration(
+            {
+                "participant_id": "android-music",
+                "device_type": "android",
+                "roles": ["runtime", "intent_source"],
+                "services": [music_svc],
+            }
+        )
+        brain_db.put_registration(
+            {
+                "participant_id": "mac-music",
+                "device_type": "mac",
+                "client_hint": "living-room-mac",
+                "roles": ["runtime"],
+                "services": [music_svc],
+            }
+        )
+        self._heartbeat("android-music")
+        self._heartbeat("mac-music")
+        hb._REGISTERED_edges = brain_db.registration_ids()
+        hb.rebuild_capability_maps()
+        client = hb.app.test_client()
+        before_qsize = hb.task_queue.qsize()
+        resp = client.post(
+            "/api/v1/intent",
+            json={
+                "text": "播放陈奕迅的十年",
+                "source": "voice",
+                "participant_id": "android-music",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body["intent_status"], "intent_parsed")
+        self.assertEqual(body["task_kind"], "shortcut")
+        self.assertEqual(hb.task_queue.qsize(), before_qsize)
+        plan = hb.get_intent(body["intent_id"])["execution_plan"]
+        self.assertEqual(plan[0]["capability"], "music.play")
+        self.assertEqual(plan[0]["assigned_edge_id"], "mac-music")
+        ic = plan[0]["input_constrict"]
+        self.assertEqual(ic.get("song"), "陈奕迅的十年")
+        self.assertEqual(ic.get("user_input"), "播放陈奕迅的十年")
+        reviews = brain_db.list_intent_reviews(body["intent_id"])
+        shortcut = next(row for row in reviews if row.get("planner") == "shortcut")
+        payload = shortcut.get("request_payload") or shortcut.get("request_json") or {}
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        timing = payload.get("timing") or {}
+        self.assertIn("match", timing)
+        self.assertIn("plan", timing)
+        self.assertIn("enqueue", timing)
+
     def _register_voice_runtime(
         self, pid: str, *, with_speak: bool = True, with_echo: bool = True
     ) -> None:

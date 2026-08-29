@@ -94,6 +94,58 @@ class ShortcutModeTest(unittest.TestCase):
         exit_mode("reading")
         self.assertIsNone(get_active_mode())
 
+    def _music_ic(self, text: str) -> dict:
+        hit = intercept(text)
+        assert hit is not None
+        self.assertEqual(hit.kind, "plan")
+        self.assertIsNone(hit.mode)
+        self.assertEqual(hit.plan[0]["capability"], "music.play")
+        self.assertEqual(hit.planner_meta.get("source"), "shortcut")
+        timing = (hit.planner_meta or {}).get("timing") or {}
+        self.assertIn("match", timing)
+        return hit.plan[0]["input_constrict"]
+
+    def test_music_play_keeps_full_remainder_as_song(self) -> None:
+        ic = self._music_ic("播放陈奕迅的十年")
+        self.assertEqual(ic["song"], "陈奕迅的十年")
+        self.assertEqual(ic["user_input"], "播放陈奕迅的十年")
+
+    def test_music_play_without_de_particle(self) -> None:
+        ic = self._music_ic("播放陈奕迅十年")
+        self.assertEqual(ic["song"], "陈奕迅十年")
+        self.assertEqual(ic["user_input"], "播放陈奕迅十年")
+
+    def test_music_play_fang_prefix(self) -> None:
+        ic = self._music_ic("放十年")
+        self.assertEqual(ic["song"], "十年")
+        self.assertEqual(ic["user_input"], "放十年")
+
+    def test_music_listen_triggers_without_song(self) -> None:
+        for text in (
+            "听歌",
+            "听听歌",
+            "听会歌",
+            "听下歌",
+            "听听",
+            "听下",
+            "听一下",
+        ):
+            with self.subTest(text=text):
+                ic = self._music_ic(text)
+                self.assertNotIn("song", ic)
+                self.assertEqual(ic["user_input"], text)
+
+    def test_music_listen_yixia_with_remainder(self) -> None:
+        ic = self._music_ic("听一下十年")
+        self.assertEqual(ic["song"], "十年")
+        self.assertEqual(ic["user_input"], "听一下十年")
+
+    def test_music_excludes_slideshow_and_unrelated(self) -> None:
+        self.assertIsNone(intercept("播放幻灯片"))
+        self.assertIsNone(intercept("播放视频"))
+        self.assertIsNone(intercept("开灯"))
+        self.assertIsNone(intercept("这首歌曲叫什么"))
+
 
 if __name__ == "__main__":
     unittest.main()
