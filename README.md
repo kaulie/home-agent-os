@@ -94,6 +94,7 @@ GET  /api/v1/devices/living-room/intents?edge_id=<本节点>
 
 | 文档 | 内容 |
 |------|------|
+| [`docs/service-topology.md`](docs/service-topology.md) | 本机/云服务端口、开机拉起、巡检 |
 | [`server/README.md`](server/README.md) | 协议、路由 |
 | [`ios/README.md`](ios/README.md) | iPhone 意图窗口 |
 | [`mac/README.md`](mac/README.md) | Mac Edge |

@@ -1,6 +1,7 @@
 # Home network endpoints
 
-**Source of truth:** [`endpoints.json`](endpoints.json)
+**地址数字：** [`endpoints.json`](endpoints.json)  
+**谁在跑、怎么起：** [`docs/service-topology.md`](../docs/service-topology.md)
 
 | Key | Meaning |
 |-----|---------|
