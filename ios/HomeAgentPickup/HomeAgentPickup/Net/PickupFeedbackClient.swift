@@ -53,26 +53,22 @@ enum PickupFeedbackClient {
 
     static func submit(
         brainURL: String,
-        intentId: Int,
         participantId: String,
         problemType: PickupFeedbackProblemType,
         userSummary: String,
         clientSnapshot: [String: Any],
         attachments: [PickupFeedbackAttachment] = []
     ) async -> PickupFeedbackResult {
-        guard intentId > 0 else {
-            return PickupFeedbackResult(ok: false, issueId: nil, message: "", error: "请填写有效的 Intent 编号")
-        }
         let pid = participantId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pid.isEmpty else {
-            return PickupFeedbackResult(ok: false, issueId: nil, message: "", error: "请先在反馈配置里填写 participant_id")
+            return PickupFeedbackResult(ok: false, issueId: nil, message: "", error: "缺少设备标识，请重启 App 后再试")
         }
         guard let url = debugReportURL(from: brainURL) else {
             return PickupFeedbackResult(ok: false, issueId: nil, message: "", error: "Brain URL 无效")
         }
 
         var payload: [String: Any] = [
-            "intent_id": intentId,
+            "intent_id": 0,
             "participant_id": pid,
             "source": "pickup_terminal",
             "problem_type": problemType.problemTypeKey,

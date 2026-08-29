@@ -41,7 +41,7 @@ final class AudioPickupClient {
         connection?.state == .ready
     }
 
-    func connect(host: String, port: UInt16, deviceId: String) async throws {
+    func connect(host: String, port: UInt16, deviceId: String, participantId: String = "") async throws {
         close()
         let tcp = NWProtocolTCP.Options()
         tcp.noDelay = true
@@ -73,15 +73,21 @@ final class AudioPickupClient {
             }
             conn.start(queue: queue)
         }
-        let hello: [String: Any] = [
+        let edgePid = participantId.trimmingCharacters(in: .whitespacesAndNewlines)
+        var hello: [String: Any] = [
             "type": "hello",
             "device_id": deviceId,
             "sample_rate": 44_100,
             "channels": 1,
             "sample_format": "s16le",
         ]
+        // Runtime identity from LivingRoomEdge heartbeat / registration — not a channel label.
+        if !edgePid.isEmpty {
+            hello["participant_id"] = edgePid
+            hello["edge_id"] = edgePid
+        }
         try sendJSONFrame(type: 4, object: hello)
-        startHeartbeat(deviceId: deviceId)
+        startHeartbeat(deviceId: deviceId, participantId: edgePid)
         startReceiveLoop()
     }
 
@@ -102,17 +108,21 @@ final class AudioPickupClient {
         connection = nil
     }
 
-    private func startHeartbeat(deviceId: String) {
+    private func startHeartbeat(deviceId: String, participantId: String = "") {
         heartbeatTimer?.cancel()
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + 8, repeating: 8)
         timer.setEventHandler { [weak self] in
             guard let self else { return }
-            let payload: [String: Any] = [
+            var payload: [String: Any] = [
                 "type": "heartbeat",
                 "device_id": deviceId,
                 "ts": Int(Date().timeIntervalSince1970),
             ]
+            if !participantId.isEmpty {
+                payload["participant_id"] = participantId
+                payload["edge_id"] = participantId
+            }
             try? self.sendJSONFrame(type: 1, object: payload)
             DispatchQueue.main.async { [weak self] in
                 self?.onHeartbeatSent?()

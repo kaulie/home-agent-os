@@ -19,10 +19,13 @@ final class PickupViewModel: ObservableObject {
 
     private let client = AudioPickupClient()
     private let capture = PcmCaptureEngine()
+    private let energyGate = PcmEnergyGate()
     private var reconnectTask: Task<Void, Never>?
     private var savedBrightness: CGFloat = UIScreen.main.brightness
     private var powerSaveBranch = "A"
     private var captureWanted = false
+    /// Audio tap thread → gate → send (not MainActor).
+    private let sendQueue = DispatchQueue(label: "homeagent.pickup.sendgate")
 
     var serverLabel: String {
         "\(PickupSettings.serverHost):\(PickupSettings.serverPort)"
@@ -62,26 +65,32 @@ final class PickupViewModel: ObservableObject {
 
     var userCaptureStatus: String {
         if !userListeningEnabled { return "已关闭" }
-        if !isConnected { return "等待连接" }
-        if audioLevel > 0.06 { return "能听到你说话" }
+        if captureLabel == "采集失败" { return "麦克风失败" }
+        if !capture.isRunning { return "麦克风未启动" }
+        if !isConnected { return "本地在听，等待连接" }
+        if audioLevel > 0.08 { return "能听到 · \(Int(audioLevel * 100))%" }
+        if pcmBytesSent > 0 { return "在听（已发送 \(pcmSentLabel)）" }
         return "正在听，请说话"
     }
 
     var hearingHint: String {
-        guard userListeningEnabled, isConnected else { return "" }
+        guard userListeningEnabled else { return "" }
+        if captureLabel == "采集失败" { return lastError.isEmpty ? "麦克风启动失败" : lastError }
+        if !capture.isRunning { return "麦克风还没起来，再点一次试试" }
         if audioLevel > 0.06 { return "电平在动，说明听到了" }
         return "对着话筒说几句，看电平条会不会跳"
     }
 
     var statusHeadline: String {
-        if userListeningEnabled {
-            return isConnected ? "正在听" : "准备听"
-        }
-        return "话筒已关"
+        if !userListeningEnabled { return "话筒已关" }
+        if captureLabel == "采集失败" { return "听不到" }
+        if !capture.isRunning { return "准备听" }
+        return "正在听"
     }
 
     var statusHint: String {
         if userListeningEnabled {
+            if !isConnected, capture.isRunning { return "本地已在听；连上后会传到家里" }
             if !isConnected { return "正在连接，连上就开始听" }
             return hearingHint
         }
@@ -151,7 +160,8 @@ final class PickupViewModel: ObservableObject {
                 try await client.connect(
                     host: PickupSettings.serverHost,
                     port: PickupSettings.serverPort,
-                    deviceId: PickupSettings.deviceId
+                    deviceId: PickupSettings.deviceId,
+                    participantId: PickupSettings.edgeParticipantId
                 )
                 connectionLabel = "已连接"
                 isConnected = true
@@ -173,29 +183,47 @@ final class PickupViewModel: ObservableObject {
     }
 
     private func startCaptureIfNeeded() {
-        guard captureWanted, micPermissionGranted, !capture.isRunning else { return }
+        guard captureWanted, micPermissionGranted else { return }
+        if capture.isRunning { return }
         do {
+            energyGate.reset()
             try capture.start(onPCM: { [weak self] data in
                 guard let self else { return }
-                self.client.sendPCM(data)
-                Task { @MainActor in
-                    self.pcmBytesSent += data.count
+                self.sendQueue.async {
+                    let chunks = self.energyGate.filter(
+                        data,
+                        enabled: PickupSettings.energyGateEnabled
+                    )
+                    guard !chunks.isEmpty else { return }
+                    var total = 0
+                    for chunk in chunks {
+                        self.client.sendPCM(chunk)
+                        total += chunk.count
+                    }
+                    let sent = total
+                    Task { @MainActor in
+                        self.pcmBytesSent += sent
+                    }
                 }
             }, onLevel: { [weak self] level in
-                Task { @MainActor in
-                    self?.audioLevel = level
-                }
+                // PcmCaptureEngine already hops to main.
+                self?.audioLevel = level
             })
             captureLabel = "采集中"
+            lastError = ""
         } catch {
             captureLabel = "采集失败"
             lastError = error.localizedDescription
+            audioLevel = 0
         }
     }
 
     private func stopCapture() {
         if capture.isRunning {
             capture.stop()
+        }
+        sendQueue.async { [energyGate] in
+            energyGate.reset()
         }
         audioLevel = 0
         captureLabel = userListeningEnabled ? "已暂停" : "待命"
@@ -292,13 +320,15 @@ final class PickupViewModel: ObservableObject {
 
     func submitFeedback(
         problemType: PickupFeedbackProblemType,
-        intentIdText: String,
         userSummary: String,
         attachments: [PendingPickupFeedbackAttachment] = [],
         completion: @escaping (Bool, String) -> Void
     ) {
-        let intentId = Int(intentIdText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-        let participantId = PickupSettings.feedbackParticipantId
+        let participantId: String = {
+            let configured = PickupSettings.feedbackParticipantId
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return configured.isEmpty ? PickupSettings.deviceId : configured
+        }()
         feedbackBusy = true
         Task {
             var uploaded: [PickupFeedbackAttachment] = []
@@ -308,7 +338,7 @@ final class PickupViewModel: ObservableObject {
                         let item = try await PickupAssetUpload.uploadFeedbackImage(
                             pending,
                             brainURL: PickupSettings.brainIntentURL,
-                            intentId: String(intentId),
+                            intentId: "",
                             participantId: participantId
                         )
                         uploaded.append(item)
@@ -321,7 +351,6 @@ final class PickupViewModel: ObservableObject {
             }
             let result = await PickupFeedbackClient.submit(
                 brainURL: PickupSettings.brainIntentURL,
-                intentId: intentId,
                 participantId: participantId,
                 problemType: problemType,
                 userSummary: userSummary,

@@ -6,7 +6,6 @@ struct FeedbackSheetView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var selected: PickupFeedbackProblemType?
-    @State private var intentIdText = PickupSettings.defaultFeedbackIntentId
     @State private var detail = ""
     @State private var localError = ""
     @State private var successMessage = ""
@@ -17,9 +16,7 @@ struct FeedbackSheetView: View {
     private var busy: Bool { model.feedbackBusy }
 
     private var canSubmit: Bool {
-        guard selected != nil, Int(intentIdText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0 > 0 else {
-            return false
-        }
+        guard selected != nil else { return false }
         if selected == .other {
             return !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
@@ -30,7 +27,7 @@ struct FeedbackSheetView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("选择问题类型并填写关联 Intent 编号。可添加照片帮助我们定位问题。")
+                    Text("选择问题类型即可提交。系统会自动带上当前连接与拾音状态，不必填 Intent。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -54,15 +51,15 @@ struct FeedbackSheetView: View {
                     }
                 }
 
-                Section("关联 Intent") {
-                    TextField("Intent 编号（必填）", text: $intentIdText)
-                        .keyboardType(.numberPad)
-                }
-
                 if selected == .other {
                     Section("说明") {
                         TextField("请描述问题", text: $detail, axis: .vertical)
                             .lineLimit(3...6)
+                    }
+                } else if selected != nil {
+                    Section("补充说明（可选）") {
+                        TextField("可选", text: $detail, axis: .vertical)
+                            .lineLimit(2...4)
                     }
                 }
 
@@ -170,7 +167,6 @@ struct FeedbackSheetView: View {
         }
         model.submitFeedback(
             problemType: selected,
-            intentIdText: intentIdText,
             userSummary: summary,
             attachments: pendingAttachments
         ) { ok, message in

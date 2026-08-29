@@ -199,34 +199,63 @@ private struct ErrorBannerView: View {
 
 private struct AudioLevelBars: View {
     let level: Float
-    private let barCount = 12
+    private let barCount = 24
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 6) {
-            ForEach(0 ..< barCount, id: \.self) { index in
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(barColor(for: index))
-                    .frame(width: 10, height: barHeight(for: index))
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            Canvas { context, size in
+                let spacing: CGFloat = 3
+                let totalSpacing = spacing * CGFloat(barCount - 1)
+                let barWidth = max(2, (size.width - totalSpacing) / CGFloat(barCount))
+                let midY = size.height / 2
+                // Boost quiet speech into visible motion; floor so idle isn't a black slab.
+                let boosted = max(0.08, min(1, pow(Double(max(level, 0)), 0.55) * 1.35))
+
+                for index in 0 ..< barCount {
+                    let phase = Double(index) * 0.55 + t * 6.5
+                    let idleWave = (sin(phase) * 0.5 + 0.5) * 0.22
+                    let voiceWave = sin(phase * 1.3 + Double(level) * 10) * 0.18 * boosted
+                    let heightFactor = min(1, idleWave + boosted * 0.85 + voiceWave)
+                    let barHeight = max(6, size.height * heightFactor)
+                    let x = CGFloat(index) * (barWidth + spacing)
+                    let rect = CGRect(
+                        x: x,
+                        y: midY - barHeight / 2,
+                        width: barWidth,
+                        height: barHeight
+                    )
+                    let path = Path(roundedRect: rect, cornerRadius: barWidth / 2)
+                    context.fill(path, with: .color(barColor(heightFactor: heightFactor, index: index)))
+                }
             }
+            .frame(height: 72)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+            )
         }
-        .frame(height: 56)
-        .animation(.easeOut(duration: 0.08), value: level)
+        .accessibilityLabel("音量 \(Int(level * 100))%")
     }
 
-    private func barHeight(for index: Int) -> CGFloat {
-        let threshold = Float(index + 1) / Float(barCount)
-        let active = level >= threshold * 0.65
-        let base: CGFloat = active ? 12 + CGFloat(level) * 44 : 8
-        let wave = sin(Double(index) * 0.7 + Double(level) * 8) * 4
-        return min(56, base + CGFloat(wave))
-    }
-
-    private func barColor(for index: Int) -> Color {
-        let threshold = Float(index + 1) / Float(barCount)
-        if level < threshold * 0.5 { return Color.white.opacity(0.18) }
-        if index >= barCount - 3 { return .red }
-        if index >= barCount - 6 { return .orange }
-        return .green
+    private func barColor(heightFactor: Double, index: Int) -> Color {
+        if heightFactor < 0.28 {
+            return Color.cyan.opacity(0.55)
+        }
+        let ratio = Double(index) / Double(max(barCount - 1, 1))
+        if ratio > 0.78 {
+            return Color.red.opacity(0.95)
+        }
+        if ratio > 0.55 {
+            return Color.orange.opacity(0.95)
+        }
+        return Color.green.opacity(0.95)
     }
 }
 

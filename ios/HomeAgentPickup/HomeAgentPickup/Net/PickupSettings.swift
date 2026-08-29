@@ -6,21 +6,28 @@ enum PickupSettings {
     private static let deviceKey = "pickup.device.id"
     private static let brainURLKey = "pickup.brain.intent.url"
     private static let feedbackParticipantKey = "pickup.feedback.participant.id"
-    private static let defaultIntentKey = "pickup.feedback.default.intent.id"
+    private static let energyGateKey = "pickup.energy.gate.enabled"
 
     static var serverHost: String {
         get {
             let stored = UserDefaults.standard.string(forKey: hostKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
             if let stored, !stored.isEmpty { return stored }
+            // Living-room Mac LAN IP (voice.stream HAP1 ingest).
             return "192.168.3.73"
         }
         set { UserDefaults.standard.set(newValue, forKey: hostKey) }
     }
 
+    /// Mac voice.stream Home Mic ingest (HAP1), not Brain.
     static var serverPort: UInt16 {
         get {
             let raw = UserDefaults.standard.integer(forKey: portKey)
-            return raw > 0 ? UInt16(raw) : 8791
+            // Legacy default pointed at Brain :8791 — migrate to Mac ingest :8792.
+            if raw == 8791 {
+                UserDefaults.standard.set(8792, forKey: portKey)
+                return 8792
+            }
+            return raw > 0 ? UInt16(raw) : 8792
         }
         set { UserDefaults.standard.set(Int(newValue), forKey: portKey) }
     }
@@ -47,14 +54,25 @@ enum PickupSettings {
         set { UserDefaults.standard.set(newValue, forKey: brainURLKey) }
     }
 
-    /// Must match the intent issuer participant (e.g. LivingRoom Edge id), not pickup device_id.
+    /// Optional override; empty → use deviceId for intent-less Home Mic feedback.
     static var feedbackParticipantId: String {
         get { UserDefaults.standard.string(forKey: feedbackParticipantKey) ?? "" }
         set { UserDefaults.standard.set(newValue, forKey: feedbackParticipantKey) }
     }
 
-    static var defaultFeedbackIntentId: String {
-        get { UserDefaults.standard.string(forKey: defaultIntentKey) ?? "" }
-        set { UserDefaults.standard.set(newValue, forKey: defaultIntentKey) }
+    /// iPhone Runtime participant_id (same as LivingRoomEdge heartbeat registration).
+    /// Prefer Settings override; otherwise fall back to deviceId until Edge shares via App Group.
+    static var edgeParticipantId: String {
+        let configured = feedbackParticipantId.trimmingCharacters(in: .whitespacesAndNewlines)
+        return configured.isEmpty ? deviceId : configured
+    }
+
+    /// Drop near-silence before HAP1 send (pre-roll + hangover). Default on.
+    static var energyGateEnabled: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: energyGateKey) == nil { return true }
+            return UserDefaults.standard.bool(forKey: energyGateKey)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: energyGateKey) }
     }
 }
