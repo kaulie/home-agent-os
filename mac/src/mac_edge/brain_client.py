@@ -191,6 +191,14 @@ class BrainClient:
         )
         # P0: inject per-capability availability snapshot (Runtime IsAvailable()).
         body["services"] = _availability_snapshot(body.get("services"), self.config)
+        try:
+            from mac_edge.music_linkage import heartbeat_ack
+
+            ack = heartbeat_ack()
+            if ack:
+                body["music_linkage"] = ack
+        except Exception:
+            log.debug("music_linkage heartbeat ack skipped", exc_info=True)
         log.debug("POST heartbeat edge_id=%s", eid)
         resp = self._post(self.config.heartbeat_url, json=body)
         if resp.status_code == 401:

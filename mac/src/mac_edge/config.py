@@ -13,9 +13,37 @@ _DEFAULT_BRAIN_URL = "http://127.0.0.1:9527"
 _DOMAIN_ORDER = ("lan", "cloud")
 
 
+def _repo_root() -> Path:
+    """smart_home_control repo root (parent of mac/)."""
+    return Path(__file__).resolve().parents[3]
+
+
 def _project_root() -> Path:
-    # src/mac_edge/config.py → parents[2] = project root
+    # src/mac_edge/config.py → parents[2] = mac/
     return Path(__file__).resolve().parents[2]
+
+
+def _endpoints_brain_defaults() -> tuple[str, dict[str, str]]:
+    """LAN/cloud Brain bases from config/endpoints.json (repo-wide defaults)."""
+    try:
+        import sys
+
+        root = _repo_root()
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from config.endpoints import brain_cloud_base, brain_lan_base
+
+        lan = brain_lan_base()
+        cloud = brain_cloud_base()
+    except Exception:
+        return _DEFAULT_BRAIN_URL, {}
+    by_domain: dict[str, str] = {}
+    if lan:
+        by_domain["lan"] = lan
+    if cloud:
+        by_domain["cloud"] = cloud
+    primary = lan or cloud or _DEFAULT_BRAIN_URL
+    return primary, by_domain
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -229,7 +257,7 @@ def primary_brain_url(raw: str | None = None, *, default: str = _DEFAULT_BRAIN_U
 
 
 def _resolve_brain_urls() -> tuple[tuple[str, ...], dict[str, str]]:
-    """JSON object on MAC_EDGE_BRAIN_URL wins; else MAC_EDGE_BRAIN_URLS; else single URL."""
+    """Env wins; else config/endpoints.json; else loopback."""
     raw = os.environ.get("MAC_EDGE_BRAIN_URL", "").strip()
     urls, by_domain = parse_brain_url_env(raw) if raw else ((), {})
     if by_domain:
@@ -241,6 +269,20 @@ def _resolve_brain_urls() -> tuple[tuple[str, ...], dict[str, str]]:
             return listed, {}
     if urls:
         return urls, {}
+    primary, file_domain = _endpoints_brain_defaults()
+    if file_domain:
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for domain in _DOMAIN_ORDER:
+            url = file_domain.get(domain)
+            if url and url not in seen:
+                ordered.append(url)
+                seen.add(url)
+        for url in file_domain.values():
+            if url not in seen:
+                ordered.append(url)
+                seen.add(url)
+        return tuple(ordered) or (primary,), file_domain
     return (_DEFAULT_BRAIN_URL,), {}
 
 

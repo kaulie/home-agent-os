@@ -1,0 +1,13 @@
+{
+  "brain": {
+    "lan": "http://192.168.3.73:9527",
+    "cloud": "http://115.190.153.53:9527"
+  },
+  "mac": {
+    "lan_host": "192.168.3.73",
+    "voice_ingest_port": 8792,
+    "video_live_port": 8790,
+    "img_server_port": 8080,
+    "xiaodu_tts_port": 8000
+  }
+}

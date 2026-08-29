@@ -3,6 +3,7 @@ package com.smarthome.livingroom_android.brain
 /**
  * Two persisted Brain slots (LAN / Cloud) plus helpers to turn a base into `/api/v1/intent`.
  * Mirrors iOS `BrainEndpoint`.
+ * Fresh-install defaults: edit `config/endpoints.json` then `python3 tools/sync_endpoints.py`.
  */
 object BrainEndpoint {
     const val DEFAULT_LAN_BASE = "http://192.168.3.73:9527"
