@@ -125,29 +125,3 @@ private struct DocDetailView: View {
         }
     }
 }
-
-struct MarkdownDocumentView: View {
-    let markdown: String
-
-    var body: some View {
-        if let rendered = renderedMarkdown {
-            Text(rendered)
-                .font(.system(size: 15, design: .rounded))
-                .foregroundStyle(DevTheme.mist)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            Text(markdown)
-                .font(.system(size: 14, design: .monospaced))
-                .foregroundStyle(DevTheme.mist)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var renderedMarkdown: AttributedString? {
-        var options = AttributedString.MarkdownParsingOptions()
-        options.interpretedSyntax = .full
-        return try? AttributedString(markdown: markdown, options: options)
-    }
-}
