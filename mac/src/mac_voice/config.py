@@ -82,6 +82,11 @@ class VoiceConfig:
     pickup_ingest_enabled: bool
     pickup_ingest_host: str
     pickup_ingest_port: int
+    stt_wav_dir: Path | None
+    stt_wav_keep: bool
+    stt_wav_max_age_hours: float
+    stt_wav_max_files: int
+    stt_wav_max_mb: float
 
 
 def _parse_device(raw: str) -> int | str | None:
@@ -105,6 +110,24 @@ def _parse_int(raw: str, default: int, *, lo: int, hi: int) -> int:
 def _parse_aliases(raw: str) -> tuple[str, ...]:
     parts = tuple(p.strip() for p in (raw or "").split(",") if p.strip())
     return parts or DEFAULT_WAKE_ALIASES
+
+
+def _parse_float(raw: str, default: float, *, lo: float, hi: float) -> float:
+    try:
+        value = float((raw or "").strip() or default)
+    except ValueError:
+        return default
+    return max(lo, min(hi, value))
+
+
+def _parse_stt_wav_dir(raw: str, data_dir: Path) -> Path | None:
+    """Empty → system temp. `default` → data_dir/stt_wav. Else expand path."""
+    text = (raw or "").strip()
+    if not text:
+        return None
+    if text.lower() in ("1", "true", "yes", "on", "default"):
+        return data_dir / "stt_wav"
+    return Path(text).expanduser()
 
 
 def _brain_wake_ack(brain_url: str) -> str | None:
@@ -222,5 +245,26 @@ def load_config() -> VoiceConfig:
             8792,
             lo=1,
             hi=65535,
+        ),
+        stt_wav_dir=_parse_stt_wav_dir(_env("MAC_VOICE_STT_WAV_DIR"), data_dir),
+        stt_wav_keep=_env("MAC_VOICE_STT_WAV_KEEP", "0").lower()
+        in ("1", "true", "yes", "on"),
+        stt_wav_max_age_hours=_parse_float(
+            _env("MAC_VOICE_STT_WAV_MAX_AGE_HOURS"),
+            24.0,
+            lo=0.0,
+            hi=24.0 * 365,
+        ),
+        stt_wav_max_files=_parse_int(
+            _env("MAC_VOICE_STT_WAV_MAX_FILES"),
+            100,
+            lo=0,
+            hi=100_000,
+        ),
+        stt_wav_max_mb=_parse_float(
+            _env("MAC_VOICE_STT_WAV_MAX_MB"),
+            200.0,
+            lo=0.0,
+            hi=100_000.0,
         ),
     )

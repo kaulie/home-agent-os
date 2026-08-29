@@ -41,6 +41,11 @@
 | `MAC_VOICE_DOUBLE_WAKE_MS` | 一句里 STT 只出一遍唤醒词时，语音时长达到此值仍按两遍计，默认 `1100` |
 | `MAC_VOICE_WAKE_ACK` | 唤醒成功后喇叭回复，默认 `我在呢`；未设时从 Brain `GET /api/v1/voice/settings` 读取 |
 | `MAC_VOICE_SILENCE_MS` | 句末静音多久才切句送 STT，默认 `1000`（中间停顿少于 1 秒并成一句） |
+| `MAC_VOICE_STT_WAV_DIR` | STT 输入 wav 目录；空=系统临时目录；`default`=`MAC_VOICE_DATA_DIR/stt_wav` |
+| `MAC_VOICE_STT_WAV_KEEP` | `0`（默认）认句后删；`1` 保留（仍按下面策略裁剪） |
+| `MAC_VOICE_STT_WAV_MAX_AGE_HOURS` | 固定目录内 wav 最长保留小时，默认 `24`；`0` 关闭 |
+| `MAC_VOICE_STT_WAV_MAX_FILES` | 最多保留文件数，默认 `100`；`0` 关闭 |
+| `MAC_VOICE_STT_WAV_MAX_MB` | 目录总大小上限 MB，默认 `200`；`0` 关闭 |
 | `MAC_EDGE_EDGE_ID` | 父 Runtime id（监督器自动注入） |
 | `MAC_VOICE_CLIENT_HINT` | 应与 Runtime 一致（默认 `living-room-mac`） |
 

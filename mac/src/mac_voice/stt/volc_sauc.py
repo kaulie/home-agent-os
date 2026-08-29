@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import tempfile
 from pathlib import Path
 from typing import Any
 
 from mac_voice.audio.types import AudioUtterance
+from mac_voice.stt.wav_store import SttWavStore
 from mac_voice.vendor.sauc import protocol as sauc
 
 log = logging.getLogger("mac_voice.stt.volc_sauc")
@@ -49,6 +49,7 @@ class VolcengineSaucSTT:
         seg_duration_ms: int = 200,
         app_key: str = "",
         access_key: str = "",
+        wav_store: SttWavStore | None = None,
     ) -> None:
         if not api_key and not (app_key and access_key):
             raise ValueError("VolcengineSaucSTT requires api_key or app_key+access_key")
@@ -59,6 +60,13 @@ class VolcengineSaucSTT:
         self._resource_id = resource_id
         self._seg_duration_ms = seg_duration_ms
         self._timeout_sec = 10.0
+        self._wav_store = wav_store or SttWavStore(
+            directory=None,
+            keep=False,
+            max_age_hours=24.0,
+            max_files=100,
+            max_mb=200.0,
+        )
 
     def _config(self) -> sauc.Config:
         return sauc.Config(
@@ -91,25 +99,18 @@ class VolcengineSaucSTT:
         }
 
     async def transcribe(self, utterance: AudioUtterance) -> str:
-        tmp_path: Path | None = None
+        wav_path: Path | None = None
+        owned = False
         try:
-            if utterance.path is not None and utterance.path.is_file():
-                wav_path = utterance.path
-            else:
-                tmp = tempfile.NamedTemporaryFile(prefix="mac_voice_", suffix=".wav", delete=False)
-                tmp.close()
-                tmp_path = Path(tmp.name)
-                wav_path = utterance.materialize_wav(tmp_path)
-
+            wav_path, owned = self._wav_store.materialize(utterance)
             config = self._config()
             payload = self._payload(utterance.format.sample_rate)
-            return (await asyncio.wait_for(self._run_sauc(wav_path, config, payload), self._timeout_sec)).strip()
+            return (
+                await asyncio.wait_for(self._run_sauc(wav_path, config, payload), self._timeout_sec)
+            ).strip()
         finally:
-            if tmp_path is not None:
-                try:
-                    tmp_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
+            if wav_path is not None:
+                self._wav_store.release(wav_path, owned=owned)
 
     async def _run_sauc(self, wav_path: Path, config: sauc.Config, payload: dict[str, Any]) -> str:
         best = ""
