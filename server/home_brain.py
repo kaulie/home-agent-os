@@ -4926,7 +4926,7 @@ def notify_step_status_update(intent_id, step_id):
     if not intent:
         return jsonify(
             err_msg="intent not exist"
-        )
+        ), 404
     log.info("intent:%s", json.dumps(intent))
 
     try:
@@ -5002,7 +5002,7 @@ def notify_intent_status_update(intent_id):
     if not intent:
         return jsonify(
             err_msg="intent not exist"
-        )
+        ), 404
     log.info("intent:%s", json.dumps(intent))
 
     current = _normalize_status(str(intent.get("status") or "").strip())

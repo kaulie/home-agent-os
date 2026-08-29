@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 from mac_edge.brain_client import BrainError, format_intent_summary
-from mac_edge.multi_brain import MultiBrainClient
+from mac_edge.multi_brain import MultiBrainClient, remember_intent_origin
 from mac_edge.config import Config
 from mac_edge.delivery import run_pending_deliveries
 from mac_edge.executor import (
@@ -325,6 +325,9 @@ class EdgeAgent:
             if not isinstance(intent, dict):
                 continue
             iid = str(intent.get("id") or intent.get("intent_id") or "").strip()
+            origin = str(intent.get("_brain_origin") or "").strip()
+            if iid and origin:
+                remember_intent_origin(iid, origin)
             # Fresh plan only for intents the ledger has not accepted yet.
             if iid and self._ledger.get(iid) is None:
                 detail = brain.fetch_intent_detail(iid)

@@ -24,6 +24,23 @@ from mac_edge.brain_client import BrainClient, BrainError, RegisterResult, Heart
 log = logging.getLogger("mac_edge.multi_brain")
 
 _ORIGIN_TAG = "_brain_origin"
+_SHARED_ORIGIN_LOCK = threading.Lock()
+_SHARED_INTENT_ORIGIN: dict[str, str] = {}
+
+
+def remember_intent_origin(intent_id: str | int, brain_url: str | None) -> None:
+    """Process-wide iid→Brain URL map (control + executor use separate clients)."""
+    iid = str(intent_id or "").strip()
+    url = str(brain_url or "").strip().rstrip("/")
+    if not iid or not url:
+        return
+    with _SHARED_ORIGIN_LOCK:
+        _SHARED_INTENT_ORIGIN[iid] = url
+
+
+def intent_origin_brain_url(intent_id: str | int) -> str | None:
+    with _SHARED_ORIGIN_LOCK:
+        return _SHARED_INTENT_ORIGIN.get(str(intent_id).strip()) or None
 
 
 class MultiBrainClient:
@@ -37,7 +54,6 @@ class MultiBrainClient:
         self._timeout = timeout_sec
         self._clients: list[BrainClient] = []
         self._by_url: dict[str, BrainClient] = {}
-        self._intent_origin: dict[str, str] = {}
         self._lock = threading.Lock()
         self._owns_clients = True
 
@@ -87,8 +103,13 @@ class MultiBrainClient:
         return bc or self.primary
 
     def _route_url_for_intent(self, intent_id: str, *, prefer: str | None = None) -> str:
-        with self._lock:
-            return self._intent_origin.get(str(intent_id).strip()) or prefer or self.primary_url
+        iid = str(intent_id).strip()
+        mapped = intent_origin_brain_url(iid)
+        if mapped:
+            return mapped
+        if prefer:
+            return prefer.rstrip("/")
+        return self.primary_url
 
     # ---- broadcast ops ----
 
@@ -142,8 +163,7 @@ class MultiBrainClient:
                     continue
                 if iid:
                     seen.add(iid)
-                    with self._lock:
-                        self._intent_origin[iid] = url
+                    remember_intent_origin(iid, url)
                 item.setdefault(_ORIGIN_TAG, url)
                 merged.append(item)
         return merged
@@ -151,8 +171,20 @@ class MultiBrainClient:
     # ---- routed ops (status / step / delivery) ----
 
     def fetch_intent_detail(self, intent_id: str | int) -> dict[str, Any] | None:
-        url = self._route_url_for_intent(str(intent_id))
-        return self._client_for(url).fetch_intent_detail(intent_id)
+        iid = str(intent_id).strip()
+        url = self._route_url_for_intent(iid)
+        detail = self._client_for(url).fetch_intent_detail(intent_id)
+        if detail:
+            remember_intent_origin(iid, url)
+            return detail
+        for probe_url, bc in self._by_url.items():
+            if probe_url.rstrip("/") == url.rstrip("/"):
+                continue
+            detail = bc.fetch_intent_detail(intent_id)
+            if detail:
+                remember_intent_origin(iid, probe_url)
+                return detail
+        return None
 
     def post_intent_status(
         self,

@@ -695,6 +695,13 @@ class BrainClient:
                 status_code=resp.status_code,
                 body=data,
             )
+        err_msg = str(data.get("err_msg") or "").strip()
+        if err_msg:
+            raise BrainError(
+                f"{label}: {err_msg}",
+                status_code=resp.status_code,
+                body=data,
+            )
         return data
 
 

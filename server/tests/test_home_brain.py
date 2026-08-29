@@ -1657,6 +1657,24 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertNotIn("answer_text", got["ctx_param"])
         self.assertEqual(got["ctx_param"]["summary"], "ok")
 
+    def test_status_update_missing_intent_returns_404(self) -> None:
+        client = hb.app.test_client()
+        resp = client.post(
+            "/api/v1/intent/999999/status",
+            json={"intent_status": "running", "edge_node_id": "edge-test"},
+        )
+        self.assertEqual(resp.status_code, 404, resp.get_json())
+        self.assertIn("intent not exist", resp.get_json().get("err_msg", ""))
+
+    def test_step_status_missing_intent_returns_404(self) -> None:
+        client = hb.app.test_client()
+        resp = client.post(
+            "/api/v1/intent/999999/step/1/status",
+            json={"step_status": "1", "edge_node_id": "edge-test"},
+        )
+        self.assertEqual(resp.status_code, 404, resp.get_json())
+        self.assertIn("intent not exist", resp.get_json().get("err_msg", ""))
+
     def test_status_does_not_regress_from_failed(self) -> None:
         iid = hb.new_intent(
             {
