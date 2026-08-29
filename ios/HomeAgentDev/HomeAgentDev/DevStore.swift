@@ -432,18 +432,36 @@ final class DevStore: ObservableObject {
             isLoadingChat = true
         }
         defer { isLoadingChat = false }
+        let hadLocalMessages = !chatMessages.isEmpty
         do {
-            if reset {
-                chatSinceId = 0
-            }
+            let sinceForRequest = reset ? 0 : chatSinceId
             let snap = try await DevClient.fetchAgentChat(
                 brainURL: activeBrainURL,
                 token: DevSettings.adminToken,
-                sinceId: chatSinceId,
+                sinceId: sinceForRequest,
                 sinceAckAt: chatSinceAckAt
             )
+
+            if snap.chatOk == false {
+                if let err = snap.error, !err.isEmpty {
+                    chatError = err
+                } else {
+                    chatError = "Chat 同步失败"
+                }
+                return
+            }
+
+            let incoming = snap.messages.sorted { $0.id < $1.id }
+
             if reset {
-                chatMessages = snap.messages.sorted { $0.id < $1.id }
+                if incoming.isEmpty, hadLocalMessages {
+                    #if DEBUG
+                    print("[DevStore] loadChat reset returned empty; keeping \(chatMessages.count) local messages")
+                    #endif
+                    applyAckPatches(snap.ackPatches)
+                    return
+                }
+                chatMessages = incoming
             } else {
                 mergeChatMessages(snap.messages)
             }
@@ -455,9 +473,6 @@ final class DevStore: ObservableObject {
                 chatSinceAckAt = latest
             }
             chatError = nil
-            if snap.chatOk == false, let err = snap.error, !err.isEmpty {
-                chatError = err
-            }
         } catch {
             chatError = error.localizedDescription
         }
