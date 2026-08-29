@@ -810,7 +810,7 @@ struct ChatSettingsSheet: View {
                             .foregroundStyle(.secondary)
                     }
                     Section("本机文件") {
-                        Text("入口在顶部「文件」。选取后 POST /api/v1/assets/upload（upload_intent=iphone.file）。不经 Planner。")
+                        Text("入口在顶部「文件」。可从相册选图，或从「文件」App / iCloud 选取；POST /api/v1/assets/upload（upload_intent=iphone.file）。不经 Planner。")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

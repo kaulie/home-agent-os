@@ -1431,15 +1431,6 @@ final class AppModel: ObservableObject {
 
     /// 文件页：从 Files / iCloud / 本机选文件 → POST /api/v1/assets/upload；不经 Planner。
     func runLocalFileUpload(url: URL, serverURL: String) async {
-        let server = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !server.isEmpty else { return }
-        fileBusy = true
-        fileHint = ""
-        fileUploadingName = VisualInput.sanitizedFilename(url.lastPathComponent)
-        defer {
-            fileBusy = false
-            fileUploadingName = ""
-        }
         let scoped = url.startAccessingSecurityScopedResource()
         defer {
             if scoped { url.stopAccessingSecurityScopedResource() }
@@ -1452,10 +1443,46 @@ final class AppModel: ObservableObject {
             let mime = values?.contentType?.preferredMIMEType
                 ?? UTType(filenameExtension: ext)?.preferredMIMEType
                 ?? "application/octet-stream"
-            let type = VisualInput.inferAssetType(mimeType: mime, filename: filename)
-            let asset = try await VisualInput.uploadFile(
+            await runLocalFileUpload(
                 data: data,
                 filename: filename,
+                mimeType: mime,
+                serverURL: serverURL
+            )
+        } catch {
+            fileHint = error.localizedDescription
+        }
+    }
+
+    /// 文件页：相册选图或其它已读入内存的字节 → 同上上传路径。
+    func runLocalFileUpload(
+        data: Data,
+        filename: String,
+        mimeType: String,
+        serverURL: String
+    ) async {
+        let server = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !server.isEmpty else { return }
+        guard !data.isEmpty else {
+            fileHint = "选中的内容为空，请重试。"
+            return
+        }
+        fileBusy = true
+        fileHint = ""
+        let safeName = VisualInput.sanitizedFilename(filename)
+        fileUploadingName = safeName
+        defer {
+            fileBusy = false
+            fileUploadingName = ""
+        }
+        do {
+            let mime = mimeType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "application/octet-stream"
+                : mimeType
+            let type = VisualInput.inferAssetType(mimeType: mime, filename: safeName)
+            let asset = try await VisualInput.uploadFile(
+                data: data,
+                filename: safeName,
                 mimeType: mime,
                 type: type,
                 intentURL: server

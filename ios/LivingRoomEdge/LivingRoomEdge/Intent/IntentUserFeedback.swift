@@ -229,6 +229,7 @@ struct UserFeedbackSheet: View {
                 }
                 .padding(20)
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("一键反馈")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -246,7 +247,7 @@ struct UserFeedbackSheet: View {
                 }
             }
         }
-        .presentationDetents([.height(sheetHeight)])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .onChange(of: pickerItems) { _, items in
             Task { await importPickerImages(items) }
@@ -258,14 +259,6 @@ struct UserFeedbackSheet: View {
                 }
             }
         }
-    }
-
-    private var sheetHeight: CGFloat {
-        var height: CGFloat = selected == .other ? 520 : 460
-        if !pendingAttachments.isEmpty {
-            height += 70
-        }
-        return height
     }
 
     private func syncPickerItems() {

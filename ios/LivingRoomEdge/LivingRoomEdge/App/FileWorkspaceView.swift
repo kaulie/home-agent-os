@@ -1,13 +1,17 @@
+import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
-/// Local file inbox: pick from Files / iCloud / device, upload as Asset. Not a camera CTA.
+/// Local file inbox: pick from Photos album, Files / iCloud / device; upload as Asset.
 struct FileWorkspaceView: View {
     @EnvironmentObject private var model: AppModel
     @Binding var showSettings: Bool
     @StateObject private var clicks = ClickGuard()
-    @State private var showPicker = false
+    @State private var showSourceMenu = false
+    @State private var showFilePicker = false
+    @State private var photoItem: PhotosPickerItem?
+    @State private var showPhotoPicker = false
     @State private var notice = ""
 
     var body: some View {
@@ -17,7 +21,7 @@ struct FileWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     VStack(alignment: .leading, spacing: 8) {
                         EdgeTheme.heroTitle("文件")
-                        EdgeTheme.heroSubtitle("从「文件」App、iCloud 或本机选取，上传后登记为 Asset。不经意图理解。")
+                        EdgeTheme.heroSubtitle("可从相册选图，或从「文件」App / iCloud / 本机选取，上传后登记为 Asset。不经意图理解。")
                     }
                     .padding(.top, 8)
 
@@ -41,8 +45,27 @@ struct FileWorkspaceView: View {
                 .padding(.bottom, 36)
             }
         }
+        .confirmationDialog("选择来源", isPresented: $showSourceMenu, titleVisibility: .visible) {
+            Button("相册照片") {
+                showPhotoPicker = true
+            }
+            Button("文件 App / iCloud") {
+                showFilePicker = true
+            }
+            Button("取消", role: .cancel) {}
+        }
+        .photosPicker(
+            isPresented: $showPhotoPicker,
+            selection: $photoItem,
+            matching: .images,
+            photoLibrary: .shared()
+        )
+        .onChange(of: photoItem) { _, item in
+            guard let item else { return }
+            Task { await handlePhotoItem(item) }
+        }
         .fileImporter(
-            isPresented: $showPicker,
+            isPresented: $showFilePicker,
             allowedContentTypes: [.item],
             allowsMultipleSelection: false
         ) { result in
@@ -71,7 +94,7 @@ struct FileWorkspaceView: View {
                         .font(.system(size: 44, weight: .light))
                     Text("选择文件")
                         .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    Text("PDF、图片、表格、文本…")
+                    Text("相册 · PDF · 图片 · 表格 · 文本…")
                         .font(.system(size: 13, weight: .regular, design: .rounded))
                         .foregroundStyle(EdgeTheme.mist)
                 }
@@ -95,7 +118,7 @@ struct FileWorkspaceView: View {
         .buttonStyle(.plain)
         .disabled(model.fileBusy)
         .accessibilityLabel(model.fileBusy ? "正在上传文件" : "选择文件")
-        .accessibilityHint("打开系统文件选择器")
+        .accessibilityHint("可从相册或系统文件选择器选取")
     }
 
     @ViewBuilder
@@ -103,7 +126,7 @@ struct FileWorkspaceView: View {
         VStack(alignment: .leading, spacing: 12) {
             EdgeTheme.sectionLabel("最近文件")
             if model.fileTurns.isEmpty {
-                Text("还没有上传过文件。点上方卡片从系统文件选择器选取。")
+                Text("还没有上传过文件。点上方卡片，可选相册照片或系统文件。")
                     .font(.system(size: 14, weight: .regular, design: .rounded))
                     .foregroundStyle(EdgeTheme.dim)
             } else {
@@ -128,7 +151,7 @@ struct FileWorkspaceView: View {
             return
         }
         model.setFileHint("")
-        showPicker = true
+        showSourceMenu = true
     }
 
     private func handlePick(_ result: Result<[URL], Error>) {
@@ -147,6 +170,54 @@ struct FileWorkspaceView: View {
         case .failure:
             break
         }
+    }
+
+    private func handlePhotoItem(_ item: PhotosPickerItem) async {
+        let server = model.intentServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !server.isEmpty else {
+            await MainActor.run {
+                model.setFileHint("请先在设置里填写 Brain URL")
+                showSettings = true
+                photoItem = nil
+            }
+            return
+        }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
+                await MainActor.run {
+                    model.setFileHint("无法读取相册照片，请重试或改用「文件 App」。")
+                    photoItem = nil
+                }
+                return
+            }
+            let (payload, filename, mime) = Self.normalizedImageUpload(data: data)
+            await model.runLocalFileUpload(
+                data: payload,
+                filename: filename,
+                mimeType: mime,
+                serverURL: server
+            )
+        } catch {
+            await MainActor.run {
+                model.setFileHint("读取相册失败：\(error.localizedDescription)")
+            }
+        }
+        await MainActor.run {
+            photoItem = nil
+        }
+    }
+
+    /// Prefer JPEG for upload; keep PNG when the album item is clearly PNG.
+    private static func normalizedImageUpload(data: Data) -> (Data, String, String) {
+        let stamp = Int(Date().timeIntervalSince1970)
+        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+            return (data, "album_\(stamp).png", "image/png")
+        }
+        if let image = UIImage(data: data),
+           let jpeg = image.jpegData(compressionQuality: 0.92) {
+            return (jpeg, "album_\(stamp).jpg", "image/jpeg")
+        }
+        return (data, "album_\(stamp).jpg", "image/jpeg")
     }
 }
 
