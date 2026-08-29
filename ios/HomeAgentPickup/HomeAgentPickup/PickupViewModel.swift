@@ -40,9 +40,12 @@ final class PickupViewModel: ObservableObject {
 
     var prominentErrorMessage: String? {
         if !micPermissionGranted {
-            return "需要麦克风权限\n请到 iPhone「设置」里允许本 App 使用麦克风"
+            return "需要麦克风权限\n请到 iPhone「设置」里允许 Home Mic 使用麦克风"
         }
-        if !isConnected, !lastError.isEmpty {
+        if userListeningEnabled, captureLabel == "采集失败", !lastError.isEmpty {
+            return "麦克风启动失败\n\(lastError)"
+        }
+        if !isConnected, !lastError.isEmpty, !userListeningEnabled {
             return "暂时连不上 Home Mic\n请确认手机和家里 Wi‑Fi 正常"
         }
         return nil
@@ -86,20 +89,32 @@ final class PickupViewModel: ObservableObject {
     }
 
     func toggleListening() {
-        guard micPermissionGranted else { return }
-        if userListeningEnabled {
-            userListeningEnabled = false
-            captureWanted = false
-            stopCapture()
-        } else {
-            userListeningEnabled = true
-            captureWanted = true
-            startCaptureIfNeeded()
+        Task {
+            let granted = await refreshMicPermission(requestIfNeeded: true)
+            micPermissionGranted = granted
+            guard granted else {
+                lastError = "未授权麦克风"
+                return
+            }
+            if userListeningEnabled {
+                userListeningEnabled = false
+                captureWanted = false
+                stopCapture()
+            } else {
+                userListeningEnabled = true
+                captureWanted = true
+                lastError = ""
+                startCaptureIfNeeded()
+            }
         }
     }
 
+    func refreshPermissions() async {
+        micPermissionGranted = await refreshMicPermission(requestIfNeeded: false)
+    }
+
     func bootstrap() async {
-        micPermissionGranted = await requestMicPermission()
+        micPermissionGranted = await refreshMicPermission(requestIfNeeded: true)
         guard micPermissionGranted else {
             lastError = "未授权麦克风"
             return
@@ -111,14 +126,6 @@ final class PickupViewModel: ObservableObject {
         }
     }
 
-    private func requestMicPermission() async -> Bool {
-        await withCheckedContinuation { cont in
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                cont.resume(returning: granted)
-            }
-        }
-    }
-
     private func wireClient() {
         client.onCommand = { [weak self] cmd in
             Task { @MainActor in self?.apply(command: cmd) }
@@ -127,7 +134,6 @@ final class PickupViewModel: ObservableObject {
             Task { @MainActor in
                 self?.isConnected = false
                 self?.connectionLabel = "断开，重连中…"
-                self?.stopCapture(resumeWhenConnected: true)
             }
         }
         client.onHeartbeatSent = { [weak self] in
@@ -184,22 +190,46 @@ final class PickupViewModel: ObservableObject {
         } catch {
             captureLabel = "采集失败"
             lastError = error.localizedDescription
-            userListeningEnabled = false
-            captureWanted = false
         }
     }
 
-    private func stopCapture(resumeWhenConnected: Bool = false) {
+    private func stopCapture() {
         if capture.isRunning {
             capture.stop()
         }
         audioLevel = 0
-        if resumeWhenConnected, userListeningEnabled {
-            captureLabel = "等待连接"
-        } else if userListeningEnabled {
-            captureLabel = "已暂停"
-        } else {
-            captureLabel = "待命"
+        captureLabel = userListeningEnabled ? "已暂停" : "待命"
+    }
+
+    private func refreshMicPermission(requestIfNeeded: Bool) async -> Bool {
+        if #available(iOS 17.0, *) {
+            switch AVAudioApplication.shared.recordPermission {
+            case .granted:
+                return true
+            case .denied:
+                return false
+            case .undetermined:
+                guard requestIfNeeded else { return false }
+                return await AVAudioApplication.requestRecordPermission()
+            @unknown default:
+                return false
+            }
+        }
+        let session = AVAudioSession.sharedInstance()
+        switch session.recordPermission {
+        case .granted:
+            return true
+        case .denied:
+            return false
+        case .undetermined:
+            guard requestIfNeeded else { return false }
+            return await withCheckedContinuation { cont in
+                session.requestRecordPermission { granted in
+                    cont.resume(returning: granted)
+                }
+            }
+        @unknown default:
+            return false
         }
     }
 

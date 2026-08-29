@@ -80,9 +80,13 @@ private struct MicMainView: View {
             }
             .onAppear {
                 pulse = model.userListeningEnabled
+                Task { await model.refreshPermissions() }
             }
             .onChange(of: model.userListeningEnabled) { enabled in
                 pulse = enabled
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                Task { await model.refreshPermissions() }
             }
         }
         .preferredColorScheme(.dark)
@@ -141,7 +145,6 @@ private struct MicMainView: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(!model.micPermissionGranted)
         .accessibilityLabel(model.userListeningEnabled ? "关闭拾音" : "开始拾音")
     }
 
