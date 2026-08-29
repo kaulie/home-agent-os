@@ -23,7 +23,7 @@
 | runtime dev agent | `@runtime` | 调度 / hydrate / 前序门；失败 `msg`；Mac/Android edge runtime。 |
 | UI dev agent | `@ui` | **全部用户交互面**：Intent 发出窗口、物流 UI、Endpoint/Cast 呈现、Receiver、管理端 UI。 |
 | capability dev agent | `@capability` | Plugin 契约与实现（非 UI 呈现面）。 |
-| quality agent | `@quality` | 黑盒验收：只打对外 API，不改产品代码。 |
+| quality agent | `@quality` | 黑盒验收：对外 API（`tests/blackbox/`）+ **App UI 自动化验收**（先 XCUITest，后可扩展 Maestro）。不改产品功能代码；可为验收加 `accessibilityIdentifier` 时须 `@ui` 知情或由 `@ui` 补。 |
 | deploy agent | `@deploy` | 云 Brain 部署（rsync + restart）；须带 git sha；见 `cloud-deploy.mdc` / `release-pipeline.mdc`。 |
 | sre agent | `@sre` | 本机/边缘运维、双 Brain、local-rt、架构 runbook。 |
 | dba agent | `@dba` | schema / SQL（Brain SQLite；Edge JSON 未经点名不改）。 |
@@ -48,7 +48,7 @@
 | 调度 / hydrate / 前序门 / 失败 msg | `@runtime` |
 | 发出窗口 / 物流 UI / Cast / Receiver / 端上交互 | `@ui` |
 | 规划 / 选边 / 入队 / Brain API | `@brain` |
-| 黑盒 API 验收 | `@quality` |
+| 黑盒 API / App UI 自动化验收 | `@quality` |
 | 云部署 | `@deploy` |
 | 运维 / 本机服务 | `@sre` |
 | schema / 迁移 | `@dba` |

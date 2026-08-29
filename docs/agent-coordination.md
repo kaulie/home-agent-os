@@ -37,7 +37,7 @@ Cursor **会话标题**（Fleet worker 或历史 IDE）须与下表「全称」�
 | runtime dev agent | `@runtime` | 调度 / hydrate / 前序门；失败 `msg` |
 | UI dev agent | `@ui` | **全部用户交互面**：发出窗口与物流 UI（产品层仍叫 Intent Source）、Endpoint/Cast 呈现、Chromecast Receiver、管理端/Dev 端用户可见 UI。合并原 `@intent` + `@endpoint`。 |
 | capability dev agent | `@capability` | Plugin 契约与实现（非 UI 呈现面） |
-| quality agent | `@quality` | 黑盒：只打对外 API，不改代码 |
+| quality agent | `@quality` | 黑盒：对外 API（`tests/blackbox/`）+ App UI 自动化（先 XCUITest）。不改产品功能代码 |
 | deploy agent | `@deploy` | 云 Brain 部署（rsync + restart）；见 `cloud-deploy.mdc` |
 | sre agent | `@sre` | 本机/边缘运维、双 Brain、local-rt、架构 runbook |
 | dba agent | `@dba` | schema / SQL。Brain 一期 SQLite：`server/data/brain.sqlite3`。Edge JSON 未经用户点名不要改。 |
@@ -78,6 +78,17 @@ Asset 公约（资源层，未点名不改代码）：[`docs/asset-contract.md`]
 
 回复就是再 `push_msg` 一条，并 `@` 对方。不要再写 ack 列。
 
+向 `@boss` **发文档**：只 `@boss` + 一句话 + `[[doc:docs/….md]]` 可点链接；**不要**贴 md 全文。
+
+## 2b. 文档写作（全员）
+
+凡写入 `docs/`（及能力说明、方案、runbook 等给人看的 md）：
+
+- **必须是标准 Markdown**：ATX 标题 `#`/`##`、列表、表格、围栏代码块、普通链接；UTF-8。
+- **方便手机阅读**：短段、少宽表、少巨型 mermaid；必要图可保留，正文不依赖图才能懂。
+- **禁止**：用 HTML 拼版当正文、把日志/JSON 整页无格式倾倒、用非常规扩展当唯一结构。
+- Chat 通知老板时仍遵守上文：只发 `[[doc:…]]`，不贴全文。
+
 ## 5. 轮询（每 30 分钟 pull；禁止五分钟空转）
 
 **pull 仍是每 30 分钟一次**（有急事可随时多 pull）。**禁止**五分钟空转心跳（`sleep 300`）。`@coordinator` 用 **30 分钟** wake 做完整 pull，不是空过。其他 agent 有工作、做完一件、或用户来信时再 pull；不要为保活每 5 分钟叫醒会话。**页面**每 5 秒刷新只给用户看，agent 不要学这个间隔。
@@ -108,7 +119,7 @@ Cursor 停会话不会被 HTTP 叫醒；**Fleet worker** 由 agent-bridge `POST 
 - `@coordinator` 不写产品代码；需要实现时 `@runtime` / `@ui` / `@capability`；需要黑盒时 `@quality`；部署 `@deploy`；运维 `@sre`。
 - 用户对 `@coordinator` 说的非协调事项：coordinator `@` 转到对应 handle（plugin→`@capability`；调度/hydrate/前序门/失败 msg→`@runtime`；发出窗口 / 物流 UI / Cast / Receiver→`@ui`；黑盒 API→`@quality`；规划/选边/入队/Brain API→`@brain`；云部署→`@deploy`；运维→`@sre`；schema→`@dba`）。
 - 预期外情况 **第一时间** `@coordinator`，由 coordinator 集中仲裁/拆单。不要自行跨层改。
-- `@quality` 只打对外 API。修复须验收：实现方报完工后 `@quality` 请验收；结果写入 `tests/blackbox/`。不得自报结案。
+- `@quality`：对外 API 黑盒写入 `tests/blackbox/`；**App 功能点**用 UI 自动化（当前优先 **XCUITest**，目录约定见 [`docs/testing/xcuitest.md`](testing/xcuitest.md)）。修复须验收：实现方报完工后 `@quality` 请验收；不得自报结案。不改产品功能逻辑；缺 `accessibilityIdentifier` 时 `@ui` 补或双方约定由 quality 只加 identifier。
 - 不要在 chat 里贴密钥、`.env`、完整 token。
 
 ## 7.1 发布链路（强制）

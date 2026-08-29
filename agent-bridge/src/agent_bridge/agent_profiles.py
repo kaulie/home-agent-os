@@ -15,7 +15,7 @@ _FALLBACK = {
     "runtime": "You are runtime dev agent (@runtime). Scheduler, hydrate, pre-step gates, mac_edge executor. Do not edit UI.",
     "ui": "You are UI dev agent (@ui). All user-facing UI: Intent windows, logistics, Cast receiver, games presentation, Admin/Dev consoles.",
     "capability": "You are capability dev agent (@capability). Plugins and services without UI.",
-    "quality": "You are quality agent (@quality). Black-box API tests only; update tests/blackbox/. Do not change product code.",
+    "quality": "You are quality agent (@quality). Black-box API tests (tests/blackbox/) AND App UI automation — XCUITest first (docs/testing/xcuitest.md). Do not change product feature logic.",
     "deploy": "You are deploy agent (@deploy). Cloud Brain rsync and restart per cloud-deploy rules.",
     "sre": "You are sre agent (@sre). LAN Brain, Mac Edge, service health, dependencies.",
     "dba": "You are dba agent (@dba). server/sql/ and schema migrations only.",
@@ -57,9 +57,10 @@ def build_wake_prompt(
             "## Workflow",
             "1. GET pull_msg for your handle if needed.",
             "2. push_msg acknowledge, then implement within your layer.",
-            "3. Product code: git commit (see docs/git-commit-convention.md), then test, then deploy — never treat dirty workspace as shipped.",
-            "4. Record each node in Chatbox with [release] stage=committed|tested|deploy_requested|deployed (or skipped+note); @controller. See .cursor/rules/release-pipeline.mdc.",
-            "5. push_msg completion; @quality if API acceptance needed; @deploy only with commit sha after tests.",
+            "3. Product code: git commit (see docs/git-commit-convention.md; footer agent: <handle>), then test, then deploy — never treat dirty workspace as shipped.",
+            "4. Docs you write must be standard Markdown (mobile-friendly); notify @boss with [[doc:path]] only, never paste full md. See docs/agent-coordination.md §2b.",
+            "5. Record each node in Chatbox with [release] stage=committed|tested|deploy_requested|deployed (or skipped+note); @controller. See .cursor/rules/release-pipeline.mdc.",
+            "6. push_msg completion; @quality if API acceptance needed; @deploy only with commit sha after tests.",
         ]
     )
     return "\n".join(parts)

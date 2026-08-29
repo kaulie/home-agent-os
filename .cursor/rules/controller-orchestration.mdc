@@ -29,7 +29,7 @@ cd agent-bridge && ./run.sh    # :9540 bridge（BRIDGE_AUTH_TOKEN 见 agent-brid
 | hydrate、前序门、executor、失败 msg | `runtime` |
 | Intent 窗口、物流 UI、Cast、Receiver、端 UI | `ui` |
 | plugin、capability 契约 | `capability` |
-| 黑盒验收 | `quality` |
+| 黑盒 API、App UI 自动化（XCUITest） | `quality` |
 | rsync 云 Brain、restart doubao_skill | `deploy` |
 | Mac 边缘、双 Brain、local-rt、运维 | `sre` |
 | schema / SQL | `dba` |
@@ -52,6 +52,15 @@ curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9540/api/v1/runs/{run
 ```
 
 `POST /api/v1/command` 可带 `target_handle` 指定 Fleet worker。
+
+## Chatbox → 老板（文档）
+
+向 `@boss` **推送文档**时：
+
+- **要**：`@boss` + 一句话说明 + 可点开的文档引用：`[[doc:docs/...路径.md]]`（见 Dev Chat `ChatDocReference`）。
+- **不要**：把 md **全文**贴进 `push_msg` 正文。
+
+短通知、催办、`[release]` 节点不受此限。
 
 ## Chatbox 进度格式
 

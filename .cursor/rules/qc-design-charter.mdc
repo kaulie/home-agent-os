@@ -19,8 +19,8 @@ Home Agent OS：**异构设备上把家务贯通 感知 → 理解 → 规划 �
 
 会话标题见 [`docs/agent-roster.md`](docs/agent-roster.md)：`system coordinator agent` `@coordinator`；`dev controller agent` `@controller`（唯一常驻 IDE）；`brain agent` `@brain`；`runtime dev agent` `@runtime`；`UI dev agent` `@ui`；`capability dev agent` `@capability`；`quality agent` `@quality`；`deploy agent` `@deploy`；`sre agent` `@sre`；`dba agent` `@dba`。`@intent` / `@endpoint` 别名→`@ui`。
 
-- 分层：`@brain` 规划/选边/入队/对外 API；`@capability` 改 plugin；`@ui` 改用户交互与 Endpoint/Cast 呈现；`@runtime` 改调度/hydrate/前序门；`@quality` 只打对外 API；`@deploy` 云部署；`@sre` 运维；`@dba` 管 schema/SQL；`@controller` 编排 Fleet。跨层争议 `@coordinator` 仲裁。协调走本机 Agent Chatbox `http://127.0.0.1:8787/`（`push_msg` / `pull_msg`）。**每次 pull 前先读一遍** `docs/agent-coordination.md`。旧 Markdown 信箱已停用。
-- **修复须验收：** 已报备问题实现方报完工后，必须经 `@quality` 打对外 API 验收，并更新 `tests/blackbox/` 测试报告。不得以自报结案。
+- 分层：`@brain` 规划/选边/入队/对外 API；`@capability` 改 plugin；`@ui` 改用户交互与 Endpoint/Cast 呈现；`@runtime` 改调度/hydrate/前序门；`@quality` 对外 API 黑盒 + App UI 自动化（先 XCUITest）；`@deploy` 云部署；`@sre` 运维；`@dba` 管 schema/SQL；`@controller` 编排 Fleet。跨层争议 `@coordinator` 仲裁。协调走本机 Agent Chatbox `http://127.0.0.1:8787/`（`push_msg` / `pull_msg`）。**每次 pull 前先读一遍** `docs/agent-coordination.md`。旧 Markdown 信箱已停用。
+- **修复须验收：** 已报备问题实现方报完工后，必须经 `@quality` 验收（API 黑盒和/或 XCUITest，视改动面），并更新 `tests/blackbox/` 或 UI 测试报告。不得以自报结案。
 
 # @coordinator 职责边界
 
