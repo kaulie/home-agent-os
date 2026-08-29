@@ -6,99 +6,101 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		598354486D0C41ECA3853ED9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89DE60FB62A54F6EBBFF0DC8 /* AppDelegate.swift */; };
-		21871A0161934BF7A02CF711 /* ChatTurn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DB3F206F9C94034851C10F9 /* ChatTurn.swift */; };
-		F72A320E458343098544BA09 /* IntentTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 594E33C001424E4CA509412D /* IntentTimeline.swift */; };
-		38094501E8634A67A8D48626 /* BrainAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B50A2DA749644ACB2ED5AA4 /* BrainAPI.swift */; };
-		8EE4AA9FEF9C45A7AF975AA5 /* BrainEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63EFE31291214FFBADC25C24 /* BrainEndpoint.swift */; };
-		831D8CF0550A4DFA927CE8F6 /* BrainURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD63C3DA865049309AA1DC8A /* BrainURL.swift */; };
-		19282DDCA91A45A5AF70EDC9 /* ConnectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6521262716A4EA9841ECEB0 /* ConnectionManager.swift */; };
-		5F0D98E8984549CCB96842B9 /* DebugReportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E239CFF2E3147F9AACAE154 /* DebugReportStore.swift */; };
-		210C76C747A14BF6B1D4A780 /* HeartbeatLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9439B5C19BD941B28C6FF771 /* HeartbeatLog.swift */; };
-		191E2FC6B44C40708891A8D0 /* HomeMicController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F5CFFE0CEF4DBC93999358 /* HomeMicController.swift */; };
-		2C9D9DA687A240A58593BC9C /* HomeMicEnergyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 799C2418BFB94950BD234A82 /* HomeMicEnergyGate.swift */; };
-		F3EFB5AC1EF74B138698CD8B /* HomeMicHap1Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFE4F43C49504F77A1325892 /* HomeMicHap1Client.swift */; };
-		65850E3CFAC04700A5DAC5BE /* HomeMicPcmCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9712EBBB0374AAB846AB91C /* HomeMicPcmCapture.swift */; };
-		5E83F952BC8B461C8C7EA81B /* HomeMicSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB862ED7AAF47F7B4855C9D /* HomeMicSettings.swift */; };
-		756A6E1C66B547DFBADD1118 /* IntentPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 774B3A56E0DF41E085EE0353 /* IntentPoller.swift */; };
-		A52B644C923F4412A38B1C3F /* ParticipantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79B333C7194E4917B949AAA7 /* ParticipantStore.swift */; };
-		D7F5BC3864514918BA583CC3 /* ReadingCameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05E6619FBD7D4E0F96424D6D /* ReadingCameraService.swift */; };
-		2B4CB80E8DD440C69D2C48DC /* ReadingPhotoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EA68CB8FA69407F8E61CF9E /* ReadingPhotoStore.swift */; };
-		5B192D3C70D547AEB001CAAB /* ReadingSpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02530551257147DFBD016C51 /* ReadingSpeechService.swift */; };
-		7B38FD8EA1714ABE99B761ED /* VoiceTraceLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F42AA0CB6264A3B92B68F0D /* VoiceTraceLog.swift */; };
-		3EB401B550F745F0A3E94FF6 /* H264VideoEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1020B8CB6CE046E5AF57682A /* H264VideoEncoder.swift */; };
-		E098B169678A4AFCAAE3360C /* LegacyLiveStreamController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61698591BE934CB1BA6AE75B /* LegacyLiveStreamController.swift */; };
-		603EAE17DAF04396A7BD7DAF /* LivePushPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ADED1762FD14776A56C360C /* LivePushPipeline.swift */; };
-		593983B52B804D788D4D0BE0 /* MpegTsMuxer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 013D534FE31244D69FCB1048 /* MpegTsMuxer.swift */; };
-		B7DD36EEFC6C4035B6D52180 /* MpegTsTcpTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E55D5845CDA4FA89F80D23E /* MpegTsTcpTransport.swift */; };
-		097058CD105F4DFD8CD1F582 /* VideoLiveCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD9FF2243D142C281A25EF3 /* VideoLiveCapture.swift */; };
-		2A87C277C3F34D3F9766495D /* VideoLiveError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B870DFB76F34E6DBE4F43C1 /* VideoLiveError.swift */; };
-		DE040653932041D290EB0863 /* ChatViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EBA8BA79177445E8FD2E7ED /* ChatViewController.swift */; };
-		ECB919F59C7946A68EA2F3DC /* InteractionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5352691793F9453EA54514B8 /* InteractionViewController.swift */; };
-		1DA5331E14A74211A27F268E /* LiveStreamViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD01332D7E5F4280AB41B7DE /* LiveStreamViewController.swift */; };
-		EC4B1D157C814D0F9629ECE5 /* MainTabBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E582B012DB1E4B4CB46EFD56 /* MainTabBarController.swift */; };
-		5B5AF204DBB84F8C8B23FA60 /* ReadingCaptureViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16902C8D706A4AA2A59DFBEA /* ReadingCaptureViewController.swift */; };
-		69396E345B624FD598D1EED2 /* ReadingHubViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58AFD78A58EB479FAF6FF572 /* ReadingHubViewController.swift */; };
-		AE1DC0D6DA354B37A7B4892B /* ReadingModeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89657DD2D37495FA995A6E3 /* ReadingModeViewController.swift */; };
-		E506069222644529B0E2AF92 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72F55D4B9EC453FAE6A1943 /* SettingsViewController.swift */; };
-		94B486ADEC50412D88B97D77 /* ChatMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 211545CB08BD41DCB7E729F1 /* ChatMessageCell.swift */; };
-		8500420F8781478999ECA053 /* FeedbackStripCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DCC48E2D47B4970B7FDD3CF /* FeedbackStripCell.swift */; };
-		5480AF9F26414424972D280B /* IntentIdCaption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E2399DF01D74703943C3270 /* IntentIdCaption.swift */; };
-		336AD0B0181042CFBDE217A4 /* JourneyTimelineCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E2A954064DE4944A9702705 /* JourneyTimelineCell.swift */; };
-		F5A17076B212435EB977AC86 /* LegacyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA92AF35C7C2498FA40CCEFB /* LegacyTheme.swift */; };
-		850B5C7DF06344E587B3E759 /* PillSegmentControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DD5061211504CFC82D5AE51 /* PillSegmentControl.swift */; };
-		B43A21A175304BD39E579DC7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 684729314209445489061B0F /* Assets.xcassets */; };
+		56869256C0874099829224F3 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1758ABC8A3134355A2F943E9 /* AppDelegate.swift */; };
+		970D250BF2DE4ACEABBD183B /* ChatTurn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651C658414B94E0DBB08E05A /* ChatTurn.swift */; };
+		442D7787DD4E48FDAB6106C7 /* IntentTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB834B921DE04C2A8AD93193 /* IntentTimeline.swift */; };
+		54A29F58847646879F24BFD0 /* BrainAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47707452DCC043D684D3C5A8 /* BrainAPI.swift */; };
+		1B43CCA099B7476586A95057 /* BrainEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6370B708752F471E9EDEA0CD /* BrainEndpoint.swift */; };
+		60EE51FDE957470A9C26D65D /* BrainURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E87F3CD309D471AB2500F7D /* BrainURL.swift */; };
+		482943270201472EA963E1DE /* ConnectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0837A5F42CB34AE8A166D0A4 /* ConnectionManager.swift */; };
+		1E54C8B6F53B4AD98C453408 /* DebugReportStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8543B12A63074AC492EE9679 /* DebugReportStore.swift */; };
+		CD4B989B068A45B680251F8C /* HeartbeatLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC3C363F19F24F3A86C9F09C /* HeartbeatLog.swift */; };
+		E25E2F9DA5CD4ECB9241E286 /* HomeMicController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C53D050F26ED409FA2FC218D /* HomeMicController.swift */; };
+		5B4109CAEB1C499D84239A46 /* HomeMicEnergyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E60E1614455648BCB65C6335 /* HomeMicEnergyGate.swift */; };
+		CF5B644E751C42DB9924D882 /* HomeMicHap1Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 982C880E81EB423C85DCF6C8 /* HomeMicHap1Client.swift */; };
+		EB758D6CD15648018031BBC7 /* HomeMicPcmCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7353A3B7A17F45B9B09FA705 /* HomeMicPcmCapture.swift */; };
+		15202F1411164AA88153ED88 /* HomeMicSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5781A78DF7448BB9F859470 /* HomeMicSettings.swift */; };
+		53AFADD2ED054C2CBE27A132 /* IntentPoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 361D6BE8D01C492CBACCFCF2 /* IntentPoller.swift */; };
+		3DC7851F8E334FF784C3AE6F /* ParticipantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C57A76A63FF402DA68B6C8F /* ParticipantStore.swift */; };
+		EC0D1B462A6F40E2BDB21D80 /* ReadingCameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91A05D648D442D7B96D4139 /* ReadingCameraService.swift */; };
+		719627D9FD8345E4B8B5FBF5 /* ReadingPhotoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24E878CF9782415E9107A012 /* ReadingPhotoStore.swift */; };
+		5AC11DB8527B4F59AF1EC729 /* ReadingSpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC1AF71BDEA14CB2A9299C07 /* ReadingSpeechService.swift */; };
+		F2092EEAEEF84286ADBD6DAC /* VoiceTraceLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 042646F791AB4FF78296A5A7 /* VoiceTraceLog.swift */; };
+		B9CD20132984421C94B4E788 /* H264VideoEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 213F0B9E4B304A52BA50503A /* H264VideoEncoder.swift */; };
+		2E301069F6084C36A0D1132F /* LegacyLiveStreamController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2446EA7512844B44807D40E1 /* LegacyLiveStreamController.swift */; };
+		F1D07E357F9B413BB336196E /* LivePushPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB5BC413E364915A0E15079 /* LivePushPipeline.swift */; };
+		91221B540EAB4F2F96EFF8D6 /* MpegTsMuxer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE092D80BB4D484699C32366 /* MpegTsMuxer.swift */; };
+		D6876E2A5B264D9581607685 /* MpegTsTcpTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32E3852D2403406A867B762E /* MpegTsTcpTransport.swift */; };
+		2004828EDD4A4344B283273D /* VideoLiveCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 004D8CE1160F4271A2F0B081 /* VideoLiveCapture.swift */; };
+		00A3C0D6571E48169CE50061 /* VideoLiveError.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3BBA358E50147ED90A80891 /* VideoLiveError.swift */; };
+		6FCFC1AC51384FBDB990529C /* ChatViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAC942746B82452E9B2557C5 /* ChatViewController.swift */; };
+		1E1DE301D4154A37B2017764 /* HomeMicViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6C32F7E921B44D89FB3B795 /* HomeMicViewController.swift */; };
+		26AB2A9B33D249B3B3099EB4 /* InteractionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF5AADD0E27147EAB8843386 /* InteractionViewController.swift */; };
+		31E229B4340E443A93D6C3FB /* LiveStreamViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 837D100425D34762B01159A5 /* LiveStreamViewController.swift */; };
+		A723FD0C707D4B3A9FE3171A /* MainTabBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EF65E1421A047DABF6DF0BC /* MainTabBarController.swift */; };
+		EC5189EAE15D47C3A7F41CE4 /* ReadingCaptureViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 514B13471C344DB6ACBFAB89 /* ReadingCaptureViewController.swift */; };
+		F67538DDEB434F66B1444BEF /* ReadingHubViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 492D85FB570E4963B0168116 /* ReadingHubViewController.swift */; };
+		2398C2BA47B84054A55D0097 /* ReadingModeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAC74C38B96D4D69A3342637 /* ReadingModeViewController.swift */; };
+		EC1395F71F1049F4AEB09A0F /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 549EDC16C9DA4CD7B00EF3E5 /* SettingsViewController.swift */; };
+		DD3ED41D3E37413D8133DAEC /* ChatMessageCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A69FEFEBA724FDCB5EE0AB8 /* ChatMessageCell.swift */; };
+		080F81804586417BA98418F2 /* FeedbackStripCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 658A760AB87E49ABAD6EA353 /* FeedbackStripCell.swift */; };
+		8ADD0CE246A9486C9E8558F5 /* IntentIdCaption.swift in Sources */ = {isa = PBXBuildFile; fileRef = A666004728854CC28E8A613A /* IntentIdCaption.swift */; };
+		64F9F524477C46288CF7D664 /* JourneyTimelineCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 768C56DF15D54F5193AC2C2D /* JourneyTimelineCell.swift */; };
+		A58579FAC7EC42CF8041DDFD /* LegacyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06671851DBDF4351A0F38871 /* LegacyTheme.swift */; };
+		8C57F1113B4344A2A3074C22 /* PillSegmentControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45083EA8AA2427E8326D1A7 /* PillSegmentControl.swift */; };
+		1E1721D910A844FF951FBCE4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 204318767F094886916DBE3B /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		EE69FBF8B9D14B6EBB6EF61E /* LivingRoomLegacy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LivingRoomLegacy.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		89DE60FB62A54F6EBBFF0DC8 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		5DB3F206F9C94034851C10F9 /* ChatTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTurn.swift; sourceTree = "<group>"; };
-		594E33C001424E4CA509412D /* IntentTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentTimeline.swift; sourceTree = "<group>"; };
-		7B50A2DA749644ACB2ED5AA4 /* BrainAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainAPI.swift; sourceTree = "<group>"; };
-		63EFE31291214FFBADC25C24 /* BrainEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainEndpoint.swift; sourceTree = "<group>"; };
-		CD63C3DA865049309AA1DC8A /* BrainURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainURL.swift; sourceTree = "<group>"; };
-		A6521262716A4EA9841ECEB0 /* ConnectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionManager.swift; sourceTree = "<group>"; };
-		0E239CFF2E3147F9AACAE154 /* DebugReportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugReportStore.swift; sourceTree = "<group>"; };
-		9439B5C19BD941B28C6FF771 /* HeartbeatLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartbeatLog.swift; sourceTree = "<group>"; };
-		25F5CFFE0CEF4DBC93999358 /* HomeMicController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicController.swift; sourceTree = "<group>"; };
-		799C2418BFB94950BD234A82 /* HomeMicEnergyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicEnergyGate.swift; sourceTree = "<group>"; };
-		DFE4F43C49504F77A1325892 /* HomeMicHap1Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicHap1Client.swift; sourceTree = "<group>"; };
-		E9712EBBB0374AAB846AB91C /* HomeMicPcmCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicPcmCapture.swift; sourceTree = "<group>"; };
-		1AB862ED7AAF47F7B4855C9D /* HomeMicSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicSettings.swift; sourceTree = "<group>"; };
-		774B3A56E0DF41E085EE0353 /* IntentPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentPoller.swift; sourceTree = "<group>"; };
-		79B333C7194E4917B949AAA7 /* ParticipantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticipantStore.swift; sourceTree = "<group>"; };
-		05E6619FBD7D4E0F96424D6D /* ReadingCameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingCameraService.swift; sourceTree = "<group>"; };
-		1EA68CB8FA69407F8E61CF9E /* ReadingPhotoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingPhotoStore.swift; sourceTree = "<group>"; };
-		02530551257147DFBD016C51 /* ReadingSpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingSpeechService.swift; sourceTree = "<group>"; };
-		0F42AA0CB6264A3B92B68F0D /* VoiceTraceLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTraceLog.swift; sourceTree = "<group>"; };
-		1020B8CB6CE046E5AF57682A /* H264VideoEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H264VideoEncoder.swift; sourceTree = "<group>"; };
-		61698591BE934CB1BA6AE75B /* LegacyLiveStreamController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyLiveStreamController.swift; sourceTree = "<group>"; };
-		0ADED1762FD14776A56C360C /* LivePushPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePushPipeline.swift; sourceTree = "<group>"; };
-		013D534FE31244D69FCB1048 /* MpegTsMuxer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpegTsMuxer.swift; sourceTree = "<group>"; };
-		5E55D5845CDA4FA89F80D23E /* MpegTsTcpTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpegTsTcpTransport.swift; sourceTree = "<group>"; };
-		1BD9FF2243D142C281A25EF3 /* VideoLiveCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoLiveCapture.swift; sourceTree = "<group>"; };
-		1B870DFB76F34E6DBE4F43C1 /* VideoLiveError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoLiveError.swift; sourceTree = "<group>"; };
-		7EBA8BA79177445E8FD2E7ED /* ChatViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewController.swift; sourceTree = "<group>"; };
-		5352691793F9453EA54514B8 /* InteractionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractionViewController.swift; sourceTree = "<group>"; };
-		BD01332D7E5F4280AB41B7DE /* LiveStreamViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveStreamViewController.swift; sourceTree = "<group>"; };
-		E582B012DB1E4B4CB46EFD56 /* MainTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabBarController.swift; sourceTree = "<group>"; };
-		16902C8D706A4AA2A59DFBEA /* ReadingCaptureViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingCaptureViewController.swift; sourceTree = "<group>"; };
-		58AFD78A58EB479FAF6FF572 /* ReadingHubViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingHubViewController.swift; sourceTree = "<group>"; };
-		B89657DD2D37495FA995A6E3 /* ReadingModeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingModeViewController.swift; sourceTree = "<group>"; };
-		E72F55D4B9EC453FAE6A1943 /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
-		211545CB08BD41DCB7E729F1 /* ChatMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageCell.swift; sourceTree = "<group>"; };
-		2DCC48E2D47B4970B7FDD3CF /* FeedbackStripCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackStripCell.swift; sourceTree = "<group>"; };
-		9E2399DF01D74703943C3270 /* IntentIdCaption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentIdCaption.swift; sourceTree = "<group>"; };
-		8E2A954064DE4944A9702705 /* JourneyTimelineCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyTimelineCell.swift; sourceTree = "<group>"; };
-		AA92AF35C7C2498FA40CCEFB /* LegacyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTheme.swift; sourceTree = "<group>"; };
-		3DD5061211504CFC82D5AE51 /* PillSegmentControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillSegmentControl.swift; sourceTree = "<group>"; };
-		24FCE19AC6854A1F89D602E4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		684729314209445489061B0F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		C88306DE48BB491CBF11ED23 /* LivingRoomLegacy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LivingRoomLegacy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1758ABC8A3134355A2F943E9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		651C658414B94E0DBB08E05A /* ChatTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTurn.swift; sourceTree = "<group>"; };
+		AB834B921DE04C2A8AD93193 /* IntentTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentTimeline.swift; sourceTree = "<group>"; };
+		47707452DCC043D684D3C5A8 /* BrainAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainAPI.swift; sourceTree = "<group>"; };
+		6370B708752F471E9EDEA0CD /* BrainEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainEndpoint.swift; sourceTree = "<group>"; };
+		3E87F3CD309D471AB2500F7D /* BrainURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainURL.swift; sourceTree = "<group>"; };
+		0837A5F42CB34AE8A166D0A4 /* ConnectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionManager.swift; sourceTree = "<group>"; };
+		8543B12A63074AC492EE9679 /* DebugReportStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugReportStore.swift; sourceTree = "<group>"; };
+		BC3C363F19F24F3A86C9F09C /* HeartbeatLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartbeatLog.swift; sourceTree = "<group>"; };
+		C53D050F26ED409FA2FC218D /* HomeMicController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicController.swift; sourceTree = "<group>"; };
+		E60E1614455648BCB65C6335 /* HomeMicEnergyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicEnergyGate.swift; sourceTree = "<group>"; };
+		982C880E81EB423C85DCF6C8 /* HomeMicHap1Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicHap1Client.swift; sourceTree = "<group>"; };
+		7353A3B7A17F45B9B09FA705 /* HomeMicPcmCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicPcmCapture.swift; sourceTree = "<group>"; };
+		D5781A78DF7448BB9F859470 /* HomeMicSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicSettings.swift; sourceTree = "<group>"; };
+		361D6BE8D01C492CBACCFCF2 /* IntentPoller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentPoller.swift; sourceTree = "<group>"; };
+		9C57A76A63FF402DA68B6C8F /* ParticipantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticipantStore.swift; sourceTree = "<group>"; };
+		C91A05D648D442D7B96D4139 /* ReadingCameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingCameraService.swift; sourceTree = "<group>"; };
+		24E878CF9782415E9107A012 /* ReadingPhotoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingPhotoStore.swift; sourceTree = "<group>"; };
+		BC1AF71BDEA14CB2A9299C07 /* ReadingSpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingSpeechService.swift; sourceTree = "<group>"; };
+		042646F791AB4FF78296A5A7 /* VoiceTraceLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceTraceLog.swift; sourceTree = "<group>"; };
+		213F0B9E4B304A52BA50503A /* H264VideoEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H264VideoEncoder.swift; sourceTree = "<group>"; };
+		2446EA7512844B44807D40E1 /* LegacyLiveStreamController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyLiveStreamController.swift; sourceTree = "<group>"; };
+		4AB5BC413E364915A0E15079 /* LivePushPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePushPipeline.swift; sourceTree = "<group>"; };
+		FE092D80BB4D484699C32366 /* MpegTsMuxer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpegTsMuxer.swift; sourceTree = "<group>"; };
+		32E3852D2403406A867B762E /* MpegTsTcpTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MpegTsTcpTransport.swift; sourceTree = "<group>"; };
+		004D8CE1160F4271A2F0B081 /* VideoLiveCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoLiveCapture.swift; sourceTree = "<group>"; };
+		C3BBA358E50147ED90A80891 /* VideoLiveError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoLiveError.swift; sourceTree = "<group>"; };
+		EAC942746B82452E9B2557C5 /* ChatViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewController.swift; sourceTree = "<group>"; };
+		D6C32F7E921B44D89FB3B795 /* HomeMicViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicViewController.swift; sourceTree = "<group>"; };
+		BF5AADD0E27147EAB8843386 /* InteractionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InteractionViewController.swift; sourceTree = "<group>"; };
+		837D100425D34762B01159A5 /* LiveStreamViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveStreamViewController.swift; sourceTree = "<group>"; };
+		8EF65E1421A047DABF6DF0BC /* MainTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabBarController.swift; sourceTree = "<group>"; };
+		514B13471C344DB6ACBFAB89 /* ReadingCaptureViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingCaptureViewController.swift; sourceTree = "<group>"; };
+		492D85FB570E4963B0168116 /* ReadingHubViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingHubViewController.swift; sourceTree = "<group>"; };
+		AAC74C38B96D4D69A3342637 /* ReadingModeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingModeViewController.swift; sourceTree = "<group>"; };
+		549EDC16C9DA4CD7B00EF3E5 /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
+		4A69FEFEBA724FDCB5EE0AB8 /* ChatMessageCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageCell.swift; sourceTree = "<group>"; };
+		658A760AB87E49ABAD6EA353 /* FeedbackStripCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackStripCell.swift; sourceTree = "<group>"; };
+		A666004728854CC28E8A613A /* IntentIdCaption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentIdCaption.swift; sourceTree = "<group>"; };
+		768C56DF15D54F5193AC2C2D /* JourneyTimelineCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyTimelineCell.swift; sourceTree = "<group>"; };
+		06671851DBDF4351A0F38871 /* LegacyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyTheme.swift; sourceTree = "<group>"; };
+		E45083EA8AA2427E8326D1A7 /* PillSegmentControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PillSegmentControl.swift; sourceTree = "<group>"; };
+		956A112EDF734BF4A9214F99 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		204318767F094886916DBE3B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		FB5511F058CC4552A5DEA010 /* Frameworks */ = {
+		D1045AF2DD524CF58287D4C6 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -108,116 +110,117 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		B8DC63DDF1A14966BBEDC767 = {
+		40E3ACA1BCB041ABBBDB6E14 = {
 			isa = PBXGroup;
 			children = (
-				5C4CD8A2D817407993DE63B8 /* LivingRoomLegacy */,
-				D2DB8A27926543A49EB568A5 /* Products */,
+				FF3CA0F2E2734BC198DE3265 /* LivingRoomLegacy */,
+				28254BE7914843D7A88A3F10 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		D2DB8A27926543A49EB568A5 /* Products */ = {
+		28254BE7914843D7A88A3F10 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				EE69FBF8B9D14B6EBB6EF61E /* LivingRoomLegacy.app */,
+				C88306DE48BB491CBF11ED23 /* LivingRoomLegacy.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		5C4CD8A2D817407993DE63B8 /* LivingRoomLegacy */ = {
+		FF3CA0F2E2734BC198DE3265 /* LivingRoomLegacy */ = {
 			isa = PBXGroup;
 			children = (
-				06D2D5409BC948AAB3D8CFED,
-				F6C140CE54A443849A4B31BF,
-				9183C741D6294EF994240E65,
-				67FDFE205A8646A29C81ED10,
-				96851E4C58AF4A11989689F9,
-				89DE60FB62A54F6EBBFF0DC8,
-				24FCE19AC6854A1F89D602E4,
-				684729314209445489061B0F,
+				21734ADD931A4BBD832EAA0F,
+				D07A17C7036B4D5EA0AD14EB,
+				4E4F7F58FA4B44019C11754B,
+				A916A7973C7147A699E5C00C,
+				F03D7CC0ACA54CDAAABD9B53,
+				1758ABC8A3134355A2F943E9,
+				956A112EDF734BF4A9214F99,
+				204318767F094886916DBE3B,
 			);
 			path = LivingRoomLegacy;
 			sourceTree = "<group>";
 		};
-		06D2D5409BC948AAB3D8CFED /* Models */ = {
+		21734ADD931A4BBD832EAA0F /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				5DB3F206F9C94034851C10F9,
-				594E33C001424E4CA509412D,
+				651C658414B94E0DBB08E05A,
+				AB834B921DE04C2A8AD93193,
 			);
 			path = Models;
 			sourceTree = "<group>";
 		};
-		F6C140CE54A443849A4B31BF /* Services */ = {
+		D07A17C7036B4D5EA0AD14EB /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				AA29ED67510B4A13B38D2FCB,
-				7B50A2DA749644ACB2ED5AA4,
-				63EFE31291214FFBADC25C24,
-				CD63C3DA865049309AA1DC8A,
-				A6521262716A4EA9841ECEB0,
-				0E239CFF2E3147F9AACAE154,
-				9439B5C19BD941B28C6FF771,
-				774B3A56E0DF41E085EE0353,
-				79B333C7194E4917B949AAA7,
-				05E6619FBD7D4E0F96424D6D,
-				1EA68CB8FA69407F8E61CF9E,
-				02530551257147DFBD016C51,
-				0F42AA0CB6264A3B92B68F0D,
+				B2575F153E4A4212B86C234C,
+				47707452DCC043D684D3C5A8,
+				6370B708752F471E9EDEA0CD,
+				3E87F3CD309D471AB2500F7D,
+				0837A5F42CB34AE8A166D0A4,
+				8543B12A63074AC492EE9679,
+				BC3C363F19F24F3A86C9F09C,
+				361D6BE8D01C492CBACCFCF2,
+				9C57A76A63FF402DA68B6C8F,
+				C91A05D648D442D7B96D4139,
+				24E878CF9782415E9107A012,
+				BC1AF71BDEA14CB2A9299C07,
+				042646F791AB4FF78296A5A7,
 			);
 			path = Services;
 			sourceTree = "<group>";
 		};
-		AA29ED67510B4A13B38D2FCB /* HomeMic */ = {
+		B2575F153E4A4212B86C234C /* HomeMic */ = {
 			isa = PBXGroup;
 			children = (
-				25F5CFFE0CEF4DBC93999358,
-				799C2418BFB94950BD234A82,
-				DFE4F43C49504F77A1325892,
-				E9712EBBB0374AAB846AB91C,
-				1AB862ED7AAF47F7B4855C9D,
+				C53D050F26ED409FA2FC218D,
+				E60E1614455648BCB65C6335,
+				982C880E81EB423C85DCF6C8,
+				7353A3B7A17F45B9B09FA705,
+				D5781A78DF7448BB9F859470,
 			);
 			path = HomeMic;
 			sourceTree = "<group>";
 		};
-		9183C741D6294EF994240E65 /* VideoLiveStream */ = {
+		4E4F7F58FA4B44019C11754B /* VideoLiveStream */ = {
 			isa = PBXGroup;
 			children = (
-				1020B8CB6CE046E5AF57682A,
-				61698591BE934CB1BA6AE75B,
-				0ADED1762FD14776A56C360C,
-				013D534FE31244D69FCB1048,
-				5E55D5845CDA4FA89F80D23E,
-				1BD9FF2243D142C281A25EF3,
-				1B870DFB76F34E6DBE4F43C1,
+				213F0B9E4B304A52BA50503A,
+				2446EA7512844B44807D40E1,
+				4AB5BC413E364915A0E15079,
+				FE092D80BB4D484699C32366,
+				32E3852D2403406A867B762E,
+				004D8CE1160F4271A2F0B081,
+				C3BBA358E50147ED90A80891,
 			);
 			path = VideoLiveStream;
 			sourceTree = "<group>";
 		};
-		67FDFE205A8646A29C81ED10 /* ViewControllers */ = {
+		A916A7973C7147A699E5C00C /* ViewControllers */ = {
 			isa = PBXGroup;
 			children = (
-				7EBA8BA79177445E8FD2E7ED,
-				5352691793F9453EA54514B8,
-				BD01332D7E5F4280AB41B7DE,
-				E582B012DB1E4B4CB46EFD56,
-				16902C8D706A4AA2A59DFBEA,
-				58AFD78A58EB479FAF6FF572,
-				B89657DD2D37495FA995A6E3,
-				E72F55D4B9EC453FAE6A1943,
+				EAC942746B82452E9B2557C5,
+				D6C32F7E921B44D89FB3B795,
+				BF5AADD0E27147EAB8843386,
+				837D100425D34762B01159A5,
+				8EF65E1421A047DABF6DF0BC,
+				514B13471C344DB6ACBFAB89,
+				492D85FB570E4963B0168116,
+				AAC74C38B96D4D69A3342637,
+				549EDC16C9DA4CD7B00EF3E5,
 			);
 			path = ViewControllers;
 			sourceTree = "<group>";
 		};
-		96851E4C58AF4A11989689F9 /* Views */ = {
+		F03D7CC0ACA54CDAAABD9B53 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				211545CB08BD41DCB7E729F1,
-				2DCC48E2D47B4970B7FDD3CF,
-				9E2399DF01D74703943C3270,
-				8E2A954064DE4944A9702705,
-				AA92AF35C7C2498FA40CCEFB,
-				3DD5061211504CFC82D5AE51,
+				4A69FEFEBA724FDCB5EE0AB8,
+				658A760AB87E49ABAD6EA353,
+				A666004728854CC28E8A613A,
+				768C56DF15D54F5193AC2C2D,
+				06671851DBDF4351A0F38871,
+				E45083EA8AA2427E8326D1A7,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -225,13 +228,13 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		F1D25D019C46484F81143A98 /* LivingRoomLegacy */ = {
+		7E19E0CDC20445E1B0D140D3 /* LivingRoomLegacy */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 300E910965DC4A47BF92A845 /* Build configuration list for PBXNativeTarget "LivingRoomLegacy" */;
+			buildConfigurationList = 03225F6150674C2A905BBDA2 /* Build configuration list for PBXNativeTarget "LivingRoomLegacy" */;
 			buildPhases = (
-				BA1997CE848C447A93762D92 /* Sources */,
-				FB5511F058CC4552A5DEA010 /* Frameworks */,
-				4AF20C9A50C54F08942BCCAA /* Resources */,
+				13F7AFF79B724165A1C48918 /* Sources */,
+				D1045AF2DD524CF58287D4C6 /* Frameworks */,
+				592925EED35643F9965B300A /* Resources */,
 			);
 			buildRules = (
 			);
@@ -241,20 +244,20 @@
 			packageProductDependencies = (
 			);
 			productName = LivingRoomLegacy;
-			productReference = EE69FBF8B9D14B6EBB6EF61E /* LivingRoomLegacy.app */;
+			productReference = C88306DE48BB491CBF11ED23 /* LivingRoomLegacy.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		1D2ADBF99AA147D5A590C022 /* Project object */ = {
+		ACD1EE87068E4D2BB20678E4 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1500;
 				LastUpgradeCheck = 1500;
 			};
-			buildConfigurationList = 813ADF6096D048D89139539F /* Build configuration list for PBXProject "LivingRoomLegacy" */;
+			buildConfigurationList = 06792AC100D4431AB7E0DC2D /* Build configuration list for PBXProject "LivingRoomLegacy" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -262,82 +265,83 @@
 				en,
 				Base,
 			);
-			mainGroup = B8DC63DDF1A14966BBEDC767;
+			mainGroup = 40E3ACA1BCB041ABBBDB6E14;
 			packageReferences = (
 			);
-			productRefGroup = D2DB8A27926543A49EB568A5 /* Products */;
+			productRefGroup = 28254BE7914843D7A88A3F10 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				F1D25D019C46484F81143A98 /* LivingRoomLegacy */,
+				7E19E0CDC20445E1B0D140D3 /* LivingRoomLegacy */,
 			);
 			};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		4AF20C9A50C54F08942BCCAA /* Resources */ = {
+		592925EED35643F9965B300A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B43A21A175304BD39E579DC7 /* Assets.xcassets in Resources */,
+				1E1721D910A844FF951FBCE4 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		BA1997CE848C447A93762D92 /* Sources */ = {
+		13F7AFF79B724165A1C48918 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				598354486D0C41ECA3853ED9 /* AppDelegate.swift in Sources */,
-				21871A0161934BF7A02CF711 /* ChatTurn.swift in Sources */,
-				F72A320E458343098544BA09 /* IntentTimeline.swift in Sources */,
-				38094501E8634A67A8D48626 /* BrainAPI.swift in Sources */,
-				8EE4AA9FEF9C45A7AF975AA5 /* BrainEndpoint.swift in Sources */,
-				831D8CF0550A4DFA927CE8F6 /* BrainURL.swift in Sources */,
-				19282DDCA91A45A5AF70EDC9 /* ConnectionManager.swift in Sources */,
-				5F0D98E8984549CCB96842B9 /* DebugReportStore.swift in Sources */,
-				210C76C747A14BF6B1D4A780 /* HeartbeatLog.swift in Sources */,
-				191E2FC6B44C40708891A8D0 /* HomeMicController.swift in Sources */,
-				2C9D9DA687A240A58593BC9C /* HomeMicEnergyGate.swift in Sources */,
-				F3EFB5AC1EF74B138698CD8B /* HomeMicHap1Client.swift in Sources */,
-				65850E3CFAC04700A5DAC5BE /* HomeMicPcmCapture.swift in Sources */,
-				5E83F952BC8B461C8C7EA81B /* HomeMicSettings.swift in Sources */,
-				756A6E1C66B547DFBADD1118 /* IntentPoller.swift in Sources */,
-				A52B644C923F4412A38B1C3F /* ParticipantStore.swift in Sources */,
-				D7F5BC3864514918BA583CC3 /* ReadingCameraService.swift in Sources */,
-				2B4CB80E8DD440C69D2C48DC /* ReadingPhotoStore.swift in Sources */,
-				5B192D3C70D547AEB001CAAB /* ReadingSpeechService.swift in Sources */,
-				7B38FD8EA1714ABE99B761ED /* VoiceTraceLog.swift in Sources */,
-				3EB401B550F745F0A3E94FF6 /* H264VideoEncoder.swift in Sources */,
-				E098B169678A4AFCAAE3360C /* LegacyLiveStreamController.swift in Sources */,
-				603EAE17DAF04396A7BD7DAF /* LivePushPipeline.swift in Sources */,
-				593983B52B804D788D4D0BE0 /* MpegTsMuxer.swift in Sources */,
-				B7DD36EEFC6C4035B6D52180 /* MpegTsTcpTransport.swift in Sources */,
-				097058CD105F4DFD8CD1F582 /* VideoLiveCapture.swift in Sources */,
-				2A87C277C3F34D3F9766495D /* VideoLiveError.swift in Sources */,
-				DE040653932041D290EB0863 /* ChatViewController.swift in Sources */,
-				ECB919F59C7946A68EA2F3DC /* InteractionViewController.swift in Sources */,
-				1DA5331E14A74211A27F268E /* LiveStreamViewController.swift in Sources */,
-				EC4B1D157C814D0F9629ECE5 /* MainTabBarController.swift in Sources */,
-				5B5AF204DBB84F8C8B23FA60 /* ReadingCaptureViewController.swift in Sources */,
-				69396E345B624FD598D1EED2 /* ReadingHubViewController.swift in Sources */,
-				AE1DC0D6DA354B37A7B4892B /* ReadingModeViewController.swift in Sources */,
-				E506069222644529B0E2AF92 /* SettingsViewController.swift in Sources */,
-				94B486ADEC50412D88B97D77 /* ChatMessageCell.swift in Sources */,
-				8500420F8781478999ECA053 /* FeedbackStripCell.swift in Sources */,
-				5480AF9F26414424972D280B /* IntentIdCaption.swift in Sources */,
-				336AD0B0181042CFBDE217A4 /* JourneyTimelineCell.swift in Sources */,
-				F5A17076B212435EB977AC86 /* LegacyTheme.swift in Sources */,
-				850B5C7DF06344E587B3E759 /* PillSegmentControl.swift in Sources */,
+				56869256C0874099829224F3 /* AppDelegate.swift in Sources */,
+				970D250BF2DE4ACEABBD183B /* ChatTurn.swift in Sources */,
+				442D7787DD4E48FDAB6106C7 /* IntentTimeline.swift in Sources */,
+				54A29F58847646879F24BFD0 /* BrainAPI.swift in Sources */,
+				1B43CCA099B7476586A95057 /* BrainEndpoint.swift in Sources */,
+				60EE51FDE957470A9C26D65D /* BrainURL.swift in Sources */,
+				482943270201472EA963E1DE /* ConnectionManager.swift in Sources */,
+				1E54C8B6F53B4AD98C453408 /* DebugReportStore.swift in Sources */,
+				CD4B989B068A45B680251F8C /* HeartbeatLog.swift in Sources */,
+				E25E2F9DA5CD4ECB9241E286 /* HomeMicController.swift in Sources */,
+				5B4109CAEB1C499D84239A46 /* HomeMicEnergyGate.swift in Sources */,
+				CF5B644E751C42DB9924D882 /* HomeMicHap1Client.swift in Sources */,
+				EB758D6CD15648018031BBC7 /* HomeMicPcmCapture.swift in Sources */,
+				15202F1411164AA88153ED88 /* HomeMicSettings.swift in Sources */,
+				53AFADD2ED054C2CBE27A132 /* IntentPoller.swift in Sources */,
+				3DC7851F8E334FF784C3AE6F /* ParticipantStore.swift in Sources */,
+				EC0D1B462A6F40E2BDB21D80 /* ReadingCameraService.swift in Sources */,
+				719627D9FD8345E4B8B5FBF5 /* ReadingPhotoStore.swift in Sources */,
+				5AC11DB8527B4F59AF1EC729 /* ReadingSpeechService.swift in Sources */,
+				F2092EEAEEF84286ADBD6DAC /* VoiceTraceLog.swift in Sources */,
+				B9CD20132984421C94B4E788 /* H264VideoEncoder.swift in Sources */,
+				2E301069F6084C36A0D1132F /* LegacyLiveStreamController.swift in Sources */,
+				F1D07E357F9B413BB336196E /* LivePushPipeline.swift in Sources */,
+				91221B540EAB4F2F96EFF8D6 /* MpegTsMuxer.swift in Sources */,
+				D6876E2A5B264D9581607685 /* MpegTsTcpTransport.swift in Sources */,
+				2004828EDD4A4344B283273D /* VideoLiveCapture.swift in Sources */,
+				00A3C0D6571E48169CE50061 /* VideoLiveError.swift in Sources */,
+				6FCFC1AC51384FBDB990529C /* ChatViewController.swift in Sources */,
+				1E1DE301D4154A37B2017764 /* HomeMicViewController.swift in Sources */,
+				26AB2A9B33D249B3B3099EB4 /* InteractionViewController.swift in Sources */,
+				31E229B4340E443A93D6C3FB /* LiveStreamViewController.swift in Sources */,
+				A723FD0C707D4B3A9FE3171A /* MainTabBarController.swift in Sources */,
+				EC5189EAE15D47C3A7F41CE4 /* ReadingCaptureViewController.swift in Sources */,
+				F67538DDEB434F66B1444BEF /* ReadingHubViewController.swift in Sources */,
+				2398C2BA47B84054A55D0097 /* ReadingModeViewController.swift in Sources */,
+				EC1395F71F1049F4AEB09A0F /* SettingsViewController.swift in Sources */,
+				DD3ED41D3E37413D8133DAEC /* ChatMessageCell.swift in Sources */,
+				080F81804586417BA98418F2 /* FeedbackStripCell.swift in Sources */,
+				8ADD0CE246A9486C9E8558F5 /* IntentIdCaption.swift in Sources */,
+				64F9F524477C46288CF7D664 /* JourneyTimelineCell.swift in Sources */,
+				A58579FAC7EC42CF8041DDFD /* LegacyTheme.swift in Sources */,
+				8C57F1113B4344A2A3074C22 /* PillSegmentControl.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		4FD87D00AAED498A816BA947 /* Debug */ = {
+		1BDEFCEDE2344873AF8D78EF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -356,7 +360,7 @@
 			};
 			name = Debug;
 		};
-		FCC67C4051BA4365A0C1F376 /* Release */ = {
+		D4DDF66D4D1E4D81A1313FFD /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -370,7 +374,7 @@
 			};
 			name = Release;
 		};
-		E7F4105861984463B0A57637 /* Debug */ = {
+		A64D670A5BBD49C0AB8676B3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -393,7 +397,7 @@
 			};
 			name = Debug;
 		};
-		3273861469564854812B7555 /* Release */ = {
+		AAB69CF58C1F4F7C96BD3C63 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -419,25 +423,25 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		813ADF6096D048D89139539F /* Build configuration list for PBXProject "LivingRoomLegacy" */ = {
+		06792AC100D4431AB7E0DC2D /* Build configuration list for PBXProject "LivingRoomLegacy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				4FD87D00AAED498A816BA947 /* Debug */,
-				FCC67C4051BA4365A0C1F376 /* Release */,
+				1BDEFCEDE2344873AF8D78EF /* Debug */,
+				D4DDF66D4D1E4D81A1313FFD /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		300E910965DC4A47BF92A845 /* Build configuration list for PBXNativeTarget "LivingRoomLegacy" */ = {
+		03225F6150674C2A905BBDA2 /* Build configuration list for PBXNativeTarget "LivingRoomLegacy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E7F4105861984463B0A57637 /* Debug */,
-				3273861469564854812B7555 /* Release */,
+				A64D670A5BBD49C0AB8676B3 /* Debug */,
+				AAB69CF58C1F4F7C96BD3C63 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = 1D2ADBF99AA147D5A590C022 /* Project object */;
+	rootObject = ACD1EE87068E4D2BB20678E4 /* Project object */;
 }

@@ -1,11 +1,12 @@
 import UIKit
 
 final class InteractionViewController: UIViewController {
-    private let segment = PillSegmentControl(titles: ["打字", "看书", "直播"])
+    private let segment = PillSegmentControl(titles: ["打字", "看书", "直播", "拾音"])
     private let containerView = UIView()
     private let chatViewController = ChatViewController()
     private let readingViewController = ReadingModeViewController()
     private let liveStreamViewController = LiveStreamViewController()
+    private let homeMicViewController = HomeMicViewController()
     private var segmentHeight: NSLayoutConstraint?
     private var containerTopToSegment: NSLayoutConstraint?
     private var containerTopToSafeArea: NSLayoutConstraint?
@@ -48,12 +49,17 @@ final class InteractionViewController: UIViewController {
         liveStreamViewController.onStreamActive = { [weak self] active in
             self?.setCaptureChromeHidden(active)
         }
+        homeMicViewController.onListeningActive = { [weak self] active in
+            self?.setCaptureChromeHidden(active)
+        }
 
         embed(chatViewController)
         embed(readingViewController)
         embed(liveStreamViewController)
+        embed(homeMicViewController)
         readingViewController.view.isHidden = true
         liveStreamViewController.view.isHidden = true
+        homeMicViewController.view.isHidden = true
         showChild(at: 0)
     }
 
@@ -75,18 +81,27 @@ final class InteractionViewController: UIViewController {
         chatViewController.dismissKeyboard()
         let showReading = index == 1
         let showLive = index == 2
+        let showMic = index == 3
         readingViewController.view.isHidden = !showReading
         liveStreamViewController.view.isHidden = !showLive
-        chatViewController.view.isHidden = showReading || showLive
+        homeMicViewController.view.isHidden = !showMic
+        chatViewController.view.isHidden = showReading || showLive || showMic
         if showReading {
             readingViewController.beginSessionIfNeeded()
             liveStreamViewController.endSession()
+            homeMicViewController.endSession()
         } else if showLive {
             readingViewController.endSession()
             liveStreamViewController.beginSessionIfNeeded()
+            homeMicViewController.endSession()
+        } else if showMic {
+            readingViewController.endSession()
+            liveStreamViewController.endSession()
+            homeMicViewController.beginSessionIfNeeded()
         } else {
             readingViewController.endSession()
             liveStreamViewController.endSession()
+            homeMicViewController.endSession()
             setCaptureChromeHidden(false)
         }
     }

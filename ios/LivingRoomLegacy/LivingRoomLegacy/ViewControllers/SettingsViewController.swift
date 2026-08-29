@@ -10,6 +10,9 @@ final class SettingsViewController: UIViewController {
     private let advancedToggle = UIButton(type: .system)
     private let advancedStack = UIStackView()
     private let macIngestField = UITextField()
+    private let homeMicHostField = UITextField()
+    private let homeMicPortField = UITextField()
+    private let homeMicEnergySwitch = UISwitch()
     private let participantLabel = LegacyUI.monoLabel(0)
     private let heartbeatHistoryLabel = LegacyUI.monoLabel(0)
     private var countdownTimer: Timer?
@@ -120,6 +123,44 @@ final class SettingsViewController: UIViewController {
         advancedStack.addArrangedSubview(ingestHint)
         advancedStack.addArrangedSubview(macIngestField)
 
+        let micTitle = LegacyUI.sectionTitle("Home Mic 拾音")
+        let micHint = UILabel()
+        micHint.font = LegacyTheme.fontHint
+        micHint.textColor = LegacyTheme.textSecondary
+        micHint.numberOfLines = 0
+        micHint.text = "Mac voice.stream HAP1（默认 :8792）。与上方直播 ingest :8790 不是同一个端口。"
+
+        homeMicHostField.borderStyle = .roundedRect
+        homeMicHostField.font = UIFont(name: "Menlo-Regular", size: 15) ?? UIFont.systemFont(ofSize: 15)
+        homeMicHostField.autocapitalizationType = .none
+        homeMicHostField.autocorrectionType = .no
+        homeMicHostField.placeholder = HomeMicSettings.defaultHost
+        homeMicHostField.addTarget(self, action: #selector(homeMicHostChanged), for: .editingChanged)
+
+        homeMicPortField.borderStyle = .roundedRect
+        homeMicPortField.font = UIFont(name: "Menlo-Regular", size: 15) ?? UIFont.systemFont(ofSize: 15)
+        homeMicPortField.keyboardType = .numberPad
+        homeMicPortField.placeholder = "\(HomeMicSettings.defaultPort)"
+        homeMicPortField.addTarget(self, action: #selector(homeMicPortChanged), for: .editingChanged)
+
+        let energyRow = UIStackView()
+        energyRow.axis = .horizontal
+        energyRow.spacing = 12
+        energyRow.alignment = .center
+        let energyLabel = UILabel()
+        energyLabel.text = "静音不上传（省电）"
+        energyLabel.font = LegacyTheme.fontHint
+        energyLabel.textColor = LegacyTheme.textPrimary
+        homeMicEnergySwitch.addTarget(self, action: #selector(homeMicEnergyChanged), for: .valueChanged)
+        energyRow.addArrangedSubview(energyLabel)
+        energyRow.addArrangedSubview(homeMicEnergySwitch)
+
+        advancedStack.addArrangedSubview(micTitle)
+        advancedStack.addArrangedSubview(micHint)
+        advancedStack.addArrangedSubview(homeMicHostField)
+        advancedStack.addArrangedSubview(homeMicPortField)
+        advancedStack.addArrangedSubview(energyRow)
+
         let heartbeatTitle = LegacyUI.sectionTitle("心跳记录")
         advancedStack.addArrangedSubview(heartbeatTitle)
         advancedStack.addArrangedSubview(participantLabel)
@@ -140,6 +181,9 @@ final class SettingsViewController: UIViewController {
         let pid = ParticipantStore.participantId
         participantLabel.text = pid.isEmpty ? "participant: 未登记" : "participant: \(pid)"
         macIngestField.text = ParticipantStore.macIngestURL
+        homeMicHostField.text = HomeMicSettings.host
+        homeMicPortField.text = "\(HomeMicSettings.port)"
+        homeMicEnergySwitch.isOn = HomeMicSettings.energyGateEnabled
         refreshStatusLabel()
         refreshHeartbeatHistory()
     }
@@ -187,6 +231,19 @@ final class SettingsViewController: UIViewController {
 
     @objc private func macIngestChanged() {
         ParticipantStore.macIngestURL = macIngestField.text ?? ""
+    }
+
+    @objc private func homeMicHostChanged() {
+        HomeMicSettings.host = homeMicHostField.text ?? ""
+    }
+
+    @objc private func homeMicPortChanged() {
+        let raw = Int(homeMicPortField.text ?? "") ?? Int(HomeMicSettings.defaultPort)
+        HomeMicSettings.port = UInt16(max(1, min(raw, 65_535)))
+    }
+
+    @objc private func homeMicEnergyChanged() {
+        HomeMicSettings.energyGateEnabled = homeMicEnergySwitch.isOn
     }
 
     @objc private func reconnect() {
