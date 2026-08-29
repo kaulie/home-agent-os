@@ -2,7 +2,7 @@ import Foundation
 
 /// LAN / Cloud Brain slots and routing policy (aligned with LivingRoomEdge User Console).
 enum DevBrainEndpoint {
-    static let defaultLanBase = "http://192.168.3.73:9527"
+    static let defaultLanBase = "http://192.168.3.84:9527"
     static let defaultCloudBase = "http://115.190.153.53:9527"
 
     private static let lanKey = "homeagent.dev.brain.lanURL"
@@ -10,6 +10,7 @@ enum DevBrainEndpoint {
     private static let routingKey = "homeagent.dev.brain.routing"
     private static let legacyBrainKey = "homeagent.dev.brainURL"
     private static let migratedKey = "homeagent.dev.brain.migrated"
+    private static let lastLanHostKey = "homeagent.dev.brain.lastLanHost"
 
     enum Mode: String {
         case lan
@@ -61,6 +62,32 @@ enum DevBrainEndpoint {
     static var cloudBaseURL: String {
         get { stored(key: cloudKey, fallback: defaultCloudBase) }
         set { UserDefaults.standard.set(normalizeBase(newValue), forKey: cloudKey) }
+    }
+
+    /// Last octet host that successfully answered Brain ping (e.g. "84" or full "192.168.3.84").
+    static var lastSuccessfulLanHost: String? {
+        get {
+            let raw = UserDefaults.standard.string(forKey: lastLanHostKey)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return raw.isEmpty ? nil : raw
+        }
+        set {
+            guard let newValue, !newValue.isEmpty else {
+                UserDefaults.standard.removeObject(forKey: lastLanHostKey)
+                return
+            }
+            if let ip = DevBrainLANHostOrder.ipv4(from: newValue) {
+                UserDefaults.standard.set(ip, forKey: lastLanHostKey)
+            } else {
+                UserDefaults.standard.set(newValue, forKey: lastLanHostKey)
+            }
+        }
+    }
+
+    static func rememberSuccessfulLAN(_ baseURL: String) {
+        if let ip = DevBrainLANHostOrder.ipv4(from: baseURL) {
+            lastSuccessfulLanHost = ip
+        }
     }
 
     static func migrateLegacyIfNeeded() {
@@ -136,6 +163,10 @@ struct DevBrainEnvironment: Equatable {
 
 enum DevBrainProbe {
     static func ping(baseURL: String, timeout: TimeInterval = 2) async -> Bool {
+        await probeBrain(baseURL: baseURL, timeout: timeout)
+    }
+
+    static func probeBrain(baseURL: String, timeout: TimeInterval = 2) async -> Bool {
         let base = DevBrainEndpoint.normalizeBase(baseURL)
         guard !base.isEmpty else { return false }
         let ms = Int64(Date().timeIntervalSince1970 * 1000)
@@ -146,9 +177,10 @@ enum DevBrainProbe {
         request.httpMethod = "GET"
         request.timeoutInterval = timeout
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return false }
-            return (200 ..< 300).contains(http.statusCode)
+            guard (200 ..< 300).contains(http.statusCode) else { return false }
+            return DevBrainPingParser.isBrainResponse(data)
         } catch {
             return false
         }

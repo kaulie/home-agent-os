@@ -23,6 +23,7 @@
 		292D86C975464FF18161FBC5 /* DevConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 476CE6478F574095AD4BFDED /* DevConnectionView.swift */; };
 		406BB7577323427E8D722A94 /* DevKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7A7853072F14483A37647B8 /* DevKeyboard.swift */; };
 		632CB6BA5B6840F686F5C977 /* DevMarkdownParse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FF2AFB102404F8EB4F4123E /* DevMarkdownParse.swift */; };
+		3FB5A96CD9D4416F98E410C4 /* DevBrainLANDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74D11886F5C2480EBDF48B86 /* DevBrainLANDiscovery.swift */; };
 		F787CABA2D814559B7B22CBC /* DevMarkdownReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BA6AFF4DEE04F4695C18094 /* DevMarkdownReader.swift */; };
 		4180003C4552477BA50A62B2 /* DevMarkdownReadingSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD2E43B64F4641DC94D6E638 /* DevMarkdownReadingSettings.swift */; };
 		5452B3C975234B41B0685782 /* DevSelectableText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3510ECDED72F475FA9D1B616 /* DevSelectableText.swift */; };
@@ -46,6 +47,7 @@
 		A095BF4514424D8E8DC01BDC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E0289EE5DA624C87A5F9602D /* Assets.xcassets */; };
 		771FB4FD56D74E59B131D667 /* MarkdownReaderUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0774128A204A4A028582D91A /* MarkdownReaderUITests.swift */; };
 		A1B2C3D4E5F6478990ABCDEF /* HomeAgentDevSmokeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A748901234567 /* HomeAgentDevSmokeUITests.swift */; };
+		C1D2E3F4A5B6478990ABCDEF0 /* DevBrainLANDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E3F4A5B6C7489012345678 /* DevBrainLANDiscoveryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -67,6 +69,7 @@
 		476CE6478F574095AD4BFDED /* DevConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevConnectionView.swift; sourceTree = "<group>"; };
 		F7A7853072F14483A37647B8 /* DevKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevKeyboard.swift; sourceTree = "<group>"; };
 		7FF2AFB102404F8EB4F4123E /* DevMarkdownParse.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevMarkdownParse.swift; sourceTree = "<group>"; };
+		74D11886F5C2480EBDF48B86 /* DevBrainLANDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevBrainLANDiscovery.swift; sourceTree = "<group>"; };
 		5BA6AFF4DEE04F4695C18094 /* DevMarkdownReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevMarkdownReader.swift; sourceTree = "<group>"; };
 		DD2E43B64F4641DC94D6E638 /* DevMarkdownReadingSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevMarkdownReadingSettings.swift; sourceTree = "<group>"; };
 		3510ECDED72F475FA9D1B616 /* DevSelectableText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevSelectableText.swift; sourceTree = "<group>"; };
@@ -92,6 +95,7 @@
 		309D7B45A8414BC29F103AB7 /* HomeAgentDevUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HomeAgentDevUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0774128A204A4A028582D91A /* MarkdownReaderUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownReaderUITests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F6A748901234567 /* HomeAgentDevSmokeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAgentDevSmokeUITests.swift; sourceTree = "<group>"; };
+		D2E3F4A5B6C7489012345678 /* DevBrainLANDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevBrainLANDiscoveryTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -139,6 +143,7 @@
 				3386E805CF024B809BAA4DE9,
 				D7BB3D13C8BA4093B2ED2622,
 				5FD2FEF266EA446589275C1B,
+				74D11886F5C2480EBDF48B86,
 				EDB528F0F11F44FB8D640DF1,
 				476CE6478F574095AD4BFDED,
 				F7A7853072F14483A37647B8,
@@ -174,6 +179,7 @@
 			children = (
 				0774128A204A4A028582D91A /* MarkdownReaderUITests.swift */,
 				B2C3D4E5F6A748901234567 /* HomeAgentDevSmokeUITests.swift */,
+				D2E3F4A5B6C7489012345678 /* DevBrainLANDiscoveryTests.swift */,
 			);
 			path = HomeAgentDevUITests;
 			sourceTree = "<group>";
@@ -296,6 +302,7 @@
 				D9CFA6CEAD064B0298575082 /* DevAttachment.swift in Sources */,
 				5B4F30CADAC140F09508B137 /* DevBrainConnectionUI.swift in Sources */,
 				B2A041751236428E94059AA6 /* DevBrainEndpoint.swift in Sources */,
+				3FB5A96CD9D4416F98E410C4 /* DevBrainLANDiscovery.swift in Sources */,
 				2D01B7D3D18741179C64493F /* DevClient.swift in Sources */,
 				292D86C975464FF18161FBC5 /* DevConnectionView.swift in Sources */,
 				406BB7577323427E8D722A94 /* DevKeyboard.swift in Sources */,
@@ -344,6 +351,7 @@
 			files = (
 				771FB4FD56D74E59B131D667 /* MarkdownReaderUITests.swift in Sources */,
 				A1B2C3D4E5F6478990ABCDEF /* HomeAgentDevSmokeUITests.swift in Sources */,
+				C1D2E3F4A5B6478990ABCDEF0 /* DevBrainLANDiscoveryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -389,6 +397,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -413,6 +422,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -436,6 +446,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -455,6 +466,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;

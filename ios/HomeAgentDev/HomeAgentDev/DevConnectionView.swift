@@ -20,6 +20,46 @@ struct DevConnectionView: View {
 
                         DevPanel {
                             VStack(alignment: .leading, spacing: 12) {
+                                DevTheme.sectionLabel("局域网发现")
+                                Text("在家 Wi‑Fi 且配置的 LAN 地址 ping 失败时，会自动扫描本机网段 :9527 寻找 Brain。")
+                                    .font(.system(size: 12, design: .rounded))
+                                    .foregroundStyle(DevTheme.dim)
+
+                                if store.brainResolveBusy {
+                                    HStack(spacing: 8) {
+                                        ProgressView().tint(DevTheme.sand)
+                                        Text(store.brainEnvironment.lanProbeDetail.isEmpty
+                                            ? "正在解析 Brain…"
+                                            : store.brainEnvironment.lanProbeDetail)
+                                            .font(.system(size: 13, design: .rounded))
+                                            .foregroundStyle(DevTheme.mist)
+                                    }
+                                } else if !store.brainEnvironment.lanProbeDetail.isEmpty {
+                                    Text(store.brainEnvironment.lanProbeDetail)
+                                        .font(.system(size: 13, design: .rounded))
+                                        .foregroundStyle(
+                                            store.brainEnvironment.lanProbeOk == true ? DevTheme.ok : DevTheme.off
+                                        )
+                                }
+
+                                Button {
+                                    Task { await store.rescanLANBrain() }
+                                } label: {
+                                    Text("重新扫描局域网 Brain")
+                                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .background(RoundedRectangle(cornerRadius: 10).fill(DevTheme.chip))
+                                        .foregroundStyle(DevTheme.sand)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(store.brainRouting == .cloud || store.brainResolveBusy)
+                                .accessibilityIdentifier("dev.brain.rescan")
+                            }
+                        }
+
+                        DevPanel {
+                            VStack(alignment: .leading, spacing: 12) {
                                 DevTheme.sectionLabel("地址槽")
                                 Text("顶栏显示的是「当前实际连接」。改连接方式要点「更改连接方式」并确认，不会一碰就切走。")
                                     .font(.system(size: 12, design: .rounded))

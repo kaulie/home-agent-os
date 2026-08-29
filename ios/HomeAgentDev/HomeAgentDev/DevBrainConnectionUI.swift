@@ -116,10 +116,10 @@ struct DevBrainEnvironmentCard: View {
                         : "不在家庭局域网（\(env.pathKind.label)）"
                 )
                 detailRow(label: "局域网 Brain", value: probeLabel(env))
-                if !env.lanProbeDetail.isEmpty, env.lanProbeOk != true {
+                if !env.lanProbeDetail.isEmpty {
                     Text(env.lanProbeDetail)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(DevTheme.off)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(env.lanProbeOk == true ? DevTheme.ok : DevTheme.off)
                 }
 
                 Button {

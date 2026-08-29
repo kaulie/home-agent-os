@@ -116,6 +116,15 @@ final class DevStore: ObservableObject {
     }
 
     func resolveBrainEndpoint() async {
+        await resolveBrainEndpoint(forceDiscovery: false)
+    }
+
+    func rescanLANBrain() async {
+        await resolveBrainEndpoint(forceDiscovery: true)
+        await reloadAllTabs()
+    }
+
+    private func resolveBrainEndpoint(forceDiscovery: Bool) async {
         while brainResolveBusy {
             try? await Task.sleep(nanoseconds: 80_000_000)
         }
@@ -123,7 +132,7 @@ final class DevStore: ObservableObject {
         defer { brainResolveBusy = false }
 
         let routing = brainRouting
-        let lan = DevBrainEndpoint.normalizeBase(lanDraft)
+        var lan = DevBrainEndpoint.normalizeBase(lanDraft)
         let cloud = DevBrainEndpoint.normalizeBase(cloudDraft)
         let looksLAN = brainEnvironment.looksOnHomeLAN
         var probeOk: Bool?
@@ -131,9 +140,55 @@ final class DevStore: ObservableObject {
 
         let shouldProbeLAN = routing != .cloud && (looksLAN || routing == .lan)
         if shouldProbeLAN {
-            let ok = await DevBrainProbe.ping(baseURL: lan)
+            var ok = false
+            if forceDiscovery {
+                probeDetail = "正在扫描局域网 Brain…"
+                brainEnvironment.lanProbeDetail = probeDetail
+                if let discovered = await DevBrainLANDiscovery.discover(
+                    configuredLAN: lan,
+                    lastSuccessHost: DevBrainEndpoint.lastSuccessfulLanHost
+                ) {
+                    lan = discovered
+                    lanDraft = discovered
+                    DevBrainEndpoint.lanBaseURL = discovered
+                    DevBrainEndpoint.rememberSuccessfulLAN(discovered)
+                    ok = true
+                    probeDetail = "已自动发现局域网 Brain → \(discovered)"
+                } else {
+                    ok = await DevBrainProbe.ping(baseURL: lan)
+                    if ok {
+                        DevBrainEndpoint.rememberSuccessfulLAN(lan)
+                        probeDetail = "扫描未发现新地址，当前配置仍可达"
+                    } else {
+                        probeDetail = "扫描完成，未在本机 Wi‑Fi 网段发现 Brain（:9527）。"
+                    }
+                }
+            } else {
+                ok = await DevBrainProbe.ping(baseURL: lan)
+                if ok {
+                    DevBrainEndpoint.rememberSuccessfulLAN(lan)
+                    probeDetail = ""
+                } else if looksLAN || routing == .lan {
+                    probeDetail = "局域网 Brain ping 失败（\(lan)），正在自动扫描…"
+                    brainEnvironment.lanProbeDetail = probeDetail
+                    if let discovered = await DevBrainLANDiscovery.discover(
+                        configuredLAN: lan,
+                        lastSuccessHost: DevBrainEndpoint.lastSuccessfulLanHost
+                    ) {
+                        lan = discovered
+                        lanDraft = discovered
+                        DevBrainEndpoint.lanBaseURL = discovered
+                        DevBrainEndpoint.rememberSuccessfulLAN(discovered)
+                        ok = true
+                        probeDetail = "已自动发现局域网 Brain → \(discovered)"
+                    } else {
+                        probeDetail = "局域网 Brain ping 失败（\(lan)），自动扫描未找到 Brain"
+                    }
+                } else {
+                    probeDetail = "局域网 Brain ping 失败（\(lan)）"
+                }
+            }
             probeOk = ok
-            probeDetail = ok ? "" : "局域网 Brain ping 失败（\(lan)）"
         } else if routing == .cloud {
             probeOk = nil
             probeDetail = "已强制走云 Brain，跳过 LAN 探测"
@@ -155,7 +210,16 @@ final class DevStore: ObservableObject {
         brainEnvironment.lanProbeDetail = probeDetail
         brainEnvironment.mode = useLAN ? .lan : .cloud
         brainEnvironment.activeBaseURL = next
-        loadError = nil
+
+        if routing == .lan, probeOk != true {
+            loadError = probeDetail.isEmpty
+                ? "锁定局域网但 Brain 不可达，请检查 Wi‑Fi 与 Brain 是否运行。"
+                : probeDetail
+        } else if routing == .auto, shouldProbeLAN, probeOk != true, looksLAN {
+            loadError = nil
+        } else {
+            loadError = nil
+        }
     }
 
     private func reloadAllTabs() async {
