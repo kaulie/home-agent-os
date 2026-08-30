@@ -21,6 +21,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from mac_edge.cloud_usage import record
+
 log = logging.getLogger("mac_edge.xiaomi_cloud")
 
 _JSON_PREFIX = "&&&START&&&"
@@ -319,50 +321,51 @@ class XiaomiCloud:
             url, "POST", signed, nonce, payload, self.ssecurity
         )
         http = self._http()
-        try:
-            resp = http.post(
-                url,
-                data=form,
-                headers={
-                    "Accept-Encoding": "identity",
-                    "x-xiaomi-protocal-flag-cli": "PROTOCAL-HTTP2",
-                    "MIOT-ENCRYPT-ALGORITHM": "ENCRYPT-RC4",
-                    "content-type": "application/x-www-form-urlencoded",
-                },
-                cookies={
-                    "userId": str(self.user_id),
-                    "serviceToken": self.service_token,
-                    "yetAnotherServiceToken": self.service_token,
-                    "locale": "zh_CN",
-                    "timezone": "GMT+08:00",
-                    "channel": "MI_APP_STORE",
-                    "sdkVersion": "3.8.6",
-                },
-            )
-        except httpx.RequestError as e:
-            raise XiaomiCloudError(f"米家请求失败：{path}（{e}）。") from e
-        if resp.status_code == 403:
-            self.service_token = None
-            raise XiaomiCloudError("米家请求被拒绝（403）。请检查账号登录状态。")
-        if resp.status_code >= 400:
-            raise XiaomiCloudError(
-                f"米家请求失败：HTTP {resp.status_code} {path}。"
-            )
-        try:
-            decrypted = decrypt_rc4(
-                signed_nonce(self.ssecurity, form["_nonce"]),
-                resp.text,
-            )
-            parsed = json.loads(decrypted.decode("utf-8"))
-        except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as e:
-            raise XiaomiCloudError("米家请求失败：无法解密或解析响应。") from e
-        if not isinstance(parsed, dict):
-            raise XiaomiCloudError("米家请求失败：响应不是对象。")
-        code = parsed.get("code")
-        if code not in (0, "0", None):
-            message = str(parsed.get("message") or parsed.get("result") or code)
-            raise XiaomiCloudError(f"米家接口失败：{message}。")
-        return parsed.get("result")
+        with record("xiaomi.cloud"):
+            try:
+                resp = http.post(
+                    url,
+                    data=form,
+                    headers={
+                        "Accept-Encoding": "identity",
+                        "x-xiaomi-protocal-flag-cli": "PROTOCAL-HTTP2",
+                        "MIOT-ENCRYPT-ALGORITHM": "ENCRYPT-RC4",
+                        "content-type": "application/x-www-form-urlencoded",
+                    },
+                    cookies={
+                        "userId": str(self.user_id),
+                        "serviceToken": self.service_token,
+                        "yetAnotherServiceToken": self.service_token,
+                        "locale": "zh_CN",
+                        "timezone": "GMT+08:00",
+                        "channel": "MI_APP_STORE",
+                        "sdkVersion": "3.8.6",
+                    },
+                )
+            except httpx.RequestError as e:
+                raise XiaomiCloudError(f"米家请求失败：{path}（{e}）。") from e
+            if resp.status_code == 403:
+                self.service_token = None
+                raise XiaomiCloudError("米家请求被拒绝（403）。请检查账号登录状态。")
+            if resp.status_code >= 400:
+                raise XiaomiCloudError(
+                    f"米家请求失败：HTTP {resp.status_code} {path}。"
+                )
+            try:
+                decrypted = decrypt_rc4(
+                    signed_nonce(self.ssecurity, form["_nonce"]),
+                    resp.text,
+                )
+                parsed = json.loads(decrypted.decode("utf-8"))
+            except (ValueError, json.JSONDecodeError, UnicodeDecodeError) as e:
+                raise XiaomiCloudError("米家请求失败：无法解密或解析响应。") from e
+            if not isinstance(parsed, dict):
+                raise XiaomiCloudError("米家请求失败：响应不是对象。")
+            code = parsed.get("code")
+            if code not in (0, "0", None):
+                message = str(parsed.get("message") or parsed.get("result") or code)
+                raise XiaomiCloudError(f"米家接口失败：{message}。")
+            return parsed.get("result")
 
     def list_devices(self) -> list[XiaomiDevice]:
         result = self.request(

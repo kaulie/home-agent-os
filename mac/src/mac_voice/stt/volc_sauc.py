@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from mac_edge.cloud_usage import increment
 from mac_voice.audio.types import AudioUtterance
 from mac_voice.stt.wav_store import SttWavStore
 from mac_voice.vendor.sauc import protocol as sauc
@@ -105,9 +106,14 @@ class VolcengineSaucSTT:
             wav_path, owned = self._wav_store.materialize(utterance)
             config = self._config()
             payload = self._payload(utterance.format.sample_rate)
-            return (
+            text = (
                 await asyncio.wait_for(self._run_sauc(wav_path, config, payload), self._timeout_sec)
             ).strip()
+            increment("volc.stt", True)
+            return text
+        except Exception:
+            increment("volc.stt", False)
+            raise
         finally:
             if wav_path is not None:
                 self._wav_store.release(wav_path, owned=owned)

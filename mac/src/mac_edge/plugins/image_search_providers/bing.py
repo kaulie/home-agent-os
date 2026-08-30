@@ -11,6 +11,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Callable
 
+from mac_edge.cloud_usage import record
 from mac_edge.plugins.image_search_providers import (
     ImageSearchHit,
     ImageSearchProviderError,
@@ -48,36 +49,37 @@ def _http_json(
     timeout_sec: float,
 ) -> dict[str, Any]:
     req = urllib.request.Request(url, headers=headers, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
-            raw = resp.read()
-    except urllib.error.HTTPError as e:
-        body = b""
+    with record("bing.images"):
         try:
-            body = e.read() if e.fp else b""
-        except Exception:
-            pass
-        text = body.decode("utf-8", errors="replace")[:240]
-        if e.code in (401, 403):
-            raise ImageSearchProviderError(
-                "必应搜图密钥无效或无权访问，请检查 MAC_EDGE_BING_SEARCH_KEY"
-            ) from e
-        if e.code == 429:
-            raise ImageSearchProviderError(
-                "必应搜图调用过于频繁或免费额度用尽，请稍后再试"
-            ) from e
-        raise ImageSearchProviderError(f"搜图失败 HTTP {e.code}：{text}") from e
-    except urllib.error.URLError as e:
-        raise ImageSearchProviderError(f"搜图网络异常：{e.reason}") from e
-    except TimeoutError as e:
-        raise ImageSearchProviderError("搜图超时") from e
-    try:
-        data = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise ImageSearchProviderError("搜图返回不是合法 JSON") from e
-    if not isinstance(data, dict):
-        raise ImageSearchProviderError("搜图返回 JSON 必须是对象")
-    return data
+            with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                raw = resp.read()
+        except urllib.error.HTTPError as e:
+            body = b""
+            try:
+                body = e.read() if e.fp else b""
+            except Exception:
+                pass
+            text = body.decode("utf-8", errors="replace")[:240]
+            if e.code in (401, 403):
+                raise ImageSearchProviderError(
+                    "必应搜图密钥无效或无权访问，请检查 MAC_EDGE_BING_SEARCH_KEY"
+                ) from e
+            if e.code == 429:
+                raise ImageSearchProviderError(
+                    "必应搜图调用过于频繁或免费额度用尽，请稍后再试"
+                ) from e
+            raise ImageSearchProviderError(f"搜图失败 HTTP {e.code}：{text}") from e
+        except urllib.error.URLError as e:
+            raise ImageSearchProviderError(f"搜图网络异常：{e.reason}") from e
+        except TimeoutError as e:
+            raise ImageSearchProviderError("搜图超时") from e
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            raise ImageSearchProviderError("搜图返回不是合法 JSON") from e
+        if not isinstance(data, dict):
+            raise ImageSearchProviderError("搜图返回 JSON 必须是对象")
+        return data
 
 
 def _hits_from_bing(data: dict[str, Any]) -> list[ImageSearchHit]:

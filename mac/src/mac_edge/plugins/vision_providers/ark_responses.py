@@ -16,6 +16,7 @@ import logging
 import time
 from typing import Any
 
+from mac_edge.cloud_usage import record
 from mac_edge.plugins.vision_providers import VisionProviderError
 from mac_edge.plugins.vision_providers.config import (
     vision_api_base,
@@ -227,62 +228,63 @@ class ArkResponsesProvider:
         response = None
         used_text_format = "json_schema"
         schema_fmt = text_format if text_format is not None else TEXT_FORMAT_JSON_SCHEMA
-        for text_fmt, label in (
-            (schema_fmt, "json_schema"),
-            (TEXT_FORMAT_JSON_OBJECT, "json_object"),
-        ):
-            try:
-                response = client.responses.create(
-                    model=model,
-                    input=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "input_image", "image_url": image_ref},
-                                {"type": "input_text", "text": prompt},
-                            ],
-                        }
-                    ],
-                    text=text_fmt,
-                )
-                used_text_format = label
-                last_err = None
-                break
-            except Exception as e:
-                last_err = e
-                msg = str(e).lower()
-                # Only fall through when schema param unsupported; other errors fail loud.
-                if label == "json_schema" and (
-                    "unknown field" in msg and "json_schema" in msg
-                    or "unknown field \"schema\"" in msg
-                    or "unknown field \"name\"" in msg
-                ):
-                    log.warning(
-                        "ark text.format json_schema unsupported, retry json_object: %s",
-                        e,
+        with record("ark.vision"):
+            for text_fmt, label in (
+                (schema_fmt, "json_schema"),
+                (TEXT_FORMAT_JSON_OBJECT, "json_object"),
+            ):
+                try:
+                    response = client.responses.create(
+                        model=model,
+                        input=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "input_image", "image_url": image_ref},
+                                    {"type": "input_text", "text": prompt},
+                                ],
+                            }
+                        ],
+                        text=text_fmt,
                     )
-                    continue
+                    used_text_format = label
+                    last_err = None
+                    break
+                except Exception as e:
+                    last_err = e
+                    msg = str(e).lower()
+                    # Only fall through when schema param unsupported; other errors fail loud.
+                    if label == "json_schema" and (
+                        "unknown field" in msg and "json_schema" in msg
+                        or "unknown field \"schema\"" in msg
+                        or "unknown field \"name\"" in msg
+                    ):
+                        log.warning(
+                            "ark text.format json_schema unsupported, retry json_object: %s",
+                            e,
+                        )
+                        continue
+                    api_ms = int((time.perf_counter() - t_api0) * 1000)
+                    log.warning(
+                        "ark responses.create failed after api_ms=%s: %s", api_ms, e
+                    )
+                    raise VisionProviderError(f"ark responses.create failed: {e}") from e
+            if response is None:
                 api_ms = int((time.perf_counter() - t_api0) * 1000)
                 log.warning(
-                    "ark responses.create failed after api_ms=%s: %s", api_ms, e
+                    "ark responses.create failed after api_ms=%s: %s", api_ms, last_err
                 )
-                raise VisionProviderError(f"ark responses.create failed: {e}") from e
-        if response is None:
+                raise VisionProviderError(
+                    f"ark responses.create failed: {last_err}"
+                ) from last_err
             api_ms = int((time.perf_counter() - t_api0) * 1000)
-            log.warning(
-                "ark responses.create failed after api_ms=%s: %s", api_ms, last_err
-            )
-            raise VisionProviderError(
-                f"ark responses.create failed: {last_err}"
-            ) from last_err
-        api_ms = int((time.perf_counter() - t_api0) * 1000)
 
-        text = _extract_output_text(response)
-        if not text:
-            raise VisionProviderError(
-                "ark responses empty output_text "
-                f"(type={type(response).__name__})"
-            )
+            text = _extract_output_text(response)
+            if not text:
+                raise VisionProviderError(
+                    "ark responses empty output_text "
+                    f"(type={type(response).__name__})"
+                )
         log.info(
             "ark responses.create ok model=%s text_format=%s api_ms=%s download_ms=%s "
             "prepare_ms=%s bytes_in=%s bytes_out=%s",

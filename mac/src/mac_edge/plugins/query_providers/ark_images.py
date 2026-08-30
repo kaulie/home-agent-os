@@ -8,6 +8,7 @@ import time
 from typing import Any
 from urllib.request import Request, urlopen
 
+from mac_edge.cloud_usage import record
 from mac_edge.plugins.query_providers import QueryProviderError
 from mac_edge.plugins.query_providers.ark_sdk import make_ark_client
 from mac_edge.plugins.query_providers.config import (
@@ -71,31 +72,32 @@ def generate_image(*, prompt: str, timeout_sec: float = 90.0) -> bytes:
 
     log.info("ark images.generate model=%s prompt=%s", model, text[:80])
     t0 = time.perf_counter()
-    try:
+    with record("ark.query"):
         try:
-            response = client.images.generate(
-                model=model,
-                prompt=text,
-                sequential_image_generation="disabled",
-                response_format="url",
-                size="2K",
-                stream=False,
-                watermark=True,
-            )
-        except TypeError:
-            response = client.images.generate(
-                model=model,
-                prompt=text,
-                size="2K",
-                response_format="url",
-                watermark=True,
-            )
-    except Exception as e:
+            try:
+                response = client.images.generate(
+                    model=model,
+                    prompt=text,
+                    sequential_image_generation="disabled",
+                    response_format="url",
+                    size="2K",
+                    stream=False,
+                    watermark=True,
+                )
+            except TypeError:
+                response = client.images.generate(
+                    model=model,
+                    prompt=text,
+                    size="2K",
+                    response_format="url",
+                    watermark=True,
+                )
+        except Exception as e:
+            api_ms = int((time.perf_counter() - t0) * 1000)
+            log.warning("ark images.generate failed after api_ms=%s: %s", api_ms, e)
+            raise QueryProviderError(f"ark images.generate failed: {e}") from e
         api_ms = int((time.perf_counter() - t0) * 1000)
-        log.warning("ark images.generate failed after api_ms=%s: %s", api_ms, e)
-        raise QueryProviderError(f"ark images.generate failed: {e}") from e
-    api_ms = int((time.perf_counter() - t0) * 1000)
-    image_bytes = _first_image_bytes(response, timeout_sec=timeout_sec)
+        image_bytes = _first_image_bytes(response, timeout_sec=timeout_sec)
     log.info(
         "ark images.generate ok model=%s api_ms=%s bytes=%s",
         model,

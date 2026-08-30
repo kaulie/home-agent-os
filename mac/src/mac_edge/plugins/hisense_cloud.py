@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+from mac_edge.cloud_usage import record
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 log = logging.getLogger("mac_edge.hisense_cloud")
@@ -239,14 +241,15 @@ class HisenseHttp:
         headers: dict[str, str] | None = None,
         params: dict[str, str] | None = None,
     ) -> Any:
-        try:
-            resp = self._client.get(url, headers=headers, params=params)
-            resp.raise_for_status()
-            return resp.json()
-        except HisenseCloudError:
-            raise
-        except Exception as e:
-            raise HisenseCloudError(f"海信云端请求失败：{e}") from e
+        with record("hisense.cloud"):
+            try:
+                resp = self._client.get(url, headers=headers, params=params)
+                resp.raise_for_status()
+                return resp.json()
+            except HisenseCloudError:
+                raise
+            except Exception as e:
+                raise HisenseCloudError(f"海信云端请求失败：{e}") from e
 
 
 class HisenseSession:

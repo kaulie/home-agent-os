@@ -6,6 +6,7 @@ import logging
 import time
 from typing import Any
 
+from mac_edge.cloud_usage import record
 from mac_edge.plugins.query_providers import QueryProviderError
 from mac_edge.plugins.query_providers.ark_sdk import make_ark_client
 from mac_edge.plugins.query_providers.config import (
@@ -179,57 +180,58 @@ class ArkQueryProvider:
         last_err: Exception | None = None
         response = None
         used_text_format = "json_schema"
-        for text_fmt, label in formats:
-            try:
-                response = client.responses.create(
-                    model=model,
-                    input=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "input_text", "text": prompt},
-                            ],
-                        }
-                    ],
-                    text=text_fmt,
-                )
-                used_text_format = label
-                last_err = None
-                break
-            except Exception as e:
-                last_err = e
-                msg = str(e).lower()
-                if label == "json_schema" and (
-                    "unknown field" in msg and "json_schema" in msg
-                    or 'unknown field "schema"' in msg
-                    or 'unknown field "name"' in msg
-                ):
+        with record("ark.query"):
+            for text_fmt, label in formats:
+                try:
+                    response = client.responses.create(
+                        model=model,
+                        input=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "input_text", "text": prompt},
+                                ],
+                            }
+                        ],
+                        text=text_fmt,
+                    )
+                    used_text_format = label
+                    last_err = None
+                    break
+                except Exception as e:
+                    last_err = e
+                    msg = str(e).lower()
+                    if label == "json_schema" and (
+                        "unknown field" in msg and "json_schema" in msg
+                        or 'unknown field "schema"' in msg
+                        or 'unknown field "name"' in msg
+                    ):
+                        log.warning(
+                            "ark text.format json_schema unsupported, retry json_object: %s",
+                            e,
+                        )
+                        continue
+                    api_ms = int((time.perf_counter() - t_api0) * 1000)
                     log.warning(
-                        "ark text.format json_schema unsupported, retry json_object: %s",
+                        "ark query responses.create failed after api_ms=%s: %s",
+                        api_ms,
                         e,
                     )
-                    continue
+                    raise QueryProviderError(
+                        f"ark responses.create failed: {e}"
+                    ) from e
+            if response is None:
                 api_ms = int((time.perf_counter() - t_api0) * 1000)
-                log.warning(
-                    "ark query responses.create failed after api_ms=%s: %s",
-                    api_ms,
-                    e,
-                )
                 raise QueryProviderError(
-                    f"ark responses.create failed: {e}"
-                ) from e
-        if response is None:
-            api_ms = int((time.perf_counter() - t_api0) * 1000)
-            raise QueryProviderError(
-                f"ark responses.create failed: {last_err}"
-            ) from last_err
+                    f"ark responses.create failed: {last_err}"
+                ) from last_err
 
-        api_ms = int((time.perf_counter() - t_api0) * 1000)
-        text = _extract_output_text(response)
-        if not text:
-            raise QueryProviderError(
-                f"ark responses empty output_text (type={type(response).__name__})"
-            )
+            api_ms = int((time.perf_counter() - t_api0) * 1000)
+            text = _extract_output_text(response)
+            if not text:
+                raise QueryProviderError(
+                    f"ark responses empty output_text (type={type(response).__name__})"
+                )
         log.info(
             "ark query complete ok model=%s text_format=%s api_ms=%s",
             model,
