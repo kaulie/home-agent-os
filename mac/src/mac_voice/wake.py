@@ -402,3 +402,98 @@ class WakeGate:
             return None
         self._reset()
         return leftover
+
+
+WAKE_SCOPES = frozenset({"participant", "global"})
+DEFAULT_WAKE_SCOPE = "participant"
+DEFAULT_GATE_TTL_S = 30 * 60.0
+
+
+def wake_pool_key(
+    *,
+    scope: str = DEFAULT_WAKE_SCOPE,
+    participant_id: str = "",
+    ingress: str = "",
+) -> str:
+    """Stable key for WakeGate isolation.
+
+    participant (default): prefer input_participant_id, else ingress, else unknown.
+    global: single shared gate (legacy cross-mic ride-along).
+    """
+    mode = (scope or DEFAULT_WAKE_SCOPE).strip().lower()
+    if mode == "global":
+        return "_global"
+    pid = (participant_id or "").strip()
+    if pid:
+        return f"pid:{pid}"
+    ing = (ingress or "").strip()
+    if ing:
+        return f"ingress:{ing}"
+    return "unknown"
+
+
+class WakeGatePool:
+    """One WakeGate per key so USB and Home Mic do not share the command window."""
+
+    def __init__(
+        self,
+        *,
+        scope: str = DEFAULT_WAKE_SCOPE,
+        ttl_s: float = DEFAULT_GATE_TTL_S,
+        **gate_kwargs: object,
+    ) -> None:
+        mode = (scope or DEFAULT_WAKE_SCOPE).strip().lower()
+        if mode not in WAKE_SCOPES:
+            mode = DEFAULT_WAKE_SCOPE
+        self.scope = mode
+        self.ttl_s = max(60.0, float(ttl_s))
+        self._gate_kwargs = gate_kwargs
+        self._gates: dict[str, WakeGate] = {}
+        self._last_feed: dict[str, float] = {}
+
+    def key_for(self, *, participant_id: str = "", ingress: str = "") -> str:
+        return wake_pool_key(
+            scope=self.scope,
+            participant_id=participant_id,
+            ingress=ingress,
+        )
+
+    def get(self, *, participant_id: str = "", ingress: str = "") -> WakeGate:
+        key = self.key_for(participant_id=participant_id, ingress=ingress)
+        gate = self._gates.get(key)
+        if gate is None:
+            gate = WakeGate(**self._gate_kwargs)  # type: ignore[arg-type]
+            self._gates[key] = gate
+        self._last_feed[key] = time.monotonic()
+        return gate
+
+    def expire_all(
+        self,
+        now: float | None = None,
+        *,
+        hold: bool = False,
+    ) -> list[tuple[str, str]]:
+        """Expire every gate. ``hold`` currently applies to all (global mic activity)."""
+        t = time.monotonic() if now is None else now
+        out: list[tuple[str, str]] = []
+        for key, gate in list(self._gates.items()):
+            reason = gate.expire_if_needed(now=t, hold=hold)
+            if reason:
+                out.append((key, reason))
+        self._gc(now=t)
+        return out
+
+    def _gc(self, *, now: float) -> None:
+        dead: list[str] = []
+        for key, gate in self._gates.items():
+            if gate.state != "idle":
+                continue
+            last = self._last_feed.get(key, 0.0)
+            if now - last >= self.ttl_s:
+                dead.append(key)
+        for key in dead:
+            self._gates.pop(key, None)
+            self._last_feed.pop(key, None)
+
+    def __len__(self) -> int:
+        return len(self._gates)

@@ -12,6 +12,7 @@ from mac_voice.listen import _CaptureActivity, _gate_transcript
 from mac_voice.intent_poster import wake_echo_is_done
 from mac_voice.wake import (
     WakeGate,
+    WakeGatePool,
     command_after_ack_prefix,
     contains_ack_echo,
     extract_wake,
@@ -19,6 +20,7 @@ from mac_voice.wake import (
     looks_like_light_command_echo,
     normalize,
     strip_ack_echo,
+    wake_pool_key,
 )
 
 
@@ -519,6 +521,73 @@ class WakeGateTests(unittest.TestCase):
         )
 
 
+class WakeGatePoolTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.pool = WakeGatePool(scope="participant", command_window_ms=3000)
+
+    def _arm(self, gate: WakeGate, t: float = 1.0) -> None:
+        self.assertEqual(gate.state, "acking")
+        gate.arm_after_ack(now=t)
+        self.assertEqual(gate.state, "listening")
+
+    def test_key_prefers_participant(self) -> None:
+        self.assertEqual(
+            wake_pool_key(participant_id="phone-a", ingress="phone_hap1"),
+            "pid:phone-a",
+        )
+        self.assertEqual(
+            wake_pool_key(participant_id="", ingress="mac_usb"),
+            "ingress:mac_usb",
+        )
+        self.assertEqual(wake_pool_key(scope="global"), "_global")
+
+    def test_home_mic_cannot_ride_usb_window(self) -> None:
+        usb = self.pool.get(participant_id="mac-1", ingress="mac_usb")
+        phone = self.pool.get(participant_id="iphone-1", ingress="phone_hap1")
+        self.assertIsNot(usb, phone)
+        self.assertIsNone(usb.feed("面条面条", now=0.0, speech_start=0.0, speech_end=1.2))
+        self._arm(usb, 1.5)
+        # Phone speaks command inside USB's 5s window without waking.
+        self.assertIsNone(
+            phone.feed("开灯", now=2.0, speech_start=2.0, speech_end=2.4)
+        )
+        self.assertEqual(phone.state, "idle")
+        self.assertEqual(
+            usb.feed("开灯", now=2.0, speech_start=2.0, speech_end=2.4),
+            "开灯",
+        )
+
+    def test_phone_own_wake_then_command(self) -> None:
+        phone = self.pool.get(participant_id="iphone-1", ingress="phone_hap1")
+        self.assertIsNone(phone.feed("面条面条", now=0.0, speech_start=0.0, speech_end=1.2))
+        self._arm(phone, 1.5)
+        self.assertEqual(
+            phone.feed("几点了", now=2.0, speech_start=2.0, speech_end=2.5),
+            "几点了",
+        )
+
+    def test_global_scope_shares_window(self) -> None:
+        pool = WakeGatePool(scope="global", command_window_ms=3000)
+        a = pool.get(participant_id="mac-1", ingress="mac_usb")
+        b = pool.get(participant_id="iphone-1", ingress="phone_hap1")
+        self.assertIs(a, b)
+        self.assertIsNone(a.feed("面条面条", now=0.0, speech_start=0.0, speech_end=1.2))
+        self._arm(a, 1.5)
+        self.assertEqual(
+            b.feed("开灯", now=2.0, speech_start=2.0, speech_end=2.4),
+            "开灯",
+        )
+
+    def test_empty_participant_falls_back_to_ingress(self) -> None:
+        usb = self.pool.get(participant_id="", ingress="mac_usb")
+        phone = self.pool.get(participant_id="", ingress="phone_hap1")
+        self.assertIsNot(usb, phone)
+        self.assertEqual(
+            self.pool.key_for(participant_id="", ingress="mac_usb"),
+            "ingress:mac_usb",
+        )
+
+
 class ConfigDefaultTests(unittest.TestCase):
     def test_default_listen_mode_is_wake_word(self) -> None:
         from mac_voice.config import load_config
@@ -533,6 +602,7 @@ class ConfigDefaultTests(unittest.TestCase):
         self.assertEqual(cfg.wake_ack, "我在呢")
         self.assertEqual(cfg.command_window_ms, 5000)
         self.assertEqual(cfg.double_wake_ms, 1100)
+        self.assertEqual(cfg.wake_scope, "participant")
 
     def test_load_config_fetches_wake_ack_from_brain_when_env_unset(self) -> None:
         from mac_voice.config import load_config

@@ -22,7 +22,7 @@ from mac_voice.edge_id import resolve_parent_edge_id
 from mac_voice.mic_lock import acquire_listen_lock
 from mac_voice.pipeline import handle_transcript, handle_wake
 from mac_voice.stt.base import SpeechToText
-from mac_voice.wake import WakeGate
+from mac_voice.wake import WakeGate, WakeGatePool
 
 log = logging.getLogger("mac_voice.listen")
 
@@ -33,6 +33,8 @@ _STALE_SEC = 2.5
 # still waiting to cut the command utterance.
 _HOLD_AFTER_HIGH_S = 0.75
 _HOLD_AFTER_SILENCE_PAD_S = 0.35
+# Debounce shared-speaker 「又咋了」 when two routes wake nearly together.
+_ACK_SAY_DEBOUNCE_S = 1.5
 
 
 def _utterance_duration_ms(utt: AudioUtterance) -> int:
@@ -332,15 +334,23 @@ async def _ack_wake(
     *,
     ingress: str = "",
     participant_id: str = "",
+    say: bool = True,
 ) -> None:
     try:
-        await asyncio.to_thread(
-            handle_wake,
-            cfg,
-            post=post_intent,
-            ingress=ingress,
-            participant_id=participant_id,
-        )
+        if say:
+            await asyncio.to_thread(
+                handle_wake,
+                cfg,
+                post=post_intent,
+                ingress=ingress,
+                participant_id=participant_id,
+            )
+        else:
+            log.info(
+                "wake ack debounced (speaker shared) ingress=%s participant=%s",
+                ingress or "-",
+                participant_id or "-",
+            )
     except Exception:
         log.exception("wake ack local echo failed")
     gate.arm_after_ack()
@@ -414,9 +424,10 @@ async def _run_live_locked(
     device: int | str | None,
     post_intent: bool,
 ) -> None:
-    gate: WakeGate | None = None
+    pool: WakeGatePool | None = None
     if cfg.listen_mode == "wake_word":
-        gate = WakeGate(
+        pool = WakeGatePool(
+            scope=getattr(cfg, "wake_scope", "participant") or "participant",
             word=cfg.wake_word,
             repeat=cfg.wake_repeat,
             aliases=cfg.wake_aliases,
@@ -469,12 +480,13 @@ async def _run_live_locked(
                 cfg.pickup_ingest_port,
             )
             ingest = None
-    if gate is not None:
+    if pool is not None:
         log.info(
-            "live listen mode=%s wake=%r x%d window_ms=%s device=%s energy>=%s silence_ms=%s home_mic=%s (Ctrl+C to stop)",
+            "live listen mode=%s wake=%r x%d scope=%s window_ms=%s device=%s energy>=%s silence_ms=%s home_mic=%s (Ctrl+C to stop)",
             cfg.listen_mode,
             cfg.wake_word,
             cfg.wake_repeat,
+            pool.scope,
             cfg.command_window_ms,
             device if device is not None else cfg.input_device,
             cfg.energy_threshold,
@@ -493,24 +505,26 @@ async def _run_live_locked(
     thread.start()
     if pickup_thread is not None:
         pickup_thread.start()
-    wake_task: asyncio.Task[None] | None = None
+    wake_tasks: dict[str, asyncio.Task[None]] = {}
+    last_ack_say_at = 0.0
     try:
         while True:
             try:
                 utt = await asyncio.to_thread(utt_q.get, True, 0.4)
             except queue.Empty:
-                if gate is not None:
-                    reason = gate.expire_if_needed(
+                if pool is not None:
+                    expired = pool.expire_all(
                         hold=activity.should_hold(
                             time.monotonic(),
                             queued=utt_q.qsize(),
                             silence_s=cfg.silence_ms / 1000.0,
                         )
                     )
-                    if reason:
+                    for key, reason in expired:
                         log.info(
-                            "wake %s — no command utterance in window_ms=%s",
+                            "wake %s key=%s — no command utterance in window_ms=%s",
                             reason,
+                            key,
                             cfg.command_window_ms,
                         )
                 continue
@@ -528,18 +542,30 @@ async def _run_live_locked(
                     len(utt.ensure_pcm()),
                 )
                 continue
+            gate = (
+                pool.get(participant_id=input_pid, ingress=utt.ingress or "")
+                if pool is not None
+                else None
+            )
+            gate_key = (
+                pool.key_for(participant_id=input_pid, ingress=utt.ingress or "")
+                if pool is not None
+                else ""
+            )
             log.info(
-                "STT start input=%s ingress=%s bytes=%d",
+                "STT start input=%s ingress=%s gate=%s bytes=%d",
                 input_pid or "-",
                 ingress,
+                gate_key or "-",
                 len(utt.ensure_pcm()),
             )
             if should_skip_music_idle_stt(cfg, gate, utt):
                 duration_ms = _utterance_duration_ms(utt)
                 log.info(
-                    "skip STT music_idle mode=%s duration_ms=%s",
+                    "skip STT music_idle mode=%s duration_ms=%s gate=%s",
                     cfg.music_idle_stt,
                     duration_ms,
+                    gate_key or "-",
                 )
                 continue
             try:
@@ -556,10 +582,11 @@ async def _run_live_locked(
                 log.error("STT failed input=%s ingress=%s: %s", input_pid or "-", ingress, e)
                 continue
             log.info(
-                "STT text=%r input=%s ingress=%s",
+                "STT text=%r input=%s ingress=%s gate=%s",
                 text,
                 input_pid or "-",
                 ingress,
+                gate_key or "-",
             )
             command = _gate_transcript(
                 gate,
@@ -568,15 +595,20 @@ async def _run_live_locked(
                 speech_end=utt.speech_end,
             )
             if gate is not None and gate.consume_ack():
-                if wake_task is not None and not wake_task.done():
-                    wake_task.cancel()
-                wake_task = asyncio.create_task(
+                say = (now - last_ack_say_at) >= _ACK_SAY_DEBOUNCE_S
+                if say:
+                    last_ack_say_at = now
+                prev = wake_tasks.get(gate_key)
+                if prev is not None and not prev.done():
+                    prev.cancel()
+                wake_tasks[gate_key] = asyncio.create_task(
                     _ack_wake(
                         cfg,
                         gate,
                         post_intent,
                         ingress=utt.ingress or "",
                         participant_id=input_pid,
+                        say=say,
                     )
                 )
             if command is None:
@@ -589,8 +621,9 @@ async def _run_live_locked(
                 ingress=utt.ingress,
             )
     finally:
-        if wake_task is not None and not wake_task.done():
-            wake_task.cancel()
+        for task in wake_tasks.values():
+            if not task.done():
+                task.cancel()
         stop.set()
         if ingest is not None:
             ingest.stop()

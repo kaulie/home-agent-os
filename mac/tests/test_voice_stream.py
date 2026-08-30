@@ -57,6 +57,7 @@ def _cfg(**kwargs) -> VoiceConfig:
         stt_wav_max_mb=200.0,
         music_idle_stt="skip_long",
         music_idle_stt_max_ms=2500,
+        wake_scope="participant",
     )
     base.update(kwargs)
     return VoiceConfig(**base)

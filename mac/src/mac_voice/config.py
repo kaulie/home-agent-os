@@ -47,6 +47,8 @@ def _env(name: str, default: str = "") -> str:
 
 
 LISTEN_MODES = frozenset({"always_on", "wait_command", "wake_word"})
+WAKE_SCOPES = frozenset({"participant", "global"})
+DEFAULT_WAKE_SCOPE = "participant"
 MUSIC_IDLE_STT_MODES = frozenset({"all", "skip_long", "none"})
 DEFAULT_MUSIC_IDLE_STT = "skip_long"
 DEFAULT_MUSIC_IDLE_STT_MAX_MS = 2500
@@ -93,6 +95,7 @@ class VoiceConfig:
     stt_wav_max_mb: float
     music_idle_stt: str
     music_idle_stt_max_ms: int
+    wake_scope: str
 
 
 def _parse_device(raw: str) -> int | str | None:
@@ -296,4 +299,12 @@ def load_config() -> VoiceConfig:
             lo=200,
             hi=60_000,
         ),
+        wake_scope=_parse_wake_scope(_env("MAC_VOICE_WAKE_SCOPE")),
     )
+
+
+def _parse_wake_scope(raw: str) -> str:
+    mode = (raw or DEFAULT_WAKE_SCOPE).strip().lower() or DEFAULT_WAKE_SCOPE
+    if mode not in WAKE_SCOPES:
+        return DEFAULT_WAKE_SCOPE
+    return mode
