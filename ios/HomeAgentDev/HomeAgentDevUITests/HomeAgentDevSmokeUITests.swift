@@ -13,15 +13,8 @@ final class HomeAgentDevSmokeUITests: XCTestCase {
     }
 
     private func openDocsTab(in app: XCUIApplication) {
-        if app.tabBars.buttons["文档"].waitForExistence(timeout: 2) {
-            app.tabBars.buttons["文档"].tap()
-            return
-        }
-        let more = app.tabBars.buttons["More"]
-        XCTAssertTrue(more.waitForExistence(timeout: 3), "Docs tab not visible and More overflow missing")
-        more.tap()
-        let docs = app.staticTexts["文档"].firstMatch
-        XCTAssertTrue(docs.waitForExistence(timeout: 3), "Docs entry missing in More menu")
-        docs.tap()
+        let docsTab = app.tabBars.buttons["文档"]
+        XCTAssertTrue(docsTab.waitForExistence(timeout: 5), "Docs tab should be on main tab bar")
+        docsTab.tap()
     }
 }

@@ -9,6 +9,15 @@ final class MarkdownReaderUITests: XCTestCase {
         app.launch()
     }
 
+    func testDocsTabOnMainBarNotOverflow() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(
+            app.tabBars.buttons["文档"].waitForExistence(timeout: 5),
+            "Docs tab should be on main tab bar (Issue/Chat/文档) per 95f5423"
+        )
+    }
+
     func testDocsTabOpenScrollAndReaderChrome() throws {
         openDocsTab()
 
@@ -69,15 +78,25 @@ final class MarkdownReaderUITests: XCTestCase {
     func testFontScalePersistsViaAppStorage() throws {
         openPresentationCleanupDoc()
 
+        let smaller = app.buttons["dev.markdown.font.smaller"]
         let larger = app.buttons["dev.markdown.font.larger"]
         let label = app.staticTexts["dev.markdown.font.label"]
         XCTAssertTrue(larger.waitForExistence(timeout: 8))
         XCTAssertTrue(label.waitForExistence(timeout: 3))
+
+        // Drain persisted scale to minimum so A+ steps are observable.
+        var guardTaps = 0
+        while smaller.isEnabled, guardTaps < 20 {
+            smaller.tap()
+            guardTaps += 1
+        }
         let before = label.label
 
         for _ in 0..<3 { larger.tap() }
         let scaled = label.label
         XCTAssertNotEqual(before, scaled, "Font scale label should change after A+")
+        XCTAssertTrue(scaled.contains("%"), "Font label should show percent (e.g. 大 · 112%)")
+        XCTAssertTrue(scaled.contains("·"), "Font label should show tier · percent")
 
         app.terminate()
         app.launch()
@@ -113,25 +132,8 @@ final class MarkdownReaderUITests: XCTestCase {
 
     private func openDocsTab() {
         let docsTab = app.tabBars.buttons["文档"]
-        if docsTab.waitForExistence(timeout: 2) {
-            docsTab.tap()
-            return
-        }
-        let more = app.tabBars.buttons["More"]
-        if more.waitForExistence(timeout: 3) {
-            more.tap()
-            let docsText = app.staticTexts["文档"].firstMatch
-            if docsText.waitForExistence(timeout: 3) {
-                docsText.tap()
-                return
-            }
-            let docsCell = app.cells.containing(.staticText, identifier: "文档").firstMatch
-            if docsCell.waitForExistence(timeout: 2) {
-                docsCell.tap()
-                return
-            }
-        }
-        XCTFail("Cannot find Docs tab (tab bar or More overflow)")
+        XCTAssertTrue(docsTab.waitForExistence(timeout: 5), "Docs tab should be on main tab bar (95f5423)")
+        docsTab.tap()
     }
 
     private func openPresentationCleanupDoc() {

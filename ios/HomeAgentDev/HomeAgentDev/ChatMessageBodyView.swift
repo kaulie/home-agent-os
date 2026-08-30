@@ -4,11 +4,19 @@ struct ChatMessageBodyView: View {
     let bodyText: String
     let textColor: Color
     let linkColor: Color
+    var mentionColor: Color? = nil
     var allowsTextSelection = false
     var onOpenDoc: (String) -> Void
 
     var body: some View {
-        let text = Text(ChatDocReference.attributedBody(bodyText, textColor: textColor, linkColor: linkColor))
+        let text = Text(
+            ChatDocReference.attributedBody(
+                bodyText,
+                textColor: textColor,
+                linkColor: linkColor,
+                mentionColor: mentionColor ?? linkColor
+            )
+        )
             .font(.system(size: 15, design: .rounded))
             .environment(\.openURL, OpenURLAction { url in
                 if let path = ChatDocReference.path(from: url) {

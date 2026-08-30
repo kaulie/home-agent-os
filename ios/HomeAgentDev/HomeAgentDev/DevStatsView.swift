@@ -128,7 +128,7 @@ struct DevStatsView: View {
                         }
                     }
                 }
-                Text("云调用从本 Brain 实例的埋点汇总；与 Cursor token 分开。")
+                Text("云调用从本 Brain 实例的埋点汇总；与 Cursor token 分开。火山语音识别来自 Mac STT，本机 say / 手机 AVSpeech 不算云调用。")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(DevTheme.dim)
             }

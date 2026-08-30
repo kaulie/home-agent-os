@@ -111,6 +111,8 @@ struct DevAttachmentComposer: View {
             .accessibilityIdentifier("dev.task.add-image")
             .onChange(of: pickerItems) { items in
                 guard !items.isEmpty else { return }
+                // Dismiss keyboard so the photo sheet is not fighting focus.
+                DevKeyboard.dismiss()
                 Task { await importPickerItems(items) }
             }
         }
@@ -120,16 +122,28 @@ struct DevAttachmentComposer: View {
     private func importPickerItems(_ items: [PhotosPickerItem]) async {
         var imported: [PendingDevAttachment] = []
         for item in items {
-            guard let data = try? await item.loadTransferable(type: Data.self),
-                  let image = UIImage(data: data) else {
-                continue
+            if let attachment = await Self.loadPendingImage(from: item) {
+                imported.append(attachment)
             }
-            imported.append(.image(image))
         }
         if !imported.isEmpty {
             pending.append(contentsOf: imported)
         }
         pickerItems = []
+    }
+
+    private static func loadPendingImage(from item: PhotosPickerItem) async -> PendingDevAttachment? {
+        if let data = try? await item.loadTransferable(type: Data.self),
+           let image = UIImage(data: data) {
+            return .image(image)
+        }
+        // Some library items only expose a file URL (e.g. HEIC via temporary file).
+        if let url = try? await item.loadTransferable(type: URL.self),
+           let data = try? Data(contentsOf: url),
+           let image = UIImage(data: data) {
+            return .image(image, filename: url.lastPathComponent)
+        }
+        return nil
     }
 }
 

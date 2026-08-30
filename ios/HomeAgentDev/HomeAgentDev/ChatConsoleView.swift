@@ -239,6 +239,9 @@ struct ChatConsoleView: View {
                             bodyText: msg.body,
                             textColor: msg.isFromBoss ? DevTheme.ink : DevTheme.mist,
                             linkColor: msg.isFromBoss ? DevTheme.ink.opacity(0.85) : DevTheme.sand,
+                            mentionColor: msg.isFromBoss
+                                ? Color(red: 0.45, green: 0.22, blue: 0.05)
+                                : DevTheme.sand,
                             allowsTextSelection: false
                         ) { path in
                             inlineDocPath = path

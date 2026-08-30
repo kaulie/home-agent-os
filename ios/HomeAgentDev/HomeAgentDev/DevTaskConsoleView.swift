@@ -195,11 +195,6 @@ struct DevNewTaskSheet: View {
                             )
                         }
 
-                        VStack(alignment: .leading, spacing: 12) {
-                            DevTheme.sectionLabel("图片")
-                            DevAttachmentComposer(pending: $pendingAttachments)
-                        }
-
                         if !localError.isEmpty {
                             Text(localError)
                                 .font(.system(size: 13, design: .rounded))
@@ -225,13 +220,8 @@ struct DevNewTaskSheet: View {
             }
             .devKeyboardDoneToolbar($inputFocused)
         }
-        .presentationDetents([.fraction(0.88), .large])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                inputFocused = true
-            }
-        }
         .onChange(of: category) { _ in
             inputFocused = false
         }
@@ -250,7 +240,7 @@ struct DevNewTaskSheet: View {
             .focused($inputFocused)
             .foregroundStyle(DevTheme.mist)
             .padding(14)
-            .frame(minHeight: 120, maxHeight: 180, alignment: .topLeading)
+            .frame(minHeight: 100, maxHeight: 160, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(DevTheme.chip)
@@ -259,6 +249,9 @@ struct DevNewTaskSheet: View {
                             .stroke(DevTheme.panelStroke, lineWidth: 1)
                     )
             )
+
+            // Keep picker outside ScrollView dismiss-gesture so PhotosPicker can open.
+            DevAttachmentComposer(pending: $pendingAttachments)
 
             Button {
                 submit()
@@ -606,10 +599,8 @@ struct DevTaskDetailView: View {
                     .lineLimit(2...5)
                     .focused($inputFocused)
                     .foregroundStyle(DevTheme.mist)
+                // Do not wrap PhotosPicker in onTapGesture — it steals the open-picker tap.
                 DevAttachmentComposer(pending: $followUpAttachments)
-                    .onTapGesture {
-                        inputFocused = false
-                    }
                 Button {
                     inputFocused = false
                     let parentId = messages.last?.taskId ?? taskId

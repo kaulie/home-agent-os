@@ -40,19 +40,31 @@ enum ChatDocReference {
     static func attributedBody(
         _ raw: String,
         textColor: Color,
-        linkColor: Color
+        linkColor: Color,
+        mentionColor: Color? = nil
     ) -> AttributedString {
+        let mention = mentionColor ?? linkColor
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            var plain = AttributedString(raw)
-            plain.foregroundColor = textColor
-            return plain
+            var result = AttributedString()
+            ChatMentionHighlight.appendHighlighted(
+                raw,
+                to: &result,
+                textColor: textColor,
+                mentionColor: mention
+            )
+            return result
         }
         let ns = raw as NSString
         let matches = regex.matches(in: raw, range: NSRange(location: 0, length: ns.length))
         guard !matches.isEmpty else {
-            var plain = AttributedString(raw)
-            plain.foregroundColor = textColor
-            return plain
+            var result = AttributedString()
+            ChatMentionHighlight.appendHighlighted(
+                raw,
+                to: &result,
+                textColor: textColor,
+                mentionColor: mention
+            )
+            return result
         }
 
         var result = AttributedString()
@@ -60,9 +72,13 @@ enum ChatDocReference {
         for match in matches {
             let range = match.range
             if range.location > cursor {
-                var chunk = AttributedString(ns.substring(with: NSRange(location: cursor, length: range.location - cursor)))
-                chunk.foregroundColor = textColor
-                result.append(chunk)
+                let plain = ns.substring(with: NSRange(location: cursor, length: range.location - cursor))
+                ChatMentionHighlight.appendHighlighted(
+                    plain,
+                    to: &result,
+                    textColor: textColor,
+                    mentionColor: mention
+                )
             }
             let pathRange = match.range(at: 1)
             let path = ns.substring(with: pathRange)
@@ -77,9 +93,12 @@ enum ChatDocReference {
             cursor = range.location + range.length
         }
         if cursor < ns.length {
-            var tail = AttributedString(ns.substring(from: cursor))
-            tail.foregroundColor = textColor
-            result.append(tail)
+            ChatMentionHighlight.appendHighlighted(
+                ns.substring(from: cursor),
+                to: &result,
+                textColor: textColor,
+                mentionColor: mention
+            )
         }
         return result
     }
