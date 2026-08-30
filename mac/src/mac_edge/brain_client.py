@@ -174,7 +174,12 @@ class BrainClient:
         log.info("register OK edge_id=%s message=%s", edge_id, message)
         return RegisterResult(edge_id=edge_id, message=message, raw=data)
 
-    def heartbeat(self, edge_id: str) -> HeartbeatResult:
+    def heartbeat(
+        self,
+        edge_id: str,
+        *,
+        cloud_usage_delta: list[dict[str, Any]] | None = None,
+    ) -> HeartbeatResult:
         eid = edge_id.strip()
         if not eid:
             raise BrainError("edge_id required for heartbeat")
@@ -191,6 +196,8 @@ class BrainClient:
         )
         # P0: inject per-capability availability snapshot (Runtime IsAvailable()).
         body["services"] = _availability_snapshot(body.get("services"), self.config)
+        if cloud_usage_delta:
+            body["cloud_usage_delta"] = cloud_usage_delta
         try:
             from mac_edge.music_linkage import heartbeat_ack
 

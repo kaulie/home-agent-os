@@ -43,6 +43,13 @@ def intent_origin_brain_url(intent_id: str | int) -> str | None:
         return _SHARED_INTENT_ORIGIN.get(str(intent_id).strip()) or None
 
 
+def _missing_intent_error(exc: BrainError) -> bool:
+    if exc.status_code == 404:
+        return True
+    msg = str(exc).casefold()
+    return "intent not exist" in msg or "intent not found" in msg
+
+
 class MultiBrainClient:
     """Aggregate multiple BrainClients behind the BrainClient API."""
 
@@ -111,6 +118,45 @@ class MultiBrainClient:
             return prefer.rstrip("/")
         return self.primary_url
 
+    def _brain_probe_order(self, intent_id: str) -> list[str]:
+        primary = self._route_url_for_intent(str(intent_id).strip()).rstrip("/")
+        out = [primary]
+        for url in self._base_urls:
+            norm = url.rstrip("/")
+            if norm not in out:
+                out.append(norm)
+        return out
+
+    def _call_routed(
+        self,
+        intent_id: str | int,
+        label: str,
+        fn,
+    ):
+        """Route to origin Brain; on missing-intent 404 probe other Brains."""
+        iid = str(intent_id).strip()
+        last_err: BrainError | None = None
+        for url in self._brain_probe_order(iid):
+            try:
+                result = fn(self._client_for(url))
+            except BrainError as e:
+                last_err = e
+                if not _missing_intent_error(e):
+                    raise
+                log.warning(
+                    "%s intent=%s not on %s (%s) — probe next Brain",
+                    label,
+                    iid,
+                    url,
+                    e,
+                )
+                continue
+            remember_intent_origin(iid, url)
+            return result
+        if last_err is not None:
+            raise last_err
+        raise BrainError(f"{label}: intent {iid} not found on any Brain")
+
     # ---- broadcast ops ----
 
     def register(self) -> RegisterResult:
@@ -129,20 +175,29 @@ class MultiBrainClient:
         raise last_err or BrainError("register failed on all Brains")
 
     def heartbeat(self, edge_id: str) -> HeartbeatResult:
+        from mac_edge.cloud_usage import drain, snapshot
+
+        delta = snapshot()
         result: HeartbeatResult | None = None
-        for url, bc in zip(self._base_urls, self._clients):
-            try:
-                r = bc.heartbeat(edge_id)
-                if result is None:
-                    result = r
-            except BrainError as e:
-                if e.is_unauthorized:
-                    # Re-raise 401 from any Brain so the agent clears identity.
-                    raise
-                log.warning("heartbeat to %s failed: %s", url, e)
-        if result is not None:
-            return result
-        raise BrainError("heartbeat failed on all Brains", transient=True)
+        last_err: BrainError | None = None
+        try:
+            for url, bc in zip(self._base_urls, self._clients):
+                try:
+                    r = bc.heartbeat(edge_id, cloud_usage_delta=delta)
+                    if result is None:
+                        result = r
+                except BrainError as e:
+                    last_err = e
+                    if e.is_unauthorized:
+                        # Re-raise 401 from any Brain so the agent clears identity.
+                        raise
+                    log.warning("heartbeat to %s failed: %s", url, e)
+            if result is not None:
+                return result
+            raise last_err or BrainError("heartbeat failed on all Brains", transient=True)
+        finally:
+            if delta:
+                drain()
 
     def pull_intents(self, edge_id: str, *, consume: bool = False) -> list[dict[str, Any]]:
         merged: list[dict[str, Any]] = []
@@ -194,9 +249,15 @@ class MultiBrainClient:
         edge_node_id: str,
         message: str = "",
     ) -> dict[str, Any]:
-        url = self._route_url_for_intent(str(intent_id))
-        return self._client_for(url).post_intent_status(
-            intent_id, status=status, edge_node_id=edge_node_id, message=message
+        return self._call_routed(
+            intent_id,
+            "post_intent_status",
+            lambda bc: bc.post_intent_status(
+                intent_id,
+                status=status,
+                edge_node_id=edge_node_id,
+                message=message,
+            ),
         )
 
     def post_delivery_complete(
@@ -205,9 +266,12 @@ class MultiBrainClient:
         *,
         edge_node_id: str,
     ) -> dict[str, Any]:
-        url = self._route_url_for_intent(str(intent_id))
-        return self._client_for(url).post_delivery_complete(
-            intent_id, edge_node_id=edge_node_id
+        return self._call_routed(
+            intent_id,
+            "post_delivery_complete",
+            lambda bc: bc.post_delivery_complete(
+                intent_id, edge_node_id=edge_node_id
+            ),
         )
 
     def post_step_status(
@@ -216,8 +280,11 @@ class MultiBrainClient:
         step_id: str | int,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        url = self._route_url_for_intent(str(intent_id))
-        return self._client_for(url).post_step_status(intent_id, step_id, **kwargs)
+        return self._call_routed(
+            intent_id,
+            "post_step_status",
+            lambda bc: bc.post_step_status(intent_id, step_id, **kwargs),
+        )
 
     def post_intent_status_bg(self, intent_id: str | int, **kwargs: Any) -> None:
         url = self._route_url_for_intent(str(intent_id))
@@ -239,8 +306,11 @@ class MultiBrainClient:
 
     def upload_asset(self, **kwargs: Any) -> dict[str, Any]:
         iid = str(kwargs.get("intent_id") or "").strip()
-        url = self._route_url_for_intent(iid)
-        return self._client_for(url).upload_asset(**kwargs)
+        return self._call_routed(
+            iid,
+            "upload_asset",
+            lambda bc: bc.upload_asset(**kwargs),
+        )
 
     def register_asset(self, body: dict[str, Any]) -> dict[str, Any]:
         return self.primary.register_asset(body)
