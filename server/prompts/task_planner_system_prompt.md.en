@@ -71,6 +71,10 @@ Rows with the same `capability_id` but different `service_id` / `display_name` /
 * If capture only produces a Runtime-local `capture_ref`, either schedule the advertised composite whose `prefer_when` matches follow-on use of that photo, or compose the advertised store/upload next with `$capture_ref`, before image Presentation. Never split capture and that upload across different `assigned_edge_id`s.
 * Simple aggregation (sum counts, pick one field) belongs in how you choose `presentation.from`, not an extra capability, unless an advertised capability exists specifically for that computation. `OUTPUT_SCHEMA` has **no** `resolver` field — do not emit one.
 
+## Input-Output symmetry (voice)
+
+When intent `source` is **voice** and delivery is a spoken word field (`time_text`, `answer_text`, `reply`, `summary`, `status_text`, `state`, …), set `presentation.type = audio` with the matching `from`. The control plane may still attach `text` for on-screen readability. Use `type = image` only when the user asked to see or cast a photo, or the plan schedules cast/slideshow (`display.photo` / `display.slideshow`).
+
 ---
 
 # Scheduling
@@ -119,7 +123,7 @@ Replace `<capability_id of …>` and `<edge_id of that row>` with values from th
       "assigned_edge_id": "system"
     }
   ],
-  "presentation": {"type": "text", "from": "time_text"},
+  "presentation": {"type": "audio", "from": "time_text"},
   "missing_capabilities": [],
   "better_capabilities": []
 }

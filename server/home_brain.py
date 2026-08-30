@@ -312,6 +312,18 @@ def set_cache(q, ans, source="", *, catalog_fingerprint: str = ""):
 
 _DELIVERY_CAPS = {"endpoint.present", "endpoint.feedback", "notify.speak"}
 _DISPLAY_CAPS = {"display.photo", "display.slideshow"}
+_SPOKEN_PRESENTATION_FIELDS = frozenset(
+    {
+        "time_text",
+        "answer_text",
+        "reply",
+        "summary",
+        "people",
+        "state",
+        "text",
+        "status_text",
+    }
+)
 WAKE_PLANNER = "voice.stream.wake"
 WAKE_ECHO_CAPABILITY = "voicewakeup.echo"
 _PRESENTATION_SCHEMA = {
@@ -464,6 +476,56 @@ def _user_asked_photo(text):
     raw = str(text or "")
     keys = ("拍张", "拍照", "拍一张", "take_photo", "照相")
     return any(k in raw for k in keys)
+
+
+def _intent_source_voice(intent) -> bool:
+    return str((intent or {}).get("source") or "").strip().lower() == "voice"
+
+
+def _user_asked_photo_count(text) -> bool:
+    raw = str(text or "")
+    if "照片" not in raw and "张" not in raw:
+        return False
+    return any(k in raw for k in ("多少", "几张", "几幅", "数量", "一共"))
+
+
+def _user_asked_see_photo(text) -> bool:
+    raw = str(text or "")
+    if _user_asked_photo_count(raw):
+        return False
+    view_keys = ("看一下", "给我看", "看看", "显示", "瞧")
+    photo_keys = ("照片", "图片", "那张", "这张")
+    return any(v in raw for v in view_keys) and any(p in raw for p in photo_keys)
+
+
+def _plan_wants_image_presentation(intent) -> bool:
+    caps = _caps_in_plan(intent)
+    if any(c in _DISPLAY_CAPS for c in caps):
+        return True
+    raw = intent.get("presentation")
+    if isinstance(raw, dict) and str(raw.get("type") or "").strip().lower() == "image":
+        return True
+    text = str((intent or {}).get("text") or "")
+    if _user_asked_tv(text):
+        return True
+    if _user_asked_see_photo(text):
+        return True
+    return False
+
+
+def _voice_symmetric_presentation_kind(intent, kind: str, from_key: str) -> tuple[str, str]:
+    """Voice in → spoken out: word-field delivery defaults to audio, not text."""
+    pkind = str(kind or "").strip().lower()
+    if pkind != "text":
+        return pkind, from_key
+    if not _intent_source_voice(intent):
+        return pkind, from_key
+    if _plan_wants_image_presentation(intent):
+        return pkind, from_key
+    fk = str(from_key or "").strip()
+    if not fk or fk in _SPOKEN_PRESENTATION_FIELDS:
+        return "audio", from_key
+    return pkind, from_key
 
 
 def _speak_delivery_text(intent):
@@ -1792,38 +1854,44 @@ def _presentation_kind_from_plan(intent):
         if src and plan and not _plan_emits_field(plan, src):
             planned = {}
         else:
-            return planned["type"], src
+            return _voice_symmetric_presentation_kind(
+                intent, planned["type"], src or ""
+            )
     caps = _caps_in_plan(intent)
+    if any(c in _DISPLAY_CAPS for c in caps):
+        return "image", "asset_ref"
     if "clock.now" in caps:
-        return "text", "time_text"
+        return _voice_symmetric_presentation_kind(intent, "text", "time_text")
     if "map.route.estimate" in caps:
-        return "text", "answer_text"
+        return _voice_symmetric_presentation_kind(intent, "text", "answer_text")
     if "math.calculate" in caps:
-        return "text", "answer_text"
+        return _voice_symmetric_presentation_kind(intent, "text", "answer_text")
     if "chat.smalltalk" in caps:
-        return "text", "reply"
+        return _voice_symmetric_presentation_kind(intent, "text", "reply")
     if "asset.inventory" in caps:
-        return "text", "answer_text"
+        if _plan_wants_image_presentation(intent):
+            return "image", "asset_ref"
+        return _voice_symmetric_presentation_kind(intent, "text", "answer_text")
     if "image.ocr" in caps:
-        return "text", "text"
+        return _voice_symmetric_presentation_kind(intent, "text", "text")
     if "capabilities.summary" in caps:
         return "audio", "answer_text"
     if "vision.ask" in caps:
-        return "text", "answer_text"
+        return _voice_symmetric_presentation_kind(intent, "text", "answer_text")
     if "query.content" in caps:
-        return "text", "answer_text"
+        return _voice_symmetric_presentation_kind(intent, "text", "answer_text")
     if "search.images" in caps:
         return "image", "asset_refs"
     if "vision.perceive" in caps:
-        return "text", "summary"
+        return _voice_symmetric_presentation_kind(intent, "text", "summary")
     if "light.set" in caps:
-        return "text", "state"
+        return _voice_symmetric_presentation_kind(intent, "text", "state")
     if "climate.set" in caps:
-        return "text", "status_text"
+        return _voice_symmetric_presentation_kind(intent, "text", "status_text")
     if "aquarium.set" in caps:
-        return "text", "status_text"
+        return _voice_symmetric_presentation_kind(intent, "text", "status_text")
     if "lock.status" in caps:
-        return "text", "status_text"
+        return _voice_symmetric_presentation_kind(intent, "text", "status_text")
     if "camera.capture" in caps or "camera.capture_and_upload" in caps:
         return "image", "asset_ref"
     if "document.scan" in caps or "visual.input" in caps:
@@ -1982,6 +2050,7 @@ def assemble_presentation(intent):
         "text": str(ocr_text) if ocr_text else "",
     }
     ptype, src = _presentation_kind_from_plan(intent)
+    ptype, src = _voice_symmetric_presentation_kind(intent, ptype, src or "")
     text_body = ""
     if src in ("time_text", "answer_text", "reply", "summary", "people", "state", "text") and fields.get(src):
         text_body = fields[src]
@@ -1997,9 +2066,9 @@ def assemble_presentation(intent):
         )
     # If planner named a word field as `from`, that is the delivery product — do not
     # override with a capture artifact just because type was wrongly set to image.
-    _word_from = src in ("time_text", "answer_text", "reply", "summary", "people", "state", "text")
+    _word_from = src in _SPOKEN_PRESENTATION_FIELDS
     if ptype == "image" and _word_from and text_body:
-        ptype = "text"
+        ptype, _ = _voice_symmetric_presentation_kind(intent, "text", src)
         payload = {"text": text_body}
     elif ptype == "image" and ref:
         payload = {"asset_ref": ref}
@@ -2029,7 +2098,7 @@ def assemble_presentation(intent):
         _grant_presented_asset(intent)
         return intent.get("presentation")
     elif text_body:
-        ptype = "text"
+        ptype, _ = _voice_symmetric_presentation_kind(intent, "text", src or "")
         payload = {"text": text_body}
     elif ref:
         ptype = "image"

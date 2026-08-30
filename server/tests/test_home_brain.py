@@ -1418,10 +1418,56 @@ class HomeBrainPersistTest(unittest.TestCase):
             "ctx_param": {"state": "on"},
         }
         pres = hb.assemble_presentation(intent)
-        self.assertEqual(pres["type"], "text")
+        self.assertEqual(pres["type"], "audio")
         self.assertEqual(pres["from"], "state")
         self.assertEqual(pres["text"], "on")
         self.assertNotIn("image_url", pres)
+
+    def test_presentation_kind_voice_asset_inventory_is_audio(self) -> None:
+        kind, field = hb._presentation_kind_from_plan(
+            {
+                "source": "voice",
+                "text": "一共多少张照片",
+                "execution_plan": [{"step": 1, "capability": "asset.inventory"}],
+            }
+        )
+        self.assertEqual(kind, "audio")
+        self.assertEqual(field, "answer_text")
+
+    def test_presentation_kind_voice_asset_inventory_cast_stays_image(self) -> None:
+        kind, field = hb._presentation_kind_from_plan(
+            {
+                "source": "voice",
+                "text": "把最新照片投到电视上",
+                "execution_plan": [
+                    {"step": 1, "capability": "asset.inventory"},
+                    {"step": 2, "capability": "display.photo"},
+                ],
+            }
+        )
+        self.assertEqual(kind, "image")
+        self.assertEqual(field, "asset_ref")
+
+    def test_assemble_presentation_voice_inventory_count_is_audio(self) -> None:
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        self._heartbeat("living-room-iphone-1")
+        intent = {
+            "text": "一共多少张照片",
+            "source": "voice",
+            "edge_id": "living-room-iphone-1",
+            "execution_plan": [
+                {"step": 1, "capability": "asset.inventory"},
+                {"step": 2, "capability": "notify.speak"},
+            ],
+            "ctx_param": {"answer_text": "一共登记了 76 张照片。"},
+            "step_outputs": {
+                "1": {"answer_text": "一共登记了 76 张照片。", "count": "76"}
+            },
+        }
+        pres = hb.assemble_presentation(intent)
+        self.assertEqual(pres["type"], "audio")
+        self.assertEqual(pres["from"], "answer_text")
+        self.assertEqual(pres["text"], "一共登记了 76 张照片。")
 
     def test_presentation_kind_infers_math_calculate(self) -> None:
         kind, field = hb._presentation_kind_from_plan(
