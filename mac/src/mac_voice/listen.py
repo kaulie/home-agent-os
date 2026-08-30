@@ -302,12 +302,12 @@ def _home_mic_capture_loop(
                     activity.note("high")
                 yield chunk
 
-        # Faster endpoint for wake: shorter silence + 3s cap (was 8s max when
-        # room music blocked trailing-quiet). Peak-drop above start_th so music
-        # bleed after 面条 still ends the clip quickly.
-        phone_silence_ms = max(450, min(int(cfg.silence_ms), 550))
+        # After「我在呢」we break+mute ~1.1s so ack bleed is not glued onto the
+        # command. Command clips then get a full budget (was 3.2s max and cut
+        # 打开客厅空 | 调). Keep peak-drop for faster end once speech falls.
+        phone_silence_ms = max(450, min(int(cfg.silence_ms), 600))
         phone_min_speech_ms = max(280, min(int(cfg.min_speech_ms), 350))
-        phone_max_speech_ms = max(2500, min(int(cfg.max_speech_ms), 3200))
+        phone_max_speech_ms = max(4500, min(int(cfg.max_speech_ms), 6500))
 
         for utt in iter_utterances(
             watched_levels(),
@@ -317,8 +317,8 @@ def _home_mic_capture_loop(
             silence_ms=phone_silence_ms,
             min_speech_ms=phone_min_speech_ms,
             max_speech_ms=phone_max_speech_ms,
-            pre_roll_ms=300,
-            muted=lambda: False,
+            pre_roll_ms=350,
+            muted=ingest.should_mute_segmenter,
             on_activity=activity.note,
             voice_drop_ratio=_PHONE_VOICE_DROP_RATIO,
             allow_peak_drop_above_start=True,

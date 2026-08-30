@@ -8,6 +8,7 @@ import queue
 import socket
 import struct
 import threading
+import time
 from typing import Any, Iterator
 
 import numpy as np
@@ -114,6 +115,21 @@ class PickupIngestServer:
         self._lock = threading.Lock()
         # peer -> {conn, participant_id, device_id}
         self._clients: dict[str, dict[str, Any]] = {}
+        # After HAP1 speak, break/mute phone segmenter so「我在呢」bleed and the
+        # follow-up command do not share one max-capped utterance.
+        self._segment_break = threading.Event()
+        self._segment_mute_until = 0.0
+
+    def request_segment_break(self, *, hold_ms: float = 1000.0) -> None:
+        """Drop in-progress phone clip and hold mute briefly (wake-ack playback)."""
+        self._segment_break.set()
+        self._segment_mute_until = time.monotonic() + max(0.0, hold_ms) / 1000.0
+
+    def should_mute_segmenter(self) -> bool:
+        if self._segment_break.is_set():
+            self._segment_break.clear()
+            return True
+        return time.monotonic() < self._segment_mute_until
 
     @property
     def device_id(self) -> str:
@@ -227,6 +243,9 @@ class PickupIngestServer:
                 )
             except OSError as e:
                 log.warning("phone_hap1 speak failed peer=%s: %s", peer, e)
+        if sent > 0:
+            # Local CAF ~0.6s; hold a bit longer so command starts a fresh clip.
+            self.request_segment_break(hold_ms=1100.0)
         return sent
 
     def iter_pcm(self, chunk_ms: int = 100) -> Iterator[bytes]:
