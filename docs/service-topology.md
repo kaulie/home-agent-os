@@ -59,6 +59,20 @@ cd "$ROOT/mac" && nohup ./run_mac_edge.sh >> data/mac_edge.out 2>&1 &
 
 laptop 角色的 Mac Edge **不广告** GoPro / img-server（img-server 是独立 HTTP，不是 capability）。
 
+## 客户端默认地址
+
+权威源：[`config/endpoints.json`](../config/endpoints.json)。只改 IP/端口时先改该文件，再 `python3 tools/sync_endpoints.py`，最后改本文与相关 deploy 脚本。
+
+| 场景 | 默认 |
+|------|------|
+| 全新安装（Android / LivingRoom / Admin） | Brain LAN `192.168.3.84:9527`（sync 写入源码常量） |
+| LivingRoomEdge 上传 / 公网图基址 | `http://192.168.3.84:8080`（`mac.lan_host` + `img_server_port`） |
+| ATS 例外 | LivingRoom 仍允许 `192.168.3.73` 加载历史 img URL（兼容旧资产；新上传走 `.84`） |
+| 已安装且曾改过 Brain URL | 须在 App 设置改回或清数据；需新构建安装（#53） |
+| HomeAgentDev | 同网段 LAN 自动发现（ping 候选主机），不依赖写死 IP |
+
+相关 commit：`d89590e`（config/topology/deploy）· `60556c9` / `df3f24f` / `5ed6e1c`（移动端默认）。
+
 ## 云上（对照，不在这台起）
 
 | 服务 | 说明 |
