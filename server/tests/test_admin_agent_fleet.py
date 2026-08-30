@@ -44,7 +44,9 @@ class AdminAgentFleetTests(unittest.TestCase):
         client = hb.app.test_client()
         with patch("agent_fleet.bridge.bridge_status") as status, patch(
             "agent_fleet.bridge.list_agents"
-        ) as agents, patch("agent_fleet.bridge.list_runs") as runs:
+        ) as agents, patch("agent_fleet.bridge.list_runs") as runs, patch(
+            "agent_fleet._fetch_chat_work_board"
+        ) as board:
             status.return_value = {"queue_depth": 0, "model": "composer-2.5", "backend": "cli"}
             agents.return_value = {
                 "agents": [
@@ -52,13 +54,48 @@ class AdminAgentFleetTests(unittest.TestCase):
                 ]
             }
             runs.return_value = {"runs": [{"run_id": "r1", "status": "finished", "target_handle": "brain"}]}
+            board.return_value = {
+                "runtime": {
+                    "awaiting_recv": [
+                        {
+                            "id": 42,
+                            "from": "boss",
+                            "preview": "@runtime 干活",
+                            "created_at": __import__("time").time(),
+                        }
+                    ],
+                    "acked_open": [],
+                }
+            }
             resp = client.get("/api/v1/admin/agent_fleet")
         self.assertEqual(resp.status_code, 200)
         body = resp.get_json()
         self.assertTrue(body.get("ok"))
-        self.assertEqual(len(body.get("agents") or []), 1)
-        self.assertEqual(body["agents"][0]["handle"], "brain")
+        # Full roster is always listed (bridge may only return a subset).
+        handles = {a["handle"] for a in (body.get("agents") or [])}
+        self.assertIn("brain", handles)
+        self.assertIn("runtime", handles)
+        brain = next(a for a in body["agents"] if a["handle"] == "brain")
+        self.assertEqual(brain.get("phase"), "idle")
+        runtime = next(a for a in body["agents"] if a["handle"] == "runtime")
+        self.assertEqual(runtime.get("phase"), "awaiting_recv")
+        self.assertFalse(runtime.get("aligned"))
+        self.assertIn("runtime", body.get("desync_handles") or [])
+        self.assertFalse(body.get("work_aligned"))
         self.assertEqual(len(body.get("runs") or []), 1)
+
+    def test_derive_phase_controller_ide(self) -> None:
+        import agent_fleet as af
+
+        phase, aligned, _ = af._derive_phase(
+            "controller",
+            is_running=False,
+            is_queued=False,
+            awaiting_recv=[{"id": 1}],
+            acked_open=[],
+        )
+        self.assertEqual(phase, "awaiting_ide")
+        self.assertTrue(aligned)
 
     def test_wake_agent_fleet(self) -> None:
         assert hb is not None
