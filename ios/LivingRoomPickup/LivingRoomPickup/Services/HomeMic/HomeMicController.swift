@@ -1,4 +1,5 @@
 import AVFoundation
+import AudioToolbox
 import Foundation
 import UIKit
 
@@ -25,14 +26,16 @@ final class HomeMicController: NSObject {
     private let capture = HomeMicPcmCapture()
     private let energyGate = HomeMicEnergyGate()
     private var player: AVAudioPlayer?
+    private var systemSoundID: SystemSoundID = 0
 
     private(set) var isListening = false
     private(set) var connectionState: HomeMicConnectionState = .disconnected
     /// True while local TTS is speaking (skip uploading that audio).
     private(set) var isSpeakingLocally = false
     private var speakWatchdog: DispatchWorkItem?
-    /// Capture was active before speak — hard-restart after TTS (iOS 12 safe).
+    /// Capture was active before speak — soft-resume after playback.
     private var resumeCaptureAfterSpeak = false
+    private var finishingSpeak = false
 
     /// 0…1, always on main.
     var onAudioLevel: ((Float) -> Void)?
@@ -70,6 +73,7 @@ final class HomeMicController: NSObject {
     }
 
     deinit {
+        disposeSystemSound()
         player?.stop()
         stopListening()
         client.close()
@@ -195,10 +199,12 @@ final class HomeMicController: NSObject {
 
     /// Tear down TCP as well (leave Home Mic tab / app background policy).
     func disconnect() {
+        disposeSystemSound()
         player?.stop()
         player = nil
         isSpeakingLocally = false
         resumeCaptureAfterSpeak = false
+        finishingSpeak = false
         speakWatchdog?.cancel()
         speakWatchdog = nil
         isConnecting = false
@@ -219,49 +225,46 @@ final class HomeMicController: NSObject {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
         // Product: wake from iPhone → ack on this iPhone.
-        // Never use AVSpeech with AVAudioEngine on iOS 12 (hard crash).
-        // Play bundled CAF via AVAudioPlayer after full capture teardown.
+        // Crash pattern: capture.stop()+setActive(false) and/or flipping to
+        // .playback, then hard-restart engine right as sound ends.
+        // Stay on playAndRecord, soft-suspend engine only, play system sound.
         speakWatchdog?.cancel()
+        finishingSpeak = false
         isSpeakingLocally = true
-        resumeCaptureAfterSpeak = isListening || capture.isRunning
+        resumeCaptureAfterSpeak = isListening || capture.isArmed
         player?.stop()
         player = nil
-        capture.stop()
-
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(
-                .playback,
-                mode: .default,
-                options: [.duckOthers]
-            )
-            try session.setActive(true, options: [])
-        } catch {
-            // Fall through — player may still work.
-        }
+        disposeSystemSound()
+        capture.suspendForPlayback()
 
         publishStatus("正在回复…")
         guard let url = Self.bundledAckURL(for: body) else {
-            // Unknown phrase: show status only, then resume mic (do not AVSpeech).
             publishStatus(body)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-                self?.finishSpeak()
-            }
+            scheduleFinishSpeak(after: 1.0)
             return
         }
 
-        do {
-            let p = try AVAudioPlayer(contentsOf: url)
-            p.delegate = self
-            p.prepareToPlay()
-            player = p
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-                guard let self = self, self.isSpeakingLocally else { return }
-                self.player?.play()
+        var sound: SystemSoundID = 0
+        let status = AudioServicesCreateSystemSoundID(url as CFURL, &sound)
+        if status == kAudioServicesNoError, sound != 0 {
+            systemSoundID = sound
+            AudioServicesPlaySystemSoundWithCompletion(sound) { [weak self] in
+                DispatchQueue.main.async {
+                    self?.finishSpeak()
+                }
             }
-        } catch {
-            finishSpeak()
-            return
+        } else {
+            // Fallback: AVAudioPlayer, still without category flip.
+            do {
+                let p = try AVAudioPlayer(contentsOf: url)
+                p.delegate = self
+                p.prepareToPlay()
+                player = p
+                _ = p.play()
+            } catch {
+                scheduleFinishSpeak(after: 0.3)
+                return
+            }
         }
 
         let work = DispatchWorkItem { [weak self] in
@@ -270,7 +273,7 @@ final class HomeMicController: NSObject {
             self.finishSpeak()
         }
         speakWatchdog = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0, execute: work)
     }
 
     private static func bundledAckURL(for text: String) -> URL? {
@@ -286,25 +289,54 @@ final class HomeMicController: NSObject {
         } else if compact.contains("又咋了") || compact.contains("咋了") {
             name = "wake_ack_youzale"
         } else {
-            // Default wake ack asset when Mac sends Brain-configured phrase we know.
             name = "wake_ack_wozaine"
         }
         return Bundle.main.url(forResource: name, withExtension: "caf")
     }
 
+    private func scheduleFinishSpeak(after delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.finishSpeak()
+        }
+    }
+
     private func finishSpeak() {
+        guard !finishingSpeak else { return }
+        finishingSpeak = true
         speakWatchdog?.cancel()
         speakWatchdog = nil
         player?.stop()
         player = nil
-        isSpeakingLocally = false
-        energyGate.reset()
+        disposeSystemSound()
+
         let shouldResume = resumeCaptureAfterSpeak
         resumeCaptureAfterSpeak = false
-        if shouldResume {
-            beginCaptureAfterPermission()
-        } else if isListening {
-            publishStatus(client.isConnected ? "拾音中" : "拾音中（等待连接）")
+
+        // Let playback / session settle before touching the engine again.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+            guard let self = self else { return }
+            self.isSpeakingLocally = false
+            self.energyGate.reset()
+            self.finishingSpeak = false
+            if shouldResume {
+                do {
+                    try self.capture.resumeAfterPlayback()
+                    self.isListening = true
+                    self.publishStatus(self.client.isConnected ? "拾音中" : "拾音中（等待连接）")
+                } catch {
+                    // Soft resume failed — full restart as last resort.
+                    self.beginCaptureAfterPermission()
+                }
+            } else if self.isListening {
+                self.publishStatus(self.client.isConnected ? "拾音中" : "拾音中（等待连接）")
+            }
+        }
+    }
+
+    private func disposeSystemSound() {
+        if systemSoundID != 0 {
+            AudioServicesDisposeSystemSoundID(systemSoundID)
+            systemSoundID = 0
         }
     }
 

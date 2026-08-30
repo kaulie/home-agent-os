@@ -32,6 +32,8 @@ final class HomeMicPcmCapture {
     private let levelQueue = DispatchQueue(label: "livingroom.homemics.level")
 
     var isRunning: Bool { engine.isRunning }
+    /// Capture callbacks still armed (may be suspended for local playback).
+    var isArmed: Bool { onPCM != nil }
 
     func start(onPCM: @escaping (Data) -> Void, onLevel: ((Float) -> Void)? = nil) throws {
         stop()
@@ -39,10 +41,44 @@ final class HomeMicPcmCapture {
         self.onLevel = onLevel
         levelEMA = 0
         agcGain = 4.0
+        try activateSessionAndEngine()
+    }
 
+    func stop() {
+        suspendForPlayback()
+        converter = nil
+        targetFormat = nil
+        onPCM = nil
+        onLevel = nil
+        levelEMA = 0
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private func removeTapIfNeeded() {
+        guard tapInstalled else { return }
+        engine.inputNode.removeTap(onBus: 0)
+        tapInstalled = false
+    }
+
+    /// Soft pause for phone wake-ack: stop engine/tap, keep session + callbacks.
+    /// Do NOT deactivate AVAudioSession — that crashes on many devices when
+    /// combined with immediate local playback.
+    func suspendForPlayback() {
+        removeObservers()
+        if engine.isRunning {
+            engine.stop()
+        }
+        removeTapIfNeeded()
+    }
+
+    /// Resume after local wake-ack without tearing down the audio session.
+    func resumeAfterPlayback() throws {
+        guard onPCM != nil else { return }
+        try activateSessionAndEngine()
+    }
+
+    private func activateSessionAndEngine() throws {
         let session = AVAudioSession.sharedInstance()
-        // playAndRecord from the start so HAP1 speak / AVSpeech does not
-        // flip category under a live AVAudioEngine (crashes on iOS 12 / iPhone 6).
         try session.setCategory(
             .playAndRecord,
             mode: .default,
@@ -53,19 +89,26 @@ final class HomeMicPcmCapture {
         try session.setActive(true, options: [])
         configureBuiltInMic(session)
 
-        guard
-            let target = AVAudioFormat(
-                commonFormat: .pcmFormatInt16,
-                sampleRate: 44_100,
-                channels: 1,
-                interleaved: true
-            )
-        else {
+        if targetFormat == nil {
+            guard
+                let target = AVAudioFormat(
+                    commonFormat: .pcmFormatInt16,
+                    sampleRate: 44_100,
+                    channels: 1,
+                    interleaved: true
+                )
+            else {
+                throw HomeMicPcmCaptureError.engineFailed("无法创建 PCM 格式")
+            }
+            targetFormat = target
+        }
+        guard let targetFormat = targetFormat else {
             throw HomeMicPcmCaptureError.engineFailed("无法创建 PCM 格式")
         }
-        targetFormat = target
 
-        engine.reset()
+        if !engine.isRunning {
+            engine.reset()
+        }
         let input = engine.inputNode
         let hwFormat = input.outputFormat(forBus: 0)
         guard hwFormat.sampleRate > 0, hwFormat.channelCount > 0 else {
@@ -74,7 +117,7 @@ final class HomeMicPcmCapture {
             )
         }
 
-        converter = AVAudioConverter(from: hwFormat, to: target)
+        converter = AVAudioConverter(from: hwFormat, to: targetFormat)
         guard converter != nil else {
             throw HomeMicPcmCaptureError.engineFailed("无法创建音频转换器")
         }
@@ -88,19 +131,12 @@ final class HomeMicPcmCapture {
         observeInterruption()
         observeRouteChange()
         engine.prepare()
-        try engine.start()
+        if !engine.isRunning {
+            try engine.start()
+        }
     }
 
-    func stop() {
-        if engine.isRunning {
-            engine.stop()
-        }
-        removeTapIfNeeded()
-        converter = nil
-        targetFormat = nil
-        onPCM = nil
-        onLevel = nil
-        levelEMA = 0
+    private func removeObservers() {
         if let interruptionObserver = interruptionObserver {
             NotificationCenter.default.removeObserver(interruptionObserver)
             self.interruptionObserver = nil
@@ -109,13 +145,6 @@ final class HomeMicPcmCapture {
             NotificationCenter.default.removeObserver(routeObserver)
             self.routeObserver = nil
         }
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-    }
-
-    private func removeTapIfNeeded() {
-        guard tapInstalled else { return }
-        engine.inputNode.removeTap(onBus: 0)
-        tapInstalled = false
     }
 
     /// Pause input only (keep tap/format). Used around local TTS.
@@ -128,21 +157,7 @@ final class HomeMicPcmCapture {
     /// Resume after TTS if capture is still armed (`onPCM` set).
     func resumeEngineIfNeeded() {
         guard onPCM != nil else { return }
-        let session = AVAudioSession.sharedInstance()
-        do {
-            try session.setCategory(
-                .playAndRecord,
-                mode: .default,
-                options: [.defaultToSpeaker, .duckOthers]
-            )
-            try session.setActive(true, options: [])
-            configureBuiltInMic(session)
-            if !engine.isRunning {
-                try engine.start()
-            }
-        } catch {
-            // Best-effort; caller may restart listening.
-        }
+        try? resumeAfterPlayback()
     }
 
     private func configureBuiltInMic(_ session: AVAudioSession) {
