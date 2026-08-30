@@ -29,3 +29,35 @@ def push_msg(from_handle: str, body: str, *, timeout: float = 3.0) -> bool:
             return 200 <= int(resp.status) < 300
     except (urllib.error.URLError, TimeoutError, OSError):
         return False
+
+
+def ack_msg(
+    from_handle: str,
+    message_id: int,
+    *,
+    ack_type: str = "got",
+    timeout: float = 3.0,
+) -> bool:
+    """Feishu-style badge. ack_type: recv=收到 (formal @), got=知道了 (cc)."""
+    sender = str(from_handle or "").strip()
+    if not sender or int(message_id) <= 0:
+        return False
+    payload = json.dumps(
+        {
+            "from": sender,
+            "message_id": int(message_id),
+            "ack_type": str(ack_type or "got"),
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        f"{chat_base_url()}/api/v1/ack_msg",
+        data=payload,
+        headers={"Content-Type": "application/json; charset=utf-8"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return 200 <= int(resp.status) < 300
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False

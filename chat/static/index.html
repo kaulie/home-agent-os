@@ -164,10 +164,24 @@
       return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
     }
 
-    function audienceLabel(aud) {
-      if (!aud || aud.length === 0) return "仅页面（agent 不处理）";
+    function audienceLabel(m) {
+      const aud = m.audience || [];
+      const action = m.action || [];
+      const cc = m.cc || [];
+      if (!aud.length) return "仅页面（agent 不处理）";
       if (aud.indexOf("all") >= 0) return "@all";
-      return aud.map(h => "@" + h).join(" ");
+      const parts = [];
+      if (action.length) parts.push(action.map(h => "@" + h).join(" "));
+      if (cc.length) parts.push("cc " + cc.map(h => "@" + h).join(" "));
+      return parts.join(" · ") || aud.map(h => "@" + h).join(" ");
+    }
+
+    function ackLabel(a) {
+      const t = String(a.ack_type || "got").toLowerCase();
+      let mark = "知道了";
+      if (t === "recv" || t === "received") mark = "收到";
+      else if (t === "got" || t === "ok") mark = "知道了";
+      return mark + " @" + a.handle;
     }
 
     function isStaleUnacked(m) {
@@ -179,10 +193,12 @@
     function receiptLine(m) {
       const unread = (m.unread || []).map(h => "@" + h);
       const read = Object.keys(m.read || {}).map(h => "@" + h);
+      const acks = (m.acks || []).map(ackLabel);
       const parts = [];
-      if (isStaleUnacked(m)) parts.push('<span class="unread">超过1小时未ack</span>');
+      if (isStaleUnacked(m)) parts.push('<span class="unread">超过1小时未读</span>');
       if (unread.length) parts.push('<span class="unread">未读 ' + esc(unread.join(" ")) + "</span>");
       if (read.length) parts.push("已读 " + esc(read.join(" ")));
+      if (acks.length) parts.push("ack " + esc(acks.join(" ")));
       if (!parts.length) return "已读";
       return parts.join(" · ");
     }
@@ -224,7 +240,7 @@
       const recallBtn = canRecall(m) ? `<button class="recall" type="button" data-id="${m.id}">撤回</button>` : "";
       div.innerHTML = `${avatar(from, "lg")}<div class="bubble"><div class="meta"><span class="from">@${esc(from)}</span> ${esc(name)} · ${esc(m.ts)}</div>
         <div class="body">${esc(m.body)}</div>
-        <div class="aud">${esc(audienceLabel(m.audience))}</div>
+        <div class="aud">${esc(audienceLabel(m))}</div>
         <div class="reads">${receiptLine(m)}</div>
         ${recallBtn}</div>`;
     }

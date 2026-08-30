@@ -1,0 +1,65 @@
+---
+description: Layer isolation + one WIP at a time; new asks go to pending until commit
+alwaysApply: true
+---
+
+# Agent 工作纪律（层隔离 + 单 WIP）
+
+适用于全体 Fleet handle 与 `@controller`。名册与层职责见 [`docs/agent-roster.md`](docs/agent-roster.md)。
+
+## 0. 领指令前先报状态（强制）
+
+领取**任意**正式指令前，先 `push_msg` 一行 `[status]`（phase / WIP / tree / 对本指令），再 ✅ `recv`。  
+格式见 [`docs/agent-coordination.md`](docs/agent-coordination.md) §4b。`cc @` 只 👌，不写 status。
+
+## 1. 坚决不写非本层代码
+
+- 只改**本 handle 职责范围内**的路径与模块；越层需求 `push_msg` 转给对应 handle（或 `@coordinator` 拆单），**禁止顺手改**。
+- 共享文件（如 `mac_voice/listen.py`）若影响多产品面：只改本任务验收所需的最小点；其它产品面的门槛/路由/UI **留给归属层**。
+- 不确定归属时：先问 `@controller` / `@coordinator`，不要猜着写。
+
+| handle | 可写（示意） | 禁止顺手写 |
+|--------|--------------|------------|
+| `@brain` | `server/`、prompts、选边/入队 | plugin 实现、端 UI、Mac 运维脚本 |
+| `@runtime` | edge executor、hydrate、前序门 | Brain 规划、App UI |
+| `@ui` | 端上交互面、Receiver、管理/Dev UI | Brain、plugin 非 UI、schema |
+| `@capability` | plugin 契约与实现 | 发出 UI、Brain 入队逻辑 |
+| `@quality` | `tests/blackbox/`、UI 自动化 | 产品功能代码（标识符除外且须知会 `@ui`） |
+| `@deploy` / `@sre` / `@dba` | 各自运维/部署/schema | 无关产品功能 |
+
+## 2. 同一时间只有一个进行中需求（WIP）
+
+收到新需求时，先判断**当前 WIP**：
+
+| 当前状态 | 动作 |
+|----------|------|
+| 已写完、**尚未 commit / 未合入** | **先 commit（并走本层应有的 `[release]`）**，再开新需求 |
+| **未写完** | **继续写完并提交**；新需求进入 **pending**，不插队改代码 |
+| 无 WIP | 可开始新需求 |
+
+**禁止**：为赶新需求覆盖、丢弃或改写一半的未提交改动。
+
+## 3. Pending 与上报（必须说清楚）
+
+新需求进 pending 时，**同一轮** `push_msg` 通知：
+
+- `@controller`（编排方）
+- 若来自老板：再 `@boss`
+- 跨层争议另 `@coordinator`
+
+正文至少包含：
+
+1. 当前 WIP 一句话（目标 + 进度）
+2. 新需求已入 pending（原文摘要）
+3. 预计：提交完 WIP 后再开工
+
+示例：
+
+```text
+@controller @boss
+WIP 未完成：Home Mic 唤醒后 TTS 恢复采集（改动未 commit）。
+新需求已 pending：云用量统计刷新。
+先提交当前 WIP，再开始统计；请勿当作已开干。
+```
+
+`@controller` 派单 / wake 前：若目标 handle 仍有未提交 WIP，先确认「完成并提交」或「明确废弃 WIP」，再 wake 新任务。

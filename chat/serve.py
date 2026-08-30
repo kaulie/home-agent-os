@@ -133,6 +133,9 @@ class ChatHandler(BaseHTTPRequestHandler):
             if path == "/health":
                 self._send(200, {"ok": True, "app": "agent-chat", "db": str(db.db_path())})
                 return
+            if path == "/api/v1/work_board":
+                self._send(200, {"ok": True, **db.work_board()})
+                return
             if path == "/api/v1/pull_msg":
                 handle = (query.get("handle") or [""])[0]
                 since_raw = (query.get("since_id") or ["0"])[0] or "0"
@@ -141,11 +144,17 @@ class ChatHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/v1/messages":
                 since_raw = (query.get("since_id") or ["0"])[0] or "0"
-                messages = db.list_messages(since_id=int(since_raw))
+                since_ack_raw = (query.get("since_ack_at") or ["0"])[0] or "0"
+                page = db.list_messages_page(
+                    since_id=int(since_raw),
+                    since_ack_at=float(since_ack_raw),
+                )
                 self._send(
                     200,
                     {
-                        "messages": messages,
+                        "messages": page["messages"],
+                        "ack_patches": page["ack_patches"],
+                        "latest_ack_at": page["latest_ack_at"],
                         "agents": db.list_agents(),
                         "handles": list(HANDLES),
                         "display_names": DISPLAY_NAMES,
@@ -210,6 +219,23 @@ class ChatHandler(BaseHTTPRequestHandler):
                 msg = db.recall_message(
                     from_handle=str(payload.get("from") or ""),
                     msg_id=int(payload["id"]),
+                )
+                self._send(200, {"ok": True, "message": msg})
+                return
+            if path == "/api/v1/ack_msg":
+                payload = _read_json(self)
+                msg = db.ack_message(
+                    from_handle=str(payload.get("from") or ""),
+                    message_id=int(payload["message_id"]),
+                    ack_type=str(payload.get("ack_type") or "ok"),
+                )
+                self._send(200, {"ok": True, "message": msg})
+                return
+            if path == "/api/v1/unack_msg":
+                payload = _read_json(self)
+                msg = db.unack_message(
+                    from_handle=str(payload.get("from") or ""),
+                    message_id=int(payload["message_id"]),
                 )
                 self._send(200, {"ok": True, "message": msg})
                 return

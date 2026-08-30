@@ -18,17 +18,20 @@ cd agent-bridge && ./run.sh    # 9540
 
 ## 本窗口如何收到
 
-1. **Hook 自动唤醒**：`.cursor/hooks.json` 在 `sessionStart` / `stop` 时 pull `@controller` 消息；若有新 `[dev-task]` 或 `[fleet]` 终态，会注入 `followup_message` 继续这一会话。
-2. **你发消息时**：若 hook 未触发，先 `GET /api/v1/pull_msg?handle=controller` 看有没有未读 `[dev-task]` / `[fleet]`，有则先同步给用户再继续。
+1. **Hook 自动唤醒**：`.cursor/hooks.json` 在 `sessionStart` / `stop` 时 pull `@controller` 消息；若有新 `[dev-task]` / `[release]` / `[fleet]` 终态，**或老板正式 `@controller` 派话**，会注入 `followup_message` 继续这一会话。
+2. **你发消息时**：若 hook 未触发，先 `GET /api/v1/pull_msg?handle=controller` 看有没有未读，有则先同步给用户再继续。
+3. **Fleet 不会唤醒 `@controller`**：controller 是常驻 IDE，不在 Fleet worker 池里；Chat 里 `@controller` 后 Fleet 面板仍显示空闲是预期。老板 `@controller` 靠本 hook 叫醒 IDE。
 
 ## 消息含义
 
 | event | 说明 |
 |-------|------|
+| 老板 `@controller …`（无系统 tag） | 人工派话；hook 注入 followup；应 ✅ 收到并 `push_msg` 回复 |
 | `[dev-task]` `queued` | Brain 已收到手机任务 |
 | `[dev-task]` `started` | bridge 开始跑 Cursor SDK |
 | `[dev-task]` `progress` | Agent 流式输出片段 |
 | `[dev-task]` / `[fleet]` `finished` / `failed` | 终态 |
 | `[fleet]` | Fleet worker 事件；正文含 `handle=`、`run=` |
+| `cc @controller` | 周知；hook **不**叫醒（只需 ack 知道了，可下轮 pull） |
 
 不要改 Chatbox 水位文件 `.cursor/dev-inbox-state.json` 以外的 agent 协调逻辑；规范仍见 [`docs/agent-coordination.md`](docs/agent-coordination.md)。

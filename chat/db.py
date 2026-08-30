@@ -12,7 +12,18 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-from chat.mentions import DISPLAY_NAMES, HANDLES, OWNER, SENDERS, audience_for, normalize_handle, parse_mentions, recipients_for, visible_to
+from chat.kinds import normalize_ack_type
+from chat.mentions import (
+    DISPLAY_NAMES,
+    HANDLES,
+    OWNER,
+    SENDERS,
+    audience_for,
+    normalize_handle,
+    parse_mention_roles,
+    recipients_for,
+    visible_to,
+)
 from chat.attachments import normalize_attachments
 
 TZ_EAST_8 = timezone(timedelta(hours=8))
@@ -104,6 +115,22 @@ def _init_schema(conn: sqlite3.Connection) -> None:
           read_at TEXT,
           PRIMARY KEY (message_id, handle)
         );
+        CREATE TABLE IF NOT EXISTS message_acks (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          message_id INTEGER NOT NULL,
+          handle TEXT NOT NULL,
+          ack_type TEXT NOT NULL DEFAULT 'ok',
+          ts TEXT NOT NULL,
+          created_at REAL NOT NULL,
+          UNIQUE(message_id, handle)
+        );
+        CREATE INDEX IF NOT EXISTS idx_message_acks_message ON message_acks(message_id);
+        CREATE INDEX IF NOT EXISTS idx_message_acks_created ON message_acks(created_at);
+        CREATE TABLE IF NOT EXISTS ack_revisions (
+          message_id INTEGER PRIMARY KEY,
+          revised_at REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ack_revisions_at ON ack_revisions(revised_at);
         """
     )
     for handle in HANDLES:
@@ -121,6 +148,8 @@ def _init_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE messages ADD COLUMN recalled_at TEXT")
     if "attachments_json" not in cols:
         conn.execute("ALTER TABLE messages ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]'")
+    if "cc_json" not in cols:
+        conn.execute("ALTER TABLE messages ADD COLUMN cc_json TEXT NOT NULL DEFAULT '[]'")
     conn.commit()
 
 
@@ -238,13 +267,71 @@ def _reads_map(conn: sqlite3.Connection, msg_ids: list[int]) -> dict[int, list[t
     return out
 
 
+def _acks_map(conn: sqlite3.Connection, msg_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    out: dict[int, list[dict[str, Any]]] = {i: [] for i in msg_ids}
+    if not msg_ids:
+        return out
+    placeholders = ",".join("?" * len(msg_ids))
+    rows = conn.execute(
+        f"""
+        SELECT message_id, handle, ack_type, ts, created_at
+        FROM message_acks
+        WHERE message_id IN ({placeholders})
+        ORDER BY created_at ASC, id ASC
+        """,
+        msg_ids,
+    ).fetchall()
+    for row in rows:
+        out[int(row["message_id"])].append(
+            {
+                "handle": row["handle"],
+                "ack_type": row["ack_type"],
+                "ts": row["ts"],
+                "created_at": float(row["created_at"] or 0),
+            }
+        )
+    return out
+
+
 def _with_reads(conn: sqlite3.Connection, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     reads = _reads_map(conn, [m["id"] for m in messages])
+    acks = _acks_map(conn, [m["id"] for m in messages])
     for msg in messages:
         entries = reads.get(msg["id"], [])
         msg["read"] = {handle: ts for handle, ts in entries if ts}
         msg["unread"] = [handle for handle, ts in entries if not ts]
+        msg["acks"] = acks.get(msg["id"], [])
     return messages
+
+
+def _latest_ack_at(conn: sqlite3.Connection) -> float:
+    ack_raw = conn.execute("SELECT MAX(created_at) FROM message_acks").fetchone()[0]
+    rev_raw = conn.execute("SELECT MAX(revised_at) FROM ack_revisions").fetchone()[0]
+    return max(float(ack_raw or 0), float(rev_raw or 0))
+
+
+def _touch_ack_revision(conn: sqlite3.Connection, message_id: int, *, at: float | None = None) -> float:
+    ts = float(at if at is not None else time.time())
+    conn.execute(
+        """
+        INSERT INTO ack_revisions (message_id, revised_at)
+        VALUES (?, ?)
+        ON CONFLICT(message_id) DO UPDATE SET revised_at = excluded.revised_at
+        """,
+        (int(message_id), ts),
+    )
+    return ts
+
+
+def _get_message_row(conn: sqlite3.Connection, message_id: int) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM messages WHERE id = ?", (int(message_id),)).fetchone()
+
+
+def _get_message(conn: sqlite3.Connection, message_id: int) -> dict[str, Any]:
+    row = _get_message_row(conn, message_id)
+    if row is None:
+        raise ValueError("message not found")
+    return _with_reads(conn, [_row_message(row)])[0]
 
 
 def _unread_counts(conn: sqlite3.Connection) -> dict[str, int]:
@@ -279,6 +366,20 @@ def _row_message(row: sqlite3.Row) -> dict[str, Any]:
         attachments_raw = []
     if not isinstance(attachments_raw, list):
         attachments_raw = []
+    mentions = _loads(row["mentions_json"]) or []
+    if not isinstance(mentions, list):
+        mentions = []
+    cc: list[str] = []
+    try:
+        cc_raw = _loads(row["cc_json"]) or []
+        if isinstance(cc_raw, list):
+            cc = [str(x) for x in cc_raw]
+    except (KeyError, IndexError):
+        cc = []
+    cc_set = set(cc)
+    action = [h for h in mentions if h not in cc_set]
+    if "all" in mentions:
+        action = ["all"]
     return {
         "id": int(row["id"]),
         "ts": row["ts"],
@@ -286,7 +387,9 @@ def _row_message(row: sqlite3.Row) -> dict[str, Any]:
         "body": "" if recalled else row["body"],
         "attachments": [] if recalled else attachments_raw,
         "audience": _loads(row["audience_json"]) or [],
-        "mentions": _loads(row["mentions_json"]) or [],
+        "mentions": mentions,
+        "action": action,
+        "cc": cc,
         "created_at": float(row["created_at"] or 0),
         "recalled": recalled,
     }
@@ -337,6 +440,17 @@ def list_messages(*, since_id: int = 0) -> list[dict[str, Any]]:
         return _with_reads(conn, [_row_message(row) for row in rows])
 
 
+def list_messages_page(*, since_id: int = 0, since_ack_at: float = 0.0) -> dict[str, Any]:
+    """Page timeline + optional ack patches for incremental badge refresh."""
+    messages = list_messages(since_id=since_id)
+    patches, latest = ack_patches(since_ack_at=since_ack_at)
+    return {
+        "messages": messages,
+        "ack_patches": patches,
+        "latest_ack_at": latest,
+    }
+
+
 def push_message(
     *,
     from_handle: str,
@@ -350,7 +464,9 @@ def push_message(
     rows = normalize_attachments(attachments)
     if not text.strip() and not rows:
         raise ValueError("body or attachments required")
-    mentions = parse_mentions(text)
+    roles = parse_mention_roles(text)
+    mentions = roles.all_mentions
+    cc = list(roles.cc)
     audience = audience_for(sender, mentions)
     ts = now_ts()
     created = time.time()
@@ -358,17 +474,105 @@ def push_message(
         conn = _connect()
         cur = conn.execute(
             """
-            INSERT INTO messages (ts, from_handle, body, audience_json, mentions_json, created_at, attachments_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO messages (
+              ts, from_handle, body, audience_json, mentions_json, created_at, attachments_json, cc_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (ts, sender, text, _dumps(audience), _dumps(mentions), created, _dumps(rows)),
+            (ts, sender, text, _dumps(audience), _dumps(mentions), created, _dumps(rows), _dumps(cc)),
         )
         conn.commit()
         msg_id = int(cur.lastrowid)
         _insert_reads(conn, msg_id, sender, audience, mark_all_read=False)
         conn.commit()
-        row = conn.execute("SELECT * FROM messages WHERE id = ?", (msg_id,)).fetchone()
-        return _with_reads(conn, [_row_message(row)])[0]
+        return _get_message(conn, msg_id)
+
+
+def ack_patches(*, since_ack_at: float = 0.0) -> tuple[list[dict[str, Any]], float]:
+    """Messages whose acks changed since a timestamp (add or remove)."""
+    since = max(0.0, float(since_ack_at or 0))
+    with locked():
+        conn = _connect()
+        latest = _latest_ack_at(conn)
+        rows = conn.execute(
+            """
+            SELECT message_id FROM (
+              SELECT DISTINCT message_id AS message_id
+              FROM message_acks
+              WHERE created_at > ?
+              UNION
+              SELECT message_id
+              FROM ack_revisions
+              WHERE revised_at > ?
+            )
+            ORDER BY message_id ASC
+            """,
+            (since, since),
+        ).fetchall()
+        patches: list[dict[str, Any]] = []
+        for row in rows:
+            msg_id = int(row["message_id"])
+            if _get_message_row(conn, msg_id) is None:
+                continue
+            patches.append(
+                {
+                    "id": msg_id,
+                    "acks": _acks_map(conn, [msg_id]).get(msg_id, []),
+                }
+            )
+        return patches, latest
+
+
+def ack_message(*, from_handle: str, message_id: int, ack_type: str = "got") -> dict[str, Any]:
+    """Feishu-style reaction on a message (no new chat row).
+
+    ack_type: recv=收到 (formal @ 签收), got=知道了 (cc 周知). Legacy ok → stored as ok, UI=知道了.
+    """
+    sender = normalize_handle(from_handle)
+    if sender not in SENDERS:
+        raise ValueError(f"unknown from handle: {from_handle}")
+    kind = normalize_ack_type(ack_type)
+    with locked():
+        conn = _connect()
+        parent = _get_message_row(conn, int(message_id))
+        if parent is None:
+            raise ValueError("message not found")
+        if _recalled_at(parent) is not None:
+            raise ValueError("message recalled")
+        ts = time.time()
+        conn.execute(
+            """
+            INSERT INTO message_acks (message_id, handle, ack_type, ts, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(message_id, handle) DO UPDATE SET
+              ack_type = excluded.ack_type,
+              ts = excluded.ts,
+              created_at = excluded.created_at
+            """,
+            (int(message_id), sender, kind, now_ts(), ts),
+        )
+        _touch_ack_revision(conn, int(message_id), at=ts)
+        conn.commit()
+        return _get_message(conn, int(message_id))
+
+
+def unack_message(*, from_handle: str, message_id: int) -> dict[str, Any]:
+    """Remove only this handle's ack. Cannot remove anyone else's."""
+    sender = normalize_handle(from_handle)
+    if sender not in SENDERS:
+        raise ValueError(f"unknown from handle: {from_handle}")
+    with locked():
+        conn = _connect()
+        parent = _get_message_row(conn, int(message_id))
+        if parent is None:
+            raise ValueError("message not found")
+        conn.execute(
+            "DELETE FROM message_acks WHERE message_id = ? AND handle = ?",
+            (int(message_id), sender),
+        )
+        _touch_ack_revision(conn, int(message_id))
+        conn.commit()
+        return _get_message(conn, int(message_id))
 
 
 def pull_messages(*, handle: str, since_id: int = 0) -> dict[str, Any]:
@@ -484,4 +688,92 @@ def recall_message(*, from_handle: str, msg_id: int) -> dict[str, Any]:
         conn.commit()
         row = conn.execute("SELECT * FROM messages WHERE id = ?", (int(msg_id),)).fetchone()
         return _with_reads(conn, [_row_message(row)])[0]
+
+
+def work_board(*, max_messages: int = 120, max_age_sec: float = 12 * 3600) -> dict[str, Any]:
+    """Open Chat work obligations per handle (formal @ awaiting ✅ recv).
+
+    Used to align Fleet / Chat / execution: a formal @ without recv is still open work.
+    cc-only (got) is not treated as open work.
+
+    A message stops counting as open when:
+    - the action handle ack'd with recv, or
+    - a later message from that handle references ``#<id>`` (formal follow-up).
+    System ``[dev-task]`` / ``[fleet]`` / ``[release]`` lines are ignored for workers
+    (controller may still track boss asks separately via IDE hook).
+    """
+    import re
+
+    now = time.time()
+    cutoff = now - max(60.0, float(max_age_sec))
+    messages = list_messages(since_id=0)
+    if max_messages > 0 and len(messages) > max_messages:
+        messages = messages[-max_messages:]
+
+    # handle -> set of message ids they later referenced with #N
+    replied_ids: dict[str, set[int]] = {}
+    id_ref = re.compile(r"#(\d+)\b")
+    for msg in messages:
+        if msg.get("recalled"):
+            continue
+        sender = str(msg.get("from") or "")
+        body = str(msg.get("body") or "")
+        found = {int(x) for x in id_ref.findall(body)}
+        if not found:
+            continue
+        replied_ids.setdefault(sender, set()).update(found)
+
+    by_handle: dict[str, dict[str, Any]] = {
+        h: {"awaiting_recv": [], "acked_open": []} for h in HANDLES
+    }
+    by_handle[OWNER] = {"awaiting_recv": [], "acked_open": []}
+
+    system_tag = re.compile(r"\[(dev-task|fleet|release)\]", re.I)
+
+    for msg in messages:
+        if msg.get("recalled"):
+            continue
+        created = float(msg.get("created_at") or 0)
+        if created and created < cutoff:
+            continue
+        body = str(msg.get("body") or "")
+        if system_tag.search(body):
+            continue
+        action = list(msg.get("action") or [])
+        if not action or "all" in action:
+            continue
+        acks = {
+            str(a.get("handle") or ""): str(a.get("ack_type") or "").lower()
+            for a in (msg.get("acks") or [])
+            if isinstance(a, dict)
+        }
+        preview = body.strip().replace("\n", " ")[:120]
+        sender = str(msg.get("from") or "")
+        mid = int(msg.get("id") or 0)
+        for handle in action:
+            if handle not in by_handle:
+                continue
+            if handle == sender:
+                continue
+            if mid in replied_ids.get(handle, set()):
+                continue
+            ack_type = acks.get(handle, "")
+            row = {
+                "id": mid,
+                "from": sender,
+                "preview": preview,
+                "created_at": created,
+                "ack_type": ack_type or None,
+            }
+            if ack_type == "recv":
+                by_handle[handle]["acked_open"].append(row)
+            else:
+                # missing, got, or legacy ok — formal @ still needs ✅ recv
+                by_handle[handle]["awaiting_recv"].append(row)
+
+    return {
+        "generated_at": now,
+        "max_age_sec": max_age_sec,
+        "handles": by_handle,
+    }
 

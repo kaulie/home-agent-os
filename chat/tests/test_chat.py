@@ -9,7 +9,14 @@ from time import sleep
 
 from chat import db
 from chat import attachments as chat_attachments
-from chat.mentions import audience_for, normalize_handle, parse_mentions, recipients_for, visible_to
+from chat.mentions import (
+    audience_for,
+    normalize_handle,
+    parse_mention_roles,
+    parse_mentions,
+    recipients_for,
+    visible_to,
+)
 from chat.serve import ChatHandler, ThreadingHTTPServer
 
 
@@ -70,6 +77,32 @@ class MentionTests(unittest.TestCase):
         self.assertEqual(recipients_for("brain", ["boss"]), ["boss"])
         self.assertEqual(recipients_for("brain", ["owner"]), ["boss"])
 
+    def test_cc_roles(self) -> None:
+        roles = parse_mention_roles("@runtime 做分路。cc @controller @boss")
+        self.assertEqual(roles.action, ["runtime"])
+        self.assertEqual(roles.cc, ["controller", "boss"])
+        self.assertEqual(roles.all_mentions, ["runtime", "controller", "boss"])
+        self.assertEqual(parse_mentions("@runtime 做分路。cc @controller @boss"), roles.all_mentions)
+
+    def test_cc_colon_and_primary_wins(self) -> None:
+        roles = parse_mention_roles("@ui 改按钮 cc:@sre")
+        self.assertEqual(roles.action, ["ui"])
+        self.assertEqual(roles.cc, ["sre"])
+        both = parse_mention_roles("@controller 主送。cc @controller @boss")
+        self.assertEqual(both.action, ["controller"])
+        self.assertEqual(both.cc, ["boss"])
+
+    def test_cc_only(self) -> None:
+        roles = parse_mention_roles("FYI cc @sre @deploy")
+        self.assertEqual(roles.action, [])
+        self.assertEqual(roles.cc, ["sre", "deploy"])
+        self.assertEqual(roles.all_mentions, ["sre", "deploy"])
+
+    def test_acc_not_cc(self) -> None:
+        roles = parse_mention_roles("acc @runtime 不是抄送")
+        self.assertEqual(roles.action, ["runtime"])
+        self.assertEqual(roles.cc, [])
+
 
 class DbPullTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -90,6 +123,42 @@ class DbPullTests(unittest.TestCase):
         page = db.list_messages(since_id=0)
         self.assertEqual(len(page), 1)
         self.assertEqual(page[0]["audience"], [])
+
+    def test_cc_stored_and_visible(self) -> None:
+        msg = db.push_message(
+            from_handle="boss",
+            body="@runtime 做分路。cc @controller @sre",
+        )
+        self.assertEqual(msg["action"], ["runtime"])
+        self.assertEqual(msg["cc"], ["controller", "sre"])
+        self.assertEqual(msg["mentions"], ["runtime", "controller", "sre"])
+        self.assertEqual(msg["audience"], ["runtime", "controller", "sre"])
+        runtime = db.pull_messages(handle="runtime")
+        sre = db.pull_messages(handle="sre")
+        ui = db.pull_messages(handle="ui")
+        self.assertEqual(len(runtime["messages"]), 1)
+        self.assertEqual(len(sre["messages"]), 1)
+        self.assertEqual(ui["messages"], [])
+
+    def test_ack_message_badge(self) -> None:
+        msg = db.push_message(from_handle="boss", body="@runtime 主送。cc @sre")
+        got = db.ack_message(from_handle="sre", message_id=msg["id"], ack_type="got")
+        self.assertEqual(len(got["acks"]), 1)
+        self.assertEqual(got["acks"][0]["handle"], "sre")
+        self.assertEqual(got["acks"][0]["ack_type"], "got")
+        recv = db.ack_message(from_handle="runtime", message_id=msg["id"], ack_type="recv")
+        types = {a["handle"]: a["ack_type"] for a in recv["acks"]}
+        self.assertEqual(types["sre"], "got")
+        self.assertEqual(types["runtime"], "recv")
+        # Switching type upserts
+        switched = db.ack_message(from_handle="sre", message_id=msg["id"], ack_type="recv")
+        types2 = {a["handle"]: a["ack_type"] for a in switched["acks"]}
+        self.assertEqual(types2["sre"], "recv")
+        cleared = db.unack_message(from_handle="sre", message_id=msg["id"])
+        self.assertTrue(all(a["handle"] != "sre" for a in cleared["acks"]))
+        patches, latest = db.ack_patches(since_ack_at=0)
+        self.assertTrue(latest > 0)
+        self.assertTrue(any(p["id"] == msg["id"] for p in patches))
 
     def test_directed_message_only_target_sees(self) -> None:
         db.push_message(from_handle="owner", body="@brain 去看 intent 71")

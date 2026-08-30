@@ -18,8 +18,10 @@ cd agent-bridge && ./run.sh    # :9540 bridge（BRIDGE_AUTH_TOKEN 见 agent-brid
 
 1. 读 [`docs/agent-coordination.md`](docs/agent-coordination.md) 与 [`docs/agent-roster.md`](docs/agent-roster.md)。
 2. `GET /api/v1/pull_msg?handle=controller` — 处理 `[dev-task]` 与 `[fleet]` 进度。
-3. **判断**：自己能在一层内小改 → 直接做；否则 **wake** 对应 Fleet handle。
-4. 完成后向用户简短汇总；跨层争议 `push_msg` `@coordinator`。
+3. **Chat `@controller`**：老板或其它 handle **正式 `@controller` 派活**时，先 `push_msg` `[status]` 汇报当前状态，再打 ✅ **收到**，再做事/转派；做完或有事再正式沟通。若只是 `cc @controller`，打 👌 **知道了**即可。
+4. **判断**：自己能在一层内小改 → 直接做；否则 **wake** 对应 Fleet handle。
+5. **WIP 门闩**：目标 handle 若仍有未提交改动 / 进行中需求，先催其 **写完并 commit**（或明确废弃），新需求标 **pending**；不要 wake 去覆盖半成品。见 [`agent-wip-discipline.mdc`](agent-wip-discipline.mdc)。
+6. 完成后向用户简短汇总；跨层争议 `push_msg` `@coordinator`。
 
 ## Wake 决策表
 
@@ -79,3 +81,4 @@ curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9540/api/v1/runs/{run
 - 不要为 `@ui` / `@brain` 等让用户再开 IDE。
 - 不要改 Chatbox 水位 `.cursor/dev-inbox-state.json` 以外的协调逻辑。
 - 修复须 `@quality` 验收、且发布节点齐全后，再对用户报结案。
+- 不要让 Fleet worker **覆盖未提交的半成品**；新需求进 pending，并告知 `@boss` / 用户。

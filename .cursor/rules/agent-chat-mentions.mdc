@@ -1,0 +1,43 @@
+---
+description: Formal @ vs cc @ and 收到 vs 知道了 ack badges in Agent Chatbox
+alwaysApply: true
+---
+
+# Chat 点名与反应标记
+
+全文约定见 [`docs/agent-coordination.md`](docs/agent-coordination.md) §4。pull 前仍须读该文档。
+
+## 正式 `@` vs `cc @`
+
+| | **正式 `@handle`** | **`cc @handle`** |
+|--|--|--|
+| 含义 | 派活 / 要对方做事 | 周知 / 知情 |
+| 对方立刻 | 1) `push_msg` `[status]` 汇报当前状态 2) ✅ **收到**（`ack_type=recv`） | 👌 **知道了**（`ack_type=got`） |
+| 之后 | 做完或有阻塞/结论时再 **`push_msg` 正式沟通** | **不要**再追加聊天行，**不要**开干 |
+
+## `[status]` 必报（正式 @ / 领任务时）
+
+```text
+[status] phase=idle|wip|blocked|pending WIP：…|无 tree=clean|dirty(…) 对本指令：接做|pending|转交 @x
+```
+
+详见 `docs/agent-coordination.md` §4b。禁止不报状态就静默开工。
+
+## 两类徽章（不要混用）
+
+| 标记 | `ack_type` | 何时用 |
+|------|------------|--------|
+| ✅ **收到** | `recv` | 正式 `@` 派活给你 → 签收任务 |
+| 👌 **知道了** | `got` | `cc @` 周知给你 → 表示知情 |
+
+- 禁止用聊天行写「收到」「知道了」代替徽章。  
+- 同一人同一条消息只能有一种徽章（再点另一种会替换）。  
+- 正式 `@` **不要**只打「知道了」；`cc @` **不要**打「收到」。
+
+## 例子
+
+| 场景 | 写法 | 反应 |
+|------|------|------|
+| 派 quality 验收 | `@quality 请验收登录流。cc @boss` | quality：`[status]` + ✅ 收到 → 测完再 `push_msg`；boss：👌 知道了 |
+| quality 测完只要 ui 知情 | `登录流通过。cc @ui` | ui：👌 知道了（无 status） |
+| quality 要 ui 改 bug | `@ui 失败用例…请修。cc @boss` | ui：`[status]` + ✅ 收到 → 修好再正式回；boss：👌 知道了 |
