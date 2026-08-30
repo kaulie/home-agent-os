@@ -14,7 +14,7 @@ from typing import Any
 
 from mac_edge.tts_playback import PlaybackMute
 from mac_voice.audio.pickup_ingest import PickupIngestServer
-from mac_voice.audio.segmenter import _rms_s16le, iter_utterances
+from mac_voice.audio.segmenter import _PHONE_VOICE_DROP_RATIO, _rms_s16le, iter_utterances
 from mac_voice.audio.source import SoundDeviceAudioSource
 from mac_voice.audio.types import AudioUtterance, PCM_16K_MONO
 from mac_voice.config import VoiceConfig
@@ -302,9 +302,12 @@ def _home_mic_capture_loop(
                     activity.note("high")
                 yield chunk
 
-        # Slightly shorter min + longer pre-roll helps double wake on old phones.
-        phone_silence_ms = max(700, min(int(cfg.silence_ms), 900))
+        # Faster endpoint for wake: shorter silence + 3s cap (was 8s max when
+        # room music blocked trailing-quiet). Peak-drop above start_th so music
+        # bleed after 面条 still ends the clip quickly.
+        phone_silence_ms = max(450, min(int(cfg.silence_ms), 550))
         phone_min_speech_ms = max(280, min(int(cfg.min_speech_ms), 350))
+        phone_max_speech_ms = max(2500, min(int(cfg.max_speech_ms), 3200))
 
         for utt in iter_utterances(
             watched_levels(),
@@ -313,10 +316,12 @@ def _home_mic_capture_loop(
             start_threshold=start_th,
             silence_ms=phone_silence_ms,
             min_speech_ms=phone_min_speech_ms,
-            max_speech_ms=cfg.max_speech_ms,
+            max_speech_ms=phone_max_speech_ms,
             pre_roll_ms=300,
             muted=lambda: False,
             on_activity=activity.note,
+            voice_drop_ratio=_PHONE_VOICE_DROP_RATIO,
+            allow_peak_drop_above_start=True,
         ):
             if stop.is_set():
                 break

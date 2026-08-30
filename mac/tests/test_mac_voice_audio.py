@@ -253,7 +253,30 @@ class SegmenterTests(unittest.TestCase):
         total_s = sum(len(u.ensure_pcm()) for u in utts) / (16000 * 2)
         self.assertGreaterEqual(total_s, 1.0)
 
+    def test_phone_peak_drop_cuts_above_start_threshold(self) -> None:
+        """Home Mic: music bleed above start_th still ends after voice peak drop."""
+        idle = _pcm_chunk(400)
+        voice = _pcm_chunk(12000)
+        bleed = _pcm_chunk(4500)  # still > start_th=2200, ~37% of peak
+        utts = list(
+            iter_utterances(
+                [idle] * 2 + [voice] * 8 + [bleed] * 6,
+                energy_threshold=500.0,
+                start_threshold=2200.0,
+                silence_ms=400,
+                min_speech_ms=200,
+                max_speech_ms=8000,
+                pre_roll_ms=0,
+                voice_drop_ratio=0.42,
+                allow_peak_drop_above_start=True,
+            )
+        )
+        self.assertEqual(len(utts), 1)
+        dur_ms = len(utts[0].ensure_pcm()) / 32.0
+        self.assertLess(dur_ms, 2500.0)
+
     def test_muted_drops_loud_speech(self) -> None:
+
         voice = _pcm_chunk(8000)
         quiet = _pcm_chunk(0)
         hold = {"on": True}

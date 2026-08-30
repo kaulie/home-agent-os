@@ -53,6 +53,11 @@ def _looks_ambient(peak: float, mean: float, start_threshold: float) -> bool:
     return peak / max(mean, 1.0) < _AMBIENT_CREST
 
 
+# Phone Home Mic: room music often sits above start_th after 面条 — still
+# treat a clear drop from the voice peak as trailing quiet.
+_PHONE_VOICE_DROP_RATIO = 0.42
+
+
 def _is_trailing_quiet(
     level: float,
     peak_rms: float,
@@ -60,12 +65,19 @@ def _is_trailing_quiet(
     start_threshold: float,
     floor_rms: float = 0.0,
     onset_rms: float = 0.0,
+    *,
+    voice_drop_ratio: float = _VOICE_DROP_RATIO,
+    allow_peak_drop_above_start: bool = False,
 ) -> bool:
     """True at true silence, or after a voice peak when energy falls back to rumble.
 
     A loud TTS echo (又咋了 ~16k RMS) must not make a follow-up 关闭台灯
     (~2k) look like trailing quiet: anything still at start_threshold is speech
     unless we have returned to the HVAC floor / rumble onset.
+
+    ``allow_peak_drop_above_start`` (phone HAP1): after a strong peak, a drop
+    to ``voice_drop_ratio`` of peak counts even when room noise is still above
+    start_threshold — otherwise music bleed waits until max_speech.
     """
     if level < energy_threshold:
         return True
@@ -77,11 +89,17 @@ def _is_trailing_quiet(
         and level <= max(energy_threshold, onset_rms * _FLOOR_QUIET_RATIO)
     ):
         return True
+    if (
+        allow_peak_drop_above_start
+        and peak_rms >= start_threshold * 2.0
+        and level <= peak_rms * voice_drop_ratio
+    ):
+        return True
     if level >= start_threshold:
         return False
     if peak_rms < start_threshold:
         return False
-    return level <= peak_rms * _VOICE_DROP_RATIO
+    return level <= peak_rms * voice_drop_ratio
 
 
 def iter_utterances(
@@ -98,6 +116,8 @@ def iter_utterances(
     clock: Callable[[], float] = time.monotonic,
     muted: Callable[[], bool] | None = None,
     on_activity: Callable[[str], None] | None = None,
+    voice_drop_ratio: float = _VOICE_DROP_RATIO,
+    allow_peak_drop_above_start: bool = False,
 ) -> Iterator[AudioUtterance]:
     """
     Yield utterances from a continuous PCM stream.
@@ -112,6 +132,8 @@ def iter_utterances(
         start_threshold if start_threshold is not None else energy_threshold * _START_GATE
     )
     start_th = max(start_th, energy_threshold)
+    drop_ratio = float(voice_drop_ratio)
+    peak_drop_ok = bool(allow_peak_drop_above_start)
     sw = format.sample_width
     bytes_per_ms = max(1, format.sample_rate * format.channels * sw // 1000)
     silence_bytes = silence_ms * bytes_per_ms
@@ -196,7 +218,14 @@ def iter_utterances(
         if level > peak_rms:
             peak_rms = level
         if _is_trailing_quiet(
-            level, peak_rms, energy_threshold, start_th, floor_rms, onset_rms
+            level,
+            peak_rms,
+            energy_threshold,
+            start_th,
+            floor_rms,
+            onset_rms,
+            voice_drop_ratio=drop_ratio,
+            allow_peak_drop_above_start=peak_drop_ok,
         ):
             silent_run += len(chunk)
         else:
