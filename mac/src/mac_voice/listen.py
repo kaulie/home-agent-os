@@ -302,26 +302,34 @@ def _home_mic_capture_loop(
                     activity.note("high")
                 yield chunk
 
-        # After「我在呢」we break+mute ~1.1s so ack bleed is not glued onto the
-        # command. Command clips then get a full budget (was 3.2s max and cut
-        # 打开客厅空 | 调). Keep peak-drop for faster end once speech falls.
-        phone_silence_ms = max(450, min(int(cfg.silence_ms), 600))
+        # Wake: short cuts for「面条面条」. After HAP1 speak → command listen:
+        # ~command_window to start talking, then 2s silence glue + long max.
+        ingest.configure_phone_endpoint(
+            wake_silence_ms=cfg.phone_wake_silence_ms,
+            wake_max_speech_ms=cfg.phone_wake_max_speech_ms,
+            command_silence_ms=cfg.phone_command_silence_ms,
+            command_max_speech_ms=cfg.phone_command_max_speech_ms,
+            command_window_ms=cfg.command_window_ms,
+        )
         phone_min_speech_ms = max(280, min(int(cfg.min_speech_ms), 350))
-        phone_max_speech_ms = max(4500, min(int(cfg.max_speech_ms), 6500))
+
+        def on_phone_activity(state: str) -> None:
+            activity.note(state)
+            ingest.note_segment_activity(state)
 
         for utt in iter_utterances(
             watched_levels(),
             format=PCM_16K_MONO,
             energy_threshold=energy,
             start_threshold=start_th,
-            silence_ms=phone_silence_ms,
+            silence_ms=ingest.phone_silence_ms,
             min_speech_ms=phone_min_speech_ms,
-            max_speech_ms=phone_max_speech_ms,
+            max_speech_ms=ingest.phone_max_speech_ms,
             pre_roll_ms=350,
             muted=ingest.should_mute_segmenter,
-            on_activity=activity.note,
+            on_activity=on_phone_activity,
             voice_drop_ratio=_PHONE_VOICE_DROP_RATIO,
-            allow_peak_drop_above_start=True,
+            allow_peak_drop_above_start=lambda: not ingest.in_command_endpoint(),
         ):
             if stop.is_set():
                 break

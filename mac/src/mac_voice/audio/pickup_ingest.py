@@ -115,10 +115,82 @@ class PickupIngestServer:
         self._lock = threading.Lock()
         # peer -> {conn, participant_id, device_id}
         self._clients: dict[str, dict[str, Any]] = {}
-        # After HAP1 speak, break/mute phone segmenter so「我在呢」bleed and the
-        # follow-up command do not share one max-capped utterance.
+        # After HAP1 speak: mute ack bleed, then command-listen endpoint profile.
         self._segment_break = threading.Event()
         self._segment_mute_until = 0.0
+        self._command_onset_deadline = 0.0
+        self._command_utt_active = False
+        self._phone_wake_silence_ms = 500
+        self._phone_wake_max_ms = 3500
+        self._phone_cmd_silence_ms = 2000
+        self._phone_cmd_max_ms = 12_000
+        self._command_window_ms = 5000
+
+    def configure_phone_endpoint(
+        self,
+        *,
+        wake_silence_ms: int,
+        wake_max_speech_ms: int,
+        command_silence_ms: int,
+        command_max_speech_ms: int,
+        command_window_ms: int,
+    ) -> None:
+        self._phone_wake_silence_ms = max(200, int(wake_silence_ms))
+        self._phone_wake_max_ms = max(800, int(wake_max_speech_ms))
+        self._phone_cmd_silence_ms = max(400, int(command_silence_ms))
+        self._phone_cmd_max_ms = max(2000, int(command_max_speech_ms))
+        self._command_window_ms = max(500, int(command_window_ms))
+
+    def begin_command_listen(
+        self,
+        *,
+        window_ms: int | None = None,
+        hold_ms: float = 1100.0,
+    ) -> None:
+        """After「我在呢」: drop current clip, mute hold, open command onset window."""
+        now = time.monotonic()
+        hold = max(0.0, float(hold_ms)) / 1000.0
+        window = max(0.5, float(window_ms if window_ms is not None else self._command_window_ms) / 1000.0)
+        self._segment_break.set()
+        self._segment_mute_until = now + hold
+        self._command_onset_deadline = now + hold + window
+        self._command_utt_active = False
+        log.info(
+            "phone_hap1 command listen window=%.1fs after hold=%.1fs silence_ms=%s max_ms=%s",
+            window,
+            hold,
+            self._phone_cmd_silence_ms,
+            self._phone_cmd_max_ms,
+        )
+
+    def note_segment_activity(self, state: str) -> None:
+        """Track whether a command-profile utterance is in progress."""
+        if state == "speech":
+            now = time.monotonic()
+            if now <= self._command_onset_deadline or self._command_utt_active:
+                if not self._command_utt_active and now <= self._command_onset_deadline:
+                    log.info("phone_hap1 command utterance started")
+                self._command_utt_active = True
+            return
+        if state == "idle" and self._command_utt_active:
+            self._command_utt_active = False
+            self._command_onset_deadline = 0.0
+            log.info("phone_hap1 command utterance ended → wake endpoint")
+
+    def in_command_endpoint(self) -> bool:
+        if self._command_utt_active:
+            return True
+        return time.monotonic() <= self._command_onset_deadline
+
+    def phone_silence_ms(self) -> int:
+        if self.in_command_endpoint():
+            return self._phone_cmd_silence_ms
+        return self._phone_wake_silence_ms
+
+    def phone_max_speech_ms(self) -> int:
+        if self.in_command_endpoint():
+            return self._phone_cmd_max_ms
+        return self._phone_wake_max_ms
 
     def request_segment_break(self, *, hold_ms: float = 1000.0) -> None:
         """Drop in-progress phone clip and hold mute briefly (wake-ack playback)."""
@@ -244,8 +316,7 @@ class PickupIngestServer:
             except OSError as e:
                 log.warning("phone_hap1 speak failed peer=%s: %s", peer, e)
         if sent > 0:
-            # Local CAF ~0.6s; hold a bit longer so command starts a fresh clip.
-            self.request_segment_break(hold_ms=1100.0)
+            self.begin_command_listen(hold_ms=1100.0)
         return sent
 
     def iter_pcm(self, chunk_ms: int = 100) -> Iterator[bytes]:

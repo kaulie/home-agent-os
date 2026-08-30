@@ -108,16 +108,16 @@ def iter_utterances(
     format: AudioFormat = PCM_16K_MONO,
     energy_threshold: float = 500.0,
     start_threshold: float | None = None,
-    silence_ms: int = 1000,
+    silence_ms: int | Callable[[], int] = 1000,
     min_speech_ms: int = 400,
-    max_speech_ms: int = 8000,
+    max_speech_ms: int | Callable[[], int] = 8000,
     pre_roll_ms: int = 200,
     ambient_abort_ms: int = _AMBIENT_ABORT_MS,
     clock: Callable[[], float] = time.monotonic,
     muted: Callable[[], bool] | None = None,
     on_activity: Callable[[str], None] | None = None,
     voice_drop_ratio: float = _VOICE_DROP_RATIO,
-    allow_peak_drop_above_start: bool = False,
+    allow_peak_drop_above_start: bool | Callable[[], bool] = False,
 ) -> Iterator[AudioUtterance]:
     """
     Yield utterances from a continuous PCM stream.
@@ -127,18 +127,29 @@ def iter_utterances(
     silence_ms of trailing quiet (true silence or drop back to the HVAC
     floor), or max_speech_ms. Flat / low rumble is dropped here and never
     queued for STT.
+
+    ``silence_ms`` / ``max_speech_ms`` / ``allow_peak_drop_above_start`` may be
+    callables so Home Mic can use short wake cuts vs long command cuts.
     """
     start_th = float(
         start_threshold if start_threshold is not None else energy_threshold * _START_GATE
     )
     start_th = max(start_th, energy_threshold)
     drop_ratio = float(voice_drop_ratio)
-    peak_drop_ok = bool(allow_peak_drop_above_start)
+
+    def _as_int(value: int | Callable[[], int], default: int) -> int:
+        raw = value() if callable(value) else value
+        try:
+            return max(1, int(raw))
+        except (TypeError, ValueError):
+            return default
+
+    def _as_bool(value: bool | Callable[[], bool]) -> bool:
+        return bool(value() if callable(value) else value)
+
     sw = format.sample_width
     bytes_per_ms = max(1, format.sample_rate * format.channels * sw // 1000)
-    silence_bytes = silence_ms * bytes_per_ms
     min_speech_bytes = min_speech_ms * bytes_per_ms
-    max_speech_bytes = max_speech_ms * bytes_per_ms
     pre_roll_bytes = pre_roll_ms * bytes_per_ms
     abort_bytes = max(min_speech_bytes, ambient_abort_ms * bytes_per_ms)
 
@@ -156,6 +167,7 @@ def iter_utterances(
     floor_rms = 0.0
     onset_rms = 0.0
     idle_floor = 0.0
+    was_muted = False
 
     def _note(state: str) -> None:
         if on_activity is not None:
@@ -180,13 +192,19 @@ def iter_utterances(
             continue
         if muted is not None and muted():
             if in_speech or pending_start:
-                log.info("playback mute — drop in-progress clip")
+                if not was_muted:
+                    log.info("playback mute — drop in-progress clip")
                 _reset()
             else:
                 pending_start.clear()
                 pre_roll.clear()
+            was_muted = True
             continue
+        was_muted = False
         now = clock()
+        silence_bytes = _as_int(silence_ms, 1000) * bytes_per_ms
+        max_speech_bytes = _as_int(max_speech_ms, 8000) * bytes_per_ms
+        peak_drop_ok = _as_bool(allow_peak_drop_above_start)
         level = _rms_s16le(chunk)
         if not in_speech:
             pre_roll.extend(chunk)

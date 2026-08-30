@@ -275,6 +275,26 @@ class SegmenterTests(unittest.TestCase):
         dur_ms = len(utts[0].ensure_pcm()) / 32.0
         self.assertLess(dur_ms, 2500.0)
 
+    def test_dynamic_silence_ms_callable(self) -> None:
+        voice = _pcm_chunk(8000)
+        quiet = _pcm_chunk(0)
+        profile = {"silence": 2000}
+
+        utts = list(
+            iter_utterances(
+                [voice] * 5 + [quiet] * 25,
+                energy_threshold=500.0,
+                start_threshold=1500.0,
+                silence_ms=lambda: profile["silence"],
+                min_speech_ms=200,
+                max_speech_ms=15_000,
+                pre_roll_ms=0,
+            )
+        )
+        self.assertEqual(len(utts), 1)
+        # 5*100ms voice + ~2000ms silence trailing trim → roughly 2.5s+ clip before trim
+        self.assertGreaterEqual(len(utts[0].ensure_pcm()) / 32.0, 500.0)
+
     def test_muted_drops_loud_speech(self) -> None:
 
         voice = _pcm_chunk(8000)

@@ -88,6 +88,10 @@ class VoiceConfig:
     pickup_ingest_host: str
     pickup_ingest_port: int
     pickup_speak_bridge_port: int
+    phone_wake_silence_ms: int
+    phone_wake_max_speech_ms: int
+    phone_command_silence_ms: int
+    phone_command_max_speech_ms: int
     stt_wav_dir: Path | None
     stt_wav_keep: bool
     stt_wav_max_age_hours: float
@@ -270,6 +274,30 @@ def load_config() -> VoiceConfig:
             8793,
             lo=1,
             hi=65535,
+        ),
+        phone_wake_silence_ms=_parse_int(
+            _env("MAC_VOICE_PHONE_WAKE_SILENCE_MS"),
+            500,
+            lo=200,
+            hi=2000,
+        ),
+        phone_wake_max_speech_ms=_parse_int(
+            _env("MAC_VOICE_PHONE_WAKE_MAX_SPEECH_MS"),
+            3500,
+            lo=800,
+            hi=15_000,
+        ),
+        phone_command_silence_ms=_parse_int(
+            _env("MAC_VOICE_PHONE_COMMAND_SILENCE_MS"),
+            2000,
+            lo=400,
+            hi=5000,
+        ),
+        phone_command_max_speech_ms=_parse_int(
+            _env("MAC_VOICE_PHONE_COMMAND_MAX_SPEECH_MS"),
+            12_000,
+            lo=2000,
+            hi=30_000,
         ),
         stt_wav_dir=_parse_stt_wav_dir(_env("MAC_VOICE_STT_WAV_DIR"), data_dir),
         stt_wav_keep=_env("MAC_VOICE_STT_WAV_KEEP", "0").lower()

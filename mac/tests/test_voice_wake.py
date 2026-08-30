@@ -603,6 +603,10 @@ class ConfigDefaultTests(unittest.TestCase):
         self.assertEqual(cfg.command_window_ms, 5000)
         self.assertEqual(cfg.double_wake_ms, 1100)
         self.assertEqual(cfg.wake_scope, "participant")
+        self.assertEqual(cfg.phone_wake_silence_ms, 500)
+        self.assertEqual(cfg.phone_wake_max_speech_ms, 3500)
+        self.assertEqual(cfg.phone_command_silence_ms, 2000)
+        self.assertEqual(cfg.phone_command_max_speech_ms, 12_000)
 
     def test_load_config_fetches_wake_ack_from_brain_when_env_unset(self) -> None:
         from mac_voice.config import load_config
