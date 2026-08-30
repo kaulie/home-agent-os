@@ -31,6 +31,7 @@ struct DevStatsView: View {
                                     .padding(.vertical, 40)
                             } else if let stats = store.statsUsage {
                                 summarySection(stats)
+                                cloudCallsSection(stats)
                                 timeSeriesSection(stats)
                                 categorySection(stats.period)
                                 footnote
@@ -93,6 +94,43 @@ struct DevStatsView: View {
             )
             if stats.allTime.totalTokens != stats.period.totalTokens || stats.periodKey == "all" {
                 DevStatsUsageCard(title: "累计", bucket: stats.allTime)
+            }
+        }
+    }
+
+    private func cloudCallsSection(_ stats: DevTokenUsageStats) -> some View {
+        DevPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                DevTheme.sectionLabel("云服务调用")
+                let rows = stats.cloudCalls?.period ?? []
+                if rows.isEmpty {
+                    Text("该周期还没有记录")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(DevTheme.dim)
+                } else {
+                    ForEach(rows) { row in
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(row.label)
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundStyle(DevTheme.mist)
+                            Spacer(minLength: 8)
+                            Text(row.count.formatted())
+                                .font(.system(size: 15, weight: .bold, design: .monospaced))
+                                .foregroundStyle(DevTheme.sand)
+                            if row.fail > 0 {
+                                Text("失败 \(row.fail.formatted())")
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .foregroundStyle(DevTheme.off)
+                            }
+                        }
+                        if row.id != rows.last?.id {
+                            Divider().overlay(DevTheme.panelStroke)
+                        }
+                    }
+                }
+                Text("云调用从本 Brain 实例的埋点汇总；与 Cursor token 分开。")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(DevTheme.dim)
             }
         }
     }

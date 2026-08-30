@@ -448,6 +448,53 @@ struct DevTokenUsageResponse: Decodable {
     let error: String?
 }
 
+struct DevCloudCallRow: Decodable, Equatable, Identifiable {
+    var id: String { serviceId }
+
+    let serviceId: String
+    let label: String
+    let count: Int
+    let ok: Int
+    let fail: Int
+
+    enum CodingKeys: String, CodingKey {
+        case serviceId = "service_id"
+        case label, count, ok, fail
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        serviceId = try c.decodeIfPresent(String.self, forKey: .serviceId) ?? ""
+        label = try c.decodeIfPresent(String.self, forKey: .label) ?? serviceId
+        count = try c.decodeIfPresent(Int.self, forKey: .count) ?? 0
+        ok = try c.decodeIfPresent(Int.self, forKey: .ok) ?? 0
+        fail = try c.decodeIfPresent(Int.self, forKey: .fail) ?? 0
+    }
+}
+
+struct DevCloudCallsStats: Decodable, Equatable {
+    let period: [DevCloudCallRow]
+    let allTime: [DevCloudCallRow]
+
+    enum CodingKeys: String, CodingKey {
+        case period
+        case allTime = "all_time"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        period = try c.decodeIfPresent([DevCloudCallRow].self, forKey: .period) ?? []
+        allTime = try c.decodeIfPresent([DevCloudCallRow].self, forKey: .allTime) ?? []
+    }
+
+    static let empty = DevCloudCallsStats(period: [], allTime: [])
+
+    init(period: [DevCloudCallRow], allTime: [DevCloudCallRow]) {
+        self.period = period
+        self.allTime = allTime
+    }
+}
+
 struct DevTokenUsageStats: Decodable, Equatable {
     let periodKey: String?
     let periodLabel: String?
@@ -458,6 +505,7 @@ struct DevTokenUsageStats: Decodable, Equatable {
     let allTime: DevTokenUsageBucket
     let byTime: [DevTokenUsageTimeBucket]
     let recentTasks: [DevStatsTaskUsage]
+    let cloudCalls: DevCloudCallsStats?
 
     enum CodingKeys: String, CodingKey {
         case periodKey = "period_key"
@@ -469,6 +517,7 @@ struct DevTokenUsageStats: Decodable, Equatable {
         case allTime = "all_time"
         case byTime = "by_time"
         case recentTasks = "recent_tasks"
+        case cloudCalls = "cloud_calls"
     }
 
     init(from decoder: Decoder) throws {
@@ -482,6 +531,7 @@ struct DevTokenUsageStats: Decodable, Equatable {
         allTime = try c.decodeIfPresent(DevTokenUsageBucket.self, forKey: .allTime) ?? .empty
         byTime = try c.decodeIfPresent([DevTokenUsageTimeBucket].self, forKey: .byTime) ?? []
         recentTasks = try c.decodeIfPresent([DevStatsTaskUsage].self, forKey: .recentTasks) ?? []
+        cloudCalls = try c.decodeIfPresent(DevCloudCallsStats.self, forKey: .cloudCalls)
     }
 
     init(
@@ -493,7 +543,8 @@ struct DevTokenUsageStats: Decodable, Equatable {
         period: DevTokenUsageBucket,
         allTime: DevTokenUsageBucket,
         byTime: [DevTokenUsageTimeBucket] = [],
-        recentTasks: [DevStatsTaskUsage] = []
+        recentTasks: [DevStatsTaskUsage] = [],
+        cloudCalls: DevCloudCallsStats? = nil
     ) {
         self.periodKey = periodKey
         self.periodLabel = periodLabel
@@ -504,6 +555,7 @@ struct DevTokenUsageStats: Decodable, Equatable {
         self.allTime = allTime
         self.byTime = byTime
         self.recentTasks = recentTasks
+        self.cloudCalls = cloudCalls
     }
 
     var displayPeriodTitle: String {

@@ -25,7 +25,7 @@ open ios/HomeAgentDev/HomeAgentDev.xcodeproj
 | **Issue** | User Console 经 Debug Gateway 上报的问题；每 3 秒刷新进行中 Issue |
 | **Dev Task** | agent-bridge 开发任务列表 + 手动下发（可指定 `target_handle`） |
 | **Fleet** | Agent Fleet 状态：各 handle 在线/运行中、最近 run、一键唤醒 |
-| **统计** | Dev Task token 消耗总览、按类别拆分、最近计量任务 |
+| **统计** | Dev Task token 消耗总览、按类别拆分；**云服务调用**（`usage.cloud_calls` 埋点，与 token 分开） |
 | **连接** | Brain URL + 管理员令牌 |
 
 ## XCUITest（@quality）
