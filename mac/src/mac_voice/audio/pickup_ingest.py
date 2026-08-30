@@ -120,8 +120,8 @@ class PickupIngestServer:
         self._segment_mute_until = 0.0
         self._command_onset_deadline = 0.0
         self._command_utt_active = False
-        self._phone_wake_silence_ms = 500
-        self._phone_wake_max_ms = 3500
+        self._phone_wake_silence_ms = 350
+        self._phone_wake_max_ms = 2800
         self._phone_cmd_silence_ms = 2000
         self._phone_cmd_max_ms = 12_000
         self._command_window_ms = 5000

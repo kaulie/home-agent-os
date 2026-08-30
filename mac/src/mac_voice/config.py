@@ -277,13 +277,13 @@ def load_config() -> VoiceConfig:
         ),
         phone_wake_silence_ms=_parse_int(
             _env("MAC_VOICE_PHONE_WAKE_SILENCE_MS"),
-            500,
+            350,
             lo=200,
             hi=2000,
         ),
         phone_wake_max_speech_ms=_parse_int(
             _env("MAC_VOICE_PHONE_WAKE_MAX_SPEECH_MS"),
-            3500,
+            2800,
             lo=800,
             hi=15_000,
         ),

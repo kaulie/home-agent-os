@@ -325,7 +325,7 @@ def _home_mic_capture_loop(
             silence_ms=ingest.phone_silence_ms,
             min_speech_ms=phone_min_speech_ms,
             max_speech_ms=ingest.phone_max_speech_ms,
-            pre_roll_ms=350,
+            pre_roll_ms=250,
             muted=ingest.should_mute_segmenter,
             on_activity=on_phone_activity,
             voice_drop_ratio=_PHONE_VOICE_DROP_RATIO,

@@ -267,7 +267,7 @@ class SegmenterTests(unittest.TestCase):
                 min_speech_ms=200,
                 max_speech_ms=8000,
                 pre_roll_ms=0,
-                voice_drop_ratio=0.42,
+                voice_drop_ratio=0.50,
                 allow_peak_drop_above_start=True,
             )
         )

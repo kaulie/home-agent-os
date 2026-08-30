@@ -55,7 +55,8 @@ def _looks_ambient(peak: float, mean: float, start_threshold: float) -> bool:
 
 # Phone Home Mic: room music often sits above start_th after 面条 — still
 # treat a clear drop from the voice peak as trailing quiet.
-_PHONE_VOICE_DROP_RATIO = 0.42
+# 0.50 = cut sooner after wake-word peak (wake only; command disables peak-drop).
+_PHONE_VOICE_DROP_RATIO = 0.50
 
 
 def _is_trailing_quiet(
