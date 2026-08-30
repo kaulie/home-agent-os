@@ -47,6 +47,10 @@
 		965998B669F04A73AE87777F /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C4E9B00D1A0477CA8656C40 /* AudioRecorder.swift */; };
 		996F8724F18349FFA8600F85 /* SystemObserverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C744A5E070F64600B3BB3734 /* SystemObserverView.swift */; };
 		9FE6691529004F308E474580 /* LiveStreamWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55AB2D5C00BC4C5C83454F8D /* LiveStreamWorkspaceView.swift */; };
+		1A1B2C3D4E5F60718293A4B5 /* VideoLiveStatusClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F60718293A4B5 /* VideoLiveStatusClient.swift */; };
+		1A1B2C3D4E5F60718293A4B6 /* LiveStreamHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F60718293A4B6 /* LiveStreamHubView.swift */; };
+		1A1B2C3D4E5F60718293A4B7 /* LiveWatchListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F60718293A4B7 /* LiveWatchListView.swift */; };
+		1A1B2C3D4E5F60718293A4B8 /* LiveWatchPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1B2C3D4E5F60718293A4B8 /* LiveWatchPlayerView.swift */; };
 		A840D281927A4C83898E100A /* AudioWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62EBBE5EE981466B812300AA /* AudioWorkspaceView.swift */; };
 		B01CB7E24CBE4012884C567B /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B42FB946726E43CDA1B3F6E1 /* AudioPlayer.swift */; };
 		BB8271B8FA11494C93921ADC /* ClickGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D865B7765B2447728FD0255C /* ClickGuard.swift */; };
@@ -89,6 +93,10 @@
 		4C4F749C24574527B8D2BD4A /* on.m4a */ = {isa = PBXFileReference; lastKnownFileType = audio; path = on.m4a; sourceTree = "<group>"; };
 		538FF3A013924D11813F892C /* ScanWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanWorkspaceView.swift; sourceTree = "<group>"; };
 		55AB2D5C00BC4C5C83454F8D /* LiveStreamWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveStreamWorkspaceView.swift; sourceTree = "<group>"; };
+		0A1B2C3D4E5F60718293A4B5 /* VideoLiveStatusClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoLiveStatusClient.swift; sourceTree = "<group>"; };
+		0A1B2C3D4E5F60718293A4B6 /* LiveStreamHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveStreamHubView.swift; sourceTree = "<group>"; };
+		0A1B2C3D4E5F60718293A4B7 /* LiveWatchListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveWatchListView.swift; sourceTree = "<group>"; };
+		0A1B2C3D4E5F60718293A4B8 /* LiveWatchPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveWatchPlayerView.swift; sourceTree = "<group>"; };
 		5AD5B841B6134BB79B02CE8D /* PhotoUploadDest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoUploadDest.swift; sourceTree = "<group>"; };
 		5C706DD4F8904E1FA21967C1 /* LocalPhotoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPhotoStore.swift; sourceTree = "<group>"; };
 		5FC7D1B43C9342099D3328B1 /* GameGestureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameGestureController.swift; sourceTree = "<group>"; };
@@ -276,6 +284,10 @@
 				81937BDF4FA54FBC96A6E8AE /* HomeAgentMark.swift */,
 				BA337C3954E547C9BF237269 /* IntentProgressOverlay.swift */,
 				55AB2D5C00BC4C5C83454F8D /* LiveStreamWorkspaceView.swift */,
+				0A1B2C3D4E5F60718293A4B5 /* VideoLiveStatusClient.swift */,
+				0A1B2C3D4E5F60718293A4B6 /* LiveStreamHubView.swift */,
+				0A1B2C3D4E5F60718293A4B7 /* LiveWatchListView.swift */,
+				0A1B2C3D4E5F60718293A4B8 /* LiveWatchPlayerView.swift */,
 				66E016A3E8864CF6A72F565C /* LivingRoomEdgeApp.swift */,
 				BBDF5C7351124ED69EBFE5AE /* NodeInfoView.swift */,
 				87090D6CD5FE4BB1A3D7C35A /* PhotoWorkspaceView.swift */,
@@ -428,6 +440,10 @@
 				F25A4EBAC5FD4BCA95F270F9 /* HomeAgentMark.swift in Sources */,
 				5522E58F604E4E9B9682A6C6 /* IntentProgressOverlay.swift in Sources */,
 				9FE6691529004F308E474580 /* LiveStreamWorkspaceView.swift in Sources */,
+				1A1B2C3D4E5F60718293A4B5 /* VideoLiveStatusClient.swift in Sources */,
+				1A1B2C3D4E5F60718293A4B6 /* LiveStreamHubView.swift in Sources */,
+				1A1B2C3D4E5F60718293A4B7 /* LiveWatchListView.swift in Sources */,
+				1A1B2C3D4E5F60718293A4B8 /* LiveWatchPlayerView.swift in Sources */,
 				4E25272862A94745A9F89582 /* LivingRoomEdgeApp.swift in Sources */,
 				5B8A50EC511D4656B862098D /* NodeInfoView.swift in Sources */,
 				8D6325E1400242719D771E9F /* PhotoWorkspaceView.swift in Sources */,

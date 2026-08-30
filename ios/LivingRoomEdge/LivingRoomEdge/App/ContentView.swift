@@ -59,7 +59,7 @@ struct ContentView: View {
                         pane = .chat
                     }
                 } else {
-                    LiveStreamWorkspaceView(showSettings: $showSettings, settingsFocus: $settingsFocus) {
+                    LiveStreamHubView(showSettings: $showSettings, settingsFocus: $settingsFocus) {
                         pane = .chat
                     }
                 }

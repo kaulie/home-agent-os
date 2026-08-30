@@ -4,6 +4,15 @@ Control HTTP (default :8790, LAN only):
   POST /api/v1/video-live/prepare
   GET  /api/v1/video-live/status?stream_id=
   POST /api/v1/video-live/stop
+  GET  /api/v1/video-live/hls/<stream_id>/<file>   (playlist.m3u8 / .ts segments)
+
+HLS relay: while streaming, MPEG-TS is teed into ffmpeg which writes a rolling
+HLS playlist under <data>/video-live/hls/<stream_id>/. Snapshot exposes
+"playback_url" so a second LAN phone can watch via AVPlayer (HLS, ~2s segments).
+
+Event mode (default, HLS_LIST_SIZE=0): every segment is kept and completed
+sessions are registered as replays (`status.replays[]`) and stay playable until
+RETENTION_MINUTES (0 = keep forever) / MAX_SESSIONS prune them.
 
 Media: MPEG-TS over TCP. prepare() opens a short-lived listen port.
 A standing Larix port (default 5004) accepts the same TS without prepare.
@@ -80,6 +89,10 @@ class StreamSession:
         listen_port: int,
         dump_path: Path,
         preview: bool,
+        hls: bool = False,
+        http_port: int = DEFAULT_HTTP_PORT,
+        hls_list_size: int = 0,
+        server: VideoLiveIngestServer | None = None,
     ) -> None:
         self.stream_id = stream_id
         self.source = source
@@ -87,14 +100,21 @@ class StreamSession:
         self.listen_port = listen_port
         self.dump_path = dump_path
         self.preview = preview
+        self.hls = hls
+        self.http_port = http_port
+        self.hls_list_size = int(hls_list_size)
+        self._server = server
         self.started_at = time.time()
         self.bytes_received = 0
         self.status = "starting"
         self.error: str | None = None
         self.endpoint = f"tcp://{lan_ipv4()}:{listen_port}"
+        self.hls_dir = dump_path.parent / "hls" / stream_id
+        self.hls_ready = False
         self._stop = threading.Event()
         self._sock: socket.socket | None = None
         self._ffplay: subprocess.Popen[bytes] | None = None
+        self._ffmpeg_hls: subprocess.Popen[bytes] | None = None
         self._viewer_opened = False
         self._thread = threading.Thread(
             target=self._run,
@@ -117,10 +137,20 @@ class StreamSession:
                 self._ffplay.terminate()
             except OSError:
                 pass
+        if self._ffmpeg_hls is not None:
+            try:
+                self._ffmpeg_hls.terminate()
+                try:
+                    self._ffmpeg_hls.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    self._ffmpeg_hls.kill()
+                    self._ffmpeg_hls.wait(timeout=5)
+            except OSError:
+                pass
         self.status = "idle"
 
     def snapshot(self) -> dict[str, Any]:
-        return {
+        snap: dict[str, Any] = {
             "stream_id": self.stream_id,
             "capability_id": CAPABILITY_ID,
             "input_type": "video",
@@ -133,6 +163,12 @@ class StreamSession:
             "bytes_received": self.bytes_received,
             "error": self.error,
         }
+        if self.hls and self.status == "streaming" and self.hls_ready:
+            snap["playback_url"] = (
+                f"http://{lan_ipv4()}:{self.http_port}"
+                f"/api/v1/video-live/hls/{self.stream_id}/playlist.m3u8"
+            )
+        return snap
 
     def _run(self) -> None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -215,6 +251,56 @@ class StreamSession:
                     os.set_blocking(self._ffplay.stdin.fileno(), False)
                 except OSError:
                     pass
+        if self.hls:
+            # Reset any content from a previous push on this session (Larix reuses
+            # the same stream_id) and drop its stale replay/cleanup timer.
+            shutil.rmtree(self.hls_dir, ignore_errors=True)
+            if self._server is not None:
+                self._server._hls_session_started(self.stream_id)
+            ffmpeg_bin = shutil.which("ffmpeg")
+            if ffmpeg_bin:
+                try:
+                    self.hls_dir.mkdir(parents=True, exist_ok=True)
+                    # list_size 0 = Event mode: keep every segment (full replay).
+                    # list_size > 0 = sliding window: delete segments that fall out.
+                    hls_flags = "append_list" if self.hls_list_size == 0 else "delete_segments"
+                    self._ffmpeg_hls = subprocess.Popen(
+                        [
+                            ffmpeg_bin,
+                            "-hide_banner",
+                            "-loglevel",
+                            "error",
+                            "-f",
+                            "mpegts",
+                            "-i",
+                            "pipe:0",
+                            "-c",
+                            "copy",
+                            "-f",
+                            "hls",
+                            "-hls_time",
+                            "2",
+                            "-hls_list_size",
+                            str(self.hls_list_size),
+                            "-hls_flags",
+                            hls_flags,
+                            "-hls_segment_filename",
+                            str(self.hls_dir / "seg_%05d.ts"),
+                            str(self.hls_dir / "playlist.m3u8"),
+                        ],
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except OSError:
+                    self._ffmpeg_hls = None
+                if self._ffmpeg_hls is not None and self._ffmpeg_hls.stdin is not None:
+                    try:
+                        os.set_blocking(self._ffmpeg_hls.stdin.fileno(), False)
+                    except OSError:
+                        pass
+            else:
+                log.info("hls relay: install ffmpeg on PATH to expose playback_url")
         try:
             with conn, self.dump_path.open("ab") as dump:
                 conn.settimeout(1.0)
@@ -222,6 +308,7 @@ class StreamSession:
                     try:
                         chunk = conn.recv(64 * 1024)
                     except socket.timeout:
+                        self._maybe_mark_hls_ready()
                         continue
                     except OSError:
                         break
@@ -231,14 +318,24 @@ class StreamSession:
                     dump.write(chunk)
                     dump.flush()
                     self._maybe_open_viewer()
-                    stdin = self._ffplay.stdin if self._ffplay is not None else None
-                    if stdin is not None:
+                    self._maybe_mark_hls_ready()
+                    for proc in (self._ffplay, self._ffmpeg_hls):
+                        if proc is None:
+                            continue
+                        stdin = proc.stdin
+                        if stdin is None:
+                            continue
                         try:
                             stdin.write(chunk)
                         except BlockingIOError:
                             pass
                         except BrokenPipeError:
-                            self._ffplay = None
+                            if proc is self._ffmpeg_hls:
+                                # Keep the reference: the finally block must still be
+                                # able to kill/reap it even if the pipe broke early.
+                                self.hls_ready = False
+                            else:
+                                self._ffplay = None
         finally:
             if self._ffplay is not None:
                 try:
@@ -248,6 +345,32 @@ class StreamSession:
                 except OSError:
                     pass
                 self._ffplay = None
+            if self._ffmpeg_hls is not None:
+                try:
+                    if self._ffmpeg_hls.stdin is not None:
+                        self._ffmpeg_hls.stdin.close()
+                    self._ffmpeg_hls.terminate()
+                    try:
+                        self._ffmpeg_hls.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        self._ffmpeg_hls.kill()
+                        self._ffmpeg_hls.wait(timeout=5)
+                except OSError:
+                    pass
+                self._ffmpeg_hls = None
+            self.hls_ready = False
+            if self.hls:
+                if self.hls_list_size == 0 and self._server is not None:
+                    # Event mode: keep the directory (replay stays available); the
+                    # server registers the replay and owns retention/pruning.
+                    self._server._hls_session_ended(self)
+                else:
+                    # Window mode: sweep late writes then remove the directory.
+                    for _attempt in range(5):
+                        shutil.rmtree(self.hls_dir, ignore_errors=True)
+                        if not self.hls_dir.exists():
+                            break
+                        time.sleep(0.3)
             if self.source == "larix" and not self._stop.is_set():
                 self.status = "listening"
             else:
@@ -304,6 +427,14 @@ class StreamSession:
                 pass
         log.info("preview: install ffmpeg (ffplay) or run ./preview_video_live.sh after Stop")
 
+    def _maybe_mark_hls_ready(self) -> None:
+        if self.hls_ready or not self.hls or self._ffmpeg_hls is None:
+            return
+        playlist = self.hls_dir / "playlist.m3u8"
+        if playlist.is_file() and playlist.stat().st_size > 0:
+            self.hls_ready = True
+            log.info("hls relay ready stream_id=%s dir=%s", self.stream_id, self.hls_dir)
+
 
 class VideoLiveIngestServer:
     def __init__(
@@ -315,6 +446,10 @@ class VideoLiveIngestServer:
         larix_port: int = DEFAULT_LARIX_PORT,
         preview: bool = False,
         enable_larix: bool = True,
+        hls: bool = True,
+        hls_list_size: int = 0,
+        hls_retention_minutes: int = 0,
+        hls_max_sessions: int = 0,
     ) -> None:
         self.data_dir = Path(data_dir)
         self.http_host = http_host
@@ -322,8 +457,13 @@ class VideoLiveIngestServer:
         self.larix_port = int(larix_port)
         self.preview = preview
         self.enable_larix = enable_larix
+        self.hls = hls
+        self.hls_list_size = int(hls_list_size)
+        self.hls_retention_seconds = int(hls_retention_minutes) * 60
+        self.hls_max_sessions = int(hls_max_sessions)
         self._lock = threading.Lock()
         self._sessions: dict[str, StreamSession] = {}
+        self._archives: dict[str, dict[str, Any]] = {}
         self._httpd: ThreadingHTTPServer | None = None
         self._http_thread: threading.Thread | None = None
         self._larix: StreamSession | None = None
@@ -336,11 +476,19 @@ class VideoLiveIngestServer:
         http_port = int(os.environ.get("MAC_EDGE_VIDEO_INGEST_HTTP_PORT") or DEFAULT_HTTP_PORT)
         larix_port = int(os.environ.get("MAC_EDGE_VIDEO_INGEST_LARIX_PORT") or DEFAULT_LARIX_PORT)
         preview = _env_bool("MAC_EDGE_VIDEO_INGEST_PREVIEW", False)
+        hls = _env_bool("MAC_EDGE_VIDEO_INGEST_HLS", True)
+        hls_list_size = int(os.environ.get("MAC_EDGE_VIDEO_INGEST_HLS_LIST_SIZE") or "0")
+        hls_retention = int(os.environ.get("MAC_EDGE_VIDEO_INGEST_HLS_RETENTION_MINUTES") or "0")
+        hls_max_sessions = int(os.environ.get("MAC_EDGE_VIDEO_INGEST_HLS_MAX_SESSIONS") or "0")
         return cls(
             data_dir=data_dir,
             http_port=http_port,
             larix_port=larix_port,
             preview=preview,
+            hls=hls,
+            hls_list_size=hls_list_size,
+            hls_retention_minutes=hls_retention,
+            hls_max_sessions=hls_max_sessions,
         )
 
     @property
@@ -390,6 +538,10 @@ class VideoLiveIngestServer:
             listen_port=port,
             dump_path=self.dump_dir / f"{stream_id}.ts",
             preview=self.preview,
+            hls=self.hls,
+            http_port=self.http_port,
+            hls_list_size=self.hls_list_size,
+            server=self,
         )
         with self._lock:
             self._sessions[stream_id] = session
@@ -400,6 +552,14 @@ class VideoLiveIngestServer:
         with self._lock:
             sessions = list(self._sessions.values())
             larix = self._larix
+            replays = sorted(
+                (dict(r) for r in self._archives.values()),
+                key=lambda r: r["ended_at"],
+                reverse=True,
+            )
+            for r in replays:
+                r.pop("hls_dir", None)
+                r.pop("timer", None)
         if stream_id:
             for session in sessions:
                 if session.stream_id == stream_id:
@@ -411,9 +571,7 @@ class VideoLiveIngestServer:
         if larix is not None:
             live.append(larix.snapshot())
         active = [s for s in live if s.get("status") in ("listening", "streaming", "starting")]
-        if not active:
-            return {"status": "idle", "streams": live}
-        return {"status": "streaming", "streams": live}
+        return {"status": "streaming" if active else "idle", "streams": live, "replays": replays}
 
     def stop_stream(self, stream_id: str) -> dict[str, Any]:
         with self._lock:
@@ -438,10 +596,139 @@ class VideoLiveIngestServer:
             listen_port=self.larix_port,
             dump_path=self.dump_dir / f"{stream_id}.ts",
             preview=self.preview,
+            hls=self.hls,
+            http_port=self.http_port,
+            hls_list_size=self.hls_list_size,
+            server=self,
         )
         self._larix = session
         session.start()
         log.info("Larix MPEG-TS standing port %s stream_id=%s", self.larix_port, stream_id)
+
+    def serve_hls(self, handler: BaseHTTPRequestHandler, path: str) -> None:
+        prefix = "/api/v1/video-live/hls/"
+        rest = path[len(prefix):].strip("/")
+        stream_id, _, filename = rest.partition("/")
+        if not stream_id or not filename:
+            handler._send(404, {"error": "not found"})
+            return
+        with self._lock:
+            sessions = list(self._sessions.values())
+            larix = self._larix
+            archive = self._archives.get(stream_id)
+        session = next((s for s in sessions if s.stream_id == stream_id), None)
+        if session is None and larix is not None and larix.stream_id == stream_id:
+            session = larix
+        if session is not None:
+            if not session.hls:
+                handler._send(404, {"error": "hls disabled"})
+                return
+            hls_root = session.hls_dir
+        elif archive is not None:
+            # Completed replay: files stay on disk under the archive record.
+            hls_root = Path(archive["hls_dir"])
+        else:
+            handler._send(404, {"error": "unknown stream_id"})
+            return
+        target = hls_root / filename
+        try:
+            target.resolve().relative_to(hls_root.resolve())
+        except ValueError:
+            handler._send(404, {"error": "not found"})
+            return
+        if not target.is_file():
+            handler._send(404, {"error": "not found"})
+            return
+        content_type = (
+            "application/vnd.apple.mpegurl"
+            if filename.endswith(".m3u8")
+            else "video/mp2t"
+        )
+        handler.send_response(200)
+        handler.send_header("Content-Type", content_type)
+        handler.send_header("Content-Length", str(target.stat().st_size))
+        handler.send_header("Cache-Control", "no-store")
+        handler.end_headers()
+        with target.open("rb") as fh:
+            shutil.copyfileobj(fh, handler.wfile)
+
+    def _archive_record(self, session: StreamSession) -> dict[str, Any] | None:
+        playlist = session.hls_dir / "playlist.m3u8"
+        if not playlist.is_file():
+            return None
+        segments = len(list(session.hls_dir.glob("seg_*.ts")))
+        return {
+            "stream_id": session.stream_id,
+            "capability_id": CAPABILITY_ID,
+            "source": session.source,
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(session.started_at)),
+            "ended_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time())),
+            "bytes_received": session.bytes_received,
+            "segments": segments,
+            "playback_url": (
+                f"http://{lan_ipv4()}:{self.http_port}"
+                f"/api/v1/video-live/hls/{session.stream_id}/playlist.m3u8"
+            ),
+            "hls_dir": str(session.hls_dir),
+            "timer": None,
+        }
+
+    def _hls_session_started(self, stream_id: str) -> None:
+        """A push is starting on `stream_id` (possibly reusing a previous session's
+        directory, e.g. the standing Larix port): drop any stale replay + timer."""
+        with self._lock:
+            old = self._archives.pop(stream_id, None)
+        if old is not None and old.get("timer") is not None:
+            old["timer"].cancel()
+
+    def _hls_session_ended(self, session: StreamSession) -> None:
+        """Event-mode stream ended: keep the files and register a replay."""
+        if self.hls_list_size > 0:
+            return
+        record = self._archive_record(session)
+        if record is None:
+            return
+        with self._lock:
+            old = self._archives.get(session.stream_id)
+            if old is not None and old.get("timer") is not None:
+                old["timer"].cancel()
+            if self.hls_retention_seconds > 0:
+                timer = threading.Timer(
+                    self.hls_retention_seconds,
+                    self._expire_archive,
+                    (session.stream_id,),
+                )
+                timer.daemon = True
+                record["timer"] = timer
+                timer.start()
+            self._archives[session.stream_id] = record
+            self._prune_archives_locked()
+        log.info(
+            "hls replay archived stream_id=%s segments=%s bytes=%s",
+            session.stream_id,
+            record["segments"],
+            record["bytes_received"],
+        )
+
+    def _expire_archive(self, stream_id: str) -> None:
+        with self._lock:
+            record = self._archives.pop(stream_id, None)
+        if record is not None:
+            shutil.rmtree(record["hls_dir"], ignore_errors=True)
+            log.info("hls replay expired stream_id=%s", stream_id)
+
+    def _prune_archives_locked(self) -> None:
+        maxn = self.hls_max_sessions
+        if maxn <= 0:
+            return
+        ordered = sorted(self._archives.values(), key=lambda r: r["ended_at"])
+        while len(self._archives) > maxn and ordered:
+            oldest = ordered.pop(0)
+            self._archives.pop(oldest["stream_id"], None)
+            if oldest.get("timer") is not None:
+                oldest["timer"].cancel()
+            shutil.rmtree(oldest["hls_dir"], ignore_errors=True)
+            log.info("hls replay pruned stream_id=%s", oldest["stream_id"])
 
     def _make_handler(self) -> type[BaseHTTPRequestHandler]:
         server = self
@@ -460,12 +747,16 @@ class VideoLiveIngestServer:
 
             def do_GET(self) -> None:  # noqa: N802
                 parsed = urlparse(self.path)
-                if parsed.path.rstrip("/") != "/api/v1/video-live/status":
-                    self._send(404, {"error": "not found"})
+                path = parsed.path.rstrip("/") or "/"
+                if path == "/api/v1/video-live/status":
+                    q = parse_qs(parsed.query or "")
+                    stream_id = (q.get("stream_id") or [""])[0].strip() or None
+                    self._send(200, server.status(stream_id))
                     return
-                q = parse_qs(parsed.query or "")
-                stream_id = (q.get("stream_id") or [""])[0].strip() or None
-                self._send(200, server.status(stream_id))
+                if path.startswith("/api/v1/video-live/hls/"):
+                    server.serve_hls(self, path)
+                    return
+                self._send(404, {"error": "not found"})
 
             def do_POST(self) -> None:  # noqa: N802
                 parsed = urlparse(self.path)

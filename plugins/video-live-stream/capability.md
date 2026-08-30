@@ -32,16 +32,35 @@ iPhone **实时视频输入**（`kind=input`）。把本机摄像头编成 H.264
 | `POST /api/v1/video-live/prepare` | 开短时 MPEG-TS TCP 口，返回 `stream_id` + `endpoint`（`tcp://<lan-ip>:<port>`） |
 | `GET /api/v1/video-live/status?stream_id=` | 会话状态 |
 | `POST /api/v1/video-live/stop` | `{stream_id}` 关闭 |
+| `GET /api/v1/video-live/hls/{stream_id}/{file}` | HLS 中继：`playlist.m3u8` / 滚动 `.ts` 分片（仅 LAN 播放用） |
 
 常驻 Larix 口默认 **5004**（`MAC_EDGE_VIDEO_INGEST_LARIX_PORT`）。控制 HTTP 默认 **8790**。
 
 码流写入 `mac/data/video-live/<stream_id>.ts`。`MAC_EDGE_VIDEO_INGEST_PREVIEW=1` 时连接后弹 ffplay。
+
+### HLS 中继（LAN 观看 + 整场回看）
+
+`status == "streaming"` 时，ingest 会把 MPEG-TS tee 进 ffmpeg 生成 HLS：
+
+- 输出目录：`mac/data/video-live/hls/<stream_id>/`（`playlist.m3u8` + 2s 分片）
+- **Event 模式（默认，`HLS_LIST_SIZE=0`）**：分片不淘汰，从 `seg_00000` 一直累加 → 整场可回看；流结束写 `#EXT-X-ENDLIST`
+- 就绪后 snapshot 增加字段：`"playback_url": "http://<mac-lan>:8790/api/v1/video-live/hls/<stream_id>/playlist.m3u8"`
+- **已结束场次登记为回放**：`GET /status` 响应增加 `"replays": []`（含 `started_at/ended_at/segments/playback_url`），文件默认**永久保留**在 `mac/data/video-live/hls/<stream_id>/`
+- 观看端（同 LAN 另一台手机/平板 Console「观看」段）：
+  - 「直播中」进播放器默认**跟随最新画面**，可「从头看」/ 拖 scrubber 回看整场
+  - 「回放」段点已结束场次 → 从开头播整场，可拖任意时间点
+- 依赖 Mac 上 `ffmpeg` 在 PATH（与现有 ffprobe 黑盒一致）；无 ffmpeg 时仅无 `playback_url`
+- Larix 常驻口（同一 stream_id）再次推流会覆盖上一场内容
 
 ## 配置
 
 | 变量 | 含义 |
 |------|------|
 | `MAC_EDGE_VIDEO_INGEST` | `1`/`0` 是否启动 ingest（默认开） |
+| `MAC_EDGE_VIDEO_INGEST_HLS` | `1`/`0` 是否启 HLS 中继（默认开；`0` 仅列表、无 `playback_url`） |
+| `MAC_EDGE_VIDEO_INGEST_HLS_LIST_SIZE` | `0`=Event 整场全量（默认，支持回放）；`>0`=滑动窗口 N 分片（省磁盘，无回放） |
+| `MAC_EDGE_VIDEO_INGEST_HLS_RETENTION_MINUTES` | `0`=永久保留（默认）；`>0`=停流后 N 分钟自动清理该场回放 |
+| `MAC_EDGE_VIDEO_INGEST_HLS_MAX_SESSIONS` | `0`=不限（默认）；`>0`=回放场次超限时删最旧 |
 | `MAC_EDGE_VIDEO_INGEST_HTTP_PORT` | 控制 HTTP，默认 8790 |
 | `MAC_EDGE_VIDEO_INGEST_LARIX_PORT` | Larix 常驻 MPEG-TS TCP，默认 5004 |
 | `MAC_EDGE_VIDEO_INGEST_PREVIEW` | `1` 时用 ffplay 预览 |
