@@ -31,6 +31,8 @@ final class HomeMicController: NSObject {
     /// True while local TTS is speaking (skip uploading that audio).
     private(set) var isSpeakingLocally = false
     private var speakWatchdog: DispatchWorkItem?
+    /// Capture was active before speak — hard-restart after TTS (iOS 12 safe).
+    private var resumeCaptureAfterSpeak = false
 
     /// 0…1, always on main.
     var onAudioLevel: ((Float) -> Void)?
@@ -196,6 +198,9 @@ final class HomeMicController: NSObject {
     func disconnect() {
         speech.stopSpeaking(at: .immediate)
         isSpeakingLocally = false
+        resumeCaptureAfterSpeak = false
+        speakWatchdog?.cancel()
+        speakWatchdog = nil
         isConnecting = false
         reconnectWorkItem?.cancel()
         reconnectWorkItem = nil
@@ -213,19 +218,47 @@ final class HomeMicController: NSObject {
     func speakLocally(_ text: String) {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
-        // iOS 12 + live AVAudioEngine: AVSpeech (even without pause/route flip)
-        // still hard-crashes on several devices. Mac plays wake ack on the
-        // living-room speaker instead — see MAC_VOICE_PHONE_HAP1_WAKE_ACK.
-        // If a speak frame still arrives, only update UI; never synthesize.
+        // Product: wake from iPhone → ack plays on this iPhone (not Mac speaker).
+        // iOS 12: AVSpeech under a live AVAudioEngine (or pause/resume) hard-crashes.
+        // Tear the engine down completely, speak, then hard-restart capture.
         speakWatchdog?.cancel()
         isSpeakingLocally = true
+        resumeCaptureAfterSpeak = isListening || capture.isRunning
         speech.stopSpeaking(at: .immediate)
-        publishStatus("客厅已应答")
+        capture.stop()
+
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(
+                .playAndRecord,
+                mode: .default,
+                options: [.defaultToSpeaker, .duckOthers]
+            )
+            try session.setActive(true, options: [])
+        } catch {
+            // Still attempt TTS; worst case silent + resume capture.
+        }
+
+        publishStatus("正在回复…")
+        let utterance = AVSpeechUtterance(string: body)
+        if let voice = AVSpeechSynthesisVoice(language: "zh-CN") {
+            utterance.voice = voice
+        }
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+
+        // Let session settle after engine teardown before synthesizing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self = self, self.isSpeakingLocally else { return }
+            self.speech.speak(utterance)
+        }
+
         let work = DispatchWorkItem { [weak self] in
-            self?.finishSpeak()
+            guard let self = self, self.isSpeakingLocally else { return }
+            self.speech.stopSpeaking(at: .immediate)
+            self.finishSpeak()
         }
         speakWatchdog = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0, execute: work)
     }
 
     private func finishSpeak() {
@@ -233,7 +266,11 @@ final class HomeMicController: NSObject {
         speakWatchdog = nil
         isSpeakingLocally = false
         energyGate.reset()
-        if isListening {
+        let shouldResume = resumeCaptureAfterSpeak
+        resumeCaptureAfterSpeak = false
+        if shouldResume {
+            beginCaptureAfterPermission()
+        } else if isListening {
             publishStatus(client.isConnected ? "拾音中" : "拾音中（等待连接）")
         }
     }

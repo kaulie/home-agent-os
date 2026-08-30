@@ -67,47 +67,27 @@ def handle_wake(
     ingress: str = "",
     participant_id: str = "",
 ) -> dict[str, Any] | None:
-    """Wake reply TTS.
-
-    phone_hap1 used to HAP1-speak on the iPhone; LivingRoomPickup on iOS 12
-    hard-crashes when AVSpeech runs under a live AVAudioEngine. Wake ack is
-    therefore always the Mac living-room speaker. Set
-    ``MAC_VOICE_PHONE_HAP1_WAKE_ACK=1`` to try phone TTS again (not recommended).
-    """
+    """Wake reply TTS. phone_hap1 → HAP1 speak on that phone; else Mac local say."""
     if not post:
         return None
     text = (cfg.wake_ack or "").strip() or "我在呢"
     ingress_l = (ingress or "").strip().lower()
     if ingress_l == "phone_hap1":
-        import os
-
-        allow_phone = (os.environ.get("MAC_VOICE_PHONE_HAP1_WAKE_ACK") or "").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-            "on",
-        )
-        if allow_phone:
-            ingest = get_active_ingest()
-            sent = 0
-            if ingest is not None:
-                sent = ingest.send_speak(text, participant_id=participant_id)
-            if sent > 0:
-                log.info(
-                    "wake ack via phone_hap1 echo=%r sent=%s (not an intent)",
-                    text,
-                    sent,
-                )
-                print("wake_ack phone_hap1", file=sys.stderr, flush=True)
-                return {"ok": True, "echo_text": text, "local": False, "phone_hap1": True}
-            log.warning(
-                "wake ack phone_hap1 unavailable (sent=0); falling back to Mac say"
-            )
-        else:
+        ingest = get_active_ingest()
+        sent = 0
+        if ingest is not None:
+            sent = ingest.send_speak(text, participant_id=participant_id)
+        if sent > 0:
             log.info(
-                "wake ack for phone_hap1 → Mac speaker (phone TTS off; pid=%s)",
-                (participant_id or "-").strip() or "-",
+                "wake ack via phone_hap1 echo=%r sent=%s (not an intent)",
+                text,
+                sent,
             )
+            print("wake_ack phone_hap1", file=sys.stderr, flush=True)
+            return {"ok": True, "echo_text": text, "local": False, "phone_hap1": True}
+        log.warning(
+            "wake ack phone_hap1 unavailable (sent=0); falling back to Mac say"
+        )
 
     from mac_edge.plugins.voicewakeup_echo import echo
 
