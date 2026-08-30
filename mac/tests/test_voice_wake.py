@@ -603,6 +603,8 @@ class ConfigDefaultTests(unittest.TestCase):
         self.assertEqual(cfg.command_window_ms, 5000)
         self.assertEqual(cfg.double_wake_ms, 1100)
         self.assertEqual(cfg.wake_scope, "participant")
+        self.assertEqual(cfg.phone_wake_silence_ms, 350)
+        self.assertEqual(cfg.phone_wake_max_speech_ms, 2800)
         self.assertEqual(cfg.phone_command_silence_ms, 1500)
         self.assertEqual(cfg.phone_command_max_speech_ms, 12_000)
 
