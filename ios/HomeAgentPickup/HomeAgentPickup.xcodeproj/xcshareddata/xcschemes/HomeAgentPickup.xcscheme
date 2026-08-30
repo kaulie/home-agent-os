@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "993A80C6B03A406591148DD1"
+               BlueprintIdentifier = "37433D7CFE284E2F9517A88D"
                BuildableName = "HomeAgentPickup.app"
                BlueprintName = "HomeAgentPickup"
                ReferencedContainer = "container:HomeAgentPickup.xcodeproj">
@@ -43,7 +43,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "993A80C6B03A406591148DD1"
+            BlueprintIdentifier = "37433D7CFE284E2F9517A88D"
             BuildableName = "HomeAgentPickup.app"
             BlueprintName = "HomeAgentPickup"
             ReferencedContainer = "container:HomeAgentPickup.xcodeproj">
@@ -60,7 +60,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "993A80C6B03A406591148DD1"
+            BlueprintIdentifier = "37433D7CFE284E2F9517A88D"
             BuildableName = "HomeAgentPickup.app"
             BlueprintName = "HomeAgentPickup"
             ReferencedContainer = "container:HomeAgentPickup.xcodeproj">

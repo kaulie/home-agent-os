@@ -35,7 +35,7 @@ struct PickupSettingsView: View {
                         .keyboardType(.URL)
                     TextField("端口（voice.stream ingest）", text: $pickupPort)
                         .keyboardType(.numberPad)
-                    Text("音频直连客厅 Mac（默认 192.168.3.73:8792），由 Mac 切句 / STT 后再到 Brain Intent。")
+                    Text("音频直连客厅 Mac（默认 192.168.3.84:8792），由 Mac 切句 / STT 后再到 Brain Intent。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

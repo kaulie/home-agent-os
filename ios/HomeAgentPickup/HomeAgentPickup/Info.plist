@@ -19,9 +19,22 @@
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>2</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Home Mic 需要连接家里 Mac 的拾音服务（局域网），才能把麦克风音频传到客厅。</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_hap1._tcp</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Home Mic 需要持续采集麦克风音频并推送到家里 HomeAgent，本机不播放声音。</string>
 	<key>NSPhotoLibraryUsageDescription</key>

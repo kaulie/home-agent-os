@@ -12,6 +12,7 @@ SRC = ROOT / "HomeAgentPickup"
 PROJ = ROOT / "HomeAgentPickup.xcodeproj"
 APP_NAME = "HomeAgentPickup"
 BUNDLE_ID = "com.gaolei.homeagent.pickup"
+DEVELOPMENT_TEAM = "JD4B775BJ5"
 
 
 def xid() -> str:
@@ -380,7 +381,7 @@ def main() -> None:
         lines.append("\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;")
         lines.append("\t\t\t\tCODE_SIGN_STYLE = Automatic;")
         lines.append("\t\t\t\tCURRENT_PROJECT_VERSION = 1;")
-        lines.append('\t\t\t\tDEVELOPMENT_TEAM = "";')
+        lines.append('\t\t\t\tDEVELOPMENT_TEAM = "' + DEVELOPMENT_TEAM + '";')
         lines.append("\t\t\t\tENABLE_PREVIEWS = YES;")
         lines.append("\t\t\t\tGENERATE_INFOPLIST_FILE = NO;")
         lines.append(f"\t\t\t\tINFOPLIST_FILE = {APP_NAME}/Info.plist;")

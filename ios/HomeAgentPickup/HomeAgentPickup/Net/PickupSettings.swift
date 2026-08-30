@@ -13,7 +13,7 @@ enum PickupSettings {
             let stored = UserDefaults.standard.string(forKey: hostKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
             if let stored, !stored.isEmpty { return stored }
             // Living-room Mac LAN IP (voice.stream HAP1 ingest).
-            return "192.168.3.73"
+            return "192.168.3.84"
         }
         set { UserDefaults.standard.set(newValue, forKey: hostKey) }
     }
@@ -49,7 +49,7 @@ enum PickupSettings {
         get {
             let stored = UserDefaults.standard.string(forKey: brainURLKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
             if let stored, !stored.isEmpty { return stored }
-            return "http://192.168.3.73:9527/api/v1/intent"
+            return "http://192.168.3.84:9527/api/v1/intent"
         }
         set { UserDefaults.standard.set(newValue, forKey: brainURLKey) }
     }

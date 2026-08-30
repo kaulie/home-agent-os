@@ -28,6 +28,7 @@ final class PcmCaptureEngine {
     private var routeObserver: NSObjectProtocol?
     private var levelEMA: Float = 0
     private var agcGain: Float = 4.0
+    private var tapInstalled = false
     private let levelQueue = DispatchQueue(label: "homeagent.pickup.level")
 
     var isRunning: Bool { engine.isRunning }
@@ -40,9 +41,13 @@ final class PcmCaptureEngine {
         agcGain = 4.0
 
         let session = AVAudioSession.sharedInstance()
-        // .videoRecording keeps capture quality high without two-way AEC that can
-        // suppress quiet far speech (unlike .voiceChat).
-        try session.setCategory(.record, mode: .videoRecording, options: [])
+        // playAndRecord from the start so HAP1 speak / AVSpeech does not flip
+        // category under a live AVAudioEngine (crashes on device).
+        try session.setCategory(
+            .playAndRecord,
+            mode: .default,
+            options: [.defaultToSpeaker, .duckOthers]
+        )
         try session.setPreferredSampleRate(44_100)
         try session.setPreferredIOBufferDuration(0.02)
         try session.setActive(true, options: [])
@@ -62,6 +67,7 @@ final class PcmCaptureEngine {
 
         engine.reset()
         let input = engine.inputNode
+        // After category / reset, wait for a valid hardware format.
         let hwFormat = input.outputFormat(forBus: 0)
         guard hwFormat.sampleRate > 0, hwFormat.channelCount > 0 else {
             throw PcmCaptureError.engineFailed(
@@ -74,10 +80,11 @@ final class PcmCaptureEngine {
             throw PcmCaptureError.engineFailed("无法创建音频转换器")
         }
 
-        input.removeTap(onBus: 0)
+        removeTapIfNeeded()
         input.installTap(onBus: 0, bufferSize: 1024, format: hwFormat) { [weak self] buffer, _ in
             self?.handle(buffer: buffer)
         }
+        tapInstalled = true
 
         observeInterruption()
         observeRouteChange()
@@ -89,7 +96,7 @@ final class PcmCaptureEngine {
         if engine.isRunning {
             engine.stop()
         }
-        engine.inputNode.removeTap(onBus: 0)
+        removeTapIfNeeded()
         converter = nil
         targetFormat = nil
         onPCM = nil
@@ -104,6 +111,39 @@ final class PcmCaptureEngine {
             self.routeObserver = nil
         }
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private func removeTapIfNeeded() {
+        guard tapInstalled else { return }
+        engine.inputNode.removeTap(onBus: 0)
+        tapInstalled = false
+    }
+
+    /// Pause input only (keep tap/format). Used around local TTS.
+    func pauseEngine() {
+        if engine.isRunning {
+            engine.stop()
+        }
+    }
+
+    /// Resume after TTS if capture is still armed.
+    func resumeEngineIfNeeded() {
+        guard onPCM != nil else { return }
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(
+                .playAndRecord,
+                mode: .default,
+                options: [.defaultToSpeaker, .duckOthers]
+            )
+            try session.setActive(true, options: [])
+            configureBuiltInMic(session)
+            if !engine.isRunning {
+                try engine.start()
+            }
+        } catch {
+            // Best-effort; caller may restart listening.
+        }
     }
 
     /// Prefer built-in mic + omnidirectional pattern + max hardware gain.

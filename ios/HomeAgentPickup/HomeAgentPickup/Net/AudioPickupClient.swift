@@ -6,11 +6,13 @@ enum PickupCommand: String {
     case setPowerSave = "set_power_save"
     case stop
     case exit
+    case speak
 }
 
 struct PickupServerCommand: Equatable {
     let type: PickupCommand
     let branch: String?
+    let text: String?
 }
 
 enum AudioPickupClientError: LocalizedError {
@@ -32,39 +34,69 @@ final class AudioPickupClient {
     private var heartbeatTimer: DispatchSourceTimer?
     private var receiving = false
     private var receiveBuffer = Data()
+    /// Explicit ready flag — do not trust `NWConnection.state` off the NW queue.
+    private var sessionReady = false
+    private var closingIntentionally = false
+    private var connectGeneration = 0
+    private var lastActivityAt = Date.distantPast
+    private var lastReceiveAt = Date.distantPast
 
     var onCommand: ((PickupServerCommand) -> Void)?
     var onDisconnected: (() -> Void)?
     var onHeartbeatSent: (() -> Void)?
 
     var isConnected: Bool {
-        connection?.state == .ready
+        sessionReady && connection != nil
+    }
+
+    /// True if we recently received bytes from Mac (heartbeat echo / speak).
+    func isLikelyAlive(maxAge: TimeInterval) -> Bool {
+        queue.sync {
+            sessionReady && Date().timeIntervalSince(lastReceiveAt) <= maxAge
+        }
     }
 
     func connect(host: String, port: UInt16, deviceId: String, participantId: String = "") async throws {
-        close()
+        close(notify: false)
+        closingIntentionally = false
+        sessionReady = false
+        connectGeneration += 1
+        let generation = connectGeneration
+
         let tcp = NWProtocolTCP.Options()
         tcp.noDelay = true
         tcp.enableKeepalive = true
         let params = NWParameters(tls: nil, tcp: tcp)
         let conn = NWConnection(
             host: NWEndpoint.Host(host),
-            port: NWEndpoint.Port(rawValue: port) ?? 8791,
+            port: NWEndpoint.Port(rawValue: port) ?? 8792,
             using: params
         )
         connection = conn
+
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             let once = ConnectOnce()
-            conn.stateUpdateHandler = { state in
+            conn.stateUpdateHandler = { [weak self] state in
+                guard let self else { return }
                 switch state {
                 case .ready:
-                    once.finish { cont.resume() }
+                    once.finish {
+                        guard generation == self.connectGeneration else { return }
+                        self.sessionReady = true
+                        self.lastActivityAt = Date()
+                        self.lastReceiveAt = Date()
+                        cont.resume()
+                    }
                 case .failed(let err):
                     once.finish {
+                        guard generation == self.connectGeneration else { return }
+                        self.sessionReady = false
                         cont.resume(throwing: AudioPickupClientError.sendFailed(err.localizedDescription))
                     }
                 case .cancelled:
                     once.finish {
+                        guard generation == self.connectGeneration, !self.closingIntentionally else { return }
+                        self.sessionReady = false
                         cont.resume(throwing: AudioPickupClientError.sendFailed("连接已取消"))
                     }
                 default:
@@ -73,6 +105,7 @@ final class AudioPickupClient {
             }
             conn.start(queue: queue)
         }
+
         let edgePid = participantId.trimmingCharacters(in: .whitespacesAndNewlines)
         var hello: [String: Any] = [
             "type": "hello",
@@ -81,7 +114,6 @@ final class AudioPickupClient {
             "channels": 1,
             "sample_format": "s16le",
         ]
-        // Runtime identity from LivingRoomEdge heartbeat / registration — not a channel label.
         if !edgePid.isEmpty {
             hello["participant_id"] = edgePid
             hello["edge_id"] = edgePid
@@ -94,18 +126,31 @@ final class AudioPickupClient {
     func sendPCM(_ data: Data) {
         guard !data.isEmpty else { return }
         queue.async { [weak self] in
-            guard let self, let frame = Self.packFrame(type: 2, payload: data) else { return }
+            guard let self, self.sessionReady else { return }
+            guard let frame = Self.packFrame(type: 2, payload: data) else { return }
             self.sendRaw(frame)
         }
     }
 
     func close() {
+        close(notify: false)
+    }
+
+    private func close(notify: Bool) {
+        closingIntentionally = true
+        sessionReady = false
         heartbeatTimer?.cancel()
         heartbeatTimer = nil
         receiving = false
         receiveBuffer.removeAll()
-        connection?.cancel()
+        let conn = connection
         connection = nil
+        conn?.cancel()
+        if notify {
+            DispatchQueue.main.async { [weak self] in
+                self?.onDisconnected?()
+            }
+        }
     }
 
     private func startHeartbeat(deviceId: String, participantId: String = "") {
@@ -141,8 +186,25 @@ final class AudioPickupClient {
     }
 
     private func sendRaw(_ data: Data) {
-        guard let connection, connection.state == .ready else { return }
-        connection.send(content: data, completion: .contentProcessed { _ in })
+        guard sessionReady, let connection else { return }
+        connection.send(content: data, completion: .contentProcessed { [weak self] error in
+            guard let self else { return }
+            if let error {
+                self.queue.async {
+                    guard self.sessionReady, !self.closingIntentionally else { return }
+                    self.sessionReady = false
+                    self.receiving = false
+                    DispatchQueue.main.async {
+                        self.onDisconnected?()
+                    }
+                    _ = error
+                }
+                return
+            }
+            self.queue.async {
+                self.lastActivityAt = Date()
+            }
+        })
     }
 
     private func startReceiveLoop() {
@@ -156,12 +218,20 @@ final class AudioPickupClient {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { [weak self] data, _, isComplete, error in
             guard let self else { return }
             if let data, !data.isEmpty {
+                self.lastActivityAt = Date()
+                self.lastReceiveAt = Date()
                 self.receiveBuffer.append(data)
                 self.drainFrames()
             }
             if error != nil || isComplete {
                 self.receiving = false
-                self.onDisconnected?()
+                let wasReady = self.sessionReady
+                let intentional = self.closingIntentionally
+                self.sessionReady = false
+                guard wasReady, !intentional else { return }
+                DispatchQueue.main.async { [weak self] in
+                    self?.onDisconnected?()
+                }
                 return
             }
             self.receiveNext()
@@ -184,6 +254,10 @@ final class AudioPickupClient {
             let frameType = receiveBuffer[4]
             let payload = receiveBuffer.subdata(in: 10 ..< total)
             receiveBuffer.removeFirst(total)
+            // type 1 = heartbeat echo from Mac; type 3 = command
+            if frameType == 1 || frameType == 3 {
+                lastReceiveAt = Date()
+            }
             if frameType == 3 {
                 handleCommandPayload(payload)
             }
@@ -197,8 +271,9 @@ final class AudioPickupClient {
             let cmd = PickupCommand(rawValue: typeRaw)
         else { return }
         let branch = obj["branch"] as? String
+        let text = obj["text"] as? String
         DispatchQueue.main.async { [weak self] in
-            self?.onCommand?(PickupServerCommand(type: cmd, branch: branch))
+            self?.onCommand?(PickupServerCommand(type: cmd, branch: branch, text: text))
         }
     }
 
