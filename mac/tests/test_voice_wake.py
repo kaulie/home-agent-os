@@ -657,6 +657,22 @@ class PipelineWakeAckTests(unittest.TestCase):
         echoed.assert_called_once_with("又咋了")
         posted.assert_not_called()
 
+    def test_handle_wake_phone_hap1_uses_mac_speaker_by_default(self) -> None:
+        from mac_voice.pipeline import handle_wake
+
+        cfg = type("Cfg", (), {"wake_ack": "我在呢"})()
+        with patch.dict("os.environ", {"MAC_VOICE_PHONE_HAP1_WAKE_ACK": ""}, clear=False):
+            with patch("mac_voice.pipeline.get_active_ingest") as ingest:
+                with patch(
+                    "mac_edge.plugins.voicewakeup_echo.echo", return_value="我在呢"
+                ) as echoed:
+                    out = handle_wake(
+                        cfg, post=True, ingress="phone_hap1", participant_id="phone-1"
+                    )  # type: ignore[arg-type]
+        self.assertTrue(out["local"])
+        echoed.assert_called_once_with("我在呢")
+        ingest.assert_not_called()
+
 
 class WakeEchoDoneTests(unittest.TestCase):
     def test_intent_succeeded(self) -> None:

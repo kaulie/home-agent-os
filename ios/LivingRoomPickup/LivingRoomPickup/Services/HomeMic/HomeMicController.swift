@@ -213,27 +213,19 @@ final class HomeMicController: NSObject {
     func speakLocally(_ text: String) {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
-        // iOS 12 / old phones: pausing AVAudioEngine + AVSpeech + resume
-        // (or overrideOutputAudioPort) often hard-crashes within ms of HAP1 speak.
-        // Keep the engine running; only mute uplink via isSpeakingLocally.
+        // iOS 12 + live AVAudioEngine: AVSpeech (even without pause/route flip)
+        // still hard-crashes on several devices. Mac plays wake ack on the
+        // living-room speaker instead — see MAC_VOICE_PHONE_HAP1_WAKE_ACK.
+        // If a speak frame still arrives, only update UI; never synthesize.
         speakWatchdog?.cancel()
         isSpeakingLocally = true
         speech.stopSpeaking(at: .immediate)
-        let utterance = AVSpeechUtterance(string: body)
-        if let voice = AVSpeechSynthesisVoice(language: "zh-CN") {
-            utterance.voice = voice
-        }
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        publishStatus("正在回复…")
-        speech.speak(utterance)
-        // AVSpeech sometimes never calls didFinish after audio glitches.
+        publishStatus("客厅已应答")
         let work = DispatchWorkItem { [weak self] in
-            guard let self = self, self.isSpeakingLocally else { return }
-            self.speech.stopSpeaking(at: .immediate)
-            self.finishSpeak()
+            self?.finishSpeak()
         }
         speakWatchdog = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0, execute: work)
     }
 
     private func finishSpeak() {
