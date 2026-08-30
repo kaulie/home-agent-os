@@ -46,6 +46,17 @@ def _cfg(**kwargs) -> VoiceConfig:
         partial_wake_ms=2500,
         double_wake_ms=1100,
         wake_ack="又咋了",
+        pickup_ingest_enabled=False,
+        pickup_ingest_host="0.0.0.0",
+        pickup_ingest_port=8792,
+        pickup_speak_bridge_port=8793,
+        stt_wav_dir=None,
+        stt_wav_keep=False,
+        stt_wav_max_age_hours=24.0,
+        stt_wav_max_files=100,
+        stt_wav_max_mb=200.0,
+        music_idle_stt="skip_long",
+        music_idle_stt_max_ms=2500,
     )
     base.update(kwargs)
     return VoiceConfig(**base)

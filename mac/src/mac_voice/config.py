@@ -47,6 +47,9 @@ def _env(name: str, default: str = "") -> str:
 
 
 LISTEN_MODES = frozenset({"always_on", "wait_command", "wake_word"})
+MUSIC_IDLE_STT_MODES = frozenset({"all", "skip_long", "none"})
+DEFAULT_MUSIC_IDLE_STT = "skip_long"
+DEFAULT_MUSIC_IDLE_STT_MAX_MS = 2500
 
 
 @dataclass(frozen=True)
@@ -82,11 +85,14 @@ class VoiceConfig:
     pickup_ingest_enabled: bool
     pickup_ingest_host: str
     pickup_ingest_port: int
+    pickup_speak_bridge_port: int
     stt_wav_dir: Path | None
     stt_wav_keep: bool
     stt_wav_max_age_hours: float
     stt_wav_max_files: int
     stt_wav_max_mb: float
+    music_idle_stt: str
+    music_idle_stt_max_ms: int
 
 
 def _parse_device(raw: str) -> int | str | None:
@@ -148,6 +154,16 @@ def _brain_wake_ack(brain_url: str) -> str | None:
         return None
     ack = str(data.get("wake_ack") or "").strip()
     return ack or None
+
+
+def _parse_music_idle_stt(raw: str) -> str:
+    mode = (raw or DEFAULT_MUSIC_IDLE_STT).strip().lower()
+    if mode not in MUSIC_IDLE_STT_MODES:
+        raise ValueError(
+            f"MAC_VOICE_MUSIC_IDLE_STT={mode!r} invalid; "
+            f"expected one of {sorted(MUSIC_IDLE_STT_MODES)}"
+        )
+    return mode
 
 
 def load_config() -> VoiceConfig:
@@ -246,6 +262,12 @@ def load_config() -> VoiceConfig:
             lo=1,
             hi=65535,
         ),
+        pickup_speak_bridge_port=_parse_int(
+            _env("MAC_VOICE_PICKUP_SPEAK_BRIDGE_PORT"),
+            8793,
+            lo=1,
+            hi=65535,
+        ),
         stt_wav_dir=_parse_stt_wav_dir(_env("MAC_VOICE_STT_WAV_DIR"), data_dir),
         stt_wav_keep=_env("MAC_VOICE_STT_WAV_KEEP", "0").lower()
         in ("1", "true", "yes", "on"),
@@ -266,5 +288,12 @@ def load_config() -> VoiceConfig:
             200.0,
             lo=0.0,
             hi=100_000.0,
+        ),
+        music_idle_stt=_parse_music_idle_stt(_env("MAC_VOICE_MUSIC_IDLE_STT")),
+        music_idle_stt_max_ms=_parse_int(
+            _env("MAC_VOICE_MUSIC_IDLE_STT_MAX_MS"),
+            DEFAULT_MUSIC_IDLE_STT_MAX_MS,
+            lo=200,
+            hi=60_000,
         ),
     )

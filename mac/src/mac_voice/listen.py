@@ -35,6 +35,46 @@ _HOLD_AFTER_HIGH_S = 0.75
 _HOLD_AFTER_SILENCE_PAD_S = 0.35
 
 
+def _utterance_duration_ms(utt: AudioUtterance) -> int:
+    if utt.speech_start is not None and utt.speech_end is not None:
+        return max(0, int((utt.speech_end - utt.speech_start) * 1000))
+    pcm = utt.ensure_pcm()
+    fmt = utt.format
+    denom = fmt.sample_rate * fmt.channels * fmt.sample_width
+    if denom <= 0:
+        return 0
+    return len(pcm) * 1000 // denom
+
+
+def _utterance_hit_max_speech_cut(utt: AudioUtterance, *, max_speech_ms: int) -> bool:
+    return _utterance_duration_ms(utt) >= int(max_speech_ms)
+
+
+def should_skip_music_idle_stt(
+    cfg: VoiceConfig,
+    gate: WakeGate | None,
+    utt: AudioUtterance,
+) -> bool:
+    """Skip Volc STT during music playback while wake gate is idle (cost control)."""
+    from mac_edge.music_linkage import is_active
+
+    if not is_active():
+        return False
+    if cfg.listen_mode != "wake_word" or gate is None:
+        return False
+    if gate.state != "idle":
+        return False
+    mode = cfg.music_idle_stt
+    if mode == "all":
+        return False
+    duration_ms = _utterance_duration_ms(utt)
+    if mode == "none":
+        return True
+    if _utterance_hit_max_speech_cut(utt, max_speech_ms=cfg.max_speech_ms):
+        return True
+    return duration_ms > cfg.music_idle_stt_max_ms
+
+
 class _CaptureActivity:
     """Capture thread → listen loop: do not expire the 5s window mid-utterance."""
 
@@ -471,6 +511,14 @@ async def _run_live_locked(
                 ingress,
                 len(utt.ensure_pcm()),
             )
+            if should_skip_music_idle_stt(cfg, gate, utt):
+                duration_ms = _utterance_duration_ms(utt)
+                log.info(
+                    "skip STT music_idle mode=%s duration_ms=%s",
+                    cfg.music_idle_stt,
+                    duration_ms,
+                )
+                continue
             try:
                 text = await stt.transcribe(utt)
             except asyncio.TimeoutError:
