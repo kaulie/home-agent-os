@@ -247,21 +247,30 @@ final class HomeMicHap1Client {
     }
 
     private func drainFrames() {
+        // Data.removeFirst keeps a non-zero startIndex; subscript with absolute
+        // Int (e.g. [6]) then traps. Always index from startIndex / dropFirst.
         while true {
             guard receiveBuffer.count >= 10 else { return }
-            guard receiveBuffer.prefix(4) == Data("HAP1".utf8) else {
-                receiveBuffer.removeAll()
+            let start = receiveBuffer.startIndex
+            let magicEnd = start + 4
+            guard receiveBuffer[start..<magicEnd].elementsEqual("HAP1".utf8) else {
+                receiveBuffer.removeAll(keepingCapacity: false)
                 return
             }
-            let length = Int(receiveBuffer[6]) << 24
-                | Int(receiveBuffer[7]) << 16
-                | Int(receiveBuffer[8]) << 8
-                | Int(receiveBuffer[9])
+            let length = Int(receiveBuffer[start + 6]) << 24
+                | Int(receiveBuffer[start + 7]) << 16
+                | Int(receiveBuffer[start + 8]) << 8
+                | Int(receiveBuffer[start + 9])
+            // Reject absurd lengths (corruption / desync) instead of hanging.
+            guard length >= 0, length <= 1_000_000 else {
+                receiveBuffer.removeAll(keepingCapacity: false)
+                return
+            }
             let total = 10 + length
             guard receiveBuffer.count >= total else { return }
-            let frameType = receiveBuffer[4]
-            let payload = receiveBuffer.subdata(in: 10 ..< total)
-            receiveBuffer.removeFirst(total)
+            let frameType = receiveBuffer[start + 4]
+            let payload = Data(receiveBuffer[(start + 10)..<(start + total)])
+            receiveBuffer = Data(receiveBuffer.dropFirst(total))
             // type 1 = Mac heartbeat echo; type 3 = command
             if frameType == 1 || frameType == 3 {
                 lastReceiveAt = Date()
