@@ -38,7 +38,7 @@ class BrainDbTest(unittest.TestCase):
             )
         }
         self.assertTrue(
-            {"meta", "jobs", "participants", "intent_reviews", "intent_classification_events", "global_events", "assets", "asset_grants", "edge_control_policy", "admin_op_log", "schema_migrations"} <= names
+            {"meta", "jobs", "participants", "intent_reviews", "intent_classification_events", "global_events", "assets", "asset_grants", "edge_control_policy", "admin_op_log", "cloud_api_calls", "schema_migrations"} <= names
         )
         self.assertNotIn("edges", names)
         self.assertNotIn("intent_queue", names)
@@ -48,7 +48,13 @@ class BrainDbTest(unittest.TestCase):
                 "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
             )
         }
-        self.assertEqual(named_indexes, set())
+        self.assertEqual(
+            named_indexes,
+            {
+                "idx_cloud_api_calls_occurred_service",
+                "idx_cloud_api_calls_service_occurred",
+            },
+        )
         versions = [
             int(row[0])
             for row in conn.execute(
@@ -57,7 +63,7 @@ class BrainDbTest(unittest.TestCase):
         ]
         self.assertEqual(
             versions,
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+            list(range(1, 27)),
         )
         job_cols = {
             row[1]: row[2]
@@ -1063,6 +1069,63 @@ class GlobalEventsTest(unittest.TestCase):
         mode_events = brain_db.list_global_events(kind="mode", limit=10)
         self.assertEqual(len(mode_events), 1)
         self.assertEqual(mode_events[0]["subject"], "reading")
+
+
+class CloudApiCallsTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self._tmp.name) / "brain.sqlite3"
+        brain_db.reset(path=self.path)
+        brain_db.init_db()
+
+    def tearDown(self) -> None:
+        brain_db.reset()
+        self._tmp.cleanup()
+
+    def test_record_and_aggregate(self) -> None:
+        t0 = 1_700_000_000.0
+        brain_db.record_cloud_call("ark.planner", 1, "brain", occurred_at=t0)
+        brain_db.record_cloud_call("ark.planner", 0, "brain", occurred_at=t0 + 1)
+        brain_db.record_cloud_call("ark.vision", 1, "edge:laptop-1", occurred_at=t0 + 2)
+
+        all_rows = brain_db.aggregate_cloud_calls()
+        self.assertEqual(
+            all_rows,
+            [
+                {"service_id": "ark.planner", "count": 2, "ok": 1, "fail": 1},
+                {"service_id": "ark.vision", "count": 1, "ok": 1, "fail": 0},
+            ],
+        )
+
+        window = brain_db.aggregate_cloud_calls(since=t0, until=t0 + 1)
+        self.assertEqual(
+            window,
+            [{"service_id": "ark.planner", "count": 2, "ok": 1, "fail": 1}],
+        )
+
+    def test_ingest_cloud_usage_delta(self) -> None:
+        t0 = 1_700_000_100.0
+        n = brain_db.ingest_cloud_usage_delta(
+            "edge:mac-1",
+            [
+                {"service_id": "volc.stt", "ok": 3, "fail": 1},
+                {"service_id": "bing.images", "ok": 2, "fail": 0},
+            ],
+            occurred_at=t0,
+        )
+        self.assertEqual(n, 6)
+        rows = brain_db.aggregate_cloud_calls(since=t0, until=t0)
+        self.assertEqual(
+            rows,
+            [
+                {"service_id": "bing.images", "count": 2, "ok": 2, "fail": 0},
+                {"service_id": "volc.stt", "count": 4, "ok": 3, "fail": 1},
+            ],
+        )
+
+    def test_invalid_source_raises(self) -> None:
+        with self.assertRaises(ValueError):
+            brain_db.record_cloud_call("ark.planner", 1, "laptop")
 
 
 if __name__ == "__main__":

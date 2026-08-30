@@ -2471,6 +2471,129 @@ def resolve_active_mode() -> str | None:
     return None
 
 
+def _normalize_cloud_call_ok(value: Any) -> int:
+    if value in (True, 1, "1"):
+        return 1
+    if value in (False, 0, "0"):
+        return 0
+    raise ValueError("ok must be 0 or 1")
+
+
+def _normalize_cloud_call_source(value: Any) -> str:
+    source = str(value or "").strip()
+    if not source:
+        raise ValueError("source is required")
+    if source == "brain" or source.startswith("edge:"):
+        return source
+    raise ValueError("source must be brain or edge:<participant_id>")
+
+
+def record_cloud_call(
+    service_id: str,
+    ok: Any,
+    source: str,
+    *,
+    occurred_at: float | None = None,
+) -> int:
+    sid = str(service_id or "").strip()
+    if not sid:
+        raise ValueError("service_id is required")
+    ok_i = _normalize_cloud_call_ok(ok)
+    src = _normalize_cloud_call_source(source)
+    ts = _now() if occurred_at is None else float(occurred_at)
+    with _lock:
+        conn = _connect()
+        cur = conn.execute(
+            """
+            INSERT INTO cloud_api_calls(service_id, occurred_at, ok, source)
+            VALUES (?, ?, ?, ?)
+            """,
+            (sid, ts, ok_i, src),
+        )
+        return int(cur.lastrowid)
+
+
+def ingest_cloud_usage_delta(
+    source: str,
+    items: list[dict[str, Any]],
+    *,
+    occurred_at: float | None = None,
+) -> int:
+    """Expand [{service_id, ok, fail}] into append-only rows."""
+    src = _normalize_cloud_call_source(source)
+    ts = _now() if occurred_at is None else float(occurred_at)
+    rows: list[tuple[str, float, int, str]] = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        sid = str(item.get("service_id") or "").strip()
+        if not sid:
+            continue
+        try:
+            ok_n = max(0, int(item.get("ok") or 0))
+            fail_n = max(0, int(item.get("fail") or 0))
+        except (TypeError, ValueError):
+            continue
+        rows.extend((sid, ts, 1, src) for _ in range(ok_n))
+        rows.extend((sid, ts, 0, src) for _ in range(fail_n))
+    if not rows:
+        return 0
+    with _lock:
+        conn = _connect()
+        conn.executemany(
+            """
+            INSERT INTO cloud_api_calls(service_id, occurred_at, ok, source)
+            VALUES (?, ?, ?, ?)
+            """,
+            rows,
+        )
+    return len(rows)
+
+
+def aggregate_cloud_calls(
+    *,
+    since: float | None = None,
+    until: float | None = None,
+) -> list[dict[str, Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    if since is not None:
+        clauses.append("occurred_at >= ?")
+        params.append(float(since))
+    if until is not None:
+        clauses.append("occurred_at <= ?")
+        params.append(float(until))
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = f"""
+        SELECT
+          service_id,
+          COUNT(*) AS count,
+          SUM(CASE WHEN ok = 1 THEN 1 ELSE 0 END) AS ok,
+          SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END) AS fail
+        FROM cloud_api_calls
+        {where}
+        GROUP BY service_id
+        ORDER BY service_id
+    """
+    with _lock:
+        conn = _connect()
+        try:
+            rows = conn.execute(sql, params).fetchall()
+        except sqlite3.OperationalError:
+            return []
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        out.append(
+            {
+                "service_id": str(row["service_id"]),
+                "count": int(row["count"] or 0),
+                "ok": int(row["ok"] or 0),
+                "fail": int(row["fail"] or 0),
+            }
+        )
+    return out
+
+
 def backup(dest: Path) -> Path:
     dest = dest.expanduser().resolve()
     dest.parent.mkdir(parents=True, exist_ok=True)
