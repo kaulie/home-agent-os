@@ -199,10 +199,20 @@ class PickupIngestServer:
         sent = 0
         with self._lock:
             targets = list(self._clients.items())
+        # One phone can leave a stale TCP while reconnecting — only speak to the
+        # newest socket per participant/device (peer = "ip:port", port rises).
+        latest_by_key: dict[str, tuple[str, dict[str, Any]]] = {}
         for peer, meta in targets:
             pid = str(meta.get("participant_id") or "").strip()
-            if want and pid and pid != want and str(meta.get("device_id") or "") != want:
+            did = str(meta.get("device_id") or "").strip()
+            if want and pid and pid != want and did != want:
                 continue
+            key = pid or did or peer
+            prev = latest_by_key.get(key)
+            if prev is None or peer > prev[0]:
+                latest_by_key[key] = (peer, meta)
+        for peer, meta in latest_by_key.values():
+            pid = str(meta.get("participant_id") or "").strip()
             conn = meta.get("conn")
             if not isinstance(conn, socket.socket):
                 continue
