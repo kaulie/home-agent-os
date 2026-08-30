@@ -6,7 +6,7 @@ final class HomeMicEnergyGate {
     /// Absolute RMS floor (post-AGC, 0…1). Below this never opens.
     private let absoluteFloor: Float = 0.007
     /// Open when rms >= max(absoluteFloor, noiseEMA * openRatio).
-    private let openRatio: Float = 3.0
+    private let openRatio: Float = 2.4
     /// Stay open while rms >= max(absoluteFloor * 0.7, noiseEMA * holdRatio).
     private let holdRatio: Float = 1.8
     private let noiseAlpha: Float = 0.04
@@ -28,7 +28,7 @@ final class HomeMicEnergyGate {
 
     init(
         sampleRate: Double = 44_100,
-        preRollMs: Double = 220,
+        preRollMs: Double = 450,
         hangoverMs: Double = 1100
     ) {
         self.sampleRate = sampleRate

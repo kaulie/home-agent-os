@@ -310,7 +310,8 @@ final class HomeMicController: NSObject {
         disposeSystemSound()
         try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
         isSpeakingLocally = false
-        energyGate.reset()
+        // Do NOT reset energyGate here — that cleared pre-roll and forced a
+        // late reopen, chopping 打开 → 开 / 客厅空调 after「我在呢».
         finishingSpeak = false
         if isListening {
             publishStatus(client.isConnected ? "拾音中" : "拾音中（等待连接）")
@@ -362,10 +363,9 @@ final class HomeMicController: NSObject {
 
     private func handlePCM(_ data: Data) {
         guard isListening else { return }
-        // Avoid uploading phone TTS into STT while speaking locally.
-        if isSpeakingLocally {
-            return
-        }
+        // Keep uploading during local wake-ack. Muting here chopped the start of
+        // the follow-up command (打开 → 开 / 客厅空调).「我在呢」echo is dropped
+        // by the Mac wake gate.
         let chunks: [Data]
         if HomeMicSettings.energyGateEnabled {
             chunks = energyGate.filter(data, enabled: true)
