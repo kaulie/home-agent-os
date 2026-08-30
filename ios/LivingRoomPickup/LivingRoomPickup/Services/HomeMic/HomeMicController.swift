@@ -225,9 +225,8 @@ final class HomeMicController: NSObject {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
         // Product: wake from iPhone → ack on this iPhone.
-        // Crash pattern: capture.stop()+setActive(false) and/or flipping to
-        // .playback, then hard-restart engine right as sound ends.
-        // Stay on playAndRecord, soft-suspend engine only, play system sound.
+        // Stay on playAndRecord; soft-suspend capture. Prefer AVAudioPlayer at
+        // full volume — AudioServices system sounds are much quieter.
         speakWatchdog?.cancel()
         finishingSpeak = false
         isSpeakingLocally = true
@@ -244,24 +243,34 @@ final class HomeMicController: NSObject {
             return
         }
 
-        var sound: SystemSoundID = 0
-        let status = AudioServicesCreateSystemSoundID(url as CFURL, &sound)
-        if status == kAudioServicesNoError, sound != 0 {
-            systemSoundID = sound
-            AudioServicesPlaySystemSoundWithCompletion(sound) { [weak self] in
-                DispatchQueue.main.async {
-                    self?.finishSpeak()
-                }
+        do {
+            try AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
+        } catch {
+            // Keep going — defaultToSpeaker category usually covers this.
+        }
+
+        do {
+            let p = try AVAudioPlayer(contentsOf: url)
+            p.delegate = self
+            p.volume = 1.0
+            p.prepareToPlay()
+            player = p
+            guard p.play() else {
+                scheduleFinishSpeak(after: 0.3)
+                return
             }
-        } else {
-            // Fallback: AVAudioPlayer, still without category flip.
-            do {
-                let p = try AVAudioPlayer(contentsOf: url)
-                p.delegate = self
-                p.prepareToPlay()
-                player = p
-                _ = p.play()
-            } catch {
+        } catch {
+            // Last resort: system sound (often quieter).
+            var sound: SystemSoundID = 0
+            let status = AudioServicesCreateSystemSoundID(url as CFURL, &sound)
+            if status == kAudioServicesNoError, sound != 0 {
+                systemSoundID = sound
+                AudioServicesPlaySystemSoundWithCompletion(sound) { [weak self] in
+                    DispatchQueue.main.async {
+                        self?.finishSpeak()
+                    }
+                }
+            } else {
                 scheduleFinishSpeak(after: 0.3)
                 return
             }
@@ -315,6 +324,7 @@ final class HomeMicController: NSObject {
         // Let playback / session settle before touching the engine again.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
             guard let self = self else { return }
+            try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
             self.isSpeakingLocally = false
             self.energyGate.reset()
             self.finishingSpeak = false

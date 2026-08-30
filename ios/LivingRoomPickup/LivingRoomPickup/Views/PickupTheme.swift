@@ -78,7 +78,7 @@ enum PickupCopy {
         if !connected {
             return "正在连接客厅…稍等一下"
         }
-        return "对着话筒说，看下面电平会不会跳"
+        return "对着话筒说，看下面百分比和电平会不会跳"
     }
 
     static let stepsIdle = ["① 开麦", "② 面条面条", "③ 说指令"]

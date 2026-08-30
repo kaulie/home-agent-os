@@ -338,14 +338,15 @@ final class HomeMicViewController: UIViewController {
 
     private func refreshHearingBadge(level: Float) {
         guard controller.isListening else { return }
+        let pct = Int((max(0, min(1, level)) * 100).rounded())
         if level > 0.06 {
-            hearingBadge.text = "  能听到你说话  "
+            hearingBadge.text = "  能听到 · \(pct)%  "
             hearingBadge.backgroundColor = PickupTheme.success.withAlphaComponent(0.88)
             if stepRow.arrangedSubviews.count == 3 {
                 rebuildSteps(PickupCopy.stepsListening, activeIndex: 1)
             }
         } else {
-            hearingBadge.text = "  正在听，请说话  "
+            hearingBadge.text = "  正在听 · \(pct)%  "
             hearingBadge.backgroundColor = PickupTheme.micLive.withAlphaComponent(0.85)
         }
     }
