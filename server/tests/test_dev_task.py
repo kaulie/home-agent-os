@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -17,6 +18,7 @@ os.environ["BRAIN_SKIP_LLM_WORKER"] = "1"
 os.environ["BRAIN_ENABLE_DEV_TASK_POLLER"] = "1"
 
 import agent_task_store  # noqa: E402
+import db as brain_db  # noqa: E402
 import dev_task  # noqa: E402
 
 
@@ -27,7 +29,12 @@ class AgentTaskStoreTests(unittest.TestCase):
         self.store = agent_task_store.reset_store(
             Path(self.tmp.name) / "agent_tasks.json"
         )
+        brain_db.reset(path=Path(self.tmp.name) / "brain.sqlite3")
+        brain_db.init_db()
         dev_task._active_task_ids.clear()
+
+    def tearDown(self) -> None:
+        brain_db.reset()
 
     def test_create_and_list(self) -> None:
         one = self.store.create("hello")
@@ -88,6 +95,28 @@ class AgentTaskStoreTests(unittest.TestCase):
         self.assertEqual(stats["period"]["task_count"], 1)
         self.assertEqual(len(stats["by_time"]), 1)
         self.assertEqual(stats["by_time"][0]["total_tokens"], 60)
+
+    def test_usage_stats_cloud_calls(self) -> None:
+        now = time.time()
+        brain_db.record_cloud_call("ark.planner", 1, "brain", occurred_at=now)
+        brain_db.record_cloud_call("ark.planner", 0, "brain", occurred_at=now)
+        brain_db.record_cloud_call(
+            "ark.vision", 1, "brain", occurred_at=now - 86400 * 30
+        )
+
+        stats = dev_task.get_agent_task_usage_stats(period="day")
+        cloud = stats["cloud_calls"]
+        period_by_id = {row["service_id"]: row for row in cloud["period"]}
+        self.assertEqual(period_by_id["ark.planner"]["count"], 2)
+        self.assertEqual(period_by_id["ark.planner"]["ok"], 1)
+        self.assertEqual(period_by_id["ark.planner"]["fail"], 1)
+        self.assertEqual(period_by_id["ark.planner"]["label"], "方舟规划")
+        self.assertEqual(period_by_id["ark.vision"]["count"], 0)
+
+        all_by_id = {row["service_id"]: row for row in cloud["all_time"]}
+        self.assertEqual(all_by_id["ark.vision"]["count"], 1)
+        self.assertIn("ark.query", period_by_id)
+        self.assertEqual(period_by_id["ark.query"]["count"], 0)
 
     def test_thread_continue_and_messages(self) -> None:
         root = self.store.create("first message")

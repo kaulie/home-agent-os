@@ -2538,6 +2538,13 @@ def _planner_prompt_pair(user_text, intent_id, intent_base_time, intent=None):
     return system_prompt, user_prompt
 
 
+def _record_ark_planner_call(ok: bool) -> None:
+    try:
+        brain_db.record_cloud_call("ark.planner", ok, "brain")
+    except Exception:
+        log.exception("record_cloud_call ark.planner failed")
+
+
 def call_ark(user_text, session_id, user_id, intent_id, intent_base_time, intent=None, *, _retry: int = 0):
     # 【核心优化】真正调用大模型前，二次检查缓存，避免重复生成
     intent = intent or get_intent(intent_id) or {}
@@ -2605,6 +2612,7 @@ def call_ark(user_text, session_id, user_id, intent_id, intent_base_time, intent
         raw_body = resp.read().decode("utf-8")
         cost_ms = int((time.time() - start_time) * 1000)
         log.info("invoke doubao api end:%s", cost_ms)
+        _record_ark_planner_call(True)
         resp_data = json.loads(raw_body)
         response_json = resp_data
         llm_logger.info(f"cost_ms={cost_ms} | question={user_text} | answer={resp_data}")
@@ -2632,12 +2640,14 @@ def call_ark(user_text, session_id, user_id, intent_id, intent_base_time, intent
             log.info("skip planner cache (empty plan with matching catalog) question=%s", user_text)
     except urllib.error.HTTPError as e:
         cost_ms = int((time.time() - start_time) * 1000)
+        _record_ark_planner_call(False)
         log.exception("call doubao api error: %s", e)
         response_json = _ark_http_error_json(e)
         if int(getattr(e, "code", 0) or 0) == 401:
             ans = "__ARK_HTTP_401__"
     except Exception as e:
         cost_ms = int((time.time() - start_time) * 1000)
+        _record_ark_planner_call(False)
         log.exception("call doubao api error: %s", e)
     return _ark_result(
         ans=ans,
@@ -7808,14 +7818,17 @@ def chat():
         req = urllib.request.Request(ARK_URL, data=req_body, headers=headers)
         resp = urllib.request.urlopen(req, timeout=120)
         resp_data = json.loads(resp.read().decode("utf-8"))
+        _record_ark_planner_call(True)
         log.info("%s", resp_data)
         ans = resp_data["choices"][0]["message"]["content"]
         log.info("%s", ans)
         return jsonify(reply=ans)
     except urllib.error.URLError as e:
+        _record_ark_planner_call(False)
         err_msg = f"网络读取超时，模型生成内容较长，当前网络不稳定"
         return jsonify(reply=err_msg)
     except Exception as e:
+        _record_ark_planner_call(False)
         err_msg = f"服务异常：{str(e)}"
         return jsonify(reply=err_msg)
 
@@ -8008,6 +8021,12 @@ def node_heartbeat():
         )
     if edge_id not in _REGISTERED_edges and brain_db.get_registration(edge_id) is None:
         return jsonify({"ok": False, "error": "unknown edge_id; register first"}), 401
+    delta = body.get("cloud_usage_delta")
+    if isinstance(delta, list) and delta:
+        try:
+            brain_db.ingest_cloud_usage_delta(f"edge:{edge_id}", delta)
+        except Exception:
+            log.exception("cloud_usage_delta ingest failed edge_id=%s", edge_id)
     existing = brain_db.get_registration(edge_id) or {}
     domain = instance_intent_origin()
     brain_db.put_registration(

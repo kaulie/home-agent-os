@@ -20,6 +20,11 @@ from dev_task_attachments import (
 from dev_task_category import category_meta, list_categories, normalize_category
 from token_usage import add_usage, empty_usage_summary, normalize_token_usage
 
+try:
+    import db as brain_db
+except ImportError:  # pragma: no cover
+    from server import db as brain_db  # type: ignore
+
 log = logging.getLogger("dev_task")
 
 try:
@@ -28,6 +33,16 @@ except ImportError:  # pragma: no cover
     _chat_push = None
 
 _TERMINAL_STATUSES = frozenset({"succeeded", "success", "completed", "failed", "error", "cancelled"})
+
+_KNOWN_CLOUD_SERVICES: dict[str, str] = {
+    "ark.planner": "方舟规划",
+    "ark.vision": "方舟视觉",
+    "ark.query": "方舟问答/生图",
+    "volc.stt": "火山语音",
+    "bing.images": "Bing 搜图",
+    "xiaomi.cloud": "小米云",
+    "hisense.cloud": "海信爱家",
+}
 
 _active_lock = threading.Lock()
 _active_task_ids: set[int] = set()
@@ -325,6 +340,63 @@ def _snapshot_active_tasks() -> list[int]:
         return list(_active_task_ids)
 
 
+def _cloud_call_label(service_id: str) -> str:
+    sid = str(service_id or "").strip()
+    return _KNOWN_CLOUD_SERVICES.get(sid, sid)
+
+
+def _cloud_calls_rows(
+    aggregate_rows: list[dict[str, Any]],
+    *,
+    include_ids: set[str],
+) -> list[dict[str, Any]]:
+    by_id = {
+        str(row.get("service_id") or "").strip(): row
+        for row in (aggregate_rows or [])
+        if str(row.get("service_id") or "").strip()
+    }
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for sid in _KNOWN_CLOUD_SERVICES:
+        row = by_id.get(sid) or {}
+        out.append(
+            {
+                "service_id": sid,
+                "label": _cloud_call_label(sid),
+                "count": int(row.get("count") or 0),
+                "ok": int(row.get("ok") or 0),
+                "fail": int(row.get("fail") or 0),
+            }
+        )
+        seen.add(sid)
+    for sid in sorted(include_ids - seen):
+        row = by_id.get(sid) or {}
+        out.append(
+            {
+                "service_id": sid,
+                "label": _cloud_call_label(sid),
+                "count": int(row.get("count") or 0),
+                "ok": int(row.get("ok") or 0),
+                "fail": int(row.get("fail") or 0),
+            }
+        )
+    return out
+
+
+def _cloud_calls_usage(*, since: float | None, until: float | None) -> dict[str, Any]:
+    period_rows = brain_db.aggregate_cloud_calls(since=since, until=until)
+    all_time_rows = brain_db.aggregate_cloud_calls()
+    include_ids = {
+        str(row.get("service_id") or "").strip()
+        for row in (all_time_rows or [])
+        if str(row.get("service_id") or "").strip()
+    }
+    return {
+        "period": _cloud_calls_rows(period_rows, include_ids=include_ids),
+        "all_time": _cloud_calls_rows(all_time_rows, include_ids=include_ids),
+    }
+
+
 def _apply_running_update(task_id: int, run: dict[str, Any]) -> None:
     store = get_store()
     run_status = str(run.get("status") or "running").strip().lower()
@@ -388,6 +460,7 @@ def get_agent_task_usage_stats(
         "all_time": all_time,
         "by_time": by_time,
         "recent_tasks": recent_tasks,
+        "cloud_calls": _cloud_calls_usage(since=since, until=until),
     }
 
 

@@ -397,6 +397,37 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertFalse(beats[edge_id]["schedule_eligible"])
         self.assertTrue(beats[edge_id].get("schedule_reject_reason"))
 
+    def test_heartbeat_ingests_cloud_usage_delta(self) -> None:
+        client = hb.app.test_client()
+        edge_id = client.post(
+            "/api/v1/edge-register", json={"client_hint": "cloud-usage-mac"}
+        ).get_json()["edge_id"]
+        now_ms = int(time.time() * 1000)
+        resp = client.post(
+            "/api/v1/edge-heartbeat",
+            json={
+                "edge_id": edge_id,
+                "client_time_ms": now_ms,
+                "online_status": "online",
+                "cloud_usage_delta": [
+                    {"service_id": "volc.stt", "ok": 2, "fail": 1},
+                    {"bad": True},
+                ],
+                "services": [
+                    {
+                        "service_id": "local.notify",
+                        "capabilities": [{"capability_id": "notify.speak"}],
+                    }
+                ],
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        rows = brain_db.aggregate_cloud_calls()
+        by_id = {row["service_id"]: row for row in rows}
+        self.assertEqual(by_id["volc.stt"]["count"], 3)
+        self.assertEqual(by_id["volc.stt"]["ok"], 2)
+        self.assertEqual(by_id["volc.stt"]["fail"], 1)
+
     def test_pull_hides_terminal_and_filters_edge(self) -> None:
         client = hb.app.test_client()
         parsed = client.post(
