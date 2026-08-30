@@ -34,7 +34,7 @@ Cursor **会话标题**（Fleet worker 或历史 IDE）须与下表「全称」�
 
 | 全称（会话标题） | handle | 职责 |
 |------|--------|------|
-| system coordinator agent | `@coordinator` | 协调、仲裁、催办、架构/需求/文档汇总、质检看板。不写产品代码。用户交代的越界事项 `@` 到对应 handle。其他 agent 的预期外情况 `@coordinator`。旧称 `@observer` 仅历史信箱有效；chat 里 `@observer` 视为 `@coordinator`。 |
+| system coordinator agent | `@coordinator` | **默认静默。** 仅在跨层仲裁、催办、拆单、日报收口、架构/文档汇总时出场；不写产品代码。结案/清仓确认勿正式 `@` 它（用 `cc`）。旧称 `@observer` → `@coordinator`。 |
 | dev controller agent | `@controller` | **唯一常驻 IDE**；分析任务、调用 bridge wake Fleet、汇总进度；手机 Dev Task 入口。见 `.cursor/rules/controller-orchestration.mdc`。 |
 | brain agent | `@brain` | 组件注册（Edge `services[]`/`capabilities[]`）；意图 / 事件 / 定时路由；选边、`execution_timing`、每步 `assigned_edge_id`；对外 API。入口 `server/home_brain.py`。规划与控制面。不改 plugin / 发出 UI / 未经点名的 schema。 |
 | runtime dev agent | `@runtime` | 调度 / hydrate / 前序门；失败 `msg` |
@@ -189,11 +189,25 @@ Cursor 停会话不会被 HTTP 叫醒；**Fleet worker** 由 agent-bridge `POST 
 
 - 读到**正式 `@` 自己**：先 `push_msg` `[status]`（§4b），再 ✅ 收到，再做事或 pending；做完/阻塞再正式沟通；做不了或越层，再 `@` 发件人说明。
 - 读到**`cc @` 自己**：👌 知道了即可（例如 quality 测完 `cc @ui` → ui 只打知道了）；除非另有正式 `@` 点名自己，否则不要开干。
+- **`@coordinator` 默认静默**（角色保留，非常驻复读机）：
+  - **出场**：跨层争议仲裁、卡住催办、老板要求拆单/汇总、日报收口（§9）、架构/需求文档整理。
+  - **不出场**：对结案 / 清仓 /「无异议」「已确认」「统筹记录」类消息 **禁止**再发回执帖；不要为归档而正式 `@` 他人。
+  - 收到结案类正式 `@`：只 ✅ `recv`（必要时一句「已知，无追加」可省略），**不要**再 `@ui/@sre/…` 广播。
+  - 各层报完工/结案：主送责任人或 `@controller`，**`cc @coordinator`**（不要正式 `@coordinator`），避免 wake 刷屏。
 - `@coordinator` 不写产品代码；需要实现时 `@runtime` / `@ui` / `@capability`；需要黑盒时 `@quality`；部署 `@deploy`；运维 `@sre`。只需对方知情时用 `cc @…`（含 `cc @boss`）。
 - 用户对 `@coordinator` 说的非协调事项：coordinator `@` 转到对应 handle（plugin→`@capability`；调度/hydrate/前序门/失败 msg→`@runtime`；发出窗口 / 物流 UI / Cast / Receiver→`@ui`；黑盒 API→`@quality`；规划/选边/入队/Brain API→`@brain`；云部署→`@deploy`；运维→`@sre`；schema→`@dba`）。
-- 预期外情况 **第一时间** `@coordinator`，由 coordinator 集中仲裁/拆单。不要自行跨层改。
+- **真正的**预期外跨层冲突 / 阻塞 **可**正式 `@coordinator` 求仲裁；日常进度与结案确认 **不要**正式 `@coordinator`。
 - `@quality`：对外 API 黑盒写入 `tests/blackbox/`；**App 功能点**用 UI 自动化（当前优先 **XCUITest**，目录约定见 [`docs/testing/xcuitest.md`](testing/xcuitest.md)）。修复须验收：实现方报完工后 `@quality` 请验收；不得自报结案。不改产品功能逻辑；缺 `accessibilityIdentifier` 时 `@ui` 补或双方约定由 quality 只加 identifier。
 - 不要在 chat 里贴密钥、`.env`、完整 token。
+
+### 7.0 结案 / 清仓确认（禁止互 @ 回环）
+
+| 场景 | 正确写法 | 禁止 |
+|------|----------|------|
+| 本层结案告知统筹 | `…已结案 sha=…。cc @coordinator @boss` | `@coordinator 请确认结案`（会 wake 并可能回执刷屏） |
+| 统筹知情 | 👌 `got`；**不回复**聊天行 | 「统筹记录」「归档完成」再正式 `@ui/@sre/…` |
+| 需要对方再干活 | 正式 `@` 责任人（`@ui` / `@runtime`…） | 用「确认结案」互相 `@` 打乒乓 |
+| 日报（§9） | 仍正式 `@coordinator` 交日报 | — |
 
 ## 7.1 发布链路（强制）
 

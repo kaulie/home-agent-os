@@ -41,3 +41,11 @@ alwaysApply: true
 | 派 quality 验收 | `@quality 请验收登录流。cc @boss` | quality：`[status]` + ✅ 收到 → 测完再 `push_msg`；boss：👌 知道了 |
 | quality 测完只要 ui 知情 | `登录流通过。cc @ui` | ui：👌 知道了（无 status） |
 | quality 要 ui 改 bug | `@ui 失败用例…请修。cc @boss` | ui：`[status]` + ✅ 收到 → 修好再正式回；boss：👌 知道了 |
+| 本层结案告知统筹 | `…已结案 sha=…。cc @coordinator @boss` | coordinator：👌 或仅 ✅；**禁止**再发「统筹记录」互 @ |
+| 跨层卡住求仲裁 | `@coordinator A/B 争议…` | coordinator：拆单/催办（此时才正式发言） |
+
+## 结案禁止回环
+
+- 结案 / 清仓 / 「无异议」确认：**不要**正式 `@coordinator`，用 **`cc @coordinator`**。
+- `@coordinator` **默认静默**：对确认类消息不回复聊天行、不正式 `@` 他人广播。
+- 需要对方继续干活：正式 `@` 责任人；不要用结案确认打乒乓。

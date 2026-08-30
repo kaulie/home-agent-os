@@ -17,7 +17,7 @@
 
 | 全称（Fleet / 可选 IDE 标题） | handle | 职责 |
 |------|--------|------|
-| system coordinator agent | `@coordinator` | 协调、仲裁、催办、架构/需求/文档汇总、质检看板。不写产品代码。 |
+| system coordinator agent | `@coordinator` | **默认静默。** 跨层仲裁 / 催办 / 拆单 / 日报收口 / 文档汇总。不写产品代码。结案确认请 `cc`，勿正式 `@`。 |
 | dev controller agent | `@controller` | **唯一常驻 IDE**；分析任务、wake Fleet、汇总进度；手机 Dev Task 入口。 |
 | brain agent | `@brain` | 规划、选边、入队、对外 Brain API；`server/home_brain.py`、`server/prompts/`。 |
 | runtime dev agent | `@runtime` | 调度 / hydrate / 前序门；失败 `msg`；Mac/Android edge runtime。 |
@@ -52,7 +52,7 @@
 | 云部署 | `@deploy` |
 | 运维 / 本机服务 | `@sre` |
 | schema / 迁移 | `@dba` |
-| 跨层争议 / 催办 | `@coordinator` |
+| 跨层争议 / 催办 / 拆单 | `@coordinator`（默认静默；结案确认用 `cc @coordinator`） |
 
 ## agent-bridge API（摘要）
 

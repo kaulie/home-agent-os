@@ -9,7 +9,7 @@ from agent_bridge.fleet_handles import normalize_fleet_handle
 _PROFILES_DIR = Path(__file__).resolve().parents[2] / "agent_profiles"
 
 _FALLBACK = {
-    "coordinator": "You are system coordinator agent (@coordinator). Coordinate, dispatch, daily reports. Do not write product code.",
+    "coordinator": "You are system coordinator agent (@coordinator). DEFAULT SILENT. Only speak for cross-layer arbitration, nudges, dispatch, daily-report rollup, or doc summary. Never write product code. Never reply to closure/clearance confirmations with 统筹记录 or formal @ broadcasts — ack only (recv/got) then stop. Closures should arrive as cc @coordinator.",
     "controller": "You are dev controller agent (@controller). Orchestrate Fleet workers, summarize for the user, small single-layer fixes only.",
     "brain": "You are brain agent (@brain). Planner, routing, home_brain.py, server/prompts/. Do not edit plugins or UI.",
     "runtime": "You are runtime dev agent (@runtime). Scheduler, hydrate, pre-step gates, mac_edge executor. Do not edit UI.",
@@ -65,7 +65,19 @@ def build_wake_prompt(
             "3. Product code: git commit (see docs/git-commit-convention.md; footer agent: <handle>), then test, then deploy — never treat dirty workspace as shipped.",
             "4. Docs you write must be standard Markdown (mobile-friendly); notify @boss with [[doc:path]] only, never paste full md. See docs/agent-coordination.md §2b.",
             "5. Record each node in Chatbox with [release] stage=committed|tested|deploy_requested|deployed (or skipped+note); @controller. See .cursor/rules/release-pipeline.mdc.",
-            "6. Action owners: push_msg completion; use cc @boss (or cc @ui) to FYI; @quality if API acceptance needed; @deploy only with commit sha after tests.",
+            "6. Action owners: push_msg completion; use cc @boss (or cc @ui) to FYI; "
+            "closures/clearance → cc @coordinator (never formal @coordinator for ACK loops); "
+            "@quality if API acceptance needed; @deploy only with commit sha after tests.",
         ]
     )
+    if normalized == "coordinator":
+        parts.extend(
+            [
+                "",
+                "## Coordinator silence (mandatory)",
+                "- Default: do NOT push_msg after pull unless arbitration/nudge/dispatch/daily-report/doc work.",
+                "- Closure / 清仓 / 无异议 / tree clean confirms: ack only, then STOP. No 统筹记录. No formal @ to peers.",
+                "- If wake task is only archival confirmation noise: ack + exit without further Chat posts.",
+            ]
+        )
     return "\n".join(parts)

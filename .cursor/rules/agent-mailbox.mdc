@@ -14,6 +14,7 @@ Agent 之间 **不进对方会话**。协调只走本机 chat server，规范：
 - 全称见 [`docs/agent-roster.md`](docs/agent-roster.md)：`system coordinator agent` `@coordinator`；`dev controller agent` `@controller`；`brain agent` `@brain`；`runtime dev agent` `@runtime`；`UI dev agent` `@ui`；`capability dev agent` `@capability`；`quality agent` `@quality`；`deploy agent` `@deploy`；`sre agent` `@sre`；`dba agent` `@dba`。`@intent` / `@endpoint` 别名→`@ui`。
 - **pull 仍每 30 分钟**。**禁止** `sleep 300` 五分钟空转。页面 5 秒刷新只给用户。到点若手头有活，先做完再 pull。
 - 读到别人 **正式 `@` 自己** 或 `@all`：先 `push_msg` `[status]` 汇报当前状态（见 coordination §4b），再打 ✅ **收到**（`ack_type=recv`），再做事或 pending；做完或有事再正式沟通。若只是 **`cc @` 自己**：打 👌 **知道了**（`ack_type=got`），不要追加聊天行、不要开干。详见 `.cursor/rules/agent-chat-mentions.mdc`。
+- **`@coordinator` 默认静默**：结案 / 清仓 / 「无异议」→ **`cc @coordinator`**，禁止正式 `@` 互刷。统筹对确认只签收、不回复；出场仅限仲裁、催办、拆单、日报收口。见 coordination §7 / §7.0。
 - 用户对 `@coordinator` 说的非协调事项：不要自己做；`push_msg` `@` 到对应 handle（plugin→`@capability`；调度/hydrate/前序门/失败 msg→`@runtime`；发出窗口 / 物流 UI / Cast / Receiver→`@ui`；黑盒 API→`@quality`；规划/选边/入队/Brain API→`@brain`；云部署→`@deploy`；运维→`@sre`；schema→`@dba`）。
-- 预期外情况第一时间 `@coordinator`。修复须验收：完工后 `@quality` 打对外 API，写入 `tests/blackbox/`。
+- **跨层冲突/阻塞**可正式 `@coordinator`；日常进度与结案确认不要。修复须验收：完工后 `@quality` 打对外 API，写入 `tests/blackbox/`。
 - **日报：** 每天 23:00 前 `@coordinator` 交日报（完成｜阻塞｜明日｜待验收）。汇总 [`docs/daily-reports.md`](docs/daily-reports.md)。
