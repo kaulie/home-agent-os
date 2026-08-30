@@ -26,6 +26,7 @@ final class HomeMicController: NSObject {
     private let capture = HomeMicPcmCapture()
     private let energyGate = HomeMicEnergyGate()
     private var player: AVAudioPlayer?
+    private var preparedAckPlayers: [String: AVAudioPlayer] = [:]
     private var systemSoundID: SystemSoundID = 0
 
     private(set) var isListening = false
@@ -33,8 +34,6 @@ final class HomeMicController: NSObject {
     /// True while local TTS is speaking (skip uploading that audio).
     private(set) var isSpeakingLocally = false
     private var speakWatchdog: DispatchWorkItem?
-    /// Capture was active before speak — soft-resume after playback.
-    private var resumeCaptureAfterSpeak = false
     private var finishingSpeak = false
 
     /// 0…1, always on main.
@@ -202,8 +201,8 @@ final class HomeMicController: NSObject {
         disposeSystemSound()
         player?.stop()
         player = nil
+        preparedAckPlayers.removeAll()
         isSpeakingLocally = false
-        resumeCaptureAfterSpeak = false
         finishingSpeak = false
         speakWatchdog?.cancel()
         speakWatchdog = nil
@@ -224,17 +223,14 @@ final class HomeMicController: NSObject {
     func speakLocally(_ text: String) {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
-        // Product: wake from iPhone → ack on this iPhone.
-        // Stay on playAndRecord; soft-suspend capture. Prefer AVAudioPlayer at
-        // full volume — AudioServices system sounds are much quieter.
+        // HAP1 crash was frame parsing, not audio — keep capture running and
+        // only mute uplink. Preloaded AVAudioPlayer cuts ack latency.
         speakWatchdog?.cancel()
         finishingSpeak = false
         isSpeakingLocally = true
-        resumeCaptureAfterSpeak = isListening || capture.isArmed
         player?.stop()
         player = nil
         disposeSystemSound()
-        capture.suspendForPlayback()
 
         publishStatus("正在回复…")
         guard let url = Self.bundledAckURL(for: body) else {
@@ -246,34 +242,29 @@ final class HomeMicController: NSObject {
         do {
             try AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
         } catch {
-            // Keep going — defaultToSpeaker category usually covers this.
+            // defaultToSpeaker usually covers this.
         }
 
-        do {
-            let p = try AVAudioPlayer(contentsOf: url)
-            p.delegate = self
-            p.volume = 1.0
-            p.prepareToPlay()
-            player = p
-            guard p.play() else {
-                scheduleFinishSpeak(after: 0.3)
-                return
-            }
-        } catch {
-            // Last resort: system sound (often quieter).
-            var sound: SystemSoundID = 0
-            let status = AudioServicesCreateSystemSoundID(url as CFURL, &sound)
-            if status == kAudioServicesNoError, sound != 0 {
-                systemSoundID = sound
-                AudioServicesPlaySystemSoundWithCompletion(sound) { [weak self] in
-                    DispatchQueue.main.async {
-                        self?.finishSpeak()
-                    }
-                }
-            } else {
-                scheduleFinishSpeak(after: 0.3)
-                return
-            }
+        let key = url.lastPathComponent
+        let p: AVAudioPlayer
+        if let warmed = preparedAckPlayers[key] {
+            warmed.stop()
+            warmed.currentTime = 0
+            p = warmed
+        } else if let created = try? AVAudioPlayer(contentsOf: url) {
+            created.prepareToPlay()
+            preparedAckPlayers[key] = created
+            p = created
+        } else {
+            scheduleFinishSpeak(after: 0.3)
+            return
+        }
+        p.delegate = self
+        p.volume = 1.0
+        player = p
+        if !p.play() {
+            scheduleFinishSpeak(after: 0.3)
+            return
         }
 
         let work = DispatchWorkItem { [weak self] in
@@ -317,29 +308,12 @@ final class HomeMicController: NSObject {
         player?.stop()
         player = nil
         disposeSystemSound()
-
-        let shouldResume = resumeCaptureAfterSpeak
-        resumeCaptureAfterSpeak = false
-
-        // Let playback / session settle before touching the engine again.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
-            guard let self = self else { return }
-            try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
-            self.isSpeakingLocally = false
-            self.energyGate.reset()
-            self.finishingSpeak = false
-            if shouldResume {
-                do {
-                    try self.capture.resumeAfterPlayback()
-                    self.isListening = true
-                    self.publishStatus(self.client.isConnected ? "拾音中" : "拾音中（等待连接）")
-                } catch {
-                    // Soft resume failed — full restart as last resort.
-                    self.beginCaptureAfterPermission()
-                }
-            } else if self.isListening {
-                self.publishStatus(self.client.isConnected ? "拾音中" : "拾音中（等待连接）")
-            }
+        try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
+        isSpeakingLocally = false
+        energyGate.reset()
+        finishingSpeak = false
+        if isListening {
+            publishStatus(client.isConnected ? "拾音中" : "拾音中（等待连接）")
         }
     }
 
@@ -350,11 +324,24 @@ final class HomeMicController: NSObject {
         }
     }
 
+    private func preloadAckPlayers() {
+        for name in ["wake_ack_wozaine", "wake_ack_youzale"] {
+            guard let url = Bundle.main.url(forResource: name, withExtension: "caf") else { continue }
+            let key = url.lastPathComponent
+            if preparedAckPlayers[key] != nil { continue }
+            if let p = try? AVAudioPlayer(contentsOf: url) {
+                p.prepareToPlay()
+                preparedAckPlayers[key] = p
+            }
+        }
+    }
+
     // MARK: - Private
 
     private func beginCaptureAfterPermission() {
         connectIfNeeded()
         energyGate.reset()
+        preloadAckPlayers()
         do {
             try capture.start(
                 onPCM: { [weak self] data in

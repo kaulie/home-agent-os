@@ -209,7 +209,7 @@ final class HomeMicViewController: UIViewController {
             stepRow.heightAnchor.constraint(equalToConstant: 28),
 
             micButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            micButton.topAnchor.constraint(equalTo: tipCard.bottomAnchor, constant: 18),
+            micButton.topAnchor.constraint(equalTo: tipCard.bottomAnchor, constant: 44),
             micButton.widthAnchor.constraint(equalToConstant: 118),
             micButton.heightAnchor.constraint(equalToConstant: 118),
 
