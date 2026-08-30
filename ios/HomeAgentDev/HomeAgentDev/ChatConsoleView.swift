@@ -21,6 +21,9 @@ struct ChatConsoleView: View {
     @State private var chatPickerItems: [PhotosPickerItem] = []
     /// Long-press reaction float target (nil = hidden).
     @State private var reactionMessageId: Int?
+    /// Ignore dimmer taps from the same finger-up that finished the long-press.
+    @State private var reactionOpenedAt: Date?
+    @State private var ackBusyMessageId: Int?
 
     var body: some View {
         NavigationStack {
@@ -31,8 +34,12 @@ struct ChatConsoleView: View {
                         if let err = store.chatError, !err.isEmpty {
                             Text(err)
                                 .font(.system(size: 13, design: .rounded))
-                                .foregroundStyle(DevTheme.off)
-                                .padding(.horizontal, 16)
+                                .foregroundStyle(Color(red: 0.95, green: 0.85, blue: 0.75))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(red: 0.45, green: 0.18, blue: 0.12).opacity(0.92))
+                                .padding(.horizontal, 12)
                                 .padding(.top, 8)
                         }
                         if store.isLoadingChat && store.chatMessages.isEmpty {
@@ -68,15 +75,21 @@ struct ChatConsoleView: View {
                    let reactionMsg = store.chatMessages.first(where: { $0.id == reactionId }) {
                     Color.black.opacity(0.28)
                         .ignoresSafeArea()
+                        .contentShape(Rectangle())
                         .onTapGesture {
-                            withAnimation(.easeOut(duration: 0.15)) {
-                                reactionMessageId = nil
+                            // Finger-up after long-press often lands on the dimmer; ignore briefly.
+                            if let opened = reactionOpenedAt,
+                               Date().timeIntervalSince(opened) < 0.45 {
+                                return
                             }
+                            dismissReactionFloat()
                         }
+                        .zIndex(99)
                     reactionFloat(for: reactionMsg)
                         .padding(.horizontal, 28)
                         .transition(.scale(scale: 0.92).combined(with: .opacity))
                         .zIndex(100)
+                        .allowsHitTesting(true)
                 }
             }
             .zIndex(reactionMessageId == nil ? 0 : 1)
@@ -192,12 +205,17 @@ struct ChatConsoleView: View {
                 messageBubble(for: msg)
 
                 if !msg.acks.isEmpty {
-                    sharedAckChip(
-                        names: msg.sharedAckParticipantLabels,
-                        messageId: msg.id,
-                        bossHasAcked: msg.bossHasAcked,
-                        canToggle: !msg.isFromBoss && !msg.recalled
-                    )
+                    VStack(alignment: msg.isFromBoss ? .trailing : .leading, spacing: 4) {
+                        ForEach(msg.ackChipsByKind, id: \.kind.id) { chip in
+                            sharedAckChip(
+                                kind: chip.kind,
+                                names: chip.names,
+                                messageId: msg.id,
+                                bossSelected: msg.bossAckKind() == chip.kind,
+                                canToggle: !msg.isFromBoss && !msg.recalled
+                            )
+                        }
+                    }
                 }
 
                 if !msg.audienceLabel.isEmpty || msg.isPending {
@@ -269,13 +287,21 @@ struct ChatConsoleView: View {
         inputFocused = false
         DevKeyboard.dismiss()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        reactionOpenedAt = Date()
         withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
             reactionMessageId = msg.id
         }
     }
 
+    private func dismissReactionFloat() {
+        withAnimation(.easeOut(duration: 0.15)) {
+            reactionMessageId = nil
+        }
+        reactionOpenedAt = nil
+    }
+
     private func openPromote(for msg: AgentChatMessage) {
-        reactionMessageId = nil
+        dismissReactionFloat()
         promoteMessage = msg
         promoteText = msg.body
         selectedBackgroundIds = defaultBackgroundSelection(anchor: msg)
@@ -294,25 +320,20 @@ struct ChatConsoleView: View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
                 ForEach(ChatReactionKind.allCases) { kind in
-                    let selected = kind == .ok && msg.bossHasAcked
+                    let selected = msg.bossAckKind() == kind
+                    let busy = ackBusyMessageId == msg.id
                     Button {
-                        Task {
-                            if kind == .ok {
-                                if msg.isFromBoss { return }
-                                if msg.bossHasAcked {
-                                    await store.unackChatMessage(msg.id)
-                                } else {
-                                    await store.ackChatMessage(msg.id)
-                                }
-                            }
-                            withAnimation(.easeOut(duration: 0.12)) {
-                                reactionMessageId = nil
-                            }
-                        }
+                        Task { await toggleReaction(kind, on: msg) }
                     } label: {
                         VStack(spacing: 4) {
-                            Text(kind.emoji)
-                                .font(.system(size: 22))
+                            if busy {
+                                ProgressView()
+                                    .tint(DevTheme.sand)
+                                    .frame(height: 22)
+                            } else {
+                                Text(kind.emoji)
+                                    .font(.system(size: 22))
+                            }
                             Text(kind.title)
                                 .font(.system(size: 10, weight: .medium, design: .rounded))
                                 .foregroundStyle(DevTheme.mist.opacity(0.9))
@@ -332,8 +353,8 @@ struct ChatConsoleView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .disabled(kind == .ok && msg.isFromBoss)
-                    .opacity(kind == .ok && msg.isFromBoss ? 0.35 : 1)
+                    .disabled(msg.isFromBoss || busy)
+                    .opacity(msg.isFromBoss ? 0.35 : 1)
                 }
             }
 
@@ -347,6 +368,7 @@ struct ChatConsoleView: View {
                     .padding(.vertical, 6)
             }
             .buttonStyle(.plain)
+            .disabled(ackBusyMessageId == msg.id)
         }
         .padding(10)
         .background(
@@ -358,26 +380,45 @@ struct ChatConsoleView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(DevTheme.sand.opacity(0.25), lineWidth: 1)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func toggleReaction(_ kind: ChatReactionKind, on msg: AgentChatMessage) async {
+        guard !msg.isFromBoss else { return }
+        ackBusyMessageId = msg.id
+        defer { ackBusyMessageId = nil }
+        if msg.bossAckKind() == kind {
+            await store.unackChatMessage(msg.id)
+        } else {
+            await store.ackChatMessage(msg.id, ackType: kind.apiAckType)
+        }
+        if store.chatError == nil {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            dismissReactionFloat()
+        } else {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
     }
 
     private func sharedAckChip(
+        kind: ChatReactionKind,
         names: [String],
         messageId: Int,
-        bossHasAcked: Bool,
+        bossSelected: Bool,
         canToggle: Bool
     ) -> some View {
         Button {
             guard canToggle else { return }
             Task {
-                if bossHasAcked {
+                if bossSelected {
                     await store.unackChatMessage(messageId)
                 } else {
-                    await store.ackChatMessage(messageId)
+                    await store.ackChatMessage(messageId, ackType: kind.apiAckType)
                 }
             }
         } label: {
             HStack(spacing: 6) {
-                Text("👌")
+                Text(kind.emoji)
                     .font(.system(size: 13))
                 Text(names.joined(separator: "、"))
                     .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -388,20 +429,21 @@ struct ChatConsoleView: View {
             .padding(.vertical, 5)
             .background(
                 Capsule().fill(
-                    bossHasAcked
+                    bossSelected
                         ? DevTheme.sand.opacity(0.28)
                         : DevTheme.sand.opacity(0.16)
                 )
             )
             .overlay(
                 Capsule().stroke(
-                    DevTheme.sand.opacity(bossHasAcked ? 0.55 : 0.22),
+                    DevTheme.sand.opacity(bossSelected ? 0.55 : 0.22),
                     lineWidth: 1
                 )
             )
         }
         .buttonStyle(.plain)
         .disabled(!canToggle)
+        .accessibilityLabel("\(kind.title) \(names.joined(separator: "、"))")
     }
 
     private var composer: some View {

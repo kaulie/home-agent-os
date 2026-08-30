@@ -1,20 +1,39 @@
 import Foundation
 
-/// Reaction icons shown in the long-press float. Extend with more cases later.
+/// Reaction icons in the long-press float. Two meanings — do not conflate.
 enum ChatReactionKind: String, CaseIterable, Identifiable {
-    case ok
+    /// Formal @ 派活签收：可先不写聊天行，做完或有事再 push_msg。
+    case recv
+    /// cc @ 周知知情。
+    case got
 
     var id: String { rawValue }
 
+    var apiAckType: String { rawValue }
+
     var emoji: String {
         switch self {
-        case .ok: return "👌"
+        case .recv: return "✅"
+        case .got: return "👌"
         }
     }
 
     var title: String {
         switch self {
-        case .ok: return "知道了"
+        case .recv: return "收到"
+        case .got: return "知道了"
+        }
+    }
+
+    static func from(ackType: String) -> ChatReactionKind? {
+        let key = ackType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch key {
+        case "recv", "received", "receive":
+            return .recv
+        case "got", "ok": // legacy ok displayed as 知道了
+            return .got
+        default:
+            return nil
         }
     }
 }
@@ -30,10 +49,20 @@ struct ChatMessageAck: Decodable, Equatable, Hashable {
         case timestampLabel = "ts"
     }
 
+    var kind: ChatReactionKind? {
+        ChatReactionKind.from(ackType: ackType)
+    }
+
+    var badgeEmoji: String {
+        kind?.emoji ?? "👌"
+    }
+
+    var badgeTitle: String {
+        kind?.title ?? "知道了"
+    }
+
     var badgeLabel: String {
-        let key = ackType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if key == "got" { return "GET" }
-        return "OK"
+        badgeTitle
     }
 
     var isBossHandle: Bool {
@@ -41,7 +70,7 @@ struct ChatMessageAck: Decodable, Equatable, Hashable {
         return h == "boss" || h == "owner" || h == "user"
     }
 
-    /// Name shown after the shared OK marker (boss →「你」).
+    /// Name shown after the shared marker (boss →「你」).
     var participantLabel: String {
         if isBossHandle { return "你" }
         let h = handle.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -196,6 +225,23 @@ struct AgentChatMessage: Identifiable, Decodable, Equatable {
 
     var bossHasAcked: Bool {
         acks.contains(where: \.isBossHandle)
+    }
+
+    func bossAckKind() -> ChatReactionKind? {
+        acks.first(where: \.isBossHandle)?.kind
+    }
+
+    /// Group participant labels by reaction kind (empty kinds omitted).
+    var ackChipsByKind: [(kind: ChatReactionKind, names: [String])] {
+        var buckets: [ChatReactionKind: [String]] = [:]
+        for ack in acks {
+            guard let kind = ack.kind else { continue }
+            buckets[kind, default: []].append(ack.participantLabel)
+        }
+        return ChatReactionKind.allCases.compactMap { kind in
+            guard let names = buckets[kind], !names.isEmpty else { return nil }
+            return (kind, names)
+        }
     }
 
     /// Shared reaction: one OK marker + everyone who acked (empty → marker hidden).

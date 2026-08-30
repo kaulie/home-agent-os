@@ -537,7 +537,7 @@ enum DevClient {
         brainURL: String,
         token: String,
         messageId: Int,
-        ackType: String = "ok"
+        ackType: String = "got"
     ) async throws -> AgentChatMessage {
         let url = try endpoint(brainURL, path: "/api/v1/admin/agent_chat/ack")
         var request = URLRequest(url: url)

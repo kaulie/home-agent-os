@@ -74,6 +74,8 @@ struct FleetConsoleView: View {
                     Text(snap.bridgeOk == true ? "在线" : "不可用")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(DevTheme.mist)
+                    Spacer(minLength: 8)
+                    alignmentChip(aligned: snap.workAligned != false, desync: snap.desyncHandles)
                 }
                 if let url = snap.bridgeURL, !url.isEmpty {
                     Text(url)
@@ -93,11 +95,32 @@ struct FleetConsoleView: View {
                         }
                     }
                 }
+                if snap.workAligned == false, !snap.desyncHandles.isEmpty {
+                    Text("状态不一致：@" + snap.desyncHandles.joined(separator: " @"))
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(Color(red: 0.95, green: 0.55, blue: 0.35))
+                }
             }
         }
     }
 
-  @ViewBuilder
+    private func alignmentChip(aligned: Bool, desync: [String]) -> some View {
+        Text(aligned ? "Chat⇄Fleet 一致" : "Chat⇄Fleet 不一致")
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(aligned ? DevTheme.ink : Color(red: 0.2, green: 0.08, blue: 0.05))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill(
+                    aligned
+                        ? DevTheme.ok.opacity(0.85)
+                        : Color(red: 0.95, green: 0.55, blue: 0.35)
+                )
+            )
+            .accessibilityLabel(aligned ? "状态一致" : "状态不一致 \(desync.joined(separator: ","))")
+    }
+
+    @ViewBuilder
     private func agentsSection(_ agents: [FleetAgent]) -> some View {
         DevPanel {
             VStack(alignment: .leading, spacing: 12) {
@@ -119,26 +142,35 @@ struct FleetConsoleView: View {
                     Text("@\(agent.handle)")
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(DevTheme.sand)
-                    if agent.isRunning {
-                        Text(agent.runningStatus ?? "running")
+                    phaseBadge(agent)
+                    if agent.aligned == false {
+                        Text("!")
                             .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundStyle(DevTheme.ink)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Capsule().fill(DevTheme.ok))
-                    } else if agent.hasSession {
-                        Text("session")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundStyle(DevTheme.dim)
+                            .foregroundStyle(Color(red: 0.95, green: 0.55, blue: 0.35))
                     }
                 }
                 Text(agent.displayName)
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(DevTheme.dim)
-                if let runId = agent.runningRunId, !runId.isEmpty {
-                    Text("run \(runId.prefix(8))…")
+                if let runId = agent.activeRunId ?? agent.runningRunId, !runId.isEmpty {
+                    Text("run \(runId.prefix(8))…\(agent.activeStatus.map { " · \($0)" } ?? "")")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(DevTheme.dim)
+                }
+                if let mid = agent.sourceMessageId, mid > 0 {
+                    Text("chat #\(mid)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(DevTheme.dim)
+                }
+                if let desync = agent.desync, !desync.isEmpty {
+                    Text(desync)
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(Color(red: 0.95, green: 0.55, blue: 0.35))
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if let open = agent.chatOpenCount, open > 0, !agent.chatAwaitingRecv.isEmpty {
+                    Text("待签收 #\(agent.chatAwaitingRecv.map { String($0.id) }.joined(separator: ", #"))")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(DevTheme.mist.opacity(0.85))
                 }
             }
             Spacer(minLength: 8)
@@ -154,6 +186,27 @@ struct FleetConsoleView: View {
             }
             .disabled(store.isWakingFleet || store.fleetSnapshot?.bridgeOk != true)
         }
+    }
+
+    private func phaseBadge(_ agent: FleetAgent) -> some View {
+        let key = (agent.phase ?? "").lowercased()
+        let fill: Color = {
+            switch key {
+            case "running": return DevTheme.ok
+            case "queued": return DevTheme.sand.opacity(0.9)
+            case "awaiting_recv", "awaiting_ide": return Color(red: 0.95, green: 0.55, blue: 0.35)
+            case "acked": return DevTheme.sand.opacity(0.55)
+            default:
+                return agent.phaseIsActive ? DevTheme.sand.opacity(0.45) : DevTheme.chip
+            }
+        }()
+        let fg: Color = (key == "running" || key == "queued") ? DevTheme.ink : DevTheme.mist
+        return Text(agent.phaseBadgeText)
+            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .foregroundStyle(fg)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(fill))
     }
 
     @ViewBuilder
@@ -195,6 +248,11 @@ struct FleetConsoleView: View {
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(DevTheme.mist)
                     .lineLimit(2)
+            }
+            if let mid = run.sourceMessageId, mid > 0 {
+                Text("← chat #\(mid)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(DevTheme.dim)
             }
         }
         .padding(.vertical, 4)

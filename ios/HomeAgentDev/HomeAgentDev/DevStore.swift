@@ -508,7 +508,12 @@ final class DevStore: ObservableObject {
 
             if snap.chatOk == false {
                 if let err = snap.error, !err.isEmpty {
-                    chatError = err
+                    if err.localizedCaseInsensitiveContains("unreachable")
+                        || err.localizedCaseInsensitiveContains("connection refused") {
+                        chatError = "Chat 连不上（\(err)）。请切到「局域网 Brain」，或恢复云端 Chat 隧道后再点知道了。"
+                    } else {
+                        chatError = err
+                    }
                 } else {
                     chatError = "Chat 同步失败"
                 }
@@ -593,19 +598,20 @@ final class DevStore: ObservableObject {
         return uploaded
     }
 
-    func ackChatMessage(_ messageId: Int) async {
+    func ackChatMessage(_ messageId: Int, ackType: String = "got") async {
         guard messageId > 0 else { return }
         do {
             let updated = try await DevClient.ackAgentChatMessage(
                 brainURL: activeBrainURL,
                 token: DevSettings.adminToken,
-                messageId: messageId
+                messageId: messageId,
+                ackType: ackType
             )
             mergeChatMessages([updated])
             chatSinceAckAt = max(chatSinceAckAt, Date().timeIntervalSince1970)
             chatError = nil
         } catch {
-            chatError = error.localizedDescription
+            chatError = "标记失败：\(error.localizedDescription)"
         }
     }
 
@@ -621,7 +627,7 @@ final class DevStore: ObservableObject {
             chatSinceAckAt = max(chatSinceAckAt, Date().timeIntervalSince1970)
             chatError = nil
         } catch {
-            chatError = error.localizedDescription
+            chatError = "取消知道了失败：\(error.localizedDescription)"
         }
     }
 
