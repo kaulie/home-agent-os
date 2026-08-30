@@ -2,8 +2,8 @@ import Foundation
 
 /// Shared photo dest endpoints. img-server is infrastructure, not a capability.
 enum PhotoUploadDest {
-    static let lanUpload = "http://192.168.3.73:8080/api/v1/photos/upload"
-    static let lanPublic = "http://192.168.3.73:8080"
+    static let lanUpload = "http://192.168.3.84:8080/api/v1/photos/upload"
+    static let lanPublic = "http://192.168.3.84:8080"
     static let cloudUpload = "http://115.190.153.53:9527/api/v1/photos/upload"
     static let cloudPublic = "http://115.190.153.53:8080"
 
@@ -41,7 +41,7 @@ enum PhotoUploadDest {
     }
 
     /// Img-server endpoints for a dest. `dest=img_server` follows the **primary Brain**:
-    /// cloud primary → cloud img-server, never LAN `192.168.3.73:8080`.
+    /// cloud primary → cloud img-server, never LAN `192.168.3.84:8080`.
     static func endpoints(
         _ dest: String,
         primaryIntentURL: String? = nil
@@ -59,7 +59,7 @@ enum PhotoUploadDest {
         if useCloud {
             return (cloudUpload, cloudPublic, "http://115.190.153.53:9527/")
         }
-        return (lanUpload, lanPublic, "http://192.168.3.73:8080/health")
+        return (lanUpload, lanPublic, "http://192.168.3.84:8080/health")
     }
 
     private static func hostsMatch(_ a: String, _ b: String) -> Bool {
