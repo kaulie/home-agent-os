@@ -11,6 +11,8 @@ import json
 import os
 import re
 import sys
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -22,11 +24,26 @@ if __package__ in (None, ""):
 
 from chat import db  # noqa: E402
 from chat import attachments as chat_attachments  # noqa: E402
-from chat.mentions import DISPLAY_NAMES, HANDLES  # noqa: E402
+from chat.mentions import DISPLAY_NAMES, HANDLES, HANDLE_DUTIES  # noqa: E402
 
 HOST = (os.environ.get("CHAT_HOST") or "127.0.0.1").strip() or "127.0.0.1"
 PORT = int((os.environ.get("CHAT_PORT") or "8787").strip() or "8787")
 STATIC_DIR = ROOT / "static"
+BRAIN_URL = (os.environ.get("CHAT_BRAIN_URL") or "http://127.0.0.1:9527").rstrip("/")
+
+
+def _fetch_brain_agent_fleet() -> dict:
+    """Proxy Brain admin agent_fleet for Chatbox UI (no new schema)."""
+    url = f"{BRAIN_URL}/api/v1/admin/agent_fleet"
+    try:
+        with urllib.request.urlopen(url, timeout=3.0) as resp:
+            raw = resp.read().decode("utf-8")
+        data = json.loads(raw or "{}")
+        if isinstance(data, dict):
+            return data
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
+        pass
+    return {"ok": False, "error": "Brain agent_fleet 不可用", "agents": [], "runs": []}
 
 
 def _json_bytes(payload: object) -> bytes:
@@ -136,6 +153,9 @@ class ChatHandler(BaseHTTPRequestHandler):
             if path == "/api/v1/work_board":
                 self._send(200, {"ok": True, **db.work_board()})
                 return
+            if path == "/api/v1/agent_fleet":
+                self._send(200, _fetch_brain_agent_fleet())
+                return
             if path == "/api/v1/pull_msg":
                 handle = (query.get("handle") or [""])[0]
                 since_raw = (query.get("since_id") or ["0"])[0] or "0"
@@ -158,6 +178,7 @@ class ChatHandler(BaseHTTPRequestHandler):
                         "agents": db.list_agents(),
                         "handles": list(HANDLES),
                         "display_names": DISPLAY_NAMES,
+                        "handle_duties": HANDLE_DUTIES,
                         "boss_unread": db.boss_unread_count(),
                         "owner_unread": db.boss_unread_count(),
                     },

@@ -94,6 +94,40 @@
       padding: 8px 16px; font-weight: 700; cursor: pointer;
     }
     .empty { color: var(--muted); padding: 24px 0; }
+    .avatar-btn {
+      border: 0; padding: 0; margin: 0; background: transparent; cursor: pointer;
+      border-radius: 50%; line-height: 0; display: inline-flex;
+    }
+    .avatar-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .avatar.ui { background: #00b4d8; }
+    .avatar.controller { background: #5a6acf; }
+    .avatar.deploy { background: #2a9d8f; }
+    .avatar.sre { background: #6c757d; }
+    .agent-popover-backdrop {
+      position: fixed; inset: 0; z-index: 200; background: rgba(0, 0, 0, 0.45);
+      display: flex; align-items: flex-end; justify-content: center; padding: 12px;
+    }
+    @media (min-width: 520px) {
+      .agent-popover-backdrop { align-items: center; }
+    }
+    .agent-popover {
+      width: min(100%, 380px); background: var(--panel); border: 1px solid var(--line);
+      border-radius: 14px; padding: 16px 16px 14px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+      max-height: min(80vh, 520px); overflow: auto;
+    }
+    .agent-popover .head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+    .agent-popover .head h2 { font-size: 15px; margin: 0; line-height: 1.35; flex: 1; }
+    .agent-popover .head .handle { color: var(--accent); font-weight: 700; }
+    .agent-popover .duty { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+    .agent-popover dl { margin: 0; }
+    .agent-popover dt { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 10px; }
+    .agent-popover dd { margin: 4px 0 0; font-size: 13px; line-height: 1.45; word-break: break-word; }
+    .agent-popover .close {
+      border: 1px solid var(--line); background: var(--chip); color: var(--text);
+      border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; flex-shrink: 0;
+    }
+    .agent-popover .phase-idle { color: var(--muted); }
+    .agent-popover .phase-active { color: #7dd3a8; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -116,19 +150,44 @@
     </main>
   </div>
   <script>
-    const HANDLES = ["coordinator","brain","runtime","intent","capability","endpoint","quality","dba"];
+    const HANDLES = ["coordinator","controller","brain","runtime","ui","capability","quality","deploy","sre","dba"];
     const NAMES = {
       boss: "boss",
       owner: "boss",
       user: "boss",
       coordinator: "system coordinator agent",
+      controller: "dev controller agent",
       brain: "brain agent",
       runtime: "runtime dev agent",
-      intent: "Intent dev agent",
+      ui: "UI dev agent",
+      intent: "UI dev agent",
       capability: "capability dev agent",
-      endpoint: "endpoint agent",
+      endpoint: "UI dev agent",
       quality: "quality agent",
+      deploy: "deploy agent",
+      sre: "sre agent",
       dba: "dba agent",
+    };
+    const DUTIES = {
+      coordinator: "跨层仲裁、催办、日报收口；默认静默，结案用 cc。",
+      controller: "唯一常驻 IDE；wake Fleet、汇总进度、Dev Task 入口。",
+      brain: "规划、选边、入队、对外 Brain API。",
+      runtime: "调度 / hydrate / 前序门；Mac/Android edge runtime。",
+      ui: "全部用户交互面：Intent、物流 UI、Cast、Receiver、管理端 UI。",
+      capability: "Plugin 契约与实现（非 UI 呈现面）。",
+      quality: "黑盒 API 验收 + App UI 自动化（XCUITest）。",
+      deploy: "云 Brain 部署（rsync + restart）。",
+      sre: "本机/边缘运维、双 Brain、local-rt、架构 runbook。",
+      dba: "schema / SQL（Brain SQLite）。",
+      boss: "产品方；派活与验收。",
+    };
+    const PHASE_LABELS = {
+      idle: "空闲",
+      awaiting_recv: "待签收",
+      awaiting_ide: "待 IDE",
+      queued: "队列中",
+      running: "执行中",
+      acked: "已签收",
     };
     const logEl = document.getElementById("log");
     const agentsEl = document.getElementById("agents");
@@ -143,8 +202,12 @@
       quality: '<circle cx="10.2" cy="10.2" r="5.6"/><path d="m14.4 14.4 5 5"/><path d="M8 10.2h4.4M10.2 8v4.4"/>',
       runtime: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M4.8 6.5l1.6 1.6M17.6 15.9l1.6 1.6M3.5 12h2.2M18.3 12h2.2M4.8 17.5l1.6-1.6M17.6 8.1l1.6-1.6"/>',
       intent: '<path d="M5 6.5h10a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H10l-4 3v-3H5a2 2 0 0 1-2-2v-5a3 3 0 0 1 2-3z"/>',
+      ui: '<path d="M5 6.5h10a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H10l-4 3v-3H5a2 2 0 0 1-2-2v-5a3 3 0 0 1 2-3z"/>',
       capability: '<path d="M9 4h3.2a2 2 0 0 1 2 2v2.2H18a2 2 0 0 1 2 2V14h-2.2v2.2a2 2 0 0 1-2 2H12V16h-2.2a2 2 0 0 1-2-2V10H4V7.8a2 2 0 0 1 2-2H9z"/>',
       endpoint: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M8 20h8M12 16v4"/>',
+      controller: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M8 20h8M12 16v4"/>',
+      deploy: '<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 21h14"/>',
+      sre: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4z"/>',
       dba: '<ellipse cx="12" cy="6.5" rx="7" ry="2.4"/><path d="M5 6.5v11c0 1.3 3.1 2.4 7 2.4s7-1.1 7-2.4v-11"/><path d="M5 12c0 1.3 3.1 2.4 7 2.4s7-1.1 7-2.4"/>',
       all: '<circle cx="12" cy="12" r="8"/><path d="M12 5v14M5 12h14M7.2 7.2l9.6 9.6M16.8 7.2 7.2 16.8"/>',
     };
@@ -154,10 +217,23 @@
       return handle;
     }
 
+    function profileHandle(handle) {
+      const h = canonHandle(handle);
+      if (h === "intent" || h === "endpoint") return "ui";
+      return h;
+    }
+
+    function avatarIconKey(handle) {
+      const key = profileHandle(handle);
+      return ICONS[key] ? key : (ICONS[handle] ? handle : "all");
+    }
+
     function avatar(handle, size) {
-      const key = ICONS[canonHandle(handle)] ? canonHandle(handle) : "all";
+      const key = avatarIconKey(handle);
+      const ph = profileHandle(handle);
       const cls = "avatar " + key + (size ? " " + size : "");
-      return `<span class="${cls}" title="@${esc(key)}"><svg viewBox="0 0 24 24">${ICONS[key]}</svg></span>`;
+      const inner = `<span class="${cls}"><svg viewBox="0 0 24 24">${ICONS[key]}</svg></span>`;
+      return `<button type="button" class="avatar-btn" data-agent-handle="${esc(ph)}" aria-label="@${esc(ph)} 资料">${inner}</button>`;
     }
 
     function esc(s) {
@@ -201,6 +277,126 @@
       if (acks.length) parts.push("ack " + esc(acks.join(" ")));
       if (!parts.length) return "已读";
       return parts.join(" · ");
+    }
+
+    function oneLine(s, max) {
+      const t = String(s || "").replace(/\s+/g, " ").trim();
+      return t.length > max ? t.slice(0, max - 1) + "…" : t;
+    }
+
+    let popoverEl = null;
+    let fleetCache = null;
+    let workBoardCache = null;
+
+    function mergeRosterMeta(data) {
+      if (!data) return;
+      if (data.display_names) Object.assign(NAMES, data.display_names);
+      if (data.handle_duties) Object.assign(DUTIES, data.handle_duties);
+    }
+
+    async function refreshStatusCaches() {
+      const [wbRes, fleetRes] = await Promise.all([
+        fetch("/api/v1/work_board").then(r => r.json()).catch(() => ({})),
+        fetch("/api/v1/agent_fleet").then(r => r.json()).catch(() => ({ ok: false, agents: [], runs: [] })),
+      ]);
+      workBoardCache = wbRes || {};
+      fleetCache = fleetRes || { agents: [], runs: [] };
+      return { wb: workBoardCache, fleet: fleetCache };
+    }
+
+    function fleetAgent(handle) {
+      const agents = (fleetCache && fleetCache.agents) || [];
+      return agents.find(a => a.handle === handle) || null;
+    }
+
+    function workForHandle(handle) {
+      const handles = (workBoardCache && workBoardCache.handles) || {};
+      return handles[handle] || { awaiting_recv: [], acked_open: [] };
+    }
+
+    function phaseText(handle) {
+      const agent = fleetAgent(handle);
+      if (agent && agent.phase_label) return agent.phase_label;
+      if (agent && agent.phase) return PHASE_LABELS[agent.phase] || agent.phase;
+      const work = workForHandle(handle);
+      if ((work.awaiting_recv || []).length) return PHASE_LABELS.awaiting_recv;
+      if ((work.acked_open || []).length) return PHASE_LABELS.acked;
+      return PHASE_LABELS.idle;
+    }
+
+    function phaseIsActive(handle) {
+      const agent = fleetAgent(handle);
+      const phase = agent && agent.phase ? String(agent.phase) : "idle";
+      return phase !== "idle";
+    }
+
+    function taskText(handle) {
+      const agent = fleetAgent(handle);
+      const runs = (fleetCache && fleetCache.runs) || [];
+      let run = null;
+      if (agent && agent.running_run_id) {
+        run = runs.find(r => r.run_id === agent.running_run_id);
+      }
+      if (!run) {
+        run = runs.find(r => r.target_handle === handle && (r.status === "running" || r.status === "queued"));
+      }
+      if (run) {
+        const rid = run.run_id || agent.running_run_id || "";
+        const summary = oneLine(run.text, 100);
+        return summary ? ("Dev Task " + rid + " · " + summary) : ("Dev Task " + rid);
+      }
+      const work = workForHandle(handle);
+      const awaiting = work.awaiting_recv || [];
+      if (awaiting.length) {
+        const row = awaiting[0];
+        return "Chat #" + row.id + " 待签收 · " + oneLine(row.preview, 80);
+      }
+      const acked = work.acked_open || [];
+      if (acked.length) {
+        const row = acked[0];
+        return "Chat #" + row.id + " · " + oneLine(row.preview, 80);
+      }
+      return "空闲 / 无进行中任务";
+    }
+
+    function closeAgentPopover() {
+      if (popoverEl) {
+        popoverEl.remove();
+        popoverEl = null;
+      }
+    }
+
+    async function openAgentPopover(handle) {
+      const h = profileHandle(handle);
+      closeAgentPopover();
+      const backdrop = document.createElement("div");
+      backdrop.className = "agent-popover-backdrop";
+      backdrop.innerHTML = `<div class="agent-popover" role="dialog" aria-label="Agent 资料">
+        <div class="head">${avatar(h, "lg")}<h2><span class="handle">@${esc(h)}</span><br>${esc(NAMES[h] || h)}</h2>
+        <button type="button" class="close">关闭</button></div>
+        <p class="duty">${esc(DUTIES[h] || "—")}</p>
+        <dl>
+          <dt>当前忙闲</dt><dd class="phase-loading">加载中…</dd>
+          <dt>目前正在处理</dt><dd class="task-loading">加载中…</dd>
+        </dl>
+      </div>`;
+      backdrop.addEventListener("click", (ev) => {
+        if (ev.target === backdrop) closeAgentPopover();
+      });
+      backdrop.querySelector(".close").addEventListener("click", closeAgentPopover);
+      document.body.appendChild(backdrop);
+      popoverEl = backdrop;
+      await refreshStatusCaches();
+      const phaseDd = backdrop.querySelector(".phase-loading");
+      const taskDd = backdrop.querySelector(".task-loading");
+      if (phaseDd) {
+        phaseDd.className = phaseIsActive(h) ? "phase-active" : "phase-idle";
+        phaseDd.textContent = phaseText(h);
+      }
+      if (taskDd) {
+        taskDd.textContent = taskText(h);
+        taskDd.className = "";
+      }
     }
 
     function renderAgents(agents) {
@@ -277,6 +473,7 @@
         if (!m.recalled && ((m.unread || []).indexOf("boss") >= 0 || (m.unread || []).indexOf("owner") >= 0)) pending.push(m.id);
       });
       renderAgents(data.agents || []);
+      mergeRosterMeta(data);
       const n = data.boss_unread || data.owner_unread || 0;
       const badge = document.getElementById("bossUnread");
       badge.textContent = n ? ("未读 " + n) : "";
@@ -319,6 +516,7 @@
 
     chipsEl.innerHTML = ["all"].concat(HANDLES).map(h => `<button type="button" data-h="${h}">${avatar(h, "sm")}@${h}</button>`).join("");
     chipsEl.addEventListener("click", (ev) => {
+      if (ev.target.closest("[data-agent-handle]")) return;
       const btn = ev.target.closest("button");
       if (!btn) return;
       const token = "@" + btn.getAttribute("data-h") + " ";
@@ -329,9 +527,25 @@
       bodyEl.setSelectionRange(pos, pos);
     });
     logEl.addEventListener("click", (ev) => {
+      const av = ev.target.closest("[data-agent-handle]");
+      if (av) {
+        ev.preventDefault();
+        openAgentPopover(av.getAttribute("data-agent-handle"));
+        return;
+      }
       const btn = ev.target.closest("button.recall");
       if (!btn) return;
       recall(Number(btn.getAttribute("data-id")));
+    });
+    document.body.addEventListener("click", (ev) => {
+      const av = ev.target.closest("aside [data-agent-handle], .chips [data-agent-handle]");
+      if (!av) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      openAgentPopover(av.getAttribute("data-agent-handle"));
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape") closeAgentPopover();
     });
     document.getElementById("send").addEventListener("click", send);
     bodyEl.addEventListener("keydown", (ev) => {

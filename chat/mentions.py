@@ -55,6 +55,20 @@ DISPLAY_NAMES = {
     "dba": "dba agent",
 }
 
+# Short duties from docs/agent-roster.md (popover / profile UI).
+HANDLE_DUTIES = {
+    "coordinator": "跨层仲裁、催办、日报收口；默认静默，结案用 cc。",
+    "controller": "唯一常驻 IDE；wake Fleet、汇总进度、Dev Task 入口。",
+    "brain": "规划、选边、入队、对外 Brain API。",
+    "runtime": "调度 / hydrate / 前序门；Mac/Android edge runtime。",
+    "ui": "全部用户交互面：Intent、物流 UI、Cast、Receiver、管理端 UI。",
+    "capability": "Plugin 契约与实现（非 UI 呈现面）。",
+    "quality": "黑盒 API 验收 + App UI 自动化（XCUITest）。",
+    "deploy": "云 Brain 部署（rsync + restart）。",
+    "sre": "本机/边缘运维、双 Brain、local-rt、架构 runbook。",
+    "dba": "schema / SQL（Brain SQLite）。",
+}
+
 # @all / @everyone / @brain / @所有人
 _MENTION_RE = re.compile(r"@([A-Za-z_]+|所有人)")
 # `cc @a @b` or `cc:@a` (word-boundary so "acc @x" is not CC)

@@ -10,6 +10,7 @@ from time import sleep
 from chat import db
 from chat import attachments as chat_attachments
 from chat.mentions import (
+    HANDLE_DUTIES,
     audience_for,
     normalize_handle,
     parse_mention_roles,
@@ -50,6 +51,11 @@ class MentionTests(unittest.TestCase):
     def test_handle_aliases(self) -> None:
         self.assertEqual(normalize_handle("intent"), "ui")
         self.assertEqual(normalize_handle("endpoint"), "ui")
+
+    def test_handle_duties_roster(self) -> None:
+        self.assertIn("ui", HANDLE_DUTIES)
+        self.assertIn("controller", HANDLE_DUTIES)
+        self.assertTrue(HANDLE_DUTIES["ui"])
 
     def test_all_wins_over_specific(self) -> None:
         self.assertEqual(parse_mentions("@brain @all 全员"), ["all"])
@@ -388,6 +394,27 @@ class HttpTests(unittest.TestCase):
         conn.close()
         self.assertEqual(resp.status, 200)
         self.assertEqual(payload, b"\xff\xd8\xffhttp")
+
+    def test_work_board_route(self) -> None:
+        status, data = self._json("GET", "/api/v1/work_board")
+        self.assertEqual(status, 200)
+        self.assertTrue(data.get("ok"))
+        self.assertIn("handles", data)
+        self.assertIn("ui", data["handles"])
+
+    def test_messages_include_handle_duties(self) -> None:
+        status, data = self._json("GET", "/api/v1/messages")
+        self.assertEqual(status, 200)
+        self.assertIn("handle_duties", data)
+        self.assertIn("ui", data["handle_duties"])
+        self.assertIn("controller", data["display_names"])
+
+    def test_agent_fleet_proxy_route(self) -> None:
+        status, data = self._json("GET", "/api/v1/agent_fleet")
+        self.assertEqual(status, 200)
+        self.assertIn("agents", data)
+        if not data.get("ok"):
+            self.assertIn("error", data)
 
 
 if __name__ == "__main__":

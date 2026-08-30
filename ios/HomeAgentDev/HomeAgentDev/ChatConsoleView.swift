@@ -26,6 +26,7 @@ struct ChatConsoleView: View {
     @State private var ackBusyMessageId: Int?
     @StateObject private var speech = DevChatSpeechRecognizer()
     @State private var draftBeforeVoice = ""
+    @State private var profileHandle: String?
 
     var body: some View {
         NavigationStack {
@@ -145,6 +146,15 @@ struct ChatConsoleView: View {
                         .environmentObject(store)
                 }
             }
+            .sheet(isPresented: Binding(
+                get: { profileHandle != nil },
+                set: { if !$0 { profileHandle = nil } }
+            )) {
+                if let handle = profileHandle {
+                    DevAgentProfileSheet(handle: handle)
+                        .environmentObject(store)
+                }
+            }
             .devDismissKeyboardOnTap($inputFocused, enabled: reactionMessageId == nil)
             .devKeyboardDoneToolbar($inputFocused)
         }
@@ -207,7 +217,7 @@ struct ChatConsoleView: View {
             if msg.isFromBoss {
                 Spacer(minLength: 36)
             } else {
-                avatar(for: msg.fromHandle)
+                avatarButton(for: msg.fromHandle)
             }
 
             VStack(alignment: msg.isFromBoss ? .trailing : .leading, spacing: 6) {
@@ -326,6 +336,17 @@ struct ChatConsoleView: View {
         promoteMessage = msg
         promoteText = msg.body
         selectedBackgroundIds = defaultBackgroundSelection(anchor: msg)
+    }
+
+    private func avatarButton(for handle: String) -> some View {
+        let normalized = DevAgentRoster.normalize(handle)
+        return Button {
+            profileHandle = normalized
+        } label: {
+            avatar(for: handle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("@\(normalized) 资料")
     }
 
     private func avatar(for handle: String) -> some View {
