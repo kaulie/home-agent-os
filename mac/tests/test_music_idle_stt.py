@@ -52,7 +52,7 @@ def _cfg(**kwargs) -> VoiceConfig:
         pickup_speak_bridge_port=8793,
         phone_wake_silence_ms=350,
         phone_wake_max_speech_ms=2800,
-        phone_command_silence_ms=2000,
+        phone_command_silence_ms=1500,
         phone_command_max_speech_ms=12_000,
         stt_wav_dir=None,
         stt_wav_keep=False,

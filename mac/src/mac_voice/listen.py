@@ -329,7 +329,9 @@ def _home_mic_capture_loop(
             muted=ingest.should_mute_segmenter,
             on_activity=on_phone_activity,
             voice_drop_ratio=_PHONE_VOICE_DROP_RATIO,
-            allow_peak_drop_above_start=lambda: not ingest.in_command_endpoint(),
+            # Peak-drop stays on in command mode so post-ack re-wake / bleed
+            # does not ride the 12s command max when energy dips after a peak.
+            allow_peak_drop_above_start=True,
         ):
             if stop.is_set():
                 break

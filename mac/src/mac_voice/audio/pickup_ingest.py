@@ -122,7 +122,7 @@ class PickupIngestServer:
         self._command_utt_active = False
         self._phone_wake_silence_ms = 350
         self._phone_wake_max_ms = 2800
-        self._phone_cmd_silence_ms = 2000
+        self._phone_cmd_silence_ms = 1500
         self._phone_cmd_max_ms = 12_000
         self._command_window_ms = 5000
 

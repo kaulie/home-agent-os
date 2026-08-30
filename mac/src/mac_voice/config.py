@@ -289,7 +289,7 @@ def load_config() -> VoiceConfig:
         ),
         phone_command_silence_ms=_parse_int(
             _env("MAC_VOICE_PHONE_COMMAND_SILENCE_MS"),
-            2000,
+            1500,
             lo=400,
             hi=5000,
         ),

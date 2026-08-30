@@ -53,9 +53,8 @@ def _looks_ambient(peak: float, mean: float, start_threshold: float) -> bool:
     return peak / max(mean, 1.0) < _AMBIENT_CREST
 
 
-# Phone Home Mic: room music often sits above start_th after 面条 — still
-# treat a clear drop from the voice peak as trailing quiet.
-# 0.50 = cut sooner after wake-word peak (wake only; command disables peak-drop).
+# Phone Home Mic: after a wake/command peak, drop to this fraction of peak
+# counts as trailing quiet even when room energy stays above start_th.
 _PHONE_VOICE_DROP_RATIO = 0.50
 
 
