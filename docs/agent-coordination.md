@@ -15,10 +15,13 @@ http://127.0.0.1:8787/
 | 接口 | 谁用 | 作用 |
 |------|------|------|
 | `GET /` | 用户浏览器 | 管理页：看全员对话、派活。每 5 秒刷新。 |
-| `POST /api/v1/push_msg` | 用户页面 / 任意 agent | JSON `{from, body}` 发一条。服务器解析正文里的 `@handle`。 |
-| `GET /api/v1/pull_msg?handle=brain&since_id=0` | agent | 公共消息 + **@自己**。成功后推进水位，并把本批可见消息标为该 handle **已读**。 |
-| `GET /api/v1/messages?since_id=0` | 仅页面 | 时间线全量，含 `read` / `unread`。不推进 agent 水位、不自动已读。 |
+| `POST /api/v1/push_msg` | 用户页面 / 任意 agent | JSON `{from, body}` 发一条。服务器解析正文里的 `@handle` / `cc @handle`。 |
+| `GET /api/v1/pull_msg?handle=brain&since_id=0` | agent | 公共消息 + **@自己**（主送或抄送）。成功后推进水位，并把本批可见消息标为该 handle **已读**。 |
+| `GET /api/v1/messages?since_id=0&since_ack_at=0` | 仅页面 | 时间线全量，含 `read` / `unread` / `acks` / `action` / `cc`。不推进 agent 水位、不自动已读。 |
 | `POST /api/v1/mark_read` | 页面 / agent | JSON `{from, ids}` 把指定消息标为已读。页面打开后会把 @boss 未读标掉。 |
+| `POST /api/v1/ack_msg` | 页面 / agent | JSON `{from, message_id, ack_type}`。飞书式徽章，**不产生新聊天行**。`recv`=✅收到（正式 @ 签收）；`got`=👌知道了（cc 周知）。legacy `ok` 视为知道了。 |
+| `POST /api/v1/unack_msg` | 页面 / agent | JSON `{from, message_id}`。只取消自己的 ack。 |
+| `GET /api/v1/work_board` | Fleet / Brain | 各 handle 未结正式 `@`（待 ✅ 签收 / 已签收未清）。用于与 Fleet 执行态对齐。 |
 | `POST /api/v1/recall_msg` | 发件人 | JSON `{from, id}`。发出 **1 分钟内**且 **除自己外无人已读** 才能撤回。成功后正文清空，pull 不再返回。 |
 
 旧 Markdown 信箱 [`docs/agent-mailbox.md`](agent-mailbox.md) **已停用**，不要再追加、不要再加文件锁。
@@ -62,23 +65,89 @@ Asset 公约（资源层，未点名不改代码）：[`docs/asset-contract.md`]
 
 不要自己改别人的水位。`GET /api/v1/messages` 给页面用，不改 agent 已读。
 
-## 4. 消息与 @ 规则
+## 3b. 状态对齐（Chat ↔ Fleet ↔ 执行）
 
-传统对话：一条就是一段正文，可多行。用正文里的 `@handle` 指定接收人，不再使用 Tab 六字段、ack 分子分母、主题 `收到`。
+三套状态应对得上，Dev Console **Fleet** 页用统一 `phase` 展示：
 
-| 写法 | 谁该处理 |
-|------|----------|
-| 用户未 @ 任何人 | **agent 不处理**（页面仍显示，当笔记） |
-| `@brain 去看 intent 71` | 仅 `@brain` 的 `pull_msg` 能拿到 |
-| `@brain @intent …` | 列出的每一个 |
-| `@all` / `@所有人` / `@everyone` | 全部已注册 agent |
-| agent 发言且未 @ | 公共房间消息，所有 agent 都能 pull 到 |
+| phase | 含义 |
+|-------|------|
+| `idle` | 无未结正式 @，无队列/执行中 run |
+| `awaiting_recv` | Chat 有正式 `@`，尚未 ✅ 签收；Fleet 工人应被叫醒（否则标 **不一致**） |
+| `awaiting_ide` | 同上但目标是 `@controller`（IDE）；Fleet 空闲是预期 |
+| `queued` / `running` | bridge 队列中 / 执行中（run 可带 `source_message_id` 指回 Chat） |
+| `acked` | 已 ✅ 签收，当前无 active run（可能在干活或待收尾） |
 
-`from` 必须是自己的 handle（或页面的 `@boss`）。不要写 `@dev`、`@testing` 等未登记名；非法 @ 会被忽略。
+Brain：`GET /api/v1/admin/agent_fleet` 含 `phase` / `aligned` / `desync` / `work_aligned`。Chat：`GET /api/v1/work_board`。
 
-回复就是再 `push_msg` 一条，并 `@` 对方。不要再写 ack 列。
+## 4. 消息与正式 @ / cc @（Chat 原则）
 
-向 `@boss` **发文档**：只 `@boss` + 一句话 + `[[doc:docs/….md]]` 可点链接；**不要**贴 md 全文。
+一条消息一段正文。点名用两种方式，**不要混用语义**：
+
+| | **正式 `@handle`（主送）** | **`cc @handle`（抄送 / 周知）** |
+|--|--|--|
+| 含义 | **派活 / 要对方做事或正式接话** | **只让对方知情**，不要求对方开干 |
+| 对方立刻 | 打 **✅ 收到**（`ack_msg` / `ack_type=recv`），**可以先不追加聊天行** | 打 **👌 知道了**（`ack_type=got`），**不要**再发聊天行 |
+| 之后 | 做完、阻塞、或需要沟通时再 **`push_msg` 正式消息** | **不要**下场改代码；无需再回长文 |
+
+**收到** ≠ **知道了**：前者是「任务我接了」；后者是「我看到了（cc）」。
+
+### 典型用法
+
+1. **派活**：`@quality 请验收 Intent Source 登录流。cc @boss`  
+   → quality：✅ 收到，去做；测完再 `push_msg` 汇报。boss：👌 知道了。  
+2. **做完周知 boss（boss 不必正式回）**：完工汇报主送对接人，并 `cc @boss`。  
+3. **quality 测完只要 ui 知情**：`登录流 XCUITest 已通过。cc @ui` → **ui 只 👌 知道了**。  
+4. **quality 测完且要 ui 改 bug**：`@ui 失败用例见…请修。cc @boss` → ui：✅ 收到并修；修好再正式 `push_msg`。
+
+### 写法速查
+
+| 写法 | 谁 | 立刻怎么回 |
+|------|----|------------|
+| 用户未 @ | 无人 | agent 不处理（页面笔记） |
+| `@brain 去看 intent 71` | brain 主送 | ✅ 收到 → 做事 → 有结论再 `push_msg` |
+| `@quality 请验收…。cc @ui @boss` | quality 主送；ui / boss 抄送 | quality：✅ 收到；ui / boss：👌 知道了 |
+| `@brain @ui …`（两个正式 @） | 都是主送 | 各自 ✅ 收到 |
+| `cc @sre`（仅抄送） | 仅周知 | 👌 知道了 |
+| `@all` / `@所有人` / `@everyone` | 全员（coordinator 收口唤醒） | 按约定 |
+| agent 未 @ | 公共房间 | 视内容 |
+
+`cc` 语法：`cc @a @b` 或 `cc:@a`（单词边界，避免 `acc @x`）。同一 handle 既正式 @ 又 cc 时，**正式 @ 优先**。
+
+`from` 必须是自己的 handle（或页面 `@boss`）。未登记名忽略。
+
+- **✅ 收到**：`POST /api/v1/ack_msg` `{"from":"<handle>","message_id":N,"ack_type":"recv"}`  
+- **👌 知道了**：同上，`ack_type":"got"`  
+- 取消自己的徽章：`POST /api/v1/unack_msg`  
+- **正式沟通**（结论、阻塞、追问）：再 `push_msg` 并 `@` 对方。不要用聊天行写「收到」「知道了」。
+
+向 `@boss` **发文档**：只 `@boss` + 一句话 + `[[doc:docs/….md]]`；**不要**贴 md 全文。
+
+## 4b. 领指令前先报状态（全员强制）
+
+**领取任意一条正式指令之前**（正式 `@` 派活 / Dev Task / Fleet wake 任务），必须先用 `push_msg` **汇报当前状态**，再 ✅ `recv` 签收或声明 pending。禁止静默开工。
+
+`cc @` 周知：**不要**写状态汇报；只 👌 `got`。
+
+状态正文建议一行起头 `[status]`，至少包含：
+
+| 字段 | 写什么 |
+|------|--------|
+| `phase` | `idle` / `wip` / `blocked` / `pending`（与 Fleet·Chat 对齐见 §3b） |
+| `WIP` | 当前在做的事一句话；无则 `WIP：无` |
+| `tree` | `clean` 或 `dirty`（脏则补一句范围，如 `chat/`） |
+| `对本指令` | `接做` / `pending（等 WIP 提交）` / `转交 @handle` |
+
+示例：
+
+```text
+@boss #120 [status] phase=wip WIP：Chat 状态对齐 UI tree=dirty(chat,ios-dev) 对本指令：pending（先提交当前 WIP）
+```
+
+```text
+@runtime #99 [status] phase=idle WIP：无 tree=clean 对本指令：接做
+```
+
+然后再 `ack_msg` `ack_type=recv`。若 `pending`，仍可先 ✅ 表示看见了，但正文必须写清何时开工（与 `.cursor/rules/agent-wip-discipline.mdc` 一致）。
 
 ## 2b. 文档写作（全员）
 
@@ -99,7 +168,10 @@ Asset 公约（资源层，未点名不改代码）：[`docs/asset-contract.md`]
 
 0. 先读本约定。
 1. `GET /api/v1/pull_msg?handle=<自己>`。
-2. 其中别人发给自己的（含 `@all`）：先 `push_msg` 回一句（可 `@` 对方），再按正文做事。自己发的公共消息可跳过执行。
+2. 其中别人发给自己的（含 `@all`）：
+   - **正式 `@`（主送）**：先 `push_msg` **`[status]` 汇报当前状态**（§4b），再 ✅ **收到**；做事；做完或有事再正式沟通。  
+   - **`cc @`（周知）**：只打 👌 **知道了**；不要发状态汇报，不要下场改代码。
+   - 自己发的公共消息可跳过执行。
 3. 用户未 @ 的笔记不会出现在 pull 结果里，不要处理。
 4. 没有新消息则本轮结束，不要为了「表明还活着」给 `@all` 发空聊。
 
@@ -115,8 +187,9 @@ Cursor 停会话不会被 HTTP 叫醒；**Fleet worker** 由 agent-bridge `POST 
 
 ## 7. 处理约定
 
-- 读到发给自己的消息：先回复，再做事；做不了或越层，再 `@` 发件人说明。
-- `@coordinator` 不写产品代码；需要实现时 `@runtime` / `@ui` / `@capability`；需要黑盒时 `@quality`；部署 `@deploy`；运维 `@sre`。
+- 读到**正式 `@` 自己**：先 `push_msg` `[status]`（§4b），再 ✅ 收到，再做事或 pending；做完/阻塞再正式沟通；做不了或越层，再 `@` 发件人说明。
+- 读到**`cc @` 自己**：👌 知道了即可（例如 quality 测完 `cc @ui` → ui 只打知道了）；除非另有正式 `@` 点名自己，否则不要开干。
+- `@coordinator` 不写产品代码；需要实现时 `@runtime` / `@ui` / `@capability`；需要黑盒时 `@quality`；部署 `@deploy`；运维 `@sre`。只需对方知情时用 `cc @…`（含 `cc @boss`）。
 - 用户对 `@coordinator` 说的非协调事项：coordinator `@` 转到对应 handle（plugin→`@capability`；调度/hydrate/前序门/失败 msg→`@runtime`；发出窗口 / 物流 UI / Cast / Receiver→`@ui`；黑盒 API→`@quality`；规划/选边/入队/Brain API→`@brain`；云部署→`@deploy`；运维→`@sre`；schema→`@dba`）。
 - 预期外情况 **第一时间** `@coordinator`，由 coordinator 集中仲裁/拆单。不要自行跨层改。
 - `@quality`：对外 API 黑盒写入 `tests/blackbox/`；**App 功能点**用 UI 自动化（当前优先 **XCUITest**，目录约定见 [`docs/testing/xcuitest.md`](testing/xcuitest.md)）。修复须验收：实现方报完工后 `@quality` 请验收；不得自报结案。不改产品功能逻辑；缺 `accessibilityIdentifier` 时 `@ui` 补或双方约定由 quality 只加 identifier。
@@ -133,6 +206,15 @@ Cursor 停会话不会被 HTTP 叫醒；**Fleet worker** 由 agent-bridge `POST 
 | `deploy_requested` / `deployed` | 实现方申请；`@deploy`（或端上发布方）执行 | `[release] stage=deploy_* sha=… target=…` |
 
 禁止用工作区脏改动 / 私下 rsync 冒充上线。部署流水线管控后续接入；在此之前以 `[release]` + Dev Console **Deploy** Tab + git log 为审计源。结案前 `@controller` 须能看到完整节点（或合法 `stage=skipped` + 原因）。老板在 Deploy Tab「批准上线」= Deploy Authority。
+
+## 7.2 层隔离与单 WIP（强制）
+
+细则：[`.cursor/rules/agent-wip-discipline.mdc`](../.cursor/rules/agent-wip-discipline.mdc)。
+
+1. **不写非本层代码**；越层转 `@` 对应 handle / `@coordinator`，禁止顺手改。
+2. **同一时间一个 WIP**：写完先 commit；未写完则继续写完再接新活。
+3. 新需求在 WIP 未提交时进 **pending**，并立刻 `push_msg` 说明给 `@controller`（及来源方 `@boss`）；**禁止**覆盖一半未提交改动。
+4. `@controller` wake 前若目标仍有未提交 WIP：先催提交或明确废弃，再派新任务。
 
 ## 8. 并发
 

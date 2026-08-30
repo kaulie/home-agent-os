@@ -69,6 +69,8 @@ curl -s -X POST -H "Authorization: Bearer $BRIDGE_TOKEN" \
 
 Dev Task 带 `target_handle` 时 bridge 直接 wake 对应 worker；进度推 Chatbox：`@controller [dev-task]` 或 `@controller [fleet] handle=…`。产品改动另推 `[release]` 节点（commit → test → deploy），见 [`.cursor/rules/release-pipeline.mdc`](../.cursor/rules/release-pipeline.mdc)。
 
+**层隔离 + 单 WIP：** 不写非本层代码；未提交完当前需求前，新需求进 pending 并上报 `@controller`/`@boss`。见 [`.cursor/rules/agent-wip-discipline.mdc`](../.cursor/rules/agent-wip-discipline.mdc)。
+
 ## 日报
 
 每天 23:00 前（UTC+8）各 handle `@coordinator` 交日报。汇总：[`daily-reports.md`](daily-reports.md)。列含 `controller`、`deploy`、`sre`。
