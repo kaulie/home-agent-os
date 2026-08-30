@@ -21,7 +21,7 @@ cd agent-bridge && ./run.sh    # :9540 bridge（BRIDGE_AUTH_TOKEN 见 agent-brid
 3. **Chat `@controller`**：老板或其它 handle **正式 `@controller` 派活**时，先 `push_msg` `[status]` 汇报当前状态，再打 ✅ **收到**，再做事/转派；做完或有事再正式沟通。若只是 `cc @controller`，打 👌 **知道了**即可。
 4. **判断**：自己能在一层内小改 → 直接做；否则 **wake** 对应 Fleet handle。
 5. **WIP 门闩**：目标 handle 若仍有未提交改动 / 进行中需求，先催其 **写完并 commit**（或明确废弃），新需求标 **pending**；不要 wake 去覆盖半成品。见 [`agent-wip-discipline.mdc`](agent-wip-discipline.mdc)。
-6. 完成后向用户简短汇总；跨层争议 `push_msg` `@coordinator`。
+6. 完成后向用户简短汇总；**真正的**跨层争议再 `push_msg` `@coordinator`（结案确认只用 `cc @coordinator`）。
 
 ## Wake 决策表
 
@@ -35,8 +35,8 @@ cd agent-bridge && ./run.sh    # :9540 bridge（BRIDGE_AUTH_TOKEN 见 agent-brid
 | rsync 云 Brain、restart doubao_skill | `deploy` |
 | Mac 边缘、双 Brain、local-rt、运维 | `sre` |
 | schema / SQL | `dba` |
-| 催办、仲裁、日报、跨层拆单 | `coordinator` |
-| 不确定 / 多域 | 先 `coordinator` 或拆成多 handle 顺序 wake |
+| 催办、仲裁、日报、跨层拆单 | `coordinator`（**默认静默**；勿为结案确认 wake） |
+| 不确定 / 多域 | 先拆成多 handle 顺序 wake；仅争议再找 `coordinator` |
 
 ## Bridge API
 
