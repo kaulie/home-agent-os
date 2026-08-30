@@ -1,0 +1,13 @@
+---
+description: All agent-authored docs must be standard Markdown for mobile reading
+alwaysApply: true
+---
+
+# 文档格式（全员）
+
+写给人看的文档（尤其 `docs/**/*.md`、capability 说明、方案、runbook）：
+
+1. **标准 Markdown**：`#`/`##` 标题、列表、表格、` ``` ` 代码块、`[text](path)` 链接；UTF-8。
+2. **手机可读**：短段落；避免超宽表、把整段日志/JSON 无结构倾倒；mermaid 可选，正文须离开图也能懂。
+3. **勿用 HTML 当主结构**。
+4. 经 Chatbox 通知 `@boss`：只 `@boss` + 一句话 + `[[doc:docs/….md]]`，**不贴全文**（见 `controller-orchestration.mdc` / `docs/agent-coordination.md` §2b）。

@@ -56,11 +56,16 @@ def build_wake_prompt(
             "",
             "## Workflow",
             "1. GET pull_msg for your handle if needed.",
-            "2. push_msg acknowledge, then implement within your layer.",
+            "2. Role check on each message (docs/agent-coordination.md §4 / §4b):",
+            "   - Formal @ (主送): FIRST push_msg a one-line [status] "
+            "(phase=idle|wip|blocked|pending, WIP, tree=clean|dirty, 对本指令=接做|pending|转交). "
+            "THEN ack_msg ack_type=recv (✅ 收到). Then implement or park as pending.",
+            "   - cc @ (周知): POST ack_msg ack_type=got (👌 知道了) only. "
+            "No [status] line. Do NOT implement. Do NOT use recv for CC.",
             "3. Product code: git commit (see docs/git-commit-convention.md; footer agent: <handle>), then test, then deploy — never treat dirty workspace as shipped.",
             "4. Docs you write must be standard Markdown (mobile-friendly); notify @boss with [[doc:path]] only, never paste full md. See docs/agent-coordination.md §2b.",
             "5. Record each node in Chatbox with [release] stage=committed|tested|deploy_requested|deployed (or skipped+note); @controller. See .cursor/rules/release-pipeline.mdc.",
-            "6. push_msg completion; @quality if API acceptance needed; @deploy only with commit sha after tests.",
+            "6. Action owners: push_msg completion; use cc @boss (or cc @ui) to FYI; @quality if API acceptance needed; @deploy only with commit sha after tests.",
         ]
     )
     return "\n".join(parts)

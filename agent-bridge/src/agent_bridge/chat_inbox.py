@@ -27,7 +27,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from chat.kinds import KIND_COMPLETE  # noqa: E402
-from chat.mentions import normalize_handle, parse_mentions  # noqa: E402
+from chat.mentions import MentionRoles, normalize_handle, parse_mention_roles  # noqa: E402
 
 AUTO_WAKE_SKIP_HANDLES = frozenset({DEFAULT_HANDLE})
 SYSTEM_FROM_HANDLES = frozenset({"agent-bridge"})
@@ -51,6 +51,16 @@ def wake_targets_from_mentions(mentions: list[str]) -> list[str]:
     return targets
 
 
+def wake_plan_from_roles(roles: MentionRoles) -> dict[str, str]:
+    """Map handle → wake role: 'action' | 'cc'. Action wins over cc."""
+    plan: dict[str, str] = {}
+    for handle in wake_targets_from_mentions(roles.cc):
+        plan[handle] = "cc"
+    for handle in wake_targets_from_mentions(roles.action):
+        plan[handle] = "action"
+    return plan
+
+
 def should_auto_wake_message(
     *,
     from_handle: str,
@@ -67,10 +77,18 @@ def should_auto_wake_message(
         return False
     if SYSTEM_TAG_RE.search(text):
         return False
-    return bool(wake_targets_from_mentions(parse_mentions(text)))
+    roles = parse_mention_roles(text)
+    return bool(wake_plan_from_roles(roles))
 
 
-def build_chat_task_text(*, msg_id: int, sender: str, body: str, kind: str = "chat") -> str:
+def build_chat_task_text(
+    *,
+    msg_id: int,
+    sender: str,
+    body: str,
+    kind: str = "chat",
+    role: str = "action",
+) -> str:
     lines = [
         f"Chatbox @{sender} (message #{msg_id}, kind={kind}):",
         "",
@@ -83,6 +101,39 @@ def build_chat_task_text(*, msg_id: int, sender: str, body: str, kind: str = "ch
                 "## Completion report",
                 "Dispatcher should ack via POST /api/v1/ack_msg (badge on this message).",
                 "Do NOT push_msg「我知道了」— use ack_msg instead.",
+            ]
+        )
+        return "\n".join(lines)
+
+    if role == "cc":
+        lines.extend(
+            [
+                "",
+                "## CC only (周知) → 👌 知道了",
+                "You are CC — FYI only, not ownership.",
+                f"POST http://127.0.0.1:8787/api/v1/ack_msg JSON "
+                f'{{"from":"<your-handle>","message_id":{msg_id},"ack_type":"got"}} '
+                "（👌 知道了）. Do NOT use ack_type=recv.",
+                "Do NOT push_msg「知道了」/「收到」chat lines.",
+                "Do NOT implement unless you are also the formal @ target.",
+                "Then end this wake.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "## Action owner (正式 @) → [status] + ✅ 收到",
+                "You were formally @-mentioned to do work.",
+                "1. FIRST push_msg a one-line status to the sender (and @controller if useful), e.g.",
+                "   `@boss #<msg_id> [status] phase=idle WIP：无 tree=clean 对本指令：接做`",
+                "   Fields: phase=idle|wip|blocked|pending; WIP；tree=clean|dirty(…); 对本指令=接做|pending|转交.",
+                f"2. THEN POST ack_msg ack_type=recv (message_id={msg_id}) — ✅ 收到.",
+                "3. Implement within your layer, or keep pending until WIP is committed "
+                "(see agent-wip-discipline).",
+                "4. When done/blocked/need to discuss: push_msg a real Chat message. "
+                "Do not use chat lines that only say「收到」/「知道了」.",
+                "5. To notify without forcing a reply: cc @boss / cc @peer.",
             ]
         )
     return "\n".join(lines)
@@ -111,12 +162,39 @@ class ChatInboxWatcher:
         self._fresh_install = not self._state_path.is_file()
         self._load_state()
 
+    def _bootstrap_cursor(self) -> None:
+        """Skip historical Chatbox backlog on first run; only wake for new messages."""
+        messages = self._fetch_messages()
+        max_id = 0
+        for message in messages:
+            max_id = max(max_id, int(message.get("id") or 0))
+        self._last_message_id = max_id
+        self._persist_state()
+        log.info("chat inbox bootstrapped at message id %s (skipping backlog)", max_id)
+
+    def _clamp_cursor_to_chat(self) -> None:
+        """If Chat DB was reset (ids restarted), don't stay stuck past EOF."""
+        messages = self._fetch_messages_from(0)
+        if not messages:
+            return
+        max_id = max(int(m.get("id") or 0) for m in messages)
+        if self._last_message_id > max_id:
+            log.warning(
+                "chat inbox cursor %s ahead of chat max id %s — clamping (DB reset?)",
+                self._last_message_id,
+                max_id,
+            )
+            self._last_message_id = max_id
+            self._persist_state()
+
     def start(self) -> None:
         if not self._config.chat_inbox_enabled:
             log.info("chat inbox auto-wake disabled")
             return
         if self._fresh_install:
             self._bootstrap_cursor()
+        else:
+            self._clamp_cursor_to_chat()
         self._thread = threading.Thread(
             target=self._loop,
             name="chat-inbox-watcher",
@@ -129,16 +207,6 @@ class ChatInboxWatcher:
             CHAT_URL,
             self._last_message_id,
         )
-
-    def _bootstrap_cursor(self) -> None:
-        """Skip historical Chatbox backlog on first run; only wake for new messages."""
-        messages = self._fetch_messages()
-        max_id = 0
-        for message in messages:
-            max_id = max(max_id, int(message.get("id") or 0))
-        self._last_message_id = max_id
-        self._persist_state()
-        log.info("chat inbox bootstrapped at message id %s (skipping backlog)", max_id)
 
     def shutdown(self) -> None:
         self._shutdown.set()
@@ -168,7 +236,10 @@ class ChatInboxWatcher:
         tmp.replace(self._state_path)
 
     def _fetch_messages(self) -> list[dict[str, Any]]:
-        url = f"{CHAT_URL}/api/v1/messages?since_id={self._last_message_id}"
+        return self._fetch_messages_from(self._last_message_id)
+
+    def _fetch_messages_from(self, since_id: int) -> list[dict[str, Any]]:
+        url = f"{CHAT_URL}/api/v1/messages?since_id={since_id}"
         try:
             with urllib.request.urlopen(url, timeout=5.0) as resp:
                 raw = resp.read().decode("utf-8")
@@ -200,19 +271,19 @@ class ChatInboxWatcher:
         if not should_auto_wake_message(from_handle=sender, body=body, kind=kind):
             return []
 
-        parsed = parse_mentions(body)
-        targets = wake_targets_from_mentions(parsed)
+        roles = parse_mention_roles(body)
+        plan = wake_plan_from_roles(roles)
         if kind == KIND_COMPLETE:
             for handle in message.get("mentions") or []:
                 if (
                     handle in FLEET_HANDLES
                     and handle not in AUTO_WAKE_SKIP_HANDLES
                     and handle != sender
-                    and handle not in targets
+                    and handle not in plan
                 ):
-                    targets.append(handle)
+                    plan[handle] = "action"
         results: list[dict[str, Any]] = []
-        for handle in targets:
+        for handle, role in plan.items():
             if sender == handle:
                 continue
             if self._already_enqueued(msg_id, handle):
@@ -220,7 +291,13 @@ class ChatInboxWatcher:
             if not self._config.can_run():
                 log.warning("chat inbox skip wake %s: agent backend not configured", handle)
                 continue
-            task_text = build_chat_task_text(msg_id=msg_id, sender=sender, body=body, kind=kind)
+            task_text = build_chat_task_text(
+                msg_id=msg_id,
+                sender=sender,
+                body=body,
+                kind=kind,
+                role=role,
+            )
             try:
                 result = wake_handle(
                     handle,
@@ -229,14 +306,17 @@ class ChatInboxWatcher:
                     runner=self._runner,
                     task_text=task_text,
                     pull_chat=False,
+                    source_message_id=msg_id,
+                    chat_role=role,
                 )
             except ValueError as err:
                 log.warning("chat inbox wake %s failed: %s", handle, err)
                 continue
             self._enqueued.add(self._dedupe_key(msg_id, handle))
             log.info(
-                "chat inbox enqueued wake handle=%s msg=%s run=%s",
+                "chat inbox enqueued wake handle=%s role=%s msg=%s run=%s",
                 handle,
+                role,
                 msg_id,
                 result.get("run_id"),
             )

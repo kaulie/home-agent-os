@@ -168,6 +168,8 @@ class AgentRunner:
         rows: list[dict[str, Any]] = []
         for state in self._fleet.list_handles():
             running = self._store.running_run_for_handle(state.handle)
+            queued = None if running is not None else self._store.queued_run_for_handle(state.handle)
+            active = running or queued
             rows.append(
                 {
                     "handle": state.handle,
@@ -175,6 +177,14 @@ class AgentRunner:
                     "last_wake_at": state.last_wake_at,
                     "running_run_id": None if running is None else running.run_id,
                     "running_status": None if running is None else running.status,
+                    "queued_run_id": None if queued is None else queued.run_id,
+                    "active_run_id": None if active is None else active.run_id,
+                    "active_status": None if active is None else active.status,
+                    "source_message_id": None if active is None else active.source_message_id,
+                    "chat_role": None if active is None else (active.chat_role or None),
+                    "is_running": running is not None,
+                    "is_queued": queued is not None,
+                    "has_session": bool(state.agent_id),
                 }
             )
         return rows

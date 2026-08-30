@@ -30,6 +30,8 @@ class RunRecord:
     task_id: int | None = None
     target_handle: str = DEFAULT_HANDLE
     brain_url: str = ""
+    source_message_id: int | None = None
+    chat_role: str = ""  # action | cc | ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -69,6 +71,12 @@ class BridgeState:
                     task_id=row.get("task_id"),
                     target_handle=str(row.get("target_handle") or DEFAULT_HANDLE),
                     brain_url=str(row.get("brain_url") or ""),
+                    source_message_id=(
+                        int(row["source_message_id"])
+                        if row.get("source_message_id") is not None
+                        else None
+                    ),
+                    chat_role=str(row.get("chat_role") or ""),
                 )
             )
         return cls(agent_id=data.get("agent_id"), runs=runs)
@@ -122,6 +130,8 @@ class StateStore:
         task_id: int | None = None,
         target_handle: str = DEFAULT_HANDLE,
         brain_url: str | None = None,
+        source_message_id: int | None = None,
+        chat_role: str = "",
     ) -> RunRecord:
         run = RunRecord(
             run_id=uuid.uuid4().hex,
@@ -130,6 +140,8 @@ class StateStore:
             task_id=task_id,
             target_handle=target_handle,
             brain_url=str(brain_url or "").strip().rstrip("/"),
+            source_message_id=source_message_id,
+            chat_role=str(chat_role or "").strip(),
         )
         with self._lock:
             self._state.runs.append(run)
@@ -186,6 +198,17 @@ class StateStore:
                 if run.status == "running" and run.target_handle == handle:
                     return RunRecord(**run.to_dict())
             return None
+
+    def queued_run_for_handle(self, handle: str) -> RunRecord | None:
+        with self._lock:
+            for run in reversed(self._state.runs):
+                if run.status == "queued" and run.target_handle == handle:
+                    return RunRecord(**run.to_dict())
+            return None
+
+    def active_run_for_handle(self, handle: str) -> RunRecord | None:
+        """Prefer running, else newest queued for this handle."""
+        return self.running_run_for_handle(handle) or self.queued_run_for_handle(handle)
 
     def queued_runs(self) -> list[RunRecord]:
         with self._lock:

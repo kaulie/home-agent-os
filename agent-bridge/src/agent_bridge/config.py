@@ -48,6 +48,8 @@ class BridgeConfig:
     backend_preference: str = ""
     brain_url: str = ""
     brain_admin_token: str | None = None
+    chat_inbox_enabled: bool = True
+    chat_inbox_poll_sec: float = 5.0
 
     @property
     def project_root(self) -> Path:
@@ -102,4 +104,27 @@ def load_config() -> BridgeConfig:
         backend_preference=os.environ.get("AGENT_BRIDGE_BACKEND", ""),
         brain_url=(os.environ.get("AGENT_BRIDGE_BRAIN_URL") or "").strip(),
         brain_admin_token=(os.environ.get("AGENT_BRIDGE_BRAIN_ADMIN_TOKEN") or "").strip() or None,
+        chat_inbox_enabled=_env_bool("AGENT_BRIDGE_CHAT_INBOX", True),
+        chat_inbox_poll_sec=_env_float("AGENT_BRIDGE_CHAT_INBOX_POLL_SEC", 5.0),
     )
+
+
+def _env_bool(key: str, default: bool) -> bool:
+    raw = (os.environ.get(key) or "").strip().lower()
+    if not raw:
+        return default
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _env_float(key: str, default: float) -> float:
+    raw = (os.environ.get(key) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default

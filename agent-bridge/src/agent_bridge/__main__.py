@@ -4,6 +4,7 @@ import logging
 import signal
 import sys
 
+from agent_bridge.chat_inbox import ChatInboxWatcher
 from agent_bridge.config import load_config
 from agent_bridge.fleet_state import FleetStateStore
 from agent_bridge.runner import AgentRunner
@@ -28,10 +29,14 @@ def main() -> None:
     runner = AgentRunner(config, store, fleet)
     runner.start()
 
+    inbox = ChatInboxWatcher(config, store, fleet, runner)
+    inbox.start()
+
     app = create_app(config, store, fleet, runner)
 
     def _shutdown(*_args: object) -> None:
         logging.getLogger(__name__).info("shutting down agent bridge")
+        inbox.shutdown()
         runner.shutdown()
         raise SystemExit(0)
 
