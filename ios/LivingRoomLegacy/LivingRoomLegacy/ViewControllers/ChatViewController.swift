@@ -75,6 +75,11 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
         cancelVoiceInputIfNeeded()
     }
 
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        dismissKeyboard()
+    }
+
     deinit {
         speech.stop()
         NotificationCenter.default.removeObserver(self)
@@ -133,7 +138,7 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
         tableView.rowHeight = UITableView.automaticDimension
         tableView.dataSource = self
         tableView.delegate = self
-        tableView.keyboardDismissMode = .onDrag
+        tableView.keyboardDismissMode = .interactive
         tableView.register(ChatMessageCell.self, forCellReuseIdentifier: ChatMessageCell.reuseId)
         tableView.register(JourneyTimelineCell.self, forCellReuseIdentifier: JourneyTimelineCell.reuseId)
         tableView.register(FeedbackStripCell.self, forCellReuseIdentifier: FeedbackStripCell.reuseId)
@@ -402,11 +407,22 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
             target.addGestureRecognizer(tap)
         }
         statusRow.isUserInteractionEnabled = true
+        tableView.keyboardDismissMode = .interactive
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        true
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard inputField.isFirstResponder else { return false }
         if touch.view === inputField || touch.view?.isDescendant(of: inputField) == true {
+            return false
+        }
+        if touch.view === sendButton || touch.view?.isDescendant(of: sendButton) == true {
             return false
         }
         return true
@@ -622,6 +638,11 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
 
 extension ChatViewController: UITableViewDataSource, UITableViewDelegate {
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        dismissKeyboard()
+    }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: false)
         dismissKeyboard()
     }
 

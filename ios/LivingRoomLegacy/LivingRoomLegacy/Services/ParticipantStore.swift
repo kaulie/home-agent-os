@@ -13,7 +13,7 @@ enum ParticipantStore {
     private static let macIngestKey = "legacy.macIngestURL"
 
     static let defaultBrainIntentURL = BrainEndpoint.homeIntentURL
-    static let defaultMacIngestURL = "http://192.168.3.73:8790"
+    static let defaultMacIngestURL = "http://192.168.3.84:8790"
 
     /// URL used for API calls (set after a successful register).
     private(set) static var activeIntentURL: String = BrainEndpoint.homeIntentURL
