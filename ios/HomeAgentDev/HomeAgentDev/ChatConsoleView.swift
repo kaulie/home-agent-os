@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PhotosUI
 
 struct ChatConsoleView: View {
     @EnvironmentObject private var store: DevStore
@@ -16,6 +17,8 @@ struct ChatConsoleView: View {
     @State private var showDocAutocomplete = false
     @State private var showDocPickerSheet = false
     @State private var inlineDocPath: String?
+    @State private var pendingChatImages: [PendingDevAttachment] = []
+    @State private var chatPickerItems: [PhotosPickerItem] = []
     /// Long-press reaction float target (nil = hidden).
     @State private var reactionMessageId: Int?
 
@@ -224,13 +227,23 @@ struct ChatConsoleView: View {
                     .font(.system(size: 14, design: .rounded))
                     .foregroundStyle(DevTheme.dim)
             } else {
-                ChatMessageBodyView(
-                    bodyText: msg.body,
-                    textColor: msg.isFromBoss ? DevTheme.ink : DevTheme.mist,
-                    linkColor: msg.isFromBoss ? DevTheme.ink.opacity(0.85) : DevTheme.sand,
-                    allowsTextSelection: false
-                ) { path in
-                    inlineDocPath = path
+                VStack(alignment: msg.isFromBoss ? .trailing : .leading, spacing: 8) {
+                    if !msg.attachments.isEmpty {
+                        ChatAttachmentGallery(
+                            attachments: msg.attachments,
+                            brainURL: store.activeBrainURL
+                        )
+                    }
+                    if !msg.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        ChatMessageBodyView(
+                            bodyText: msg.body,
+                            textColor: msg.isFromBoss ? DevTheme.ink : DevTheme.mist,
+                            linkColor: msg.isFromBoss ? DevTheme.ink.opacity(0.85) : DevTheme.sand,
+                            allowsTextSelection: false
+                        ) { path in
+                            inlineDocPath = path
+                        }
+                    }
                 }
             }
         }
@@ -389,8 +402,14 @@ struct ChatConsoleView: View {
     }
 
     private var composer: some View {
-        inputBar
-            .background(DevTheme.ink)
+        VStack(spacing: 10) {
+            if !pendingChatImages.isEmpty {
+                DevAttachmentComposer(pending: $pendingChatImages)
+                    .padding(.horizontal, 16)
+            }
+            inputBar
+        }
+        .background(DevTheme.ink)
     }
 
     private func syncAutocompletePickers() {
@@ -429,6 +448,21 @@ struct ChatConsoleView: View {
                     .frame(width: 36, height: 36)
             }
             .accessibilityLabel("引用文档")
+            PhotosPicker(
+                selection: $chatPickerItems,
+                maxSelectionCount: 8,
+                matching: .images
+            ) {
+                Image(systemName: "photo")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(DevTheme.sand)
+                    .frame(width: 36, height: 36)
+            }
+            .accessibilityIdentifier("chat.add-image")
+            .onChange(of: chatPickerItems) { items in
+                guard !items.isEmpty else { return }
+                Task { await importChatPickerItems(items) }
+            }
             TextField("消息… @ Agent · [[ 文档", text: $draft, axis: .vertical)
                 .lineLimit(1...6)
                 .focused($inputFocused)
@@ -440,11 +474,13 @@ struct ChatConsoleView: View {
                 .background(RoundedRectangle(cornerRadius: 12).fill(DevTheme.panel))
             Button {
                 let text = draft
+                let images = pendingChatImages
                 draft = ""
+                pendingChatImages = []
                 inputFocused = false
                 DevKeyboard.dismiss()
                 Task {
-                    await store.sendChatMessage(text)
+                    await store.sendChatMessage(text, pendingImages: images)
                 }
             } label: {
                 Group {
@@ -458,10 +494,29 @@ struct ChatConsoleView: View {
                 .padding(12)
                 .background(Circle().fill(DevTheme.sand))
             }
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isSendingChat)
+            .disabled(
+                (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingChatImages.isEmpty)
+                    || store.isSendingChat
+            )
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    @MainActor
+    private func importChatPickerItems(_ items: [PhotosPickerItem]) async {
+        var imported: [PendingDevAttachment] = []
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data) else {
+                continue
+            }
+            imported.append(.image(image))
+        }
+        if !imported.isEmpty {
+            pendingChatImages.append(contentsOf: imported)
+        }
+        chatPickerItems = []
     }
 
     private func insertDocReference(path: String) {
@@ -735,6 +790,60 @@ struct ChatConsoleView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct ChatAttachmentGallery: View {
+    let attachments: [ChatAttachment]
+    let brainURL: String
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(attachments) { attachment in
+                    ChatAttachmentThumbnail(attachment: attachment, brainURL: brainURL)
+                }
+            }
+        }
+    }
+}
+
+private struct ChatAttachmentThumbnail: View {
+    let attachment: ChatAttachment
+    let brainURL: String
+
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if attachment.isImage, let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else if attachment.isImage {
+                ProgressView()
+            } else {
+                Image(systemName: "paperclip")
+                    .foregroundStyle(DevTheme.dim)
+            }
+        }
+        .frame(width: 120, height: 120)
+        .background(DevTheme.chip)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .task(id: "\(attachment.attachmentId)|\(brainURL)") {
+            guard attachment.isImage else { return }
+            do {
+                let data = try await DevClient.fetchChatAttachmentData(
+                    brainURL: brainURL,
+                    attachmentId: attachment.attachmentId
+                )
+                if let loaded = UIImage(data: data) {
+                    image = loaded
+                }
+            } catch {
+                image = nil
+            }
+        }
     }
 }
 

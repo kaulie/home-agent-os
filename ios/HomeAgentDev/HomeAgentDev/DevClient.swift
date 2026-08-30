@@ -436,18 +436,101 @@ enum DevClient {
     static func sendAgentChatMessage(
         brainURL: String,
         token: String,
-        body: String
+        body: String,
+        attachments: [ChatAttachment] = []
     ) async throws -> AgentChatMessage {
         let url = try endpoint(brainURL, path: "/api/v1/admin/agent_chat/send")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 20
+        request.timeoutInterval = 30
         applyAuth(&request, token: token)
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["body": body])
+        var payload: [String: Any] = ["body": body]
+        if !attachments.isEmpty {
+            payload["attachments"] = attachments.map { $0.apiPayload() }
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (data, response) = try await URLSession.shared.data(for: request)
         try throwIfNeeded(data: data, response: response)
         return try decodeAgentChatMessage(from: data)
+    }
+
+    static func uploadChatAttachment(
+        brainURL: String,
+        token: String,
+        fileData: Data,
+        filename: String,
+        mimeType: String
+    ) async throws -> ChatAttachment {
+        let url = try endpoint(brainURL, path: "/api/v1/admin/agent_chat/attachment/upload")
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var body = Data()
+
+        func appendField(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append(
+                "Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n"
+                    .data(using: .utf8)!
+            )
+        }
+
+        appendField("mime_type", mimeType)
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append(
+            "Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\nContent-Type: \(mimeType)\r\n\r\n"
+                .data(using: .utf8)!
+        )
+        body.append(fileData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 90
+        applyAuth(&request, token: token)
+        request.httpBody = body
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        struct UploadResponse: Decodable {
+            let ok: Bool?
+            let error: String?
+            let attachment: ChatAttachment?
+        }
+        let parsed = try JSONDecoder().decode(UploadResponse.self, from: data)
+        if parsed.ok == false {
+            throw DevClientError.server(parsed.error ?? "上传失败")
+        }
+        guard let attachment = parsed.attachment else {
+            throw DevClientError.server("上传失败：未返回 attachment")
+        }
+        return attachment
+    }
+
+    static func chatAttachmentURL(
+        brainURL: String,
+        attachmentId: String
+    ) throws -> URL {
+        let encoded = attachmentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? attachmentId
+        return try endpoint(
+            brainURL,
+            path: "/api/v1/admin/agent_chat/attachments/\(encoded)/content"
+        )
+    }
+
+    static func fetchChatAttachmentData(
+        brainURL: String,
+        attachmentId: String,
+        token: String = DevSettings.adminToken
+    ) async throws -> Data {
+        let url = try chatAttachmentURL(brainURL: brainURL, attachmentId: attachmentId)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 45
+        applyAuth(&request, token: token)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try throwIfNeeded(data: data, response: response)
+        return data
     }
 
     static func ackAgentChatMessage(

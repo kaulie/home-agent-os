@@ -111,6 +111,25 @@ class AgentChatTests(unittest.TestCase):
         self.assertEqual(out["id"], 9)
         self.assertEqual(out["body"], "@brain ping")
 
+    @patch("agent_chat._request")
+    def test_send_boss_message_with_attachments(self, request) -> None:
+        request.return_value = {
+            "ok": True,
+            "message": {
+                "id": 10,
+                "from": "boss",
+                "body": "@brain 图",
+                "attachments": [{"attachment_id": "chatimg_abc", "kind": "image"}],
+            },
+        }
+        out = agent_chat.send_boss_message(
+            "@brain 图",
+            attachments=[{"attachment_id": "chatimg_abc", "kind": "image"}],
+        )
+        self.assertEqual(out["attachments"][0]["attachment_id"], "chatimg_abc")
+        _args, kwargs = request.call_args
+        self.assertEqual(kwargs["body"]["attachments"][0]["attachment_id"], "chatimg_abc")
+
 
 if __name__ == "__main__":
     unittest.main()

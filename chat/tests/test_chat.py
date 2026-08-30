@@ -8,6 +8,7 @@ from threading import Thread
 from time import sleep
 
 from chat import db
+from chat import attachments as chat_attachments
 from chat.mentions import audience_for, normalize_handle, parse_mentions, recipients_for, visible_to
 from chat.serve import ChatHandler, ThreadingHTTPServer
 
@@ -74,8 +75,10 @@ class DbPullTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         db.reset(path=Path(self.tmp.name) / "agent_chat.sqlite3")
+        chat_attachments.reset_upload_root(Path(self.tmp.name) / "uploads")
 
     def tearDown(self) -> None:
+        chat_attachments.reset_upload_root(None)
         db.reset()
         self.tmp.cleanup()
 
@@ -178,11 +181,29 @@ class DbPullTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "超过 1 分钟"):
             db.recall_message(from_handle="boss", msg_id=msg["id"])
 
+    def test_push_message_with_image_attachment(self) -> None:
+        row = chat_attachments.store_image(b"\xff\xd8\xffchat", filename="a.jpg")
+        msg = db.push_message(
+            from_handle="boss",
+            body="@brain 请看图",
+            attachments=[row],
+        )
+        self.assertEqual(msg["attachments"][0]["attachment_id"], row["attachment_id"])
+        pulled = db.pull_messages(handle="brain")
+        self.assertEqual(len(pulled["messages"]), 1)
+        self.assertEqual(pulled["messages"][0]["attachments"][0]["attachment_id"], row["attachment_id"])
+
+    def test_push_message_image_only(self) -> None:
+        row = chat_attachments.store_image(b"\xff\xd8\xffonly", filename="only.jpg")
+        msg = db.push_message(from_handle="boss", body="", attachments=[row])
+        self.assertEqual(len(msg["attachments"]), 1)
+
 
 class HttpTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         db.reset(path=Path(self.tmp.name) / "agent_chat.sqlite3")
+        chat_attachments.reset_upload_root(Path(self.tmp.name) / "uploads")
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), ChatHandler)
         self.thread = Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
@@ -192,6 +213,7 @@ class HttpTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.httpd.shutdown()
         self.httpd.server_close()
+        chat_attachments.reset_upload_root(None)
         db.reset()
         self.tmp.cleanup()
 
@@ -247,6 +269,56 @@ class HttpTests(unittest.TestCase):
         self.assertTrue(recalled["message"]["recalled"])
         status, brain = self._json("GET", "/api/v1/pull_msg?handle=brain")
         self.assertEqual(brain["messages"], [])
+
+
+    def _multipart_upload(self, data: bytes, filename: str = "shot.jpg") -> tuple[int, dict]:
+        boundary = "TestBoundary"
+        body = bytearray()
+        body.extend(f"--{boundary}\r\n".encode())
+        body.extend(
+            (
+                f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+                "Content-Type: image/jpeg\r\n\r\n"
+            ).encode()
+        )
+        body.extend(data)
+        body.extend(f"\r\n--{boundary}--\r\n".encode())
+        conn = HTTPConnection(self.host, self.port, timeout=5)
+        conn.request(
+            "POST",
+            "/api/v1/attachment/upload",
+            body=bytes(body),
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        )
+        resp = conn.getresponse()
+        raw = resp.read().decode("utf-8")
+        conn.close()
+        import json
+
+        return resp.status, json.loads(raw)
+
+    def test_chat_attachment_upload_and_send(self) -> None:
+        status, uploaded = self._multipart_upload(b"\xff\xd8\xffhttp")
+        self.assertEqual(status, 200)
+        aid = uploaded["attachment"]["attachment_id"]
+        status, posted = self._json(
+            "POST",
+            "/api/v1/push_msg",
+            {
+                "from": "boss",
+                "body": "@brain 图",
+                "attachments": [uploaded["attachment"]],
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(posted["message"]["attachments"][0]["attachment_id"], aid)
+        conn = HTTPConnection(self.host, self.port, timeout=5)
+        conn.request("GET", f"/api/v1/attachments/{aid}/content")
+        resp = conn.getresponse()
+        payload = resp.read()
+        conn.close()
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(payload, b"\xff\xd8\xffhttp")
 
 
 if __name__ == "__main__":

@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent
@@ -19,6 +21,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(ROOT.parent))
 
 from chat import db  # noqa: E402
+from chat import attachments as chat_attachments  # noqa: E402
 from chat.mentions import DISPLAY_NAMES, HANDLES  # noqa: E402
 
 HOST = (os.environ.get("CHAT_HOST") or "127.0.0.1").strip() or "127.0.0.1"
@@ -39,6 +42,42 @@ def _read_json(handler: BaseHTTPRequestHandler) -> dict:
     if not isinstance(data, dict):
         raise ValueError("JSON body must be an object")
     return data
+
+
+def _read_multipart(handler: BaseHTTPRequestHandler) -> dict[str, Any]:
+    content_type = str(handler.headers.get("Content-Type") or "")
+    if "multipart/form-data" not in content_type.lower():
+        raise ValueError("expected multipart/form-data")
+    match = re.search(r"boundary=([^;]+)", content_type)
+    if not match:
+        raise ValueError("multipart boundary missing")
+    boundary = match.group(1).strip().strip('"')
+    length = int(handler.headers.get("Content-Length", "0") or "0")
+    raw = handler.rfile.read(length) if length > 0 else b""
+    delim = ("--" + boundary).encode("utf-8")
+    out: dict[str, Any] = {}
+    for chunk in raw.split(delim):
+        chunk = chunk.strip(b"\r\n")
+        if not chunk or chunk == b"--":
+            continue
+        header_blob, _, body = chunk.partition(b"\r\n\r\n")
+        body = body.rstrip(b"\r\n")
+        header_text = header_blob.decode("utf-8", errors="replace")
+        name_match = re.search(r'name="([^"]+)"', header_text)
+        if not name_match:
+            continue
+        name = name_match.group(1)
+        filename_match = re.search(r'filename="([^"]*)"', header_text)
+        if filename_match:
+            mime_match = re.search(r"Content-Type:\s*([^\r\n]+)", header_text, re.I)
+            out[name] = {
+                "filename": filename_match.group(1),
+                "mime_type": (mime_match.group(1).strip() if mime_match else ""),
+                "data": body,
+            }
+        else:
+            out[name] = body.decode("utf-8", errors="replace")
+    return out
 
 
 class ChatHandler(BaseHTTPRequestHandler):
@@ -115,6 +154,15 @@ class ChatHandler(BaseHTTPRequestHandler):
                     },
                 )
                 return
+            if path.startswith("/api/v1/attachments/") and path.endswith("/content"):
+                aid = path[len("/api/v1/attachments/") : -len("/content")].strip("/")
+                try:
+                    data, mime = chat_attachments.read_attachment(aid)
+                except (FileNotFoundError, ValueError):
+                    self._send(404, {"error": "not found"})
+                    return
+                self._send(200, data, content_type=mime)
+                return
             self._send(404, {"error": "not found"})
         except ValueError as exc:
             self._send(400, {"error": str(exc)})
@@ -130,8 +178,22 @@ class ChatHandler(BaseHTTPRequestHandler):
                 msg = db.push_message(
                     from_handle=str(payload.get("from") or ""),
                     body=str(payload.get("body") or ""),
+                    attachments=payload.get("attachments"),
                 )
                 self._send(200, {"ok": True, "message": msg})
+                return
+            if path == "/api/v1/attachment/upload":
+                form = _read_multipart(self)
+                file_field = form.get("file")
+                if not isinstance(file_field, dict):
+                    raise ValueError('expected multipart field name "file"')
+                data = file_field.get("data") or b""
+                if not data:
+                    raise ValueError("empty file")
+                mime_type = str(form.get("mime_type") or file_field.get("mime_type") or "image/jpeg")
+                filename = str(file_field.get("filename") or "upload.jpg")
+                row = chat_attachments.store_image(data, filename=filename, mime_type=mime_type)
+                self._send(200, {"ok": True, "attachment": row})
                 return
             if path == "/api/v1/mark_read":
                 payload = _read_json(self)

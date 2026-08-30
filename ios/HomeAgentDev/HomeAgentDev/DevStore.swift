@@ -542,19 +542,24 @@ final class DevStore: ObservableObject {
         }
     }
 
-    func sendChatMessage(_ text: String) async {
+    func sendChatMessage(
+        _ text: String,
+        pendingImages: [PendingDevAttachment] = []
+    ) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty || !pendingImages.isEmpty else { return }
         isSendingChat = true
         defer { isSendingChat = false }
         let pendingId = -(Int(Date().timeIntervalSince1970 * 1000) % 1_000_000_000)
         let pending = AgentChatMessage.pendingBoss(body: trimmed, id: pendingId)
         chatMessages.append(pending)
         do {
+            let uploaded = try await uploadPendingChatImages(pendingImages)
             let sent = try await DevClient.sendAgentChatMessage(
                 brainURL: activeBrainURL,
                 token: DevSettings.adminToken,
-                body: trimmed
+                body: trimmed,
+                attachments: uploaded
             )
             chatMessages.removeAll { $0.id == pendingId }
             mergeChatMessages([sent])
@@ -564,6 +569,28 @@ final class DevStore: ObservableObject {
             chatMessages.removeAll { $0.id == pendingId }
             chatError = error.localizedDescription
         }
+    }
+
+    private func uploadPendingChatImages(_ pending: [PendingDevAttachment]) async throws -> [ChatAttachment] {
+        guard !pending.isEmpty else { return [] }
+        var uploaded: [ChatAttachment] = []
+        for item in pending {
+            guard let data = item.imageData, !data.isEmpty else {
+                throw DevClientError.server("图片数据为空")
+            }
+            let filename = item.filename.isEmpty
+                ? "chat_\(Int(Date().timeIntervalSince1970)).jpg"
+                : item.filename
+            let row = try await DevClient.uploadChatAttachment(
+                brainURL: activeBrainURL,
+                token: DevSettings.adminToken,
+                fileData: data,
+                filename: filename,
+                mimeType: item.mimeType
+            )
+            uploaded.append(row)
+        }
+        return uploaded
     }
 
     func ackChatMessage(_ messageId: Int) async {

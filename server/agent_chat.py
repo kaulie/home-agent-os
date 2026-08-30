@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -176,16 +178,99 @@ def _unwrap_chat_message(payload: Any) -> dict[str, Any]:
     raise AgentChatError("chat returned invalid message")
 
 
-def send_boss_message(body: str) -> dict[str, Any]:
+def _request_bytes(method: str, path: str, *, timeout: float = 30.0) -> tuple[bytes, str]:
+    chat_url = resolve_chat_url()
+    url = f"{chat_url}{path}"
+    req = urllib.request.Request(url, headers={"Accept": "*/*"}, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = resp.read()
+            mime = str(resp.headers.get("Content-Type") or "application/octet-stream")
+            return data, mime
+    except urllib.error.HTTPError as err:
+        detail = err.read().decode("utf-8", errors="replace")
+        raise AgentChatError(f"chat HTTP {err.code}: {detail[:300]}") from err
+    except urllib.error.URLError as err:
+        raise AgentChatError(f"chat unreachable: {err.reason}") from err
+
+
+def upload_chat_attachment(
+    file_data: bytes,
+    *,
+    filename: str,
+    mime_type: str,
+) -> dict[str, str]:
+    if not file_data:
+        raise AgentChatError("empty file")
+    if not chat_enabled():
+        raise AgentChatError("Agent Chatbox 未启用")
+    boundary = f"----ChatBoundary{secrets.token_hex(8)}"
+    body = bytearray()
+    body.extend(f"--{boundary}\r\n".encode())
+    body.extend(f'Content-Disposition: form-data; name="mime_type"\r\n\r\n{mime_type}\r\n'.encode())
+    body.extend(f"--{boundary}\r\n".encode())
+    body.extend(
+        (
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+            f"Content-Type: {mime_type}\r\n\r\n"
+        ).encode()
+    )
+    body.extend(file_data)
+    body.extend(f"\r\n--{boundary}--\r\n".encode())
+    chat_url = resolve_chat_url()
+    url = f"{chat_url}/api/v1/attachment/upload"
+    req = urllib.request.Request(
+        url,
+        data=bytes(body),
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as err:
+        detail = err.read().decode("utf-8", errors="replace")
+        raise AgentChatError(f"chat HTTP {err.code}: {detail[:300]}") from err
+    except urllib.error.URLError as err:
+        raise AgentChatError(f"chat unreachable: {err.reason}") from err
+    try:
+        payload = json.loads(raw or "{}")
+    except json.JSONDecodeError as err:
+        raise AgentChatError(f"chat returned invalid JSON: {raw[:200]}") from err
+    if not isinstance(payload, dict) or not payload.get("ok"):
+        raise AgentChatError(str(payload.get("error") or "upload failed"))
+    attachment = payload.get("attachment")
+    if not isinstance(attachment, dict) or not attachment.get("attachment_id"):
+        raise AgentChatError("upload failed: missing attachment")
+    return {str(k): str(v) for k, v in attachment.items() if v is not None}
+
+
+def fetch_chat_attachment_content(attachment_id: str) -> tuple[bytes, str]:
+    aid = urllib.parse.quote(str(attachment_id or "").strip(), safe="")
+    if not aid:
+        raise AgentChatError("attachment_id required")
+    if not chat_enabled():
+        raise AgentChatError("Agent Chatbox 未启用")
+    return _request_bytes("GET", f"/api/v1/attachments/{aid}/content")
+
+
+def send_boss_message(body: str, *, attachments: list[dict[str, str]] | None = None) -> dict[str, Any]:
     text = str(body or "").strip()
-    if not text:
+    rows = list(attachments or [])
+    if not text and not rows:
         raise AgentChatError("body is empty")
     if not chat_enabled():
         raise AgentChatError("Agent Chatbox 未启用")
+    payload_body: dict[str, Any] = {"from": "boss", "body": text}
+    if rows:
+        payload_body["attachments"] = rows
     payload = _request(
         "POST",
         "/api/v1/push_msg",
-        body={"from": "boss", "body": text},
+        body=payload_body,
     )
     return _unwrap_chat_message(payload)
 
@@ -203,9 +288,20 @@ def build_promoted_task_text(
                 continue
             sender = str(row.get("from") or row.get("from_handle") or "").strip()
             body = str(row.get("body") or "").strip()
-            if not body:
+            attachments = row.get("attachments") or []
+            if not body and not attachments:
                 continue
-            parts.append(f"- [{sender}] {body[:2000]}")
+            line = f"- [{sender}] {body[:2000]}" if body else f"- [{sender}]"
+            if isinstance(attachments, list) and attachments:
+                ids = [
+                    str(a.get("attachment_id") or a.get("id") or "")
+                    for a in attachments
+                    if isinstance(a, dict)
+                ]
+                ids = [i for i in ids if i]
+                if ids:
+                    line += f" attachments={','.join(ids)}"
+            parts.append(line)
         parts.append("")
     parts.append("## Task")
     parts.append(str(task_text or "").strip())
@@ -255,7 +351,8 @@ def related_background_from_messages(
             "id": m.get("id"),
             "from": m.get("from") or m.get("from_handle"),
             "body": m.get("body"),
+            "attachments": m.get("attachments") or [],
         }
         for m in rows
-        if str(m.get("body") or "").strip()
+        if str(m.get("body") or "").strip() or (m.get("attachments") or [])
     ]

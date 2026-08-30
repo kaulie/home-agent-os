@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from chat.mentions import DISPLAY_NAMES, HANDLES, OWNER, SENDERS, audience_for, normalize_handle, parse_mentions, recipients_for, visible_to
+from chat.attachments import normalize_attachments
 
 TZ_EAST_8 = timezone(timedelta(hours=8))
 RECALL_WINDOW_SEC = 60
@@ -118,6 +119,8 @@ def _init_schema(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(messages)").fetchall()}
     if "recalled_at" not in cols:
         conn.execute("ALTER TABLE messages ADD COLUMN recalled_at TEXT")
+    if "attachments_json" not in cols:
+        conn.execute("ALTER TABLE messages ADD COLUMN attachments_json TEXT NOT NULL DEFAULT '[]'")
     conn.commit()
 
 
@@ -269,11 +272,19 @@ def _recalled_at(row: sqlite3.Row) -> str | None:
 
 def _row_message(row: sqlite3.Row) -> dict[str, Any]:
     recalled = _recalled_at(row) is not None
+    attachments_raw = []
+    try:
+        attachments_raw = _loads(row["attachments_json"]) or []
+    except (KeyError, IndexError):
+        attachments_raw = []
+    if not isinstance(attachments_raw, list):
+        attachments_raw = []
     return {
         "id": int(row["id"]),
         "ts": row["ts"],
         "from": row["from_handle"],
         "body": "" if recalled else row["body"],
+        "attachments": [] if recalled else attachments_raw,
         "audience": _loads(row["audience_json"]) or [],
         "mentions": _loads(row["mentions_json"]) or [],
         "created_at": float(row["created_at"] or 0),
@@ -326,13 +337,19 @@ def list_messages(*, since_id: int = 0) -> list[dict[str, Any]]:
         return _with_reads(conn, [_row_message(row) for row in rows])
 
 
-def push_message(*, from_handle: str, body: str) -> dict[str, Any]:
+def push_message(
+    *,
+    from_handle: str,
+    body: str,
+    attachments: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
     sender = normalize_handle(from_handle)
     if sender == "all" or sender not in SENDERS:
         raise ValueError(f"unknown from handle: {from_handle}")
     text = body if isinstance(body, str) else str(body)
-    if not text.strip():
-        raise ValueError("body is empty")
+    rows = normalize_attachments(attachments)
+    if not text.strip() and not rows:
+        raise ValueError("body or attachments required")
     mentions = parse_mentions(text)
     audience = audience_for(sender, mentions)
     ts = now_ts()
@@ -341,10 +358,10 @@ def push_message(*, from_handle: str, body: str) -> dict[str, Any]:
         conn = _connect()
         cur = conn.execute(
             """
-            INSERT INTO messages (ts, from_handle, body, audience_json, mentions_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO messages (ts, from_handle, body, audience_json, mentions_json, created_at, attachments_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (ts, sender, text, _dumps(audience), _dumps(mentions), created),
+            (ts, sender, text, _dumps(audience), _dumps(mentions), created, _dumps(rows)),
         )
         conn.commit()
         msg_id = int(cur.lastrowid)

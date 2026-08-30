@@ -49,6 +49,38 @@ struct ChatMessageAck: Decodable, Equatable, Hashable {
     }
 }
 
+struct ChatAttachment: Identifiable, Decodable, Equatable {
+    let attachmentId: String
+    let kind: String
+    let mimeType: String
+    let filename: String
+
+    var id: String { attachmentId }
+
+    enum CodingKeys: String, CodingKey {
+        case attachmentId = "attachment_id"
+        case kind
+        case mimeType = "mime_type"
+        case filename
+    }
+
+    var isImage: Bool {
+        let k = kind.lowercased()
+        if k == "image" { return true }
+        return mimeType.lowercased().hasPrefix("image/")
+    }
+
+    func apiPayload() -> [String: String] {
+        var row: [String: String] = [
+            "attachment_id": attachmentId,
+            "kind": kind.isEmpty ? "image" : kind,
+        ]
+        if !mimeType.isEmpty { row["mime_type"] = mimeType }
+        if !filename.isEmpty { row["filename"] = filename }
+        return row
+    }
+}
+
 struct AgentChatMessage: Identifiable, Decodable, Equatable {
     let id: Int
     let fromHandle: String
@@ -62,6 +94,7 @@ struct AgentChatMessage: Identifiable, Decodable, Equatable {
     let recalled: Bool
     let isPending: Bool
     let acks: [ChatMessageAck]
+    let attachments: [ChatAttachment]
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -75,6 +108,7 @@ struct AgentChatMessage: Identifiable, Decodable, Equatable {
         case audience
         case recalled
         case acks
+        case attachments
     }
 
     init(
@@ -89,7 +123,8 @@ struct AgentChatMessage: Identifiable, Decodable, Equatable {
         audience: [String] = [],
         recalled: Bool = false,
         isPending: Bool = false,
-        acks: [ChatMessageAck] = []
+        acks: [ChatMessageAck] = [],
+        attachments: [ChatAttachment] = []
     ) {
         self.id = id
         self.fromHandle = fromHandle
@@ -103,15 +138,21 @@ struct AgentChatMessage: Identifiable, Decodable, Equatable {
         self.recalled = recalled
         self.isPending = isPending
         self.acks = acks
+        self.attachments = attachments
     }
 
-    static func pendingBoss(body: String, id: Int) -> AgentChatMessage {
+    static func pendingBoss(
+        body: String,
+        id: Int,
+        attachments: [ChatAttachment] = []
+    ) -> AgentChatMessage {
         AgentChatMessage(
             id: id,
             fromHandle: "boss",
             body: body,
             createdAt: Date().timeIntervalSince1970,
-            isPending: true
+            isPending: true,
+            attachments: attachments
         )
     }
 
@@ -140,6 +181,7 @@ struct AgentChatMessage: Identifiable, Decodable, Equatable {
         audience = try c.decodeIfPresent([String].self, forKey: .audience) ?? []
         recalled = try c.decodeIfPresent(Bool.self, forKey: .recalled) ?? false
         acks = try c.decodeIfPresent([ChatMessageAck].self, forKey: .acks) ?? []
+        attachments = try c.decodeIfPresent([ChatAttachment].self, forKey: .attachments) ?? []
         isPending = false
     }
 

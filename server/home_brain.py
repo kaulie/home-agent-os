@@ -67,11 +67,13 @@ try:
     from agent_chat import (
         AgentChatError,
         ack_boss_message,
+        fetch_chat_attachment_content,
         get_chat_view,
         promote_chat_to_dev_task,
         related_background_from_messages,
         send_boss_message,
         unack_boss_message,
+        upload_chat_attachment,
     )
     from docs_browser import DocsBrowserError, docs_root, list_documents, read_document
 except ImportError:  # pragma: no cover
@@ -6476,11 +6478,67 @@ def admin_post_agent_chat_send():
     if not isinstance(data, dict):
         return jsonify(ok=False, error="JSON object required"), 400
     body = str(data.get("body") or data.get("text") or "").strip()
+    attachments_raw = data.get("attachments")
+    if attachments_raw is not None and not isinstance(attachments_raw, list):
+        return jsonify(ok=False, error="attachments must be an array"), 400
+    attachments = None
+    if isinstance(attachments_raw, list):
+        attachments = []
+        for item in attachments_raw:
+            if not isinstance(item, dict):
+                continue
+            aid = str(item.get("attachment_id") or item.get("id") or "").strip()
+            if not aid:
+                continue
+            row = {"attachment_id": aid, "kind": str(item.get("kind") or "image")}
+            mime = str(item.get("mime_type") or item.get("mime") or "").strip()
+            if mime:
+                row["mime_type"] = mime
+            name = str(item.get("filename") or item.get("name") or "").strip()
+            if name:
+                row["filename"] = name
+            attachments.append(row)
+    if not body and not attachments:
+        return jsonify(ok=False, error="body or attachments required"), 400
     try:
-        msg = send_boss_message(body)
+        msg = send_boss_message(body, attachments=attachments)
     except AgentChatError as err:
         return jsonify(ok=False, error=str(err)), 400
     return jsonify(ok=True, message=msg)
+
+
+@app.route("/api/v1/admin/agent_chat/attachment/upload", methods=["POST"])
+def admin_upload_agent_chat_attachment():
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    if "file" not in request.files:
+        return jsonify(ok=False, error='expected multipart field name "file"'), 400
+    f = request.files["file"]
+    data = f.read()
+    if not data:
+        return jsonify(ok=False, error="empty file"), 400
+    mime_type = str(request.form.get("mime_type") or f.mimetype or "image/jpeg").strip()
+    filename = str(f.filename or "chat.jpg").strip() or "chat.jpg"
+    try:
+        attachment = upload_chat_attachment(data, filename=filename, mime_type=mime_type)
+    except AgentChatError as err:
+        return jsonify(ok=False, error=str(err)), 502
+    return jsonify(ok=True, attachment=attachment)
+
+
+@app.route("/api/v1/admin/agent_chat/attachments/<attachment_id>/content", methods=["GET"])
+def admin_get_agent_chat_attachment_content(attachment_id: str):
+    denied = _admin_auth_error()
+    if denied:
+        return denied
+    try:
+        data, mime = fetch_chat_attachment_content(attachment_id)
+    except AgentChatError as err:
+        return jsonify(ok=False, error=str(err)), 404
+    except FileNotFoundError:
+        return jsonify(ok=False, error="attachment not found"), 404
+    return Response(data, mimetype=mime)
 
 
 @app.route("/api/v1/admin/agent_chat/ack", methods=["POST"])

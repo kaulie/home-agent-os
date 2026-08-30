@@ -26,7 +26,8 @@ mac/logs/
 mac/**/*.log
 *.pyc
 .env
-docs/agent-mailbox.lock/
+chat/data/uploads/
+chat/data/*.sqlite3
 **/xcuserdata/
 *.xcuserstate
 *.sqlite3
