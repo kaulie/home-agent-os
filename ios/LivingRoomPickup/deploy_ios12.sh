@@ -31,6 +31,11 @@ if [[ -z "$APP" || ! -d "$APP" ]]; then
   exit 1
 fi
 echo "Built: $APP"
+# Wake-ack CAF must ship or legacy hears nothing after「面条面条」.
+if [[ ! -f "$APP/wake_ack_wozaine.caf" ]]; then
+  echo "ERROR: wake_ack_wozaine.caf missing from app bundle (generate_xcodeproj Resources?)"
+  exit 1
+fi
 
 echo ""
 echo "== 3/3 安装到老 iPhone =="

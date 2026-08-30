@@ -27,6 +27,14 @@ class SwiftFile:
     name: str
 
 
+@dataclass(frozen=True)
+class ResourceFile:
+    path: Path
+    group_path: str
+    name: str
+    file_type: str
+
+
 def collect_swift() -> list[SwiftFile]:
     files: list[SwiftFile] = []
     for f in sorted(SRC.rglob("*.swift")):
@@ -34,6 +42,21 @@ def collect_swift() -> list[SwiftFile]:
         parent = "" if str(rel.parent) == "." else str(rel.parent)
         files.append(SwiftFile(path=f, group_path=parent, name=f.name))
     return files
+
+
+def collect_resources() -> list[ResourceFile]:
+    """Bundle non-Swift assets (wake-ack CAF, etc.)."""
+    out: list[ResourceFile] = []
+    for f in sorted(SRC.rglob("*")):
+        if not f.is_file():
+            continue
+        if f.suffix.lower() not in {".caf", ".wav", ".mp3", ".m4a"}:
+            continue
+        rel = f.relative_to(SRC)
+        parent = "" if str(rel.parent) == "." else str(rel.parent)
+        ftype = "file" if f.suffix.lower() == ".caf" else "audio"
+        out.append(ResourceFile(path=f, group_path=parent, name=f.name, file_type=ftype))
+    return out
 
 
 def write_scheme(target_id: str) -> None:
@@ -125,6 +148,7 @@ def write_scheme(target_id: str) -> None:
 
 def main() -> None:
     files = collect_swift()
+    resources = collect_resources()
     info_plist = SRC / "Info.plist"
     assets = SRC / "Assets.xcassets"
 
@@ -151,6 +175,11 @@ def main() -> None:
     for f in files:
         file_refs[f] = xid()
         build_files[f] = xid()
+    resource_refs: dict[ResourceFile, str] = {}
+    resource_builds: dict[ResourceFile, str] = {}
+    for r in resources:
+        resource_refs[r] = xid()
+        resource_builds[r] = xid()
     info_ref = xid()
 
     group_ids: dict[str, str] = {"": src_group}
@@ -158,6 +187,13 @@ def main() -> None:
     for f in files:
         if f.group_path:
             parts = list(Path(f.group_path).parts)
+            path = ""
+            for part in parts:
+                path = f"{path}/{part}" if path else part
+                all_group_paths.add(path)
+    for r in resources:
+        if r.group_path:
+            parts = list(Path(r.group_path).parts)
             path = ""
             for part in parts:
                 path = f"{path}/{part}" if path else part
@@ -177,6 +213,9 @@ def main() -> None:
         for f, fid in sorted(file_refs.items(), key=lambda x: x[0].name):
             if f.group_path == group_path:
                 out.append(fid)
+        for r, rid in sorted(resource_refs.items(), key=lambda x: x[0].name):
+            if r.group_path == group_path:
+                out.append(rid)
         if group_path == "" and info_plist.exists():
             out.append(info_ref)
         if group_path == "" and assets_ref:
@@ -201,6 +240,10 @@ def main() -> None:
         lines.append(
             f"\t\t{assets_build} /* Assets.xcassets in Resources */ = {{isa = PBXBuildFile; fileRef = {assets_ref} /* Assets.xcassets */; }};"
         )
+    for r, bid in resource_builds.items():
+        lines.append(
+            f"\t\t{bid} /* {r.name} in Resources */ = {{isa = PBXBuildFile; fileRef = {resource_refs[r]} /* {r.name} */; }};"
+        )
     lines.append("/* End PBXBuildFile section */")
     lines.append("")
 
@@ -211,6 +254,10 @@ def main() -> None:
     for f, fid in file_refs.items():
         lines.append(
             f"\t\t{fid} /* {f.name} */ = {{isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {f.name}; sourceTree = \"<group>\"; }};"
+        )
+    for r, rid in resource_refs.items():
+        lines.append(
+            f"\t\t{rid} /* {r.name} */ = {{isa = PBXFileReference; lastKnownFileType = {r.file_type}; path = {r.name}; sourceTree = \"<group>\"; }};"
         )
     lines.append(
         f"\t\t{info_ref} /* Info.plist */ = {{isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = \"<group>\"; }};"
@@ -331,6 +378,8 @@ def main() -> None:
     lines.append("\t\t\tfiles = (")
     if assets_build:
         lines.append(f"\t\t\t\t{assets_build} /* Assets.xcassets in Resources */,")
+    for r, bid in sorted(resource_builds.items(), key=lambda x: x[0].name):
+        lines.append(f"\t\t\t\t{bid} /* {r.name} in Resources */,")
     lines.append("\t\t\t);")
     lines.append("\t\t\trunOnlyForDeploymentPostprocessing = 0;")
     lines.append("\t\t};")

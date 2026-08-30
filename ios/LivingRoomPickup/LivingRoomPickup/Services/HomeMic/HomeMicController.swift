@@ -28,6 +28,7 @@ final class HomeMicController: NSObject {
     private var player: AVAudioPlayer?
     private var preparedAckPlayers: [String: AVAudioPlayer] = [:]
     private var systemSoundID: SystemSoundID = 0
+    private var speechSynth: AVSpeechSynthesizer?
 
     private(set) var isListening = false
     private(set) var connectionState: HomeMicConnectionState = .disconnected
@@ -233,16 +234,18 @@ final class HomeMicController: NSObject {
         disposeSystemSound()
 
         publishStatus("正在回复…")
-        guard let url = Self.bundledAckURL(for: body) else {
-            publishStatus(body)
-            scheduleFinishSpeak(after: 1.0)
-            return
-        }
-
+        // iOS 12: AVAudioPlayer is often silent while AVAudioEngine holds I/O.
+        capture.pauseEngine()
         do {
             try AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
         } catch {
             // defaultToSpeaker usually covers this.
+        }
+
+        guard let url = Self.bundledAckURL(for: body) else {
+            // Missing bundle asset (bad deploy) — still give audible feedback.
+            speakWithSpeechSynthesizer(body)
+            return
         }
 
         let key = url.lastPathComponent
@@ -256,14 +259,14 @@ final class HomeMicController: NSObject {
             preparedAckPlayers[key] = created
             p = created
         } else {
-            scheduleFinishSpeak(after: 0.3)
+            speakWithSpeechSynthesizer(body)
             return
         }
         p.delegate = self
         p.volume = 1.0
         player = p
         if !p.play() {
-            scheduleFinishSpeak(after: 0.3)
+            speakWithSpeechSynthesizer(body)
             return
         }
 
@@ -307,15 +310,29 @@ final class HomeMicController: NSObject {
         speakWatchdog = nil
         player?.stop()
         player = nil
+        speechSynth?.stopSpeaking(at: .immediate)
+        speechSynth = nil
         disposeSystemSound()
         try? AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
         isSpeakingLocally = false
-        // Do NOT reset energyGate here — that cleared pre-roll and forced a
-        // late reopen, chopping 打开 → 开 / 客厅空调 after「我在呢».
+        // Soft-resume mic after local ack; do not reset energyGate (onset chop).
+        capture.resumeEngineIfNeeded()
         finishingSpeak = false
         if isListening {
             publishStatus(client.isConnected ? "拾音中" : "拾音中（等待连接）")
         }
+    }
+
+    private func speakWithSpeechSynthesizer(_ text: String) {
+        let utterance = AVSpeechUtterance(string: text)
+        if let voice = AVSpeechSynthesisVoice(language: "zh-CN") {
+            utterance.voice = voice
+        }
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        let synth = AVSpeechSynthesizer()
+        speechSynth = synth
+        synth.speak(utterance)
+        scheduleFinishSpeak(after: max(1.2, Double(text.count) * 0.35))
     }
 
     private func disposeSystemSound() {
