@@ -19,4 +19,6 @@ enum DevAccessibilityID {
     static func markdownTOCItem(index: Int) -> String {
         "dev.markdown.toc.item.\(index)"
     }
+
+    static let chatMic = "chat.mic"
 }

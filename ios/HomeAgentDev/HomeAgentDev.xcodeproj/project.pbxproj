@@ -36,6 +36,7 @@
 		A1B2C3D4E5F6478990ABCDEF /* HomeAgentDevSmokeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A748901234567 /* HomeAgentDevSmokeUITests.swift */; };
 		B2A041751236428E94059AA6 /* DevBrainEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FD2FEF266EA446589275C1B /* DevBrainEndpoint.swift */; };
 		B8B3E6DD43974DA989AF2A78 /* ChatConsoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12BE980820D34085ADEE4956 /* ChatConsoleView.swift */; };
+		A1B2C3D4E5F6478990ABCEF01 /* DevChatSpeechRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7489012345EF01 /* DevChatSpeechRecognizer.swift */; };
 		C1D2E3F4A5B6478990ABCDEF0 /* DevBrainLANDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2E3F4A5B6C7489012345678 /* DevBrainLANDiscoveryTests.swift */; };
 		C7F79B9A0537492F8E7E00B8 /* DevActivityTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63A44A1DB5D04FE9AC8CCDF4 /* DevActivityTimeline.swift */; };
 		CD19C57B1FF441DB92A6D731 /* DevStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E632CE8E9CC43EBB1F3E136 /* DevStore.swift */; };
@@ -64,6 +65,7 @@
 /* Begin PBXFileReference section */
 		0774128A204A4A028582D91A /* MarkdownReaderUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownReaderUITests.swift; sourceTree = "<group>"; };
 		12BE980820D34085ADEE4956 /* ChatConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatConsoleView.swift; sourceTree = "<group>"; };
+		B2C3D4E5F6A7489012345EF01 /* DevChatSpeechRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevChatSpeechRecognizer.swift; sourceTree = "<group>"; };
 		16CB6C4F3EDC43D5AEEE2FE2 /* ChatDocReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatDocReference.swift; sourceTree = "<group>"; };
 		16D2B971958B414B8C5BEC47 /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		1A8B9288C18D4975BF130ED4 /* FleetConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FleetConsoleView.swift; sourceTree = "<group>"; };
@@ -154,6 +156,7 @@
 				637F26711D6E4DB3B381F830 /* ChatMention.swift */,
 				F59C19D9A912433DBE0BB946 /* ChatMessageBodyView.swift */,
 				959A661F212B440994D4AA60 /* ChatModels.swift */,
+				B2C3D4E5F6A7489012345EF01 /* DevChatSpeechRecognizer.swift */,
 				51CD4FD837614E0A83C09D7A /* DeployConsoleView.swift */,
 				7CF963244BFF408F98ABD912 /* DeployModels.swift */,
 				380B72D5E1EE4913BFDAA4B5 /* DeployReleaseDetailView.swift */,
@@ -301,6 +304,7 @@
 				403C081C95174E6694F8212C /* ChatMention.swift in Sources */,
 				1A1A44870FC44C85A5A6E46E /* ChatMessageBodyView.swift in Sources */,
 				7740B8D53DF24AEBBC65F44C /* ChatModels.swift in Sources */,
+				A1B2C3D4E5F6478990ABCEF01 /* DevChatSpeechRecognizer.swift in Sources */,
 				5AE5841BF7F743EFA62578A4 /* DeployConsoleView.swift in Sources */,
 				006B0632E2C2476A9982CAAE /* DeployModels.swift in Sources */,
 				57041358D1B24245AF081078 /* DeployReleaseDetailView.swift in Sources */,

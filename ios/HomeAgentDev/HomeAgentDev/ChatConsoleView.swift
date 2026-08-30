@@ -24,6 +24,8 @@ struct ChatConsoleView: View {
     /// Ignore dimmer taps from the same finger-up that finished the long-press.
     @State private var reactionOpenedAt: Date?
     @State private var ackBusyMessageId: Int?
+    @StateObject private var speech = DevChatSpeechRecognizer()
+    @State private var draftBeforeVoice = ""
 
     var body: some View {
         NavigationStack {
@@ -54,6 +56,25 @@ struct ChatConsoleView: View {
                         }
                         composer
                             .zIndex(2)
+                    }
+                    .onChange(of: speech.partialText) { text in
+                        guard speech.isListening else { return }
+                        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if draftBeforeVoice.isEmpty {
+                            draft = trimmed
+                        } else if trimmed.isEmpty {
+                            draft = draftBeforeVoice
+                        } else {
+                            draft = draftBeforeVoice + (draftBeforeVoice.hasSuffix(" ") ? "" : " ") + trimmed
+                        }
+                    }
+                    .onChange(of: speech.isListening) { listening in
+                        if !listening, !speech.partialText.isEmpty {
+                            draftBeforeVoice = ""
+                        }
+                    }
+                    .onDisappear {
+                        speech.stopListening()
                     }
                     .overlay(alignment: .bottom) {
                         if showDocAutocomplete, let query = docAutocompleteQuery {
@@ -448,6 +469,14 @@ struct ChatConsoleView: View {
 
     private var composer: some View {
         VStack(spacing: 10) {
+            if speech.isListening || !speech.statusMessage.isEmpty {
+                Text(speech.isListening ? (speech.partialText.isEmpty ? "正在听…" : speech.partialText) : speech.statusMessage)
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(DevTheme.sand.opacity(0.9))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .lineLimit(2)
+            }
             if !pendingChatImages.isEmpty {
                 DevAttachmentComposer(pending: $pendingChatImages)
                     .padding(.horizontal, 16)
@@ -508,6 +537,27 @@ struct ChatConsoleView: View {
                 guard !items.isEmpty else { return }
                 Task { await importChatPickerItems(items) }
             }
+            Button {
+                if speech.isListening {
+                    speech.stopListening()
+                } else {
+                    draftBeforeVoice = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !draftBeforeVoice.isEmpty { draftBeforeVoice += " " }
+                    inputFocused = false
+                    DevKeyboard.dismiss()
+                    speech.toggle()
+                }
+            } label: {
+                Image(systemName: speech.isListening ? "mic.fill" : "mic")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(speech.isListening ? DevTheme.ink : DevTheme.sand)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Circle().fill(speech.isListening ? DevTheme.sand : Color.clear)
+                    )
+            }
+            .accessibilityIdentifier(DevAccessibilityID.chatMic)
+            .accessibilityLabel(speech.isListening ? "停止语音输入" : "语音输入")
             TextField("消息… @ Agent · [[ 文档", text: $draft, axis: .vertical)
                 .lineLimit(1...6)
                 .focused($inputFocused)
@@ -518,6 +568,7 @@ struct ChatConsoleView: View {
                 .padding(12)
                 .background(RoundedRectangle(cornerRadius: 12).fill(DevTheme.panel))
             Button {
+                speech.stopListening()
                 let text = draft
                 let images = pendingChatImages
                 draft = ""
