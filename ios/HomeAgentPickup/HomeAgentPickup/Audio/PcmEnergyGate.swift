@@ -29,7 +29,7 @@ final class PcmEnergyGate {
     init(
         sampleRate: Double = 44_100,
         preRollMs: Double = 120,
-        hangoverMs: Double = 800
+        hangoverMs: Double = 400
     ) {
         self.sampleRate = sampleRate
         self.preRollMs = preRollMs

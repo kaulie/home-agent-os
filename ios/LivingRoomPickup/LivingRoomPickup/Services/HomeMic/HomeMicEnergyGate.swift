@@ -28,8 +28,8 @@ final class HomeMicEnergyGate {
 
     init(
         sampleRate: Double = 44_100,
-        preRollMs: Double = 450,
-        hangoverMs: Double = 1100
+        preRollMs: Double = 280,
+        hangoverMs: Double = 400
     ) {
         self.sampleRate = sampleRate
         self.preRollMs = preRollMs
