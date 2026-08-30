@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -26,52 +27,87 @@ class XiaoduSpeakerTests(unittest.TestCase):
         self.assertIn("text", str(ctx.exception).lower())
 
     def test_play_uri_sends_stop_seturi_play(self) -> None:
-        calls: list[tuple[str, str]] = []
+        calls: list[tuple[str, str, float]] = []
 
-        def fake_post(du_ip: str, action: str, body: str, *, timeout_sec: float = 8.0) -> None:
-            calls.append((action, body))
+        def fake_post(
+            du_ip: str,
+            action: str,
+            body: str,
+            *,
+            timeout_sec: float = 8.0,
+        ) -> None:
+            calls.append((action, body, timeout_sec))
 
         with mock.patch.object(xs, "_upnp_post", side_effect=fake_post):
             xs.play_uri("192.168.3.47", "http://192.168.3.73:8000/tts_1.mp3")
 
         self.assertEqual(len(calls), 3)
         self.assertIn("Stop", calls[0][0])
+        self.assertEqual(calls[0][2], xs.UPNP_STOP_TIMEOUT_SEC)
         self.assertIn("SetAVTransportURI", calls[1][0])
         self.assertIn("http://192.168.3.73:8000/tts_1.mp3", calls[1][1])
         self.assertIn("Play", calls[2][0])
 
+    def test_play_uri_continues_when_stop_times_out(self) -> None:
+        calls: list[str] = []
+
+        def fake_post(
+            du_ip: str,
+            action: str,
+            body: str,
+            *,
+            timeout_sec: float = 8.0,
+        ) -> None:
+            calls.append(action)
+            if "Stop" in action:
+                raise xs.XiaoduSpeakerError("UPnP request failed (Stop): timed out")
+
+        with mock.patch.object(xs, "_upnp_post", side_effect=fake_post):
+            xs.play_uri("192.168.3.47", "http://192.168.3.73:8000/tts_2.mp3")
+
+        self.assertEqual(len(calls), 3)
+        self.assertIn("Stop", calls[0])
+        self.assertIn("SetAVTransportURI", calls[1])
+        self.assertIn("Play", calls[2])
+
     def test_speak_synthesizes_and_plays(self) -> None:
-        data_dir = Path(os.environ.get("TMPDIR", "/tmp")) / "xiaodu_speaker_test"
-        data_dir.mkdir(parents=True, exist_ok=True)
-        server = xs.XiaoduTtsHttpServer(data_dir=data_dir, http_port=0)
-        server.start()
-        xs.bind_server(server)
-        self.addCleanup(server.stop)
-        self.addCleanup(lambda: xs.bind_server(None))
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            server = xs.XiaoduTtsHttpServer(data_dir=data_dir, http_port=0)
+            server.start()
+            xs.bind_server(server)
+            self.addCleanup(server.stop)
+            self.addCleanup(lambda: xs.bind_server(None))
 
-        async def fake_synthesize(text: str, voice: str, path: Path) -> None:
-            path.write_bytes(b"\xff" * 128)
+            async def fake_synthesize(text: str, voice: str, path: Path) -> None:
+                path.write_bytes(b"\xff" * 128)
 
-        upnp_calls: list[str] = []
+            upnp_calls: list[str] = []
 
-        def fake_post(du_ip: str, action: str, body: str, *, timeout_sec: float = 8.0) -> None:
-            upnp_calls.append(action)
+            def fake_post(
+                du_ip: str,
+                action: str,
+                body: str,
+                *,
+                timeout_sec: float = 8.0,
+            ) -> None:
+                upnp_calls.append(action)
 
-        with mock.patch.dict(
-            os.environ,
-            {"MAC_EDGE_XIAODU_IP": "192.168.3.47", "MAC_EDGE_XIAODU_PUBLIC_HOST": "192.168.3.73"},
-            clear=False,
-        ):
-            with mock.patch.object(xs, "_synthesize", side_effect=fake_synthesize):
-                with mock.patch.object(xs, "_upnp_post", side_effect=fake_post):
-                    msg = xs.speak("欢迎回家")
+            with mock.patch.dict(
+                os.environ,
+                {"MAC_EDGE_XIAODU_IP": "192.168.3.47", "MAC_EDGE_XIAODU_PUBLIC_HOST": "192.168.3.73"},
+                clear=False,
+            ):
+                with mock.patch.object(xs, "_synthesize", side_effect=fake_synthesize):
+                    with mock.patch.object(xs, "_upnp_post", side_effect=fake_post):
+                        msg = xs.speak("欢迎回家")
 
-        self.assertTrue(msg.startswith("xiaodu spoke:"))
-        self.assertIn("欢迎回家", msg)
-        self.assertEqual(len(upnp_calls), 3)
-        mp3_files = list(server.serve_dir.glob("tts_*.mp3"))
-        self.assertEqual(len(mp3_files), 1)
-        self.assertGreaterEqual(mp3_files[0].stat().st_size, 64)
+            self.assertTrue(msg.startswith("xiaodu spoke:"))
+            self.assertIn("欢迎回家", msg)
+            self.assertEqual(len(upnp_calls), 3)
+            mp3_files = list(server.serve_dir.glob("tts_*.mp3"))
+            self.assertEqual(len(mp3_files), 1)
+            self.assertGreaterEqual(mp3_files[0].stat().st_size, 64)
 
     def test_xiaodu_configured(self) -> None:
         with mock.patch.dict(os.environ, {}, clear=True):

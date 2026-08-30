@@ -20,6 +20,8 @@ DEFAULT_HTTP_PORT = 8000
 DEFAULT_VOICE = "zh-CN-XiaoxiaoNeural"
 UPNP_CONTROL_PATH = "/upnp/control/rendertransport1"
 UPNP_PORT = 49494
+UPNP_TIMEOUT_SEC = 8.0
+UPNP_STOP_TIMEOUT_SEC = 2.5
 
 _STOP_XML = (
     '<?xml version="1.0"?>'
@@ -93,7 +95,13 @@ def _set_uri_xml(uri: str) -> str:
     )
 
 
-def _upnp_post(du_ip: str, soap_action: str, xml_body: str, *, timeout_sec: float = 8.0) -> None:
+def _upnp_post(
+    du_ip: str,
+    soap_action: str,
+    xml_body: str,
+    *,
+    timeout_sec: float = UPNP_TIMEOUT_SEC,
+) -> None:
     url = f"http://{du_ip}:{UPNP_PORT}{UPNP_CONTROL_PATH}"
     req = urllib.request.Request(
         url,
@@ -111,8 +119,21 @@ def _upnp_post(du_ip: str, soap_action: str, xml_body: str, *, timeout_sec: floa
         raise XiaoduSpeakerError(f"UPnP request failed ({soap_action}): {e}") from e
 
 
+def _try_upnp_stop(du_ip: str) -> None:
+    """Best-effort Stop before a new URI. Idle speakers often hang on Stop."""
+    try:
+        _upnp_post(
+            du_ip,
+            "urn:schemas-upnp-org:service:AVTransport:1#Stop",
+            _STOP_XML,
+            timeout_sec=UPNP_STOP_TIMEOUT_SEC,
+        )
+    except XiaoduSpeakerError as e:
+        log.warning("xiaodu UPnP Stop best-effort failed (continuing): %s", e)
+
+
 def play_uri(du_ip: str, uri: str) -> None:
-    _upnp_post(du_ip, "urn:schemas-upnp-org:service:AVTransport:1#Stop", _STOP_XML)
+    _try_upnp_stop(du_ip)
     _upnp_post(
         du_ip,
         "urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI",

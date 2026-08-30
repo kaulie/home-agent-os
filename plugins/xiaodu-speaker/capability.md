@@ -2,7 +2,7 @@
 
 小度音箱 TTS 播报插件（`xiaodu-speaker`），group=`notify`。
 
-**流程**：edge-tts 合成 MP3 → Mac LAN HTTP 供小度拉流 → UPnP AVTransport（Stop → SetAVTransportURI → Play）。
+**流程**：edge-tts 合成 MP3 → Mac LAN HTTP 供小度拉流 → UPnP AVTransport（best-effort Stop → SetAVTransportURI → Play）。空闲时 Stop 可能超时，插件短时尝试后继续 SetURI/Play，不因 Stop 失败整步报错。
 
 **Brain 不执行、不持有设备密钥**；只通过心跳看到 `xiaodu.speak`，再把 plan 派到配置了 `MAC_EDGE_XIAODU_IP` 的 Mac Edge。
 
