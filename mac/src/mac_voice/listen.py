@@ -57,10 +57,17 @@ def should_skip_music_idle_stt(
     gate: WakeGate | None,
     utt: AudioUtterance,
 ) -> bool:
-    """Skip Volc STT during music playback while wake gate is idle (cost control)."""
+    """Skip Volc STT during music playback while wake gate is idle (cost control).
+
+    Never skip ``phone_hap1``: Home Mic is an intentional talk path, and music
+    bleed often produces long max-speech clips that would otherwise swallow the
+    wake word (面条面条) before STT — leaving the phone silent / seemingly hung.
+    """
     from mac_edge.music_linkage import is_active
 
     if not is_active():
+        return False
+    if (utt.ingress or "").strip().lower() == "phone_hap1":
         return False
     if cfg.listen_mode != "wake_word" or gate is None:
         return False

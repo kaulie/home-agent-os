@@ -63,10 +63,12 @@ def _cfg(**kwargs) -> VoiceConfig:
     return VoiceConfig(**base)
 
 
-def _utt_ms(ms: int) -> AudioUtterance:
+def _utt_ms(ms: int, *, ingress: str = "") -> AudioUtterance:
     bytes_per_ms = PCM_16K_MONO.sample_rate * PCM_16K_MONO.channels * PCM_16K_MONO.sample_width // 1000
     pcm = b"\x00\x01" * (ms * bytes_per_ms // 2)
-    return AudioUtterance.from_pcm(pcm)
+    utt = AudioUtterance.from_pcm(pcm)
+    utt.ingress = ingress
+    return utt
 
 
 class MusicIdleSttTests(unittest.TestCase):
@@ -109,6 +111,15 @@ class MusicIdleSttTests(unittest.TestCase):
     def test_no_music_never_skips(self, _inactive) -> None:
         cfg = _cfg(music_idle_stt="none")
         self.assertFalse(should_skip_music_idle_stt(cfg, self.gate, _utt_ms(8000)))
+
+    @patch("mac_edge.music_linkage.is_active", return_value=True)
+    def test_phone_hap1_never_skipped(self, _active) -> None:
+        cfg = _cfg(music_idle_stt="skip_long")
+        self.assertFalse(
+            should_skip_music_idle_stt(
+                cfg, self.gate, _utt_ms(8000, ingress="phone_hap1")
+            )
+        )
 
     def test_invalid_music_idle_stt_raises(self) -> None:
         with patch.dict("os.environ", {"MAC_VOICE_MUSIC_IDLE_STT": "bogus"}, clear=False):

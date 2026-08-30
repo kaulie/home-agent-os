@@ -18,7 +18,7 @@ final class HomeMicViewController: UIViewController {
     private let micCircle = UIView()
     private let pulseRing = UIView()
     private let levelBars = HomeMicLevelBarsView()
-    private var pulseAnimator: UIViewPropertyAnimator?
+    private var pulseTimer: Timer?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -363,24 +363,39 @@ final class HomeMicViewController: UIViewController {
         stopPulse()
         pulseRing.transform = .identity
         pulseRing.alpha = 0.75
-        pulseAnimator = UIViewPropertyAnimator(duration: 1.1, curve: .easeInOut) { [weak self] in
-            self?.pulseRing.transform = CGAffineTransform(scaleX: 1.08, y: 1.08)
-            self?.pulseRing.alpha = 0.35
-        }
-        pulseAnimator?.addAnimations({ [weak self] in
-            self?.pulseRing.transform = .identity
-            self?.pulseRing.alpha = 0.75
-        }, delayFactor: 0.5)
-        pulseAnimator?.addCompletion { [weak self] _ in
+        // UIViewPropertyAnimator recursive completion is unstable on iOS 12.
+        let timer = Timer(timeInterval: 1.1, repeats: true) { [weak self] _ in
             guard let self = self, self.controller.isListening else { return }
-            self.startPulse()
+            UIView.animate(
+                withDuration: 0.55,
+                delay: 0,
+                options: [.curveEaseInOut, .allowUserInteraction, .beginFromCurrentState],
+                animations: {
+                    self.pulseRing.transform = CGAffineTransform(scaleX: 1.08, y: 1.08)
+                    self.pulseRing.alpha = 0.35
+                },
+                completion: { [weak self] finished in
+                    guard finished, let self = self, self.controller.isListening else { return }
+                    UIView.animate(
+                        withDuration: 0.55,
+                        delay: 0,
+                        options: [.curveEaseInOut, .allowUserInteraction, .beginFromCurrentState],
+                        animations: {
+                            self.pulseRing.transform = .identity
+                            self.pulseRing.alpha = 0.75
+                        }
+                    )
+                }
+            )
         }
-        pulseAnimator?.startAnimation()
+        pulseTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     private func stopPulse() {
-        pulseAnimator?.stopAnimation(true)
-        pulseAnimator = nil
+        pulseTimer?.invalidate()
+        pulseTimer = nil
+        pulseRing.layer.removeAllAnimations()
         pulseRing.transform = .identity
         pulseRing.alpha = 1
     }

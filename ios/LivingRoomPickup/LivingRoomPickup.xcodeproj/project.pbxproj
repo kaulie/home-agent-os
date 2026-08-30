@@ -17,6 +17,8 @@
 		DC1DA15CCCCF47ABB65819C3 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4CE9D15A164BD0B9988A63 /* SettingsViewController.swift */; };
 		DE0B9ACB38824B2093539933 /* PickupTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E67E57E6372B4DB9B4DB37CB /* PickupTheme.swift */; };
 		54A79122D3314D3D9DAFA8CD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2AD5FCA1C861474F82F4BD89 /* Assets.xcassets */; };
+		A11WAKE001CAFWOZAINE01 /* wake_ack_wozaine.caf in Resources */ = {isa = PBXBuildFile; fileRef = A11WAKE001CAFFILEWOZAINE /* wake_ack_wozaine.caf */; };
+		A11WAKE002CAFYOUZALE01 /* wake_ack_youzale.caf in Resources */ = {isa = PBXBuildFile; fileRef = A11WAKE002CAFFILEYOUZALE /* wake_ack_youzale.caf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -33,6 +35,8 @@
 		E67E57E6372B4DB9B4DB37CB /* PickupTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickupTheme.swift; sourceTree = "<group>"; };
 		F784EE20BACA481C927478C1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		2AD5FCA1C861474F82F4BD89 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A11WAKE001CAFFILEWOZAINE /* wake_ack_wozaine.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = wake_ack_wozaine.caf; sourceTree = "<group>"; };
+		A11WAKE002CAFFILEYOUZALE /* wake_ack_youzale.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = wake_ack_youzale.caf; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -68,11 +72,21 @@
 				12B50B09A587433587608516,
 				D0CD6A96AB4849D3B9168BAC,
 				65D63C736A9446D09BD13AF5,
+				A11WAKE00RESOURCEGROUP01,
 				82B99287987345A88B2FE21F,
 				F784EE20BACA481C927478C1,
 				2AD5FCA1C861474F82F4BD89,
 			);
 			path = LivingRoomPickup;
+			sourceTree = "<group>";
+		};
+		A11WAKE00RESOURCEGROUP01 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A11WAKE001CAFFILEWOZAINE,
+				A11WAKE002CAFFILEYOUZALE,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		12B50B09A587433587608516 /* Services */ = {
@@ -171,6 +185,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				54A79122D3314D3D9DAFA8CD /* Assets.xcassets in Resources */,
+				A11WAKE001CAFWOZAINE01 /* wake_ack_wozaine.caf in Resources */,
+				A11WAKE002CAFYOUZALE01 /* wake_ack_youzale.caf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

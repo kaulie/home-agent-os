@@ -19,12 +19,12 @@ enum HomeMicConnectionState: Equatable {
     }
 }
 
-/// Orchestrates HAP1 + PCM + energy gate + local TTS for HAP1 speak downlink.
+/// Orchestrates HAP1 + PCM + energy gate + local wake-ack playback for HAP1 speak.
 final class HomeMicController: NSObject {
     private let client = HomeMicHap1Client()
     private let capture = HomeMicPcmCapture()
     private let energyGate = HomeMicEnergyGate()
-    private let speech = AVSpeechSynthesizer()
+    private var player: AVAudioPlayer?
 
     private(set) var isListening = false
     private(set) var connectionState: HomeMicConnectionState = .disconnected
@@ -42,7 +42,6 @@ final class HomeMicController: NSObject {
 
     override init() {
         super.init()
-        speech.delegate = self
         client.onDisconnected = { [weak self] in
             guard let self = self else { return }
             self.isConnecting = false
@@ -71,7 +70,7 @@ final class HomeMicController: NSObject {
     }
 
     deinit {
-        speech.stopSpeaking(at: .immediate)
+        player?.stop()
         stopListening()
         client.close()
     }
@@ -196,7 +195,8 @@ final class HomeMicController: NSObject {
 
     /// Tear down TCP as well (leave Home Mic tab / app background policy).
     func disconnect() {
-        speech.stopSpeaking(at: .immediate)
+        player?.stop()
+        player = nil
         isSpeakingLocally = false
         resumeCaptureAfterSpeak = false
         speakWatchdog?.cancel()
@@ -213,57 +213,90 @@ final class HomeMicController: NSObject {
         publishStatus("未连接")
     }
 
-    // MARK: - Local TTS (HAP1 speak)
+    // MARK: - Local wake ack (HAP1 speak)
 
     func speakLocally(_ text: String) {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
-        // Product: wake from iPhone → ack plays on this iPhone (not Mac speaker).
-        // iOS 12: AVSpeech under a live AVAudioEngine (or pause/resume) hard-crashes.
-        // Tear the engine down completely, speak, then hard-restart capture.
+        // Product: wake from iPhone → ack on this iPhone.
+        // Never use AVSpeech with AVAudioEngine on iOS 12 (hard crash).
+        // Play bundled CAF via AVAudioPlayer after full capture teardown.
         speakWatchdog?.cancel()
         isSpeakingLocally = true
         resumeCaptureAfterSpeak = isListening || capture.isRunning
-        speech.stopSpeaking(at: .immediate)
+        player?.stop()
+        player = nil
         capture.stop()
 
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(
-                .playAndRecord,
+                .playback,
                 mode: .default,
-                options: [.defaultToSpeaker, .duckOthers]
+                options: [.duckOthers]
             )
             try session.setActive(true, options: [])
         } catch {
-            // Still attempt TTS; worst case silent + resume capture.
+            // Fall through — player may still work.
         }
 
         publishStatus("正在回复…")
-        let utterance = AVSpeechUtterance(string: body)
-        if let voice = AVSpeechSynthesisVoice(language: "zh-CN") {
-            utterance.voice = voice
+        guard let url = Self.bundledAckURL(for: body) else {
+            // Unknown phrase: show status only, then resume mic (do not AVSpeech).
+            publishStatus(body)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                self?.finishSpeak()
+            }
+            return
         }
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
 
-        // Let session settle after engine teardown before synthesizing.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-            guard let self = self, self.isSpeakingLocally else { return }
-            self.speech.speak(utterance)
+        do {
+            let p = try AVAudioPlayer(contentsOf: url)
+            p.delegate = self
+            p.prepareToPlay()
+            player = p
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                guard let self = self, self.isSpeakingLocally else { return }
+                self.player?.play()
+            }
+        } catch {
+            finishSpeak()
+            return
         }
 
         let work = DispatchWorkItem { [weak self] in
             guard let self = self, self.isSpeakingLocally else { return }
-            self.speech.stopSpeaking(at: .immediate)
+            self.player?.stop()
             self.finishSpeak()
         }
         speakWatchdog = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0, execute: work)
+    }
+
+    private static func bundledAckURL(for text: String) -> URL? {
+        let compact = text
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "，", with: "")
+            .replacingOccurrences(of: "。", with: "")
+            .replacingOccurrences(of: "？", with: "")
+            .replacingOccurrences(of: "!", with: "")
+        let name: String
+        if compact.contains("我在呢") || compact == "在呢" {
+            name = "wake_ack_wozaine"
+        } else if compact.contains("又咋了") || compact.contains("咋了") {
+            name = "wake_ack_youzale"
+        } else {
+            // Default wake ack asset when Mac sends Brain-configured phrase we know.
+            name = "wake_ack_wozaine"
+        }
+        return Bundle.main.url(forResource: name, withExtension: "caf")
     }
 
     private func finishSpeak() {
         speakWatchdog?.cancel()
         speakWatchdog = nil
+        player?.stop()
+        player = nil
         isSpeakingLocally = false
         energyGate.reset()
         let shouldResume = resumeCaptureAfterSpeak
@@ -341,12 +374,12 @@ final class HomeMicController: NSObject {
     }
 }
 
-extension HomeMicController: AVSpeechSynthesizerDelegate {
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+extension HomeMicController: AVAudioPlayerDelegate {
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         finishSpeak()
     }
 
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         finishSpeak()
     }
 }
