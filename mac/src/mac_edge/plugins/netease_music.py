@@ -36,6 +36,7 @@ log = logging.getLogger("mac_edge.netease_music")
 
 SEARCH_TIMEOUT_SEC = 30.0
 SEARCH_LIMIT = 10
+ARTIST_QUEUE_MAX = 20
 CACHE_PAGE = 20
 CACHE_DEFAULT_COUNT = 100
 CACHE_MAX_COUNT = 200
@@ -551,6 +552,123 @@ def play_record(record: dict[str, Any]) -> str:
     return str(payload.get("message") or "").strip() or f"已唤起云音乐播放歌曲 {original}"
 
 
+def queue_clear() -> None:
+    payload = _run_ncm(["queue", "clear"], timeout_sec=CONTROL_TIMEOUT_SEC)
+    if payload.get("success") is not True:
+        msg = str(payload.get("message") or "").strip()
+        raise NeteaseMusicError(msg or "网易云清空队列失败")
+
+
+def queue_add(record: dict[str, Any]) -> None:
+    encrypted = str(record.get("id") or "").strip()
+    original = record.get("originalId")
+    if not encrypted or original in (None, ""):
+        raise NeteaseMusicError("队列追加缺少 encrypted-id / original-id")
+    payload = _run_ncm(
+        [
+            "queue",
+            "add",
+            "--encrypted-id",
+            encrypted,
+            "--original-id",
+            str(original),
+        ],
+        timeout_sec=CONTROL_TIMEOUT_SEC,
+    )
+    if payload.get("success") is not True:
+        msg = str(payload.get("message") or "").strip()
+        raise NeteaseMusicError(msg or "网易云队列追加失败")
+
+
+def _record_matches_artist(record: dict[str, Any], artist: str) -> bool:
+    singer = str(artist or "").strip()
+    if not singer:
+        return False
+    return any(_names_equal(name, singer) for name in _artist_names(record))
+
+
+def filter_records_by_artist(
+    records: list[Any],
+    *,
+    artist: str,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for rec in records:
+        if isinstance(rec, dict) and _record_matches_artist(rec, artist):
+            out.append(rec)
+    return out
+
+
+def collect_artist_queue_records(
+    *,
+    artist: str,
+    user_input: str | None = None,
+    limit: int = ARTIST_QUEUE_MAX,
+) -> list[dict[str, Any]]:
+    """Up to ``limit`` songs whose primary artist matches ``artist``."""
+    singer = str(artist or "").strip()
+    if not singer:
+        raise NeteaseMusicError(NO_SONG_MSG)
+    want = max(1, min(int(limit), ARTIST_QUEUE_MAX))
+    init_db()
+    collected: list[dict[str, Any]] = []
+    seen: set[Any] = set()
+    indexed = find_index_by_name_artist(name="", artist=singer, limit=want)
+    for row in indexed:
+        rec = _record_from_index(row)
+        if rec is None or not _record_matches_artist(rec, singer):
+            continue
+        oid = rec.get("originalId")
+        if oid in seen:
+            continue
+        seen.add(oid)
+        collected.append(rec)
+        if len(collected) >= want:
+            return collected
+    batch = search_records(
+        keyword=singer,
+        user_input=user_input,
+        limit=want,
+    )
+    for rec in filter_records_by_artist(batch, artist=singer):
+        oid = rec.get("originalId")
+        if oid in seen:
+            continue
+        seen.add(oid)
+        collected.append(rec)
+        if len(collected) >= want:
+            break
+    if not collected:
+        raise NeteaseMusicError(f"网易云未找到歌手「{singer}」的歌")
+    return collected[:want]
+
+
+def play_artist_queue(records: list[dict[str, Any]]) -> tuple[str, int]:
+    """Clear desktop queue, play first song, enqueue the rest."""
+    if not records:
+        raise NeteaseMusicError("歌手连播列表为空")
+    queue_clear()
+    msg = play_record(records[0])
+    added = 0
+    for rec in records[1:]:
+        queue_add(rec)
+        added += 1
+    if added:
+        log.info("ncm artist queue play first + add %s more", added)
+    return msg, added
+
+
+def is_artist_queue_mode(
+    *,
+    song: str,
+    artist: str,
+    playlist_artist: str,
+) -> bool:
+    if playlist_artist:
+        return True
+    return not str(song or "").strip() and bool(str(artist or "").strip())
+
+
 def _control(cap: str) -> str:
     argv = _CONTROL_CMD.get(cap)
     if not argv:
@@ -575,8 +693,16 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
     if not song and not artist:
         raise NeteaseMusicError(NO_SONG_MSG)
     playlist_artist = artist_from_playlist_remainder(song)
+    artist_queue = is_artist_queue_mode(
+        song=song,
+        artist=artist,
+        playlist_artist=playlist_artist,
+    )
+    queue_artist = playlist_artist or artist
     t_cache = time.perf_counter()
-    if playlist_artist:
+    if artist_queue:
+        cached = None
+    elif playlist_artist:
         cached = _cached_record(song=song, artist="")
         if cached and not _names_equal(_record_name(cached), song):
             cached = None
@@ -588,7 +714,17 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
         cached = _cached_record(song="", artist=artist)
     cache_ms = int(round((time.perf_counter() - t_cache) * 1000))
     search_ms = 0
-    if cached:
+    queue_added = 0
+    if artist_queue:
+        t_search = time.perf_counter()
+        queue_records = collect_artist_queue_records(
+            artist=queue_artist,
+            user_input=user_input or None,
+        )
+        search_ms = int(round((time.perf_counter() - t_search) * 1000))
+        cache_label = "artist-queue"
+        record = queue_records[0]
+    elif cached:
         log.info("ncm_songs hit name=%s artist=%s", song or "-", artist or "-")
         record = cached
         cache_label = "hit"
@@ -614,7 +750,10 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
         search_ms = int(round((time.perf_counter() - t_search) * 1000))
         cache_label = "miss"
     t_play = time.perf_counter()
-    msg = play_record(record)
+    if artist_queue:
+        msg, queue_added = play_artist_queue(queue_records)
+    else:
+        msg = play_record(record)
     play_ms = int(round((time.perf_counter() - t_play) * 1000))
     try:
         oid = upsert_record(record)
@@ -623,6 +762,12 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
             str(_str_param(params, "participant_id") or "").strip(),
             intent_id=_str_param(params, "intent_id") or None,
         )
+        if artist_queue:
+            for extra in queue_records[1:]:
+                try:
+                    upsert_record(extra)
+                except NcmSongsError as e:
+                    log.warning("ncm_songs skip queue hit: %s", e)
     except NcmSongsError as e:
         log.warning("ncm_songs record_play failed: %s", e)
     enter_music_mode(trigger_text=f"{song} {artist}".strip())
@@ -633,16 +778,21 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
         "play": play_ms,
         "total": total_ms,
     }
+    outputs: dict[str, Any] = {"timing": timing}
+    if artist_queue:
+        outputs["queue_count"] = len(queue_records)
+        outputs["queue_added"] = queue_added
     log.info(
-        "music.play intent=%s cache_ms=%s search_ms=%s play_ms=%s total_ms=%s cache=%s",
+        "music.play intent=%s cache_ms=%s search_ms=%s play_ms=%s total_ms=%s cache=%s%s",
         intent_id,
         cache_ms,
         search_ms,
         play_ms,
         total_ms,
         cache_label,
+        f" queue={len(queue_records)}" if artist_queue else "",
     )
-    return msg, {"timing": timing}
+    return msg, outputs
 
 
 def paged_search_records(
