@@ -443,3 +443,44 @@ Brain：`http://115.190.153.53:9527`
 - **结论**：**通过**。快照 [`run_results_music_play_c15_b088131.json`](run_results_music_play_c15_b088131.json)（覆盖 366 失败快照）
 - **现场播音**：#207 @boss 确认 intent 368/369 本机网易云已出声（PID 66842）
 
+---
+
+## 2026-08-29 music.cache + issue#9 双 Brain（#309 / sha 89b7535）
+
+- **范围**：4G 云建单 `music.cache` + 双 Brain 状态回写（#309）
+- **云 Brain**：`115.190.153.53:9527` **不可达**（curl http_code=000）；**未验收** 4G 路径
+- **89b7535 探针**：LAN `intent_detail?intent_id=999999999` 仍 200+`err_msg`（非 404）→ Brain/Mac 侧 fix **未部署/未重启**
+- **LAN 烟测**：`下载刘德华的歌5首` → intent **399**；`music.cache` → **IAtuhLSy**；succeeded ~36s；步 status=2
+- **结论**：**失败**（相对 #309 云 4G + dual-brain 验收）；LAN music.cache 执行面通过。快照 [`run_results_music_cache_lan_smoke.json`](run_results_music_cache_lan_smoke.json)
+
+---
+
+## 2026-08-29 music.cache 云 Brain 复测（#318 / sha 89b7535，deploy 8bd2ba6）
+
+- **云**：`115.190.153.53:9527` health=200；缺 intent `intent_detail` → **404** ✓
+- **指令**：`下载刘德华的歌5首` → cloud intent **1516**（`intent_origin=cloud`）
+- **plan**：`music.cache` → **edge-node-IAtuhLSy**；succeeded ~36s；步 status=2
+- **双 Brain 回写**：云侧 `intent_detail` 见终态 succeeded（非卡 dispatched）
+- **结论**：**通过**。快照 [`run_results_music_cache_cloud.json`](run_results_music_cache_cloud.json)
+- **#321 核对**：cloud intent 1516 在云 `succeeded` step=2；LAN 同 id → **404**（step_status 落 origin Brain）
+
+---
+
+## 2026-08-29 music.cache 云 dual-brain 新跑（#323 / sha 8bd2ba6）
+
+- **前置**：云+LAN 缺 intent → **404** ✓
+- **指令**：`下载刘德华的歌5首` → cloud intent **1517**（`origin=cloud`）
+- **plan**：`music.cache` → **IAtuhLSy**；succeeded ~36s；步 status=2
+- **dual-brain**：云 detail succeeded；LAN 同 id → **404**
+- **结论**：**通过**。快照 [`run_results_music_cache_cloud.json`](run_results_music_cache_cloud.json)
+
+---
+
+## 2026-08-30 Dev cloud_calls usage API（#9c17848 / dba 026）
+
+- **范围**：`GET /api/v1/admin/dev_task/usage?period=day` → `usage.cloud_calls.{period,all_time}`
+- **前置**：LAN Brain 原进程无 `cloud_calls` 字段；本机 `db.init_db()`（026）+ 重启 `home_brain.py` 后验收
+- **C1 schema**：HTTP 200；每行 `{service_id,label,count,ok,fail}`；7 个 v1 id 均在 period（含 count=0）
+- **C2 heartbeat**：`edge-node-blackbox-cloud-usage` POST `cloud_usage_delta` `[{ark.vision, ok:1}]` → period `ark.vision` count **0→1**
+- **结论**：**通过**。脚本 [`run_cloud_usage.py`](run_cloud_usage.py)；快照 [`run_results_cloud_usage.json`](run_results_cloud_usage.json)
+
