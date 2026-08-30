@@ -4,7 +4,7 @@ import Network
 /// Two persisted Brain slots (LAN / Cloud) plus helpers to turn a base into `/api/v1/intent`.
 /// Fresh-install defaults come from `config/endpoints.json` via `python3 tools/sync_endpoints.py`.
 enum BrainEndpoint {
-    static let defaultLanBase = "http://192.168.3.73:9527"
+    static let defaultLanBase = "http://192.168.3.84:9527"
     static let defaultCloudBase = "http://115.190.153.53:9527"
 
     static let defaultLanIntentURL = intentURL(from: defaultLanBase)

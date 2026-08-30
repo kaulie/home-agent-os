@@ -26,7 +26,7 @@ iPhone App 是 **Intent Source + Endpoint**，并预装 **Runtime：GoPro `camer
  GET  /api/v1/intent_detail?intent_id=   （每 5s，直到 succeeded / failed）
 ```
 
-- Brain 两个地址槽：LAN 默认 `http://192.168.3.73:9527`，Cloud 默认 `http://115.190.153.53:9527`。节点页和设置里用 **自动 / 局域网 / 云** 切换；自动时家庭局域网且 `/api/v1/ping` 通 LAN 则走 LAN，否则走 Cloud。强制局域网或云会锁定对应槽，不跟探测走。当前在用地址在「节点」页看。
+- Brain 两个地址槽：LAN 默认 `http://192.168.3.84:9527`，Cloud 默认 `http://115.190.153.53:9527`。节点页和设置里用 **自动 / 局域网 / 云** 切换；自动时家庭局域网且 `/api/v1/ping` 通 LAN 则走 LAN，否则走 Cloud。强制局域网或云会锁定对应槽，不跟探测走。当前在用地址在「节点」页看。
 - 预装 Runtime：`gopro.camera` / `camera.capture`（iPhone **不切网、不填热点 SSID**，直接打相机 HTTP；Mac 切网实现不要混用）；`livingroom.ceiling_light` / `light.set`（本机 TTS：小书小书 → 等 2 秒 → 开灯/关灯）
 - `client_hint` 本机稳定（`living-room-iphone-…`）；`participant_id` 来自登记回执
 - 登记后立刻心跳，之后约 45 秒一次；发出前心跳失败则不出单

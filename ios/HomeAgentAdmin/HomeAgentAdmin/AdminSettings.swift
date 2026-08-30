@@ -1,7 +1,7 @@
 import Foundation
 
 enum AdminSettings {
-    static let defaultBrainURL = "http://192.168.3.73:9527"
+    static let defaultBrainURL = "http://192.168.3.84:9527"
     static let cloudBrainURL = "http://115.190.153.53:9527"
 
     private static let brainKey = "homeagent.admin.brainURL"
