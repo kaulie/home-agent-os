@@ -1,0 +1,303 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		51F4F29B36BA419F8DD9A6B9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82B99287987345A88B2FE21F /* AppDelegate.swift */; };
+		177FECAD9C54425797EFB41C /* HomeMicController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00CBEE489224868A26CCB61 /* HomeMicController.swift */; };
+		0536BA3A52C84AC6A52C36CE /* HomeMicEnergyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B208DA1BB104B9BAEEB8586 /* HomeMicEnergyGate.swift */; };
+		D96CBA6A2FDE4BB6919693CF /* HomeMicHap1Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 942D525BBCE74E8FB2710A8A /* HomeMicHap1Client.swift */; };
+		1C04EB1D291941888181E5B9 /* HomeMicPcmCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AF36F13FF7743DBBB468C94 /* HomeMicPcmCapture.swift */; };
+		3D9682EF62D9488694F00E06 /* HomeMicSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E37C3A270714428BF4CC2CB /* HomeMicSettings.swift */; };
+		83E1D4B8920942B192BA6FE7 /* PickupIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D01D88783CAA4C14B4248C00 /* PickupIdentity.swift */; };
+		7A1B43FF9EF549D48374D72E /* HomeMicViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9852620690C14FFBBFE32795 /* HomeMicViewController.swift */; };
+		DC1DA15CCCCF47ABB65819C3 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A4CE9D15A164BD0B9988A63 /* SettingsViewController.swift */; };
+		DE0B9ACB38824B2093539933 /* PickupTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E67E57E6372B4DB9B4DB37CB /* PickupTheme.swift */; };
+		54A79122D3314D3D9DAFA8CD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2AD5FCA1C861474F82F4BD89 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		DE36F6B7220E4FEABBB33156 /* LivingRoomPickup.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LivingRoomPickup.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		82B99287987345A88B2FE21F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		F00CBEE489224868A26CCB61 /* HomeMicController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicController.swift; sourceTree = "<group>"; };
+		2B208DA1BB104B9BAEEB8586 /* HomeMicEnergyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicEnergyGate.swift; sourceTree = "<group>"; };
+		942D525BBCE74E8FB2710A8A /* HomeMicHap1Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicHap1Client.swift; sourceTree = "<group>"; };
+		6AF36F13FF7743DBBB468C94 /* HomeMicPcmCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicPcmCapture.swift; sourceTree = "<group>"; };
+		2E37C3A270714428BF4CC2CB /* HomeMicSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicSettings.swift; sourceTree = "<group>"; };
+		D01D88783CAA4C14B4248C00 /* PickupIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickupIdentity.swift; sourceTree = "<group>"; };
+		9852620690C14FFBBFE32795 /* HomeMicViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicViewController.swift; sourceTree = "<group>"; };
+		9A4CE9D15A164BD0B9988A63 /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
+		E67E57E6372B4DB9B4DB37CB /* PickupTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickupTheme.swift; sourceTree = "<group>"; };
+		F784EE20BACA481C927478C1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		2AD5FCA1C861474F82F4BD89 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5C98B25BCEFD4C349F6CCA7E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		9CD15F700ACF49B7860F10B9 = {
+			isa = PBXGroup;
+			children = (
+				096001B8DDAE41EA83270F3B /* LivingRoomPickup */,
+				E9FE77361D364340BB2B25CE /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E9FE77361D364340BB2B25CE /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DE36F6B7220E4FEABBB33156 /* LivingRoomPickup.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		096001B8DDAE41EA83270F3B /* LivingRoomPickup */ = {
+			isa = PBXGroup;
+			children = (
+				12B50B09A587433587608516,
+				D0CD6A96AB4849D3B9168BAC,
+				65D63C736A9446D09BD13AF5,
+				82B99287987345A88B2FE21F,
+				F784EE20BACA481C927478C1,
+				2AD5FCA1C861474F82F4BD89,
+			);
+			path = LivingRoomPickup;
+			sourceTree = "<group>";
+		};
+		12B50B09A587433587608516 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				C8FFF46CC5A7490498C62DD0,
+				D01D88783CAA4C14B4248C00,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		C8FFF46CC5A7490498C62DD0 /* HomeMic */ = {
+			isa = PBXGroup;
+			children = (
+				F00CBEE489224868A26CCB61,
+				2B208DA1BB104B9BAEEB8586,
+				942D525BBCE74E8FB2710A8A,
+				6AF36F13FF7743DBBB468C94,
+				2E37C3A270714428BF4CC2CB,
+			);
+			path = HomeMic;
+			sourceTree = "<group>";
+		};
+		D0CD6A96AB4849D3B9168BAC /* ViewControllers */ = {
+			isa = PBXGroup;
+			children = (
+				9852620690C14FFBBFE32795,
+				9A4CE9D15A164BD0B9988A63,
+			);
+			path = ViewControllers;
+			sourceTree = "<group>";
+		};
+		65D63C736A9446D09BD13AF5 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				E67E57E6372B4DB9B4DB37CB,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		989EC51C99D4412CB1655726 /* LivingRoomPickup */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4350E3AB7546475485F7F849 /* Build configuration list for PBXNativeTarget "LivingRoomPickup" */;
+			buildPhases = (
+				85744170F5354EBABEFEC047 /* Sources */,
+				5C98B25BCEFD4C349F6CCA7E /* Frameworks */,
+				510220535351447F85BE8500 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LivingRoomPickup;
+			packageProductDependencies = (
+			);
+			productName = LivingRoomPickup;
+			productReference = DE36F6B7220E4FEABBB33156 /* LivingRoomPickup.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		101FFBCAE23F4B2A9B446CA4 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1500;
+				LastUpgradeCheck = 1500;
+			};
+			buildConfigurationList = AFB6B09580FC4505B4ADE5B0 /* Build configuration list for PBXProject "LivingRoomPickup" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 9CD15F700ACF49B7860F10B9;
+			packageReferences = (
+			);
+			productRefGroup = E9FE77361D364340BB2B25CE /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				989EC51C99D4412CB1655726 /* LivingRoomPickup */,
+			);
+			};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		510220535351447F85BE8500 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				54A79122D3314D3D9DAFA8CD /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		85744170F5354EBABEFEC047 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				51F4F29B36BA419F8DD9A6B9 /* AppDelegate.swift in Sources */,
+				177FECAD9C54425797EFB41C /* HomeMicController.swift in Sources */,
+				0536BA3A52C84AC6A52C36CE /* HomeMicEnergyGate.swift in Sources */,
+				D96CBA6A2FDE4BB6919693CF /* HomeMicHap1Client.swift in Sources */,
+				1C04EB1D291941888181E5B9 /* HomeMicPcmCapture.swift in Sources */,
+				3D9682EF62D9488694F00E06 /* HomeMicSettings.swift in Sources */,
+				83E1D4B8920942B192BA6FE7 /* PickupIdentity.swift in Sources */,
+				7A1B43FF9EF549D48374D72E /* HomeMicViewController.swift in Sources */,
+				DC1DA15CCCCF47ABB65819C3 /* SettingsViewController.swift in Sources */,
+				DE0B9ACB38824B2093539933 /* PickupTheme.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		43AFD61AA1EF4DE0836F751F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf";
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		AAB310EF330441C0BD7B80A1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		6C3ED1352BEC442CACF77337 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "JD4B775BJ5";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LivingRoomPickup/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.livingroom.pickup;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		5BF08B32681D4495B6983DC4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "JD4B775BJ5";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = LivingRoomPickup/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.gaolei.livingroom.pickup;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AFB6B09580FC4505B4ADE5B0 /* Build configuration list for PBXProject "LivingRoomPickup" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				43AFD61AA1EF4DE0836F751F /* Debug */,
+				AAB310EF330441C0BD7B80A1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4350E3AB7546475485F7F849 /* Build configuration list for PBXNativeTarget "LivingRoomPickup" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6C3ED1352BEC442CACF77337 /* Debug */,
+				5BF08B32681D4495B6983DC4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 101FFBCAE23F4B2A9B446CA4 /* Project object */;
+}
