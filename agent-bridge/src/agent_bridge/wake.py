@@ -52,6 +52,7 @@ def wake_handle(
     pull_chat: bool = True,
     attachments: list[dict[str, str]] | None = None,
     task_id: int | None = None,
+    brain_url: str | None = None,
 ) -> dict[str, Any]:
     normalized = normalize_fleet_handle(handle)
     if normalized is None:
@@ -69,6 +70,7 @@ def wake_handle(
         attachments=attachments,
         task_id=task_id,
         target_handle=normalized,
+        brain_url=brain_url,
     )
     runner.enqueue(run.run_id)
     return {

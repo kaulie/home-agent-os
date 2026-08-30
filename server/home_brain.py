@@ -3838,6 +3838,20 @@ def resolve_intent_origin(value=None):
     return instance_intent_origin()
 
 
+def _brain_public_base_url() -> str:
+    """Base URL for this Brain as seen by phones / agent-bridge attachment fetch."""
+    env = (os.environ.get("BRAIN_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if env:
+        return env
+    try:
+        root = str(request.url_root or "").strip().rstrip("/")
+        if root:
+            return root
+    except RuntimeError:
+        pass
+    return ""
+
+
 def update_intent(intent_id, intent_record):
     intent = get_intent(intent_id)
     if not intent:
@@ -6350,6 +6364,7 @@ def admin_post_dev_task():
         category=category,
         attachments=attachments_raw,
         target_handle=target_handle,
+        brain_url=_brain_public_base_url(),
     )
     return jsonify(ok=True, **view)
 

@@ -29,6 +29,7 @@ class RunRecord:
     attachments: list[dict[str, str]] = field(default_factory=list)
     task_id: int | None = None
     target_handle: str = DEFAULT_HANDLE
+    brain_url: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -67,6 +68,7 @@ class BridgeState:
                     attachments=list(row.get("attachments") or []),
                     task_id=row.get("task_id"),
                     target_handle=str(row.get("target_handle") or DEFAULT_HANDLE),
+                    brain_url=str(row.get("brain_url") or ""),
                 )
             )
         return cls(agent_id=data.get("agent_id"), runs=runs)
@@ -119,6 +121,7 @@ class StateStore:
         attachments: list[dict[str, str]] | None = None,
         task_id: int | None = None,
         target_handle: str = DEFAULT_HANDLE,
+        brain_url: str | None = None,
     ) -> RunRecord:
         run = RunRecord(
             run_id=uuid.uuid4().hex,
@@ -126,6 +129,7 @@ class StateStore:
             attachments=list(attachments or []),
             task_id=task_id,
             target_handle=target_handle,
+            brain_url=str(brain_url or "").strip().rstrip("/"),
         )
         with self._lock:
             self._state.runs.append(run)

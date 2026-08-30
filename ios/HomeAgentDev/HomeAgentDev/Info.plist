@@ -62,6 +62,8 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>连接局域网 Brain 与 agent-bridge，下发 Dev Task。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>为 Dev Task 附加截图或照片，便于 Agent 分析。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

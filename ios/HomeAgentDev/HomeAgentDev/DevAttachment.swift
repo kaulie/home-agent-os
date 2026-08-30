@@ -104,10 +104,11 @@ struct DevAttachmentComposer: View {
                 maxSelectionCount: 8,
                 matching: .images
             ) {
-                Label("添加附件", systemImage: "paperclip")
+                Label("添加图片", systemImage: "photo.on.rectangle.angled")
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(DevTheme.sand)
             }
+            .accessibilityIdentifier("dev.task.add-image")
             .onChange(of: pickerItems) { items in
                 guard !items.isEmpty else { return }
                 Task { await importPickerItems(items) }

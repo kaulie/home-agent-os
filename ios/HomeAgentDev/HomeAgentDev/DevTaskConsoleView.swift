@@ -196,7 +196,7 @@ struct DevNewTaskSheet: View {
                         }
 
                         VStack(alignment: .leading, spacing: 12) {
-                            DevTheme.sectionLabel("附件")
+                            DevTheme.sectionLabel("图片")
                             DevAttachmentComposer(pending: $pendingAttachments)
                         }
 

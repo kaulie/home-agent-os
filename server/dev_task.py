@@ -171,6 +171,7 @@ def submit_agent_task(
     attachments: list[dict[str, str]] | None = None,
     target_handle: str | None = None,
     suggested_handle: str | None = None,
+    brain_url: str | None = None,
 ) -> dict[str, Any]:
     """Create an agent task and forward it to agent-bridge."""
     fleet_handle = bridge.normalize_fleet_handle(target_handle or suggested_handle)
@@ -224,6 +225,7 @@ def submit_agent_task(
             attachments=normalized_attachments,
             task_id=task.task_id,
             target_handle=fleet_handle,
+            brain_url=brain_url,
         )
     except bridge.AgentBridgeError as err:
         log.warning("agent_task submit failed task=%s: %s", task.task_id, err)

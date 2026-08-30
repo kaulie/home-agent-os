@@ -79,12 +79,16 @@ def submit_command(
     attachments: list[dict[str, str]] | None = None,
     task_id: int | None = None,
     target_handle: str | None = None,
+    brain_url: str | None = None,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {"text": text}
     if attachments:
         body["attachments"] = attachments
     if task_id is not None:
         body["task_id"] = task_id
+    base = str(brain_url or "").strip().rstrip("/")
+    if base:
+        body["brain_url"] = base
     handle = normalize_fleet_handle(target_handle)
     if handle:
         body["target_handle"] = handle

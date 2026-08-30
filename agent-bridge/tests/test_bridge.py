@@ -121,6 +121,30 @@ class ServerTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
 
+    def test_command_accepts_attachments_with_brain_url(self) -> None:
+        resp = self.client.post(
+            "/api/v1/command",
+            headers=self._auth(),
+            json={
+                "text": "analyze screenshot",
+                "task_id": 42,
+                "brain_url": "http://192.168.3.73:9527",
+                "attachments": [
+                    {
+                        "asset_id": "asset_abc",
+                        "kind": "image",
+                        "mime_type": "image/jpeg",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(resp.status_code, 202)
+        body = resp.get_json()
+        run = self.store.get_run(body["run_id"])
+        assert run is not None
+        self.assertEqual(run.brain_url, "http://192.168.3.73:9527")
+        self.assertEqual(run.attachments[0]["asset_id"], "asset_abc")
+
     def test_command_queues_when_busy(self) -> None:
         busy = self.store.create_run("in flight")
         self.store.update_run(busy.run_id, status="running")

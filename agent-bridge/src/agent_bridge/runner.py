@@ -248,6 +248,7 @@ class AgentRunner:
                         run_id=run_id,
                         data_dir=self._config.data_dir,
                         config=self._config,
+                        brain_url=record.brain_url or None,
                     )
                 run = agent.send(prompt_text)
                 self._store.update_run(run_id, agent_id=agent.agent_id)

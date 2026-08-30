@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -62,6 +63,103 @@ class AdminDevTaskTests(unittest.TestCase):
         task_id = int(body["task_id"])
         self.assertEqual(body.get("intent_id"), task_id)
         self.assertFalse(hb.get_intent(task_id))
+
+    def test_post_admin_dev_task_with_image_attachment(self) -> None:
+        assert hb is not None
+        client = hb.app.test_client()
+        with patch("dev_task.bridge.submit_command") as submit:
+            submit.return_value = {"run_id": "run-img", "status": "queued"}
+            resp = client.post(
+                "/api/v1/admin/dev_task",
+                json={
+                    "text": "请看截图",
+                    "attachments": [
+                        {
+                            "asset_id": "asset_dev_img",
+                            "kind": "image",
+                            "mime_type": "image/jpeg",
+                        }
+                    ],
+                },
+            )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertEqual(body["attachments"][0]["asset_id"], "asset_dev_img")
+        submit.assert_called_once()
+        kwargs = submit.call_args.kwargs
+        self.assertEqual(kwargs.get("brain_url"), "http://localhost")
+        self.assertIn("asset_dev_img", submit.call_args.args[0])
+
+    def test_post_admin_dev_task_image_only(self) -> None:
+        assert hb is not None
+        client = hb.app.test_client()
+        with patch("dev_task.bridge.submit_command") as submit:
+            submit.return_value = {"run_id": "run-only-img", "status": "queued"}
+            resp = client.post(
+                "/api/v1/admin/dev_task",
+                json={
+                    "attachments": [
+                        {"asset_id": "asset_only", "kind": "image"},
+                    ],
+                },
+            )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertEqual(body["attachments"][0]["asset_id"], "asset_only")
+
+    def test_upload_admin_dev_task_attachment(self) -> None:
+        assert hb is not None
+        jpeg = b"\xff\xd8\xffdev-task"
+        upload_root = Path(self.tmp.name) / "gopropics"
+        prev_origin = os.environ.get("BRAIN_ORIGIN")
+        prev_img = os.environ.get("BRAIN_IMG_UPLOAD_URL")
+        prev_photo = os.environ.get("PHOTO_UPLOAD_URL")
+        prev_upload = hb.UPLOAD_DIR
+        prev_asset_dir = hb._ASSET_UPLOAD_DIR
+        os.environ["BRAIN_ORIGIN"] = "cloud"
+        os.environ.pop("BRAIN_IMG_UPLOAD_URL", None)
+        os.environ.pop("PHOTO_UPLOAD_URL", None)
+        hb.UPLOAD_DIR = upload_root
+        hb._ASSET_UPLOAD_DIR = None
+        client = hb.app.test_client()
+        try:
+            resp = client.post(
+                "/api/v1/admin/dev_task/attachment/upload",
+                data={
+                    "kind": "image",
+                    "mime_type": "image/jpeg",
+                    "file": (BytesIO(jpeg), "shot.jpg"),
+                },
+                content_type="multipart/form-data",
+            )
+            self.assertEqual(resp.status_code, 200)
+            body = resp.get_json()
+            self.assertTrue(body.get("ok"))
+            attachment = body.get("attachment") or {}
+            aid = str(attachment.get("asset_id") or "")
+            self.assertTrue(aid.startswith("asset_"))
+            content = client.get(
+                f"/api/v1/assets/{aid}/content",
+                query_string={"intent_id": "dev_task:1"},
+            )
+            self.assertEqual(content.status_code, 403)
+        finally:
+            hb.UPLOAD_DIR = prev_upload
+            hb._ASSET_UPLOAD_DIR = prev_asset_dir
+            if prev_origin is None:
+                os.environ.pop("BRAIN_ORIGIN", None)
+            else:
+                os.environ["BRAIN_ORIGIN"] = prev_origin
+            if prev_img is None:
+                os.environ.pop("BRAIN_IMG_UPLOAD_URL", None)
+            else:
+                os.environ["BRAIN_IMG_UPLOAD_URL"] = prev_img
+            if prev_photo is None:
+                os.environ.pop("PHOTO_UPLOAD_URL", None)
+            else:
+                os.environ["PHOTO_UPLOAD_URL"] = prev_photo
 
     def test_list_admin_dev_tasks_only_agent_store(self) -> None:
         assert hb is not None

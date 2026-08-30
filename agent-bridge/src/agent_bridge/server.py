@@ -106,6 +106,7 @@ def create_app(
                 task_id = int(task_id_raw)
             except (TypeError, ValueError):
                 return jsonify({"error": "task_id must be an integer"}), 400
+        brain_url = str(body.get("brain_url") or "").strip().rstrip("/")
 
         target_raw = body.get("target_handle") or body.get("handle")
         target_handle = normalize_fleet_handle(str(target_raw) if target_raw else None)
@@ -127,6 +128,7 @@ def create_app(
                     pull_chat=bool(body.get("pull_chat", False)),
                     attachments=attachments or None,
                     task_id=task_id,
+                    brain_url=brain_url or None,
                 )
             except ValueError as err:
                 return jsonify({"error": str(err)}), 400
@@ -137,6 +139,7 @@ def create_app(
             attachments=attachments,
             task_id=task_id,
             target_handle=target_handle or "controller",
+            brain_url=brain_url or None,
         )
         runner.enqueue(run.run_id)
         queue_depth = runner.pending_queue_depth()

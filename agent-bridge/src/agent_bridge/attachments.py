@@ -84,8 +84,9 @@ def _download_attachment(
   asset_id: str,
   task_id: int | None,
   dest: Path,
+  brain_url: str | None = None,
 ) -> None:
-    base = config.brain_url.rstrip("/")
+    base = str(brain_url or config.brain_url or "").strip().rstrip("/")
     if not base:
         raise RuntimeError("AGENT_BRIDGE_BRAIN_URL is not configured")
     query = {}
@@ -122,6 +123,7 @@ def materialize_dev_task_attachments(
     run_id: str,
     data_dir: Path,
     config: BridgeConfig,
+    brain_url: str | None = None,
 ) -> tuple[str, dict[str, str]]:
     if not attachments:
         return text, {}
@@ -134,7 +136,13 @@ def materialize_dev_task_attachments(
         suffix = _guess_suffix(row)
         dest = root / f"{index + 1:02d}_{aid}{suffix}"
         try:
-            _download_attachment(config, asset_id=aid, task_id=task_id, dest=dest)
+            _download_attachment(
+                config,
+                asset_id=aid,
+                task_id=task_id,
+                dest=dest,
+                brain_url=brain_url,
+            )
             local_paths[aid] = str(dest.resolve())
         except Exception:
             log.exception("failed to download dev_task attachment asset=%s", aid)

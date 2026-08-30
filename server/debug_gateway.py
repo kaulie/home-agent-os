@@ -276,7 +276,12 @@ def submit_debug_report(
     )
 
     prompt = build_agent_prompt(issue, context, client_snapshot=client_snapshot)
-    task_view = submit_agent_task(prompt, category="bug_fix")
+    task_view = submit_agent_task(
+        prompt,
+        category="bug_fix",
+        attachments=list(issue.attachments or []),
+        brain_url=_brain_url_from_snapshot(client_snapshot) or None,
+    )
     task_id = task_view.get("task_id") or task_view.get("intent_id")
     try:
         task_id_int = int(task_id)
@@ -305,6 +310,25 @@ def submit_debug_report(
         issue.source,
     )
     return {"ok": True, **issue_to_user_view(issue)}
+
+
+def _brain_url_from_snapshot(client_snapshot: dict[str, Any] | None) -> str:
+    if not client_snapshot:
+        return ""
+    snap = normalize_client_snapshot(client_snapshot)
+    primary = snap.get("primary_brain")
+    if isinstance(primary, dict):
+        for key in ("base_url", "intent_url"):
+            raw = str(primary.get(key) or "").strip()
+            if not raw:
+                continue
+            if raw.startswith("http://") or raw.startswith("https://"):
+                from urllib.parse import urlparse
+
+                parsed = urlparse(raw)
+                if parsed.scheme and parsed.netloc:
+                    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+    return str(snap.get("brain_base") or "").strip().rstrip("/")
 
 
 def get_debug_issue(issue_id: int) -> dict[str, Any] | None:
