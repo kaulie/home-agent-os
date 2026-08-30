@@ -9,6 +9,7 @@ final class SettingsViewController: UIViewController {
     private let reconnectButton = UIButton(type: .system)
     private let advancedToggle = UIButton(type: .system)
     private let advancedStack = UIStackView()
+    private let homeBrainField = UITextField()
     private let macIngestField = UITextField()
     private let participantLabel = LegacyUI.monoLabel(0)
     private let heartbeatHistoryLabel = LegacyUI.monoLabel(0)
@@ -105,6 +106,26 @@ final class SettingsViewController: UIViewController {
     }
 
     private func setupAdvancedSection() {
+        let brainTitle = LegacyUI.sectionTitle("家里 Brain")
+        let brainHint = UILabel()
+        brainHint.font = LegacyTheme.fontHint
+        brainHint.textColor = LegacyTheme.textSecondary
+        brainHint.numberOfLines = 0
+        brainHint.text = "局域网 Brain Intent（默认 :9527）。与下面 Mac 直播 ingest 分开填。"
+
+        homeBrainField.borderStyle = .roundedRect
+        homeBrainField.font = UIFont(name: "Menlo-Regular", size: 15) ?? UIFont.systemFont(ofSize: 15)
+        homeBrainField.autocapitalizationType = .none
+        homeBrainField.autocorrectionType = .no
+        homeBrainField.keyboardType = .URL
+        homeBrainField.placeholder = ParticipantStore.defaultHomeBrainIntentURL
+        homeBrainField.addTarget(self, action: #selector(homeBrainChanged), for: .editingChanged)
+        attachDoneToolbar(to: homeBrainField)
+
+        advancedStack.addArrangedSubview(brainTitle)
+        advancedStack.addArrangedSubview(brainHint)
+        advancedStack.addArrangedSubview(homeBrainField)
+
         let ingestTitle = LegacyUI.sectionTitle("Mac 直播 ingest")
         let ingestHint = UILabel()
         ingestHint.font = LegacyTheme.fontHint
@@ -144,6 +165,7 @@ final class SettingsViewController: UIViewController {
 
         let pid = ParticipantStore.participantId
         participantLabel.text = pid.isEmpty ? "participant: 未登记" : "participant: \(pid)"
+        homeBrainField.text = ParticipantStore.homeBrainIntentURL
         macIngestField.text = ParticipantStore.macIngestURL
         refreshStatusLabel()
         refreshHeartbeatHistory()
@@ -201,6 +223,10 @@ final class SettingsViewController: UIViewController {
         let done = UIBarButtonItem(title: "完成", style: .done, target: self, action: #selector(dismissKeyboard))
         toolbar.items = [flex, done]
         field.inputAccessoryView = toolbar
+    }
+
+    @objc private func homeBrainChanged() {
+        ParticipantStore.homeBrainIntentURL = homeBrainField.text ?? ""
     }
 
     @objc private func macIngestChanged() {

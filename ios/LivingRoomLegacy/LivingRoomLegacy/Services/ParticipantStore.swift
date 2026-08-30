@@ -11,12 +11,14 @@ enum ParticipantStore {
     private static let lastHeartbeatOkKey = "legacy.lastHeartbeatOk"
     private static let lastHeartbeatAtKey = "legacy.lastHeartbeatAt"
     private static let macIngestKey = "legacy.macIngestURL"
+    private static let homeBrainURLKey = "legacy.homeBrainIntentURL"
 
-    static let defaultBrainIntentURL = BrainEndpoint.homeIntentURL
-    static let defaultMacIngestURL = "http://192.168.3.84:8790"
+    static let defaultHomeBrainIntentURL = BrainEndpoint.defaultHomeIntentURL
+    static let defaultBrainIntentURL = BrainEndpoint.defaultHomeIntentURL
+    static let defaultMacIngestURL = "http://192.168.3.73:8790"
 
     /// URL used for API calls (set after a successful register).
-    private(set) static var activeIntentURL: String = BrainEndpoint.homeIntentURL
+    private(set) static var activeIntentURL: String = BrainEndpoint.defaultHomeIntentURL
 
     static var clientHint: String {
         if let saved = UserDefaults.standard.string(forKey: hintKey), !saved.isEmpty {
@@ -72,6 +74,21 @@ enum ParticipantStore {
     static var lastHeartbeatAt: TimeInterval {
         get { UserDefaults.standard.double(forKey: lastHeartbeatAtKey) }
         set { UserDefaults.standard.set(newValue, forKey: lastHeartbeatAtKey) }
+    }
+
+    /// Parent-configured LAN Brain intent URL (家里 segment).
+    static var homeBrainIntentURL: String {
+        get {
+            let saved = UserDefaults.standard.string(forKey: homeBrainURLKey)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return saved.isEmpty ? defaultHomeBrainIntentURL : BrainURL.normalizeIntentURL(saved)
+        }
+        set {
+            UserDefaults.standard.set(
+                BrainURL.normalizeIntentURL(newValue),
+                forKey: homeBrainURLKey
+            )
+        }
     }
 
     /// Mac Edge video-live ingest (port 8790). Not Brain intent URL (:9527).

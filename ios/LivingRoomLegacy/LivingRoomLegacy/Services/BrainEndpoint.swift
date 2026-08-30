@@ -5,12 +5,12 @@ enum BrainEndpoint: Int {
     case home = 0
     case cloud = 1
 
-    static let homeIntentURL = "http://192.168.3.84:9527/api/v1/intent"
+    static let defaultHomeIntentURL = "http://192.168.3.73:9527/api/v1/intent"
     static let cloudIntentURL = "http://115.190.153.53:9527/api/v1/intent"
 
     var intentURL: String {
         switch self {
-        case .home: return BrainEndpoint.homeIntentURL
+        case .home: return ParticipantStore.homeBrainIntentURL
         case .cloud: return BrainEndpoint.cloudIntentURL
         }
     }
