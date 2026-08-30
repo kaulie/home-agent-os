@@ -1,6 +1,6 @@
 # 本机服务拓扑（LAN Mac）
 
-家里这台 Mac（`192.168.3.73`）上跑哪些进程、端口、怎么起。地址数字以 [`config/endpoints.json`](../config/endpoints.json) 为准。
+家里这台 Mac（`192.168.3.84`）上跑哪些进程、端口、怎么起。地址数字以 [`config/endpoints.json`](../config/endpoints.json) 为准。
 
 **没有 launchd / systemd 自启。** 电脑重启后这些进程全停，按下面「开机拉起」再开一遍。改了端口、角色或启停方式，同步改本文。
 
@@ -54,7 +54,7 @@ cd "$ROOT/mac" && nohup ./run_mac_edge.sh >> data/mac_edge.out 2>&1 &
 | 云 Brain | 云 `:9527` | 不随本机重启；`GET http://115.190.153.53:9527/health` |
 | pronunciation-service | 9190 | 发音打分 sidecar；`cd pronunciation-service && ./run.sh`。未点名不要当常驻 |
 | Cast Receiver `:9095` | 9095 | Edge 里配了 `MAC_EDGE_CAST_DISPLAY_URL`；独立 Receiver 进程另开 |
-| img-server 旧 home-server | 曾 `192.168.3.65:8080` | 现默认本机 `192.168.3.73:8080` |
+| img-server 旧 home-server | 曾 `192.168.3.65:8080` | 现默认本机 `192.168.3.84:8080` |
 | Ollama | 本机 App | 与 Home Agent 栈无关 |
 
 laptop 角色的 Mac Edge **不广告** GoPro / img-server（img-server 是独立 HTTP，不是 capability）。

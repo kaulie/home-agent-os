@@ -1,10 +1,10 @@
 #!/bin/bash
-# Deploy LAN Brain to a remote host (default 192.168.3.73).
+# Deploy LAN Brain to a remote host (default 192.168.3.84).
 # Requires SSH Remote Login on the target (macOS: 系统设置 → 通用 → 共享 → 远程登录).
 #
 # Usage:
 #   ./server/deploy/deploy_lan_brain.sh              # Host lan-brain from ~/.ssh/config
-#   BRAIN_HOST=kaulie@192.168.3.73 ./server/deploy/deploy_lan_brain.sh
+#   BRAIN_HOST=kaulie@192.168.3.84 ./server/deploy/deploy_lan_brain.sh
 #   BRAIN_REMOTE_ROOT=~/home-agent-os ./server/deploy/deploy_lan_brain.sh
 set -euo pipefail
 
@@ -73,6 +73,6 @@ echo
 EOF
 
 echo "==> LAN ping from this machine"
-curl -sf "http://192.168.3.73:9527/api/v1/ping" | head -c 200
+curl -sf "http://192.168.3.84:9527/api/v1/ping" | head -c 200
 echo
 echo "done"
