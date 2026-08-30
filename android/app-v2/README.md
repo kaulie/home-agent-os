@@ -53,7 +53,7 @@ com.smarthome.livingroom_v2
 ## Command 管线（对齐 iOS）
 
 - 拉取 URL：`BuildConfig.DEFAULT_COMMANDS_PULL_URL`  
-  `http://192.168.3.73:9527/api/v1/devices/living-room/intents?intent_status=intent_parsed`
+  `http://192.168.3.84:9527/api/v1/devices/living-room/intents?intent_status=intent_parsed`
 - 响应：`{ "intents": [ { "id", "status", "execution_plan": [{ "capability", "step" }] } ] }`  
   → 展开为带 `intent_id` 的 `Command[]`（兼容旧 `{ "commands": [...] }`）
 - Agent 每个 tick：heartbeat → **拉服务器 intents** → CommandHandler（标准意图管线）  
@@ -73,7 +73,7 @@ com.smarthome.livingroom_v2
 3. 每 **15 秒** `POST /api/v1/edge-heartbeat`（必须带已签发 id + `participant_id` + `endpoints`；同 tick 拉 intents）  
 4. 调试 Skill：UI 按钮走 `invokeLocalSkillAction`（单点，非意图管线）；业务任务靠真服 intents 拉取 
 
-默认服务器：`http://192.168.3.73:9527`（`BuildConfig.DEFAULT_BRAIN_BASE_URL`）。
+默认服务器：`http://192.168.3.84:9527`（`BuildConfig.DEFAULT_BRAIN_BASE_URL`）。
 
 调试：UI「清除本地 edgeId」可强制下次重新 register。
 

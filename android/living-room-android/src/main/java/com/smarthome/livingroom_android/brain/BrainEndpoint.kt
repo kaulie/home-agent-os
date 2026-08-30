@@ -6,7 +6,7 @@ package com.smarthome.livingroom_android.brain
  * Fresh-install defaults: edit `config/endpoints.json` then `python3 tools/sync_endpoints.py`.
  */
 object BrainEndpoint {
-    const val DEFAULT_LAN_BASE = "http://192.168.3.73:9527"
+    const val DEFAULT_LAN_BASE = "http://192.168.3.84:9527"
     const val DEFAULT_CLOUD_BASE = "http://115.190.153.53:9527"
 
     enum class Mode {
