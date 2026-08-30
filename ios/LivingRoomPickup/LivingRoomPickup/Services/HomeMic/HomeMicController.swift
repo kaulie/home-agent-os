@@ -30,6 +30,7 @@ final class HomeMicController: NSObject {
     private(set) var connectionState: HomeMicConnectionState = .disconnected
     /// True while local TTS is speaking (skip uploading that audio).
     private(set) var isSpeakingLocally = false
+    private var speakWatchdog: DispatchWorkItem?
 
     /// 0…1, always on main.
     var onAudioLevel: ((Float) -> Void)?
@@ -212,11 +213,11 @@ final class HomeMicController: NSObject {
     func speakLocally(_ text: String) {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
-        // Must run on main (HAP1 already dispatches here). Pause engine first so
-        // AVSpeech does not fight a live input graph on iOS 12.
+        // iOS 12 / old phones: pausing AVAudioEngine + AVSpeech + resume
+        // (or overrideOutputAudioPort) often hard-crashes within ms of HAP1 speak.
+        // Keep the engine running; only mute uplink via isSpeakingLocally.
+        speakWatchdog?.cancel()
         isSpeakingLocally = true
-        capture.pauseEngine()
-        prepareAudioSessionForSpeak()
         speech.stopSpeaking(at: .immediate)
         let utterance = AVSpeechUtterance(string: body)
         if let voice = AVSpeechSynthesisVoice(language: "zh-CN") {
@@ -225,28 +226,24 @@ final class HomeMicController: NSObject {
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         publishStatus("正在回复…")
         speech.speak(utterance)
-    }
-
-    private func prepareAudioSessionForSpeak() {
-        let session = AVAudioSession.sharedInstance()
-        do {
-            // Same category as capture — avoid route flip. No allowBluetooth:
-            // route churn under AVAudioEngine is unstable on old phones.
-            try session.setCategory(
-                .playAndRecord,
-                mode: .default,
-                options: [.defaultToSpeaker, .duckOthers]
-            )
-            try session.setActive(true, options: [])
-            try session.overrideOutputAudioPort(.speaker)
-        } catch {
-            // Fall back: keep whatever capture configured.
+        // AVSpeech sometimes never calls didFinish after audio glitches.
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self, self.isSpeakingLocally else { return }
+            self.speech.stopSpeaking(at: .immediate)
+            self.finishSpeak()
         }
+        speakWatchdog = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8.0, execute: work)
     }
 
-    private func resumeCaptureAfterSpeak() {
+    private func finishSpeak() {
+        speakWatchdog?.cancel()
+        speakWatchdog = nil
+        isSpeakingLocally = false
         energyGate.reset()
-        capture.resumeEngineIfNeeded()
+        if isListening {
+            publishStatus(client.isConnected ? "拾音中" : "拾音中（等待连接）")
+        }
     }
 
     // MARK: - Private
@@ -317,18 +314,10 @@ final class HomeMicController: NSObject {
 
 extension HomeMicController: AVSpeechSynthesizerDelegate {
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        isSpeakingLocally = false
-        resumeCaptureAfterSpeak()
-        if isListening {
-            publishStatus(client.isConnected ? "拾音中" : "拾音中（等待连接）")
-        }
+        finishSpeak()
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        isSpeakingLocally = false
-        resumeCaptureAfterSpeak()
-        if isListening {
-            publishStatus(client.isConnected ? "拾音中" : "拾音中（等待连接）")
-        }
+        finishSpeak()
     }
 }
