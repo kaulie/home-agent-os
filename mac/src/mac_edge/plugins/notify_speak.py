@@ -7,6 +7,7 @@ Set MAC_EDGE_TTS_BACKEND=edge to force edge-tts first (not recommended).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -67,12 +68,15 @@ def _edge_tts_speak(text: str, *, voice: str, timeout_sec: float) -> None:
     if not afplay or not Path(afplay).exists():
         raise NotifySpeakError("afplay not found (needed to play edge-tts audio)")
 
+    from mac_edge.cloud_usage import increment
+
     async def _synthesize(path: Path) -> None:
         communicate = edge_tts.Communicate(text, voice)
         await communicate.save(str(path))
 
     log.info("notify.speak via edge-tts voice=%s text=%r", voice, text[:80])
     tmp: Path | None = None
+    ok = False
     try:
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as fh:
             tmp = Path(fh.name)
@@ -89,6 +93,7 @@ def _edge_tts_speak(text: str, *, voice: str, timeout_sec: float) -> None:
         if proc.returncode != 0:
             err = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
             raise NotifySpeakError(f"afplay failed: {err}")
+        ok = True
     except TimeoutError as e:
         raise NotifySpeakError("edge-tts timed out") from e
     except NotifySpeakError:
@@ -96,6 +101,7 @@ def _edge_tts_speak(text: str, *, voice: str, timeout_sec: float) -> None:
     except Exception as e:
         raise NotifySpeakError(f"edge-tts failed: {e}") from e
     finally:
+        increment("edge.tts", ok)
         if tmp is not None:
             try:
                 tmp.unlink(missing_ok=True)
@@ -241,11 +247,63 @@ def speak(
             raise NotifySpeakError("; ".join(errors)) from None
 
 
-def speak_from_params(params: dict[str, Any], *, timeout_sec: float = DEFAULT_TIMEOUT_SEC) -> str:
+def speak_from_params(
+    params: dict[str, Any],
+    *,
+    timeout_sec: float = DEFAULT_TIMEOUT_SEC,
+    delivery_ingress: str = "",
+    delivery_participant_id: str = "",
+) -> str:
     text = str(params.get("text") or "").strip()
     lang = str(params.get("lang") or "zh_CN").strip() or "zh_CN"
     voice = str(params.get("voice") or "").strip() or None
+    ingress = (delivery_ingress or str(params.get("delivery_ingress") or "")).strip().lower()
+    participant_id = (
+        delivery_participant_id
+        or str(params.get("delivery_participant_id") or "")
+    ).strip()
+    if ingress == "phone_hap1":
+        if _try_phone_hap1_speak(text, participant_id=participant_id):
+            return "spoke via phone_hap1"
+        log.warning("phone_hap1 speak failed; falling back to Mac TTS text=%r", text[:80])
     return speak(text, lang=lang, voice=voice, timeout_sec=timeout_sec)
+
+
+def _try_phone_hap1_speak(text: str, *, participant_id: str = "") -> bool:
+    """POST to mac_voice speak bridge (HAP1 downlink). Returns True if phone got it."""
+    body = (text or "").strip()
+    if not body:
+        return False
+    import urllib.error
+    import urllib.request
+
+    port = int(os.environ.get("MAC_VOICE_PICKUP_SPEAK_BRIDGE_PORT") or "8793")
+    url = f"http://127.0.0.1:{port}/v1/pickup/speak"
+    payload = json.dumps(
+        {"text": body, "participant_id": participant_id},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
+            raw = resp.read()
+            data = json.loads(raw.decode("utf-8") or "{}")
+            ok = bool(data.get("ok")) and int(data.get("sent") or 0) > 0
+            if ok:
+                log.info(
+                    "notify.speak via phone_hap1 sent=%s text=%r",
+                    data.get("sent"),
+                    body[:80],
+                )
+            return ok
+    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError, ValueError) as e:
+        log.warning("phone_hap1 speak bridge unreachable: %s", e)
+        return False
 
 
 def prefetch_speak(

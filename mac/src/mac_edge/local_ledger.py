@@ -16,6 +16,7 @@ from typing import Any
 from mac_edge.brain_client import BrainClient, BrainError
 from mac_edge.execution_timing import parse_execution_timing, timing_gate
 from mac_edge.brain_time import BRAIN_CLOCK
+from mac_edge.multi_brain import remember_intent_origin
 from mac_edge.timing_beats import get_beat, set_beat
 
 log = logging.getLogger("mac_edge.ledger")
@@ -70,6 +71,7 @@ class LocalLedger:
             if not iid:
                 continue
             self._intents[iid] = _normalize_record(item)
+            _remember_record_origin(self._intents[iid])
 
     def _persist_unlocked(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -486,7 +488,15 @@ def _normalize_record(item: dict[str, Any], *, from_brain: bool = False) -> dict
                     step["synced"] = False
             plan.append(step)
     rec["execution_plan"] = plan
+    _remember_record_origin(rec)
     return rec
+
+
+def _remember_record_origin(rec: dict[str, Any]) -> None:
+    iid = str(rec.get("id") or rec.get("intent_id") or "").strip()
+    origin = str(rec.get("_brain_origin") or rec.get("brain_origin") or "").strip()
+    if iid and origin:
+        remember_intent_origin(iid, origin)
 
 
 _SYNC_QUEUE_CAP = 1024

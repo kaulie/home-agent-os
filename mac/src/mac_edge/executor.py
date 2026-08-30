@@ -509,6 +509,14 @@ def handle_intent(
                     message,
                 )
             else:
+                if cap == "notify.speak":
+                    ctx = intent.get("source_context")
+                    if isinstance(ctx, dict):
+                        params = dict(params)
+                        params["delivery_ingress"] = str(ctx.get("ingress") or "").strip()
+                        params["delivery_participant_id"] = str(
+                            ctx.get("input_participant_id") or ctx.get("device_id") or ""
+                        ).strip()
                 ok, message, outputs = _execute_capability_bounded(
                     cap, cap_asset, params=params, config=config
                 )

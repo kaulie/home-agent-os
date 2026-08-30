@@ -244,31 +244,37 @@ def _home_mic_capture_loop(
     """Home Mic PCM (via Brain relay) → same utterance queue as USB mic."""
     last_energy_log = 0.0
     peak = 0.0
-    # Home Mic AGC raises the noise floor a lot; use a high absolute gate so
-    # continuous PCM does not dump 8s noise clips into Volcano STT.
-    energy = 4000.0
-    start_th = 6500.0
-    noise_ema = 800.0
+    # Phone AGC lifts levels a lot, but 4k/6.5k was too deaf for quiet「面条面条」
+    # on old hardware (iPhone 6). Keep above USB floors; clamp noise so the
+    # adaptive log/hold does not ratchet forever while music plays.
+    energy = 1500.0
+    start_th = 2200.0
+    noise_ema = 400.0
+    noise_cap = 2200.0
     try:
-        chunks = ingest.iter_pcm()
+        # Prefer tagged PCM so multi-phone sessions keep the right participant_id.
+        chunks_tagged = ingest.iter_pcm_tagged()
+        current_pid = {"v": (ingest.participant_id or "").strip()}
 
         def watched() -> Any:
             nonlocal last_energy_log, peak, noise_ema
-            for chunk in chunks:
+            for chunk, pid in chunks_tagged:
                 if stop.is_set():
                     return
+                if pid:
+                    current_pid["v"] = pid
                 level = _rms_s16le(chunk)
                 if level > peak:
                     peak = level
-                # Track quiet-ish baseline; adapt gate above it.
-                if level < max(noise_ema * 1.8, start_th):
-                    noise_ema = noise_ema * 0.97 + level * 0.03
+                # Track quiet-ish baseline; do not let music/AGC inflate forever.
+                if level < max(noise_ema * 1.8, start_th * 0.85):
+                    noise_ema = min(noise_cap, noise_ema * 0.97 + level * 0.03)
                 now = time.time()
                 if now - last_energy_log >= 5.0:
-                    dyn = max(energy, noise_ema * 3.0)
+                    dyn = max(energy, min(noise_ema * 2.5, start_th))
                     log.info(
                         "phone_hap1 alive participant=%s peak_rms=%.0f gate=%.0f noise=%.0f pcm_in=%d (queue=%d)",
-                        ingest.participant_id or "-",
+                        current_pid["v"] or ingest.participant_id or "-",
                         peak,
                         dyn,
                         noise_ema,
@@ -282,33 +288,31 @@ def _home_mic_capture_loop(
         def watched_levels() -> Any:
             for chunk in watched():
                 level = _rms_s16le(chunk)
-                dyn_start = max(start_th, noise_ema * 4.0)
+                dyn_start = max(start_th * 0.85, min(noise_ema * 3.0, start_th * 1.4))
                 if level >= dyn_start:
                     activity.note("high")
                 yield chunk
 
-        def dynamic_threshold() -> float:
-            return max(energy, noise_ema * 3.0)
-
-        # iter_utterances takes fixed thresholds; approximate with high floor.
-        gate_energy = energy
-        gate_start = start_th
+        # Slightly shorter min + longer pre-roll helps double wake on old phones.
+        phone_silence_ms = max(700, min(int(cfg.silence_ms), 900))
+        phone_min_speech_ms = max(280, min(int(cfg.min_speech_ms), 350))
 
         for utt in iter_utterances(
             watched_levels(),
             format=PCM_16K_MONO,
-            energy_threshold=gate_energy,
-            start_threshold=gate_start,
-            silence_ms=cfg.silence_ms,
-            min_speech_ms=cfg.min_speech_ms,
+            energy_threshold=energy,
+            start_threshold=start_th,
+            silence_ms=phone_silence_ms,
+            min_speech_ms=phone_min_speech_ms,
             max_speech_ms=cfg.max_speech_ms,
+            pre_roll_ms=300,
             muted=lambda: False,
             on_activity=activity.note,
         ):
             if stop.is_set():
                 break
-            # Identity = iPhone Runtime participant_id from HAP1 hello (heartbeat registration).
-            input_pid = (ingest.participant_id or "").strip()
+            # Prefer per-chunk owner; fall back to last HAP1 hello identity.
+            input_pid = (current_pid["v"] or ingest.participant_id or "").strip()
             log.info(
                 "phone_hap1 utterance participant=%s bytes=%d",
                 input_pid or "-",
@@ -321,9 +325,22 @@ def _home_mic_capture_loop(
         log.exception("home_mic capture loop died")
 
 
-async def _ack_wake(cfg: VoiceConfig, gate: WakeGate, post_intent: bool) -> None:
+async def _ack_wake(
+    cfg: VoiceConfig,
+    gate: WakeGate,
+    post_intent: bool,
+    *,
+    ingress: str = "",
+    participant_id: str = "",
+) -> None:
     try:
-        await asyncio.to_thread(handle_wake, cfg, post=post_intent)
+        await asyncio.to_thread(
+            handle_wake,
+            cfg,
+            post=post_intent,
+            ingress=ingress,
+            participant_id=participant_id,
+        )
     except Exception:
         log.exception("wake ack local echo failed")
     gate.arm_after_ack()
@@ -433,6 +450,12 @@ async def _run_live_locked(
         )
         try:
             ingest.start()
+            from mac_voice.audio.pickup_speak_bridge import start_speak_bridge
+
+            start_speak_bridge(
+                host="127.0.0.1",
+                port=int(getattr(cfg, "pickup_speak_bridge_port", 8793) or 8793),
+            )
             pickup_thread = threading.Thread(
                 target=_home_mic_capture_loop,
                 args=(ingest, cfg, utt_q, stop, activity),
@@ -547,7 +570,15 @@ async def _run_live_locked(
             if gate is not None and gate.consume_ack():
                 if wake_task is not None and not wake_task.done():
                     wake_task.cancel()
-                wake_task = asyncio.create_task(_ack_wake(cfg, gate, post_intent))
+                wake_task = asyncio.create_task(
+                    _ack_wake(
+                        cfg,
+                        gate,
+                        post_intent,
+                        ingress=utt.ingress or "",
+                        participant_id=input_pid,
+                    )
+                )
             if command is None:
                 continue
             handle_transcript(
@@ -563,6 +594,12 @@ async def _run_live_locked(
         stop.set()
         if ingest is not None:
             ingest.stop()
+        try:
+            from mac_voice.audio.pickup_speak_bridge import stop_speak_bridge
+
+            stop_speak_bridge()
+        except Exception:
+            pass
         source.close()
         thread.join(timeout=2.0)
         if pickup_thread is not None:

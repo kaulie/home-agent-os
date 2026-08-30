@@ -1,4 +1,4 @@
-"""Home Mic (Brain audio_pickup) → local HAP1 ingest → 16k PCM for voice.stream."""
+"""Home Mic (phone HAP1) → local ingest → 16k PCM for voice.stream + speak downlink."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import queue
 import socket
 import struct
 import threading
-from typing import Iterator
+from typing import Any, Iterator
 
 import numpy as np
 
@@ -20,7 +20,21 @@ MAGIC = b"HAP1"
 HEADER_SIZE = 10
 FRAME_HEARTBEAT = 1
 FRAME_PCM = 2
+FRAME_COMMAND = 3
 FRAME_HELLO = 4
+
+_active_lock = threading.Lock()
+_active_server: "PickupIngestServer | None" = None
+
+
+def get_active_ingest() -> "PickupIngestServer | None":
+    with _active_lock:
+        return _active_server
+
+
+def pack_frame(frame_type: int, payload: bytes = b"") -> bytes:
+    body = payload or b""
+    return MAGIC + struct.pack(">BBI", frame_type & 0xFF, 0, len(body)) + body
 
 
 def resample_s16le_mono(pcm: bytes, src_rate: int, dst_rate: int = 16_000) -> bytes:
@@ -74,7 +88,7 @@ def read_frame(sock: socket.socket) -> tuple[int, bytes] | None:
 
 
 class PickupIngestServer:
-    """Accept Brain-relayed Home Mic HAP1 and expose 16 kHz PCM chunks."""
+    """Accept phone HAP1; expose 16 kHz PCM; downlink speak commands on same TCP."""
 
     def __init__(
         self,
@@ -89,7 +103,7 @@ class PickupIngestServer:
         self._chunk_bytes = int(
             PCM_16K_MONO.sample_rate * (chunk_ms / 1000.0) * PCM_16K_MONO.sample_width
         )
-        self._q: queue.Queue[bytes | None] = queue.Queue(maxsize=max(8, queue_max))
+        self._q: queue.Queue[tuple[bytes, str] | None] = queue.Queue(maxsize=max(8, queue_max))
         self._stop = threading.Event()
         self._sock: socket.socket | None = None
         self._thread: threading.Thread | None = None
@@ -98,6 +112,8 @@ class PickupIngestServer:
         self._sample_rate = 44_100
         self._pcm_bytes = 0
         self._lock = threading.Lock()
+        # peer -> {conn, participant_id, device_id}
+        self._clients: dict[str, dict[str, Any]] = {}
 
     @property
     def device_id(self) -> str:
@@ -115,6 +131,11 @@ class PickupIngestServer:
         with self._lock:
             return self._pcm_bytes
 
+    @property
+    def connected_count(self) -> int:
+        with self._lock:
+            return len(self._clients)
+
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
@@ -131,10 +152,27 @@ class PickupIngestServer:
             daemon=True,
         )
         self._thread.start()
+        global _active_server
+        with _active_lock:
+            _active_server = self
         log.info("phone_hap1 ingest listening %s:%s (→ voice.stream STT)", self._host, self._port)
 
     def stop(self) -> None:
         self._stop.set()
+        global _active_server
+        with _active_lock:
+            if _active_server is self:
+                _active_server = None
+        with self._lock:
+            clients = list(self._clients.values())
+            self._clients.clear()
+        for meta in clients:
+            conn = meta.get("conn")
+            if isinstance(conn, socket.socket):
+                try:
+                    conn.close()
+                except OSError:
+                    pass
         if self._sock is not None:
             try:
                 self._sock.close()
@@ -146,7 +184,47 @@ class PickupIngestServer:
         except queue.Full:
             pass
 
+    def send_speak(self, text: str, *, participant_id: str = "") -> int:
+        """Downlink HAP1 speak command. Returns number of phones notified."""
+        body = (text or "").strip()
+        if not body:
+            return 0
+        want = (participant_id or "").strip()
+        payload = json.dumps(
+            {"type": "speak", "text": body},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        frame = pack_frame(FRAME_COMMAND, payload)
+        sent = 0
+        with self._lock:
+            targets = list(self._clients.items())
+        for peer, meta in targets:
+            pid = str(meta.get("participant_id") or "").strip()
+            if want and pid and pid != want and str(meta.get("device_id") or "") != want:
+                continue
+            conn = meta.get("conn")
+            if not isinstance(conn, socket.socket):
+                continue
+            try:
+                conn.sendall(frame)
+                sent += 1
+                log.info(
+                    "phone_hap1 speak → %s participant=%s text=%r",
+                    peer,
+                    pid or "-",
+                    body[:80],
+                )
+            except OSError as e:
+                log.warning("phone_hap1 speak failed peer=%s: %s", peer, e)
+        return sent
+
     def iter_pcm(self, chunk_ms: int = 100) -> Iterator[bytes]:
+        """Yield 16 kHz PCM only (legacy). Prefer iter_pcm_tagged for multi-phone."""
+        for pcm, _pid in self.iter_pcm_tagged(chunk_ms=chunk_ms):
+            yield pcm
+
+    def iter_pcm_tagged(self, chunk_ms: int = 100) -> Iterator[tuple[bytes, str]]:
         del chunk_ms
         while not self._stop.is_set():
             try:
@@ -159,20 +237,47 @@ class PickupIngestServer:
                 continue
             yield item
 
-    def _push(self, pcm16k: bytes) -> None:
+    def _push(self, pcm16k: bytes, participant_id: str = "") -> None:
         if not pcm16k:
             return
+        pid = (participant_id or "").strip()
+        item = (pcm16k, pid)
         try:
-            self._q.put_nowait(pcm16k)
+            self._q.put_nowait(item)
         except queue.Full:
             try:
                 self._q.get_nowait()
             except queue.Empty:
                 pass
             try:
-                self._q.put_nowait(pcm16k)
+                self._q.put_nowait(item)
             except queue.Full:
                 pass
+
+    def _register_client(
+        self,
+        peer: str,
+        conn: socket.socket,
+        *,
+        participant_id: str,
+        device_id: str,
+    ) -> None:
+        with self._lock:
+            self._clients[peer] = {
+                "conn": conn,
+                "participant_id": participant_id,
+                "device_id": device_id,
+            }
+            if device_id:
+                self._device_id = device_id
+            if participant_id:
+                self._participant_id = participant_id
+            elif not self._participant_id and device_id:
+                self._participant_id = device_id
+
+    def _unregister_client(self, peer: str) -> None:
+        with self._lock:
+            self._clients.pop(peer, None)
 
     def _accept_loop(self) -> None:
         while not self._stop.is_set():
@@ -198,8 +303,10 @@ class PickupIngestServer:
         conn.settimeout(30.0)
         peer = f"{addr[0]}:{addr[1]}"
         device_id = ""
+        participant_id = ""
         sample_rate = 44_100
         pending = bytearray()
+        registered = False
         log.info("home_mic ingest relay connected from=%s", peer)
         try:
             while not self._stop.is_set():
@@ -227,47 +334,64 @@ class PickupIngestServer:
                     except (TypeError, ValueError):
                         sample_rate = 44_100
                     with self._lock:
-                        self._device_id = device_id or peer
-                        if participant_id:
-                            self._participant_id = participant_id
-                        elif not self._participant_id:
-                            self._participant_id = self._device_id
                         self._sample_rate = sample_rate
+                    self._register_client(
+                        peer,
+                        conn,
+                        participant_id=participant_id or device_id or peer,
+                        device_id=device_id or peer,
+                    )
+                    registered = True
                     log.info(
                         "phone_hap1 hello participant=%s device=%s rate=%s from=%s",
-                        self.participant_id,
-                        self.device_id,
+                        participant_id or device_id or "-",
+                        device_id or "-",
                         sample_rate,
                         peer,
                     )
                     continue
                 if frame_type == FRAME_HEARTBEAT:
+                    # Echo so the phone can detect half-open TCP after Mac restart.
+                    try:
+                        conn.sendall(pack_frame(FRAME_HEARTBEAT, b"{}"))
+                    except OSError:
+                        break
                     continue
                 if frame_type != FRAME_PCM:
                     continue
+                if not registered:
+                    self._register_client(
+                        peer,
+                        conn,
+                        participant_id=device_id or peer,
+                        device_id=device_id or peer,
+                    )
+                    registered = True
                 pcm16 = resample_s16le_mono(payload, sample_rate, PCM_16K_MONO.sample_rate)
                 if not pcm16:
                     continue
                 with self._lock:
                     self._pcm_bytes += len(payload)
                 pending.extend(pcm16)
+                owner = participant_id or device_id or peer
                 while len(pending) >= self._chunk_bytes:
                     chunk = bytes(pending[: self._chunk_bytes])
                     del pending[: self._chunk_bytes]
-                    self._push(chunk)
+                    self._push(chunk, owner)
         except ValueError as e:
             log.warning("home_mic ingest protocol error from=%s: %s", peer, e)
         except OSError:
             pass
         finally:
+            self._unregister_client(peer)
             try:
                 conn.close()
             except OSError:
                 pass
             if pending:
-                self._push(bytes(pending))
+                self._push(bytes(pending), participant_id or device_id or peer)
             log.info(
                 "phone_hap1 disconnected from=%s participant=%s",
                 peer,
-                self.participant_id or device_id or "-",
+                participant_id or device_id or "-",
             )

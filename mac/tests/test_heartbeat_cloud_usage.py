@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from dataclasses import replace
@@ -27,8 +28,20 @@ def _cfg(**kwargs) -> Config:
 
 
 class HeartbeatCloudUsageTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._usage_path = Path(self._tmpdir.name) / "cloud_usage.json"
+        self._prev = os.environ.get("MAC_CLOUD_USAGE_PATH")
+        os.environ["MAC_CLOUD_USAGE_PATH"] = str(self._usage_path)
+        drain()
+
     def tearDown(self) -> None:
         drain()
+        if self._prev is None:
+            os.environ.pop("MAC_CLOUD_USAGE_PATH", None)
+        else:
+            os.environ["MAC_CLOUD_USAGE_PATH"] = self._prev
+        self._tmpdir.cleanup()
 
     def test_brain_client_includes_cloud_usage_delta(self) -> None:
         cfg = _cfg()
