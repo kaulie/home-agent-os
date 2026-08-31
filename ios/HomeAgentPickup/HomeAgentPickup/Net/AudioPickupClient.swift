@@ -63,12 +63,19 @@ final class AudioPickupClient {
         connectGeneration += 1
         let generation = connectGeneration
 
+        if let refuse = MdnsDiscovery.refuseNonIPv4TCP(host) {
+            throw AudioPickupClientError.sendFailed(refuse)
+        }
+        guard let ipv4 = IPv4Address(host.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw AudioPickupClientError.sendFailed("TCP 目标不是局域网 IPv4（\(host)）")
+        }
+
         let tcp = NWProtocolTCP.Options()
         tcp.noDelay = true
         tcp.enableKeepalive = true
         let params = NWParameters(tls: nil, tcp: tcp)
         let conn = NWConnection(
-            host: NWEndpoint.Host(host),
+            host: .ipv4(ipv4),
             port: NWEndpoint.Port(rawValue: port) ?? 8792,
             using: params
         )
@@ -76,29 +83,49 @@ final class AudioPickupClient {
 
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             let once = ConnectOnce()
+            func fail(_ message: String) {
+                once.finish {
+                    self.sessionReady = false
+                    cont.resume(throwing: AudioPickupClientError.sendFailed(message))
+                }
+            }
+            let timeout = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.queue.async {
+                    fail("TCP 连接超时（不是 DNS）· IPv4 \(host):\(port)")
+                    conn.cancel()
+                }
+            }
+            self.queue.asyncAfter(deadline: .now() + 5, execute: timeout)
             conn.stateUpdateHandler = { [weak self] state in
                 guard let self else { return }
                 switch state {
                 case .ready:
+                    timeout.cancel()
                     once.finish {
-                        guard generation == self.connectGeneration else { return }
+                        if generation != self.connectGeneration {
+                            self.sessionReady = false
+                            cont.resume(throwing: AudioPickupClientError.sendFailed("连接已取消"))
+                            return
+                        }
                         self.sessionReady = true
                         self.lastActivityAt = Date()
                         self.lastReceiveAt = Date()
                         cont.resume()
                     }
                 case .failed(let err):
-                    once.finish {
-                        guard generation == self.connectGeneration else { return }
-                        self.sessionReady = false
-                        cont.resume(throwing: AudioPickupClientError.sendFailed(err.localizedDescription))
-                    }
+                    timeout.cancel()
+                    fail(err.localizedDescription)
                 case .cancelled:
-                    once.finish {
-                        guard generation == self.connectGeneration, !self.closingIntentionally else { return }
-                        self.sessionReady = false
-                        cont.resume(throwing: AudioPickupClientError.sendFailed("连接已取消"))
-                    }
+                    timeout.cancel()
+                    // Must resume even when close() set closingIntentionally, or connect() hangs forever.
+                    fail("连接已取消")
+                case .waiting(let err):
+                    // Stay in waiting until the 5s timeout; still surface path errors in logs.
+                    DiscoveryDebugLog.shared.log(
+                        "TCP waiting \(host):\(port) \(err.localizedDescription)",
+                        category: "connect"
+                    )
                 default:
                     break
                 }

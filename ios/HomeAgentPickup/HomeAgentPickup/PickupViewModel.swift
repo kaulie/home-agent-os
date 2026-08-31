@@ -157,6 +157,21 @@ final class PickupViewModel: NSObject, ObservableObject {
         }
     }
 
+    /// Rediscover gateway IPv4 and abort any hung TCP so the loop connects to the new host.
+    func rediscoverGatewayAndReconnect() async {
+        connectionLabel = "正在发现 gateway.local…"
+        await PickupSettings.autoDiscoverGateway()
+        // Abort hung SYN to the old DHCP IP so connectionLoop can use the new IPv4.
+        client.close()
+        if PickupSettings.serverHost.isEmpty {
+            lastError = MdnsDiscovery.refuseNonIPv4TCP("") ?? "尚未发现 IPv4"
+            connectionLabel = lastError
+        } else {
+            lastError = ""
+            connectionLabel = "连接中…"
+        }
+    }
+
     private func wireClient() {
         speech.delegate = self
         client.onCommand = { [weak self] cmd in
@@ -181,11 +196,19 @@ final class PickupViewModel: NSObject, ObservableObject {
                 isConnected = false
                 if PickupSettings.serverHost.isEmpty {
                     connectionLabel = "正在发现 gateway.local…"
-                    try await PickupSettings.autoDiscoverGateway()
+                    await PickupSettings.autoDiscoverGateway()
                     if PickupSettings.serverHost.isEmpty {
+                        lastError = MdnsDiscovery.refuseNonIPv4TCP("") ?? "尚未发现 IPv4"
                         try await Task.sleep(nanoseconds: 2_000_000_000)
                         continue
                     }
+                }
+                if let refuse = MdnsDiscovery.refuseNonIPv4TCP(PickupSettings.serverHost) {
+                    PickupSettings.serverHost = ""
+                    lastError = refuse
+                    connectionLabel = refuse
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                    continue
                 }
                 connectionLabel = "连接中…"
                 try await client.connect(
@@ -223,10 +246,13 @@ final class PickupViewModel: NSObject, ObservableObject {
                 }
             } catch {
                 isConnected = false
-                connectionLabel = "连接失败"
                 lastError = error.localizedDescription
+                connectionLabel = lastError.contains("取消") ? "连接中…" : "连接失败"
+                // Keep last IPv4. Wiping it here would throw away a just-discovered host
+                // (e.g. 84) when aborting a hung connect to the previous IP.
             }
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            let backoff: UInt64 = lastError.contains("取消") ? 200_000_000 : 3_000_000_000
+            try? await Task.sleep(nanoseconds: backoff)
         }
     }
 

@@ -90,7 +90,7 @@ struct DiscoveryDebugLogView: View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("记录探测日志", isOn: $enabled)
                 .font(.subheadline)
-                .onChange(of: enabled) { _, value in
+                .onChange(of: enabled) { value in
                     DiscoveryDebugLog.shared.isEnabled = value
                 }
             if enabled {
@@ -113,7 +113,7 @@ struct DiscoveryDebugLogView: View {
                             .id("log-bottom")
                     }
                     .frame(minHeight: 160, maxHeight: 360)
-                    .onChange(of: lineCount) { _, _ in
+                    .onChange(of: lineCount) { _ in
                         withAnimation(.easeOut(duration: 0.15)) {
                             proxy.scrollTo("log-bottom", anchor: .bottom)
                         }

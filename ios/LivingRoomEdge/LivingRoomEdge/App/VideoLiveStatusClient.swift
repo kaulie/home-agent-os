@@ -124,11 +124,13 @@ struct VideoLiveStatus: Equatable {
 enum VideoLiveStatusError: LocalizedError {
     case missingURL
     case invalidResponse
+    case bonjourHost(String)
 
     var errorDescription: String? {
         switch self {
         case .missingURL: return "未配置 Mac ingest URL"
         case .invalidResponse: return "Mac Edge 返回内容无法解析"
+        case let .bonjourHost(url): return "拒绝用 mDNS 名访问 Mac（\(url)）。请先自动发现 IPv4。"
         }
     }
 }
@@ -138,6 +140,9 @@ struct VideoLiveStatusClient {
     /// Full status (all sessions in `streams`).
     static func fetchStatus(macIngestURL: String) async throws -> VideoLiveStatus {
         let root = macIngestURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if BrainEndpoint.isBonjourHost(root) {
+            throw VideoLiveStatusError.bonjourHost(root)
+        }
         guard !root.isEmpty, let url = URL(string: root + "/api/v1/video-live/status") else {
             throw VideoLiveStatusError.missingURL
         }
@@ -163,6 +168,9 @@ struct VideoLiveStatusClient {
     /// Single session (`status?stream_id=...`); nil when the stream is gone.
     static func fetchSession(macIngestURL: String, streamId: String) async throws -> VideoLiveSession? {
         let root = macIngestURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if BrainEndpoint.isBonjourHost(root) {
+            throw VideoLiveStatusError.bonjourHost(root)
+        }
         guard !root.isEmpty,
               let url = URL(string: root + "/api/v1/video-live/status?stream_id=" + streamId) else {
             throw VideoLiveStatusError.missingURL

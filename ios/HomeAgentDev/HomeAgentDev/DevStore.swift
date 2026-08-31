@@ -146,72 +146,30 @@ final class DevStore: ObservableObject {
             var ok = false
             if forceDiscovery {
                 DevBrainEndpoint.lastSuccessfulLanHost = nil
+                lan = DevBrainEndpoint.lanConnectBase()
+            }
+            let cachedIP = DevBrainLANHostOrder.ipv4(from: lan)
+            if !forceDiscovery, let cachedIP {
+                probeDetail = "探测已缓存 IP \(cachedIP)…"
+                brainEnvironment.lanProbeDetail = probeDetail
+                ok = await DevBrainProbe.ping(baseURL: "http://\(cachedIP):9527")
+                if ok {
+                    lan = "http://\(cachedIP):9527"
+                    DevBrainEndpoint.rememberSuccessfulLAN(lan)
+                    probeDetail = "\(MdnsDiscovery.brainMdnsHost) → \(lan)（缓存仍通）"
+                }
+            }
+            if !ok {
                 probeDetail = "正在用 mDNS 发现局域网 Brain…"
                 brainEnvironment.lanProbeDetail = probeDetail
-                if let mdns = await MdnsDiscovery.resolve(MdnsDiscovery.brainType, timeout: 5) {
+                DiscoveryDebugLog.shared.log(probeDetail, category: "connect")
+                if let mdns = await MdnsDiscovery.resolveBrainForAutoDiscover(mdnsTimeout: 8) {
                     lan = mdns.baseURL
                     DevBrainEndpoint.rememberSuccessfulLAN(mdns.baseURL)
-                    ok = await DevBrainProbe.ping(baseURL: lan)
-                    if ok {
-                        probeDetail = "mDNS \(MdnsDiscovery.brainMdnsHost) → \(lan)"
-                    } else {
-                        probeDetail = "mDNS 找到 \(lan) 但 ping 失败，改扫描网段…"
-                    }
-                }
-                if !ok, let discovered = await DevBrainLANDiscovery.discover(
-                    configuredLAN: lan,
-                    lastSuccessHost: DevBrainEndpoint.lastSuccessfulLanHost
-                ) {
-                    lan = discovered
-                    DevBrainEndpoint.rememberSuccessfulLAN(discovered)
                     ok = true
-                    probeDetail = "已自动发现局域网 Brain → \(discovered)"
-                } else if !ok {
-                    ok = await DevBrainProbe.ping(baseURL: lan)
-                    if ok {
-                        DevBrainEndpoint.rememberSuccessfulLAN(lan)
-                        probeDetail = "扫描未发现新地址，当前 IP 仍可达"
-                    } else {
-                        probeDetail = "未在本机 Wi‑Fi 发现 Brain（:9527）。"
-                    }
-                }
-            } else {
-                if DevBrainLANHostOrder.ipv4(from: lan) == nil {
-                    probeDetail = "正在用 mDNS 解析 \(MdnsDiscovery.brainMdnsHost)…"
-                    brainEnvironment.lanProbeDetail = probeDetail
-                    if let mdns = await MdnsDiscovery.resolve(MdnsDiscovery.brainType) {
-                        lan = mdns.baseURL
-                        DevBrainEndpoint.rememberSuccessfulLAN(mdns.baseURL)
-                    }
-                }
-                ok = await DevBrainProbe.ping(baseURL: lan)
-                if ok {
-                    DevBrainEndpoint.rememberSuccessfulLAN(lan)
-                    probeDetail = "\(MdnsDiscovery.brainMdnsHost) → \(lan)"
-                } else if looksLAN || routing == .lan {
-                    probeDetail = "局域网 Brain ping 失败（\(lan)），正在 mDNS / 扫描…"
-                    brainEnvironment.lanProbeDetail = probeDetail
-                    if let mdns = await MdnsDiscovery.resolve(MdnsDiscovery.brainType) {
-                        lan = mdns.baseURL
-                        ok = await DevBrainProbe.ping(baseURL: lan)
-                        if ok {
-                            DevBrainEndpoint.rememberSuccessfulLAN(lan)
-                            probeDetail = "mDNS \(MdnsDiscovery.brainMdnsHost) → \(lan)"
-                        }
-                    }
-                    if !ok, let discovered = await DevBrainLANDiscovery.discover(
-                        configuredLAN: lan,
-                        lastSuccessHost: DevBrainEndpoint.lastSuccessfulLanHost
-                    ) {
-                        lan = discovered
-                        DevBrainEndpoint.rememberSuccessfulLAN(discovered)
-                        ok = true
-                        probeDetail = "已自动发现局域网 Brain → \(discovered)"
-                    } else if !ok {
-                        probeDetail = "局域网 Brain 不可达，mDNS / 扫描未找到"
-                    }
+                    probeDetail = "mDNS \(MdnsDiscovery.brainMdnsHost) → \(lan)"
                 } else {
-                    probeDetail = "局域网 Brain ping 失败（\(lan)）"
+                    probeDetail = "未在本机 Wi‑Fi 发现 Brain（:9527）。"
                 }
             }
             probeOk = ok

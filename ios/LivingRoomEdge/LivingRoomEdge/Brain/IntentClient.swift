@@ -4,6 +4,8 @@ import UIKit
 /// One click「对时」snapshot: local + LAN Brain + Cloud Brain, same timestamp format.
 struct ClockSyncSample: Equatable {
     var localAt: Date
+    var lanURL: String = ""
+    var cloudURL: String = ""
     var lanServerAt: Date?
     var cloudServerAt: Date?
     /// Brain `skew_ms` = server − local. Positive = server ahead of this device.
@@ -38,6 +40,9 @@ final class IntentClient {
             return DispatchResult(ok: false, message: "text is empty", snapshot: nil)
         }
         let trimmedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let refuse = BrainEndpoint.refuseBonjourHTTP(trimmedURL) {
+            return DispatchResult(ok: false, message: refuse, snapshot: nil)
+        }
         guard let url = URL(string: trimmedURL), !trimmedURL.isEmpty else {
             return DispatchResult(ok: false, message: "invalid server_url", snapshot: nil)
         }
@@ -128,6 +133,9 @@ final class IntentClient {
     /// Heartbeat-path self-heal should pass `timeout: 3` so one attempt cannot hang on register.
     func registerParticipant(serverURL: String, timeout: TimeInterval = 6) async -> (id: String, ts: Date?)? {
         let trimmedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if BrainEndpoint.refuseBonjourHTTP(trimmedURL) != nil {
+            return nil
+        }
         guard let url = Self.edgeRegisterURL(fromIntentURL: trimmedURL) else {
             return nil
         }
@@ -185,11 +193,14 @@ final class IntentClient {
         serverURL: String,
         participantId: String,
         body: Data? = nil,
-        hardTimeout: TimeInterval = 3
+        hardTimeout: TimeInterval = 5
     ) async -> HeartbeatSend {
         let pid = participantId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pid.isEmpty else { return .failed("participant_id 为空") }
         let trimmedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let refuse = BrainEndpoint.refuseBonjourHTTP(trimmedURL) {
+            return .failed(refuse)
+        }
         guard let url = Self.edgeHeartbeatURL(fromIntentURL: trimmedURL) else {
             return .failed("无法从 \(trimmedURL) 拼出 edge-heartbeat URL")
         }
@@ -229,10 +240,12 @@ final class IntentClient {
             return .ok(at: at, roles: sentRoles)
         } catch let timed as TimedHTTP.Failure {
             return .failed(
-                "心跳请求失败 · \(url.absoluteString) · \(timed.errorDescription ?? timed.localizedDescription)"
+                BrainEndpoint.describeTransportError(timed.underlying, url: url, elapsed: timed.durationLabel)
             )
         } catch {
-            return .failed("心跳请求失败 · \(url.absoluteString) · \(error.localizedDescription)")
+            return .failed(
+                BrainEndpoint.describeTransportError(error, url: url, elapsed: "")
+            )
         }
     }
 
@@ -570,6 +583,9 @@ final class IntentClient {
     /// GET `/api/v1/ping` with `client_time_ms` derived from `clientSentAt`.
     func ping(serverURL: String, clientSentAt: Date, timeout: TimeInterval = 10) async -> ClockPing {
         let trimmedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let refuse = BrainEndpoint.refuseBonjourHTTP(trimmedURL) {
+            return .failed(refuse)
+        }
         let clientTimeMs = Int64((clientSentAt.timeIntervalSince1970 * 1000.0).rounded())
         guard let url = Self.pingURL(fromIntentURL: trimmedURL, clientTimeMs: clientTimeMs) else {
             return .failed("无法从 \(trimmedURL) 拼出 ping URL")
@@ -605,9 +621,11 @@ final class IntentClient {
                 skewMs: skew
             )
         } catch let timed as TimedHTTP.Failure {
-            return .failed(timed.errorDescription ?? timed.localizedDescription)
+            return .failed(
+                BrainEndpoint.describeTransportError(timed.underlying, url: url, elapsed: timed.durationLabel)
+            )
         } catch {
-            return .failed(error.localizedDescription)
+            return .failed(BrainEndpoint.describeTransportError(error, url: url, elapsed: ""))
         }
     }
 

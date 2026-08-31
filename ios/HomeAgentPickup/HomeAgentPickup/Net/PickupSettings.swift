@@ -11,13 +11,17 @@ enum PickupSettings {
     static var serverHost: String {
         get {
             let stored = UserDefaults.standard.string(forKey: hostKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let stored, !stored.isEmpty {
-                if stored.lowercased().hasSuffix(".local") { return "" }
-                return stored
-            }
+            if let stored, MdnsDiscovery.refuseNonIPv4TCP(stored) == nil { return stored }
             return ""
         }
-        set { UserDefaults.standard.set(newValue, forKey: hostKey) }
+        set {
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if MdnsDiscovery.refuseNonIPv4TCP(trimmed) == nil {
+                UserDefaults.standard.set(trimmed, forKey: hostKey)
+            } else {
+                UserDefaults.standard.set("", forKey: hostKey)
+            }
+        }
     }
 
     /// Mac voice.stream Home Mic ingest (HAP1), not Brain.
@@ -50,8 +54,8 @@ enum PickupSettings {
     static var brainIntentURL: String {
         get {
             let stored = UserDefaults.standard.string(forKey: brainURLKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let stored, !stored.isEmpty { return stored }
-            return "http://brain.local:9527/api/v1/intent"
+            if let stored, !stored.isEmpty, !stored.lowercased().contains(".local") { return stored }
+            return ""
         }
         set { UserDefaults.standard.set(newValue, forKey: brainURLKey) }
     }
@@ -62,14 +66,15 @@ enum PickupSettings {
         set { UserDefaults.standard.set(newValue, forKey: feedbackParticipantKey) }
     }
 
-    /// Discover the Mac gateway (voice ingest `_ha-gateway._tcp`) and the LAN Brain
-    /// (`_ha-brain._tcp`) via mDNS, so the app stops depending on a fixed LAN IP.
+    /// Discover Mac gateway (voice ingest) and LAN Brain. TCP/HTTP use ping-verified IPv4.
     static func autoDiscoverGateway() async {
-        if let gateway = await MdnsDiscovery.resolve(MdnsDiscovery.gatewayType) {
+        if let gateway = await MdnsDiscovery.resolveGatewayForAutoDiscover(mdnsTimeout: 8),
+           MdnsDiscovery.refuseNonIPv4TCP(gateway.host) == nil {
             serverHost = gateway.host
             serverPort = gateway.voiceIngestPort
         }
-        if let brain = await MdnsDiscovery.resolve(MdnsDiscovery.brainType) {
+        if let brain = await MdnsDiscovery.resolveBrainForAutoDiscover(mdnsTimeout: 8),
+           MdnsDiscovery.isUsableLanIPv4(brain.host) {
             brainIntentURL = brain.baseURL + "/api/v1/intent"
         }
     }

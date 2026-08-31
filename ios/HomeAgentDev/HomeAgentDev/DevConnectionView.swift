@@ -66,6 +66,15 @@ struct DevConnectionView: View {
                         }
 
                         DevPanel {
+                            VStack(alignment: .leading, spacing: 8) {
+                                DevTheme.sectionLabel("局域网探测日志")
+                                DiscoveryDebugLogView {
+                                    await store.rescanLANBrain()
+                                }
+                            }
+                        }
+
+                        DevPanel {
                             VStack(alignment: .leading, spacing: 12) {
                                 DevTheme.sectionLabel("地址槽")
                                 Text("顶栏显示的是「当前实际连接」。改连接方式要点「更改连接方式」并确认，不会一碰就切走。")

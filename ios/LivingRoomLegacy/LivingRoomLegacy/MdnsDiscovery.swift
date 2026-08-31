@@ -149,40 +149,76 @@ enum MdnsDiscovery {
             let parts = ip.split(separator: ".")
             if parts.count == 4, UInt8(parts[3]) == mine { score += 30 }
         }
-        if let lanIp = txtLanIp, !lanIp.isEmpty, ip == lanIp { score += 400 }
+        // Do not boost TXT lan_ip: it can lag DHCP while A records / last ping-verified IP are live.
         return score
     }
 
     static func bestUsableIPv4(candidates: [String], txtLanIp: String? = nil) -> String? {
-        let usable = candidates.filter { isUsableLanIPv4($0) }
-        guard !usable.isEmpty else { return nil }
-        return usable.max {
+        uniqueUsableIPv4s(candidates).max {
             scoreIPv4ForDiscovery($0, txtLanIp: txtLanIp) < scoreIPv4ForDiscovery($1, txtLanIp: txtLanIp)
         }
     }
 
-    /// Collect candidates from TXT, hostname A records, and Bonjour addresses; pick best-scored.
-    static func preferredIPv4(txt: [String: String], hostName: String, addresses: [Data]?) -> String? {
-        let txtLanIp = txt["lan_ip"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+    static func uniqueUsableIPv4s(_ candidates: [String]) -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        for ip in candidates where isUsableLanIPv4(ip) {
+            if seen.insert(ip).inserted { out.append(ip) }
+        }
+        return out
+    }
+
+    static func allResolvedIPv4s(txt: [String: String], hostName: String, addresses: [Data]?) -> [String] {
         var candidates: [String] = []
+        candidates.append(contentsOf: allIPv4(from: addresses))
+        let host = hostName.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        if !host.isEmpty {
+            candidates.append(contentsOf: resolveIPv4Candidates(host))
+        }
         for key in ["lan_ip", "ipv4", "ip"] {
             if let raw = txt[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
                let ip = firstIPv4(fromHostString: raw) {
                 candidates.append(ip)
             }
         }
+        return uniqueUsableIPv4s(candidates)
+    }
+
+    /// Collect candidates from TXT, hostname A records, and Bonjour addresses; pick A-record first.
+    static func preferredIPv4(txt: [String: String], hostName: String, addresses: [Data]?) -> String? {
+        let txtLanIp = txt["lan_ip"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var candidates: [String] = []
+        var sources: [String] = []
+        for key in ["lan_ip", "ipv4", "ip"] {
+            if let raw = txt[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+               let ip = firstIPv4(fromHostString: raw) {
+                candidates.append(ip)
+                sources.append("txt[\(key)]=\(ip)")
+            }
+        }
         let host = hostName.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
         if !host.isEmpty {
-            candidates.append(contentsOf: resolveIPv4Candidates(host))
+            let fromHost = resolveIPv4Candidates(host)
+            candidates.append(contentsOf: fromHost)
+            if !fromHost.isEmpty {
+                sources.append("getaddrinfo(\(host))=[\(fromHost.joined(separator: ","))]")
+            }
         }
-        candidates.append(contentsOf: allIPv4(from: addresses))
-        let chosen = bestUsableIPv4(candidates: candidates, txtLanIp: txtLanIp)
-        let scored = candidates.filter { isUsableLanIPv4($0) }.map {
-            "\($0)(score=\(scoreIPv4ForDiscovery($0, txtLanIp: txtLanIp)))"
+        let fromAddrs = allIPv4(from: addresses)
+        candidates.append(contentsOf: fromAddrs)
+        if !fromAddrs.isEmpty {
+            sources.append("addresses=[\(fromAddrs.joined(separator: ","))]")
+        }
+        let liveFirst = uniqueUsableIPv4s(fromAddrs + (host.isEmpty ? [] : resolveIPv4Candidates(host)))
+        let chosen = liveFirst.first ?? bestUsableIPv4(candidates: candidates, txtLanIp: txtLanIp)
+        let all = allResolvedIPv4s(txt: txt, hostName: hostName, addresses: addresses)
+        let scored = all.map { ip in
+            "\(ip)(score=\(scoreIPv4ForDiscovery(ip, txtLanIp: nil)))"
         }.joined(separator: ", ")
         dlog(
-            "host=\(hostName) txtLanIp=\(txtLanIp ?? "—") candidates=[\(scored)] → \(chosen ?? "nil")",
+            "host=\(hostName) txtLanIp=\(txtLanIp ?? "—") → \(chosen ?? "nil") (A-record first; TXT lan_ip only if no A) sources=\(sources.joined(separator: "; ")) all=[\(scored)]",
             category: "preferredIPv4"
         )
         return chosen
@@ -399,7 +435,7 @@ enum MdnsDiscovery {
         if ep.port == 8790 { score += 10 }
         if ep.serviceName == "LAN scan" { score += 500 }
         if isOnPreferredLAN(ep.host) { score += 200 }
-        if let lanIp = ep.txt["lan_ip"], ep.host == lanIp { score += 400 }
+        if let lanIp = ep.txt["lan_ip"], ep.host == lanIp { score += 50 }
         if let mine = LANInterface.preferredSubnets().first?.hostOctet {
             let parts = ep.host.split(separator: ".")
             if parts.count == 4, UInt8(parts[3]) == mine { score += 30 }
@@ -606,7 +642,7 @@ enum MdnsDiscovery {
         if name.contains("home agent brain") || name.contains("brain") { score += 50 }
         if ep.port == 9527 { score += 10 }
         if isOnPreferredLAN(ep.host) { score += 200 }
-        if let lanIp = ep.txt["lan_ip"], ep.host == lanIp { score += 400 }
+        if let lanIp = ep.txt["lan_ip"], ep.host == lanIp { score += 50 }
         if let mine = LANInterface.preferredSubnets().first?.hostOctet {
             let parts = ep.host.split(separator: ".")
             if parts.count == 4, UInt8(parts[3]) == mine { score += 30 }

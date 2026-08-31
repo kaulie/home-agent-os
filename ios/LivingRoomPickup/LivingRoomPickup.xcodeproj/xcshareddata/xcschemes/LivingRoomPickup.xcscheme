@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "3209EB8570C34E4485B2AF3F"
+               BlueprintIdentifier = "32FD510948174B9FB9DD6F34"
                BuildableName = "LivingRoomPickup.app"
                BlueprintName = "LivingRoomPickup"
                ReferencedContainer = "container:LivingRoomPickup.xcodeproj">
@@ -43,7 +43,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "3209EB8570C34E4485B2AF3F"
+            BlueprintIdentifier = "32FD510948174B9FB9DD6F34"
             BuildableName = "LivingRoomPickup.app"
             BlueprintName = "LivingRoomPickup"
             ReferencedContainer = "container:LivingRoomPickup.xcodeproj">
@@ -60,7 +60,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "3209EB8570C34E4485B2AF3F"
+            BlueprintIdentifier = "32FD510948174B9FB9DD6F34"
             BuildableName = "LivingRoomPickup.app"
             BlueprintName = "LivingRoomPickup"
             ReferencedContainer = "container:LivingRoomPickup.xcodeproj">

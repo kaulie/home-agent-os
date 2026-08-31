@@ -350,9 +350,13 @@ enum MdnsDiscovery {
     static func rememberBrainIP(_ ip: String) {
         guard isUsableLanIPv4(ip) else { return }
         lastKnownLock.lock()
-        lastKnownBrainIPs.removeAll { $0 == ip }
-        lastKnownBrainIPs.insert(ip, at: 0)
-        if lastKnownBrainIPs.count > 4 { lastKnownBrainIPs.removeLast() }
+        lastKnownBrainIPs = [ip]
+        lastKnownLock.unlock()
+    }
+
+    static func forgetRememberedBrainIPs() {
+        lastKnownLock.lock()
+        lastKnownBrainIPs.removeAll()
         lastKnownLock.unlock()
     }
 

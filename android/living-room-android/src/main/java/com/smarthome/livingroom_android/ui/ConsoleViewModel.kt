@@ -16,6 +16,8 @@ import androidx.lifecycle.viewModelScope
 import com.smarthome.livingroom_android.app.LivingRoomAndroidApp
 import com.smarthome.livingroom_android.brain.BrainEndpoint
 import com.smarthome.livingroom_android.brain.BrainNetworkEnvironment
+import com.smarthome.livingroom_android.brain.DiscoveryDebugLog
+import com.smarthome.livingroom_android.brain.MdnsDiscovery
 import com.smarthome.livingroom_android.brain.dto.EdgeNodeInfo
 import com.smarthome.livingroom_android.brain.dto.ExecutionReport
 import com.smarthome.livingroom_android.brain.dto.ParticipantWire
@@ -139,6 +141,7 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
     private var nextBeforeId: Int? = null
 
     var lanBrainUrl by mutableStateOf(app.settings.lanBrainUrl)
+    var discoveryDebugEnabled by mutableStateOf(DiscoveryDebugLog.isEnabled(app))
     var cloudBrainUrl by mutableStateOf(app.settings.cloudBrainUrl)
     var adminToken by mutableStateOf(app.settings.adminToken)
     var brainRouting by mutableStateOf(app.settings.brainRouting)
@@ -316,11 +319,31 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun applyPinnedBrainUrls() {
-        app.settings.lanBrainUrl = lanBrainUrl
+        val ip = BrainEndpoint.ipv4Base(lanBrainUrl).orEmpty()
+        lanBrainUrl = ip
+        app.settings.lanBrainUrl = ip
         app.settings.cloudBrainUrl = cloudBrainUrl
         app.settings.brainRouting = brainRouting
         viewModelScope.launch { resolveBrainEndpoint(reregister = true) }
     }
+
+    fun setDiscoveryDebug(enabled: Boolean) {
+        DiscoveryDebugLog.setEnabled(getApplication(), enabled)
+        discoveryDebugEnabled = enabled
+    }
+
+    fun autoDiscoverLanBrain() {
+        viewModelScope.launch {
+            val ep = MdnsDiscovery.resolve(getApplication(), MdnsDiscovery.BRAIN_TYPE)
+            if (ep != null) {
+                lanBrainUrl = ep.baseUrl
+                app.settings.lanBrainUrl = ep.baseUrl
+            }
+            resolveBrainEndpoint(reregister = true)
+        }
+    }
+
+    fun lanConnectBase(): String = BrainEndpoint.ipv4Base(lanBrainUrl).orEmpty()
 
     fun predictedBrainMode(routing: BrainEndpoint.Routing): BrainEndpoint.Mode {
         return when (routing) {
@@ -402,15 +425,19 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
             brainEnv = brainEnv.copy(resolveBusy = true)
             try {
                 val routing = brainRouting
-                val lanIntent = BrainEndpoint.intentUrl(lanBrainUrl)
+                val lanBase = lanConnectBase()
+                val lanIntent = BrainEndpoint.intentUrl(lanBase)
                 val cloudIntent = BrainEndpoint.intentUrl(cloudBrainUrl)
                 val looksLAN = brainEnv.looksOnHomeLAN
                 var probeOk: Boolean? = null
                 var probeDetail = ""
                 val shouldProbeLan = routing != BrainEndpoint.Routing.CLOUD &&
                     (looksLAN || routing == BrainEndpoint.Routing.LAN)
-                if (shouldProbeLan) {
-                    val ping = api.ping(lanIntent, timeoutSec = 2)
+                if (lanBase.isEmpty()) {
+                    probeOk = false
+                    probeDetail = "没有可用的局域网 IPv4，不会用 brain.local 发请求。请先自动发现。"
+                } else if (shouldProbeLan) {
+                    val ping = api.ping(lanIntent, timeoutSec = 10)
                     probeOk = ping.ok
                     probeDetail = if (ping.ok) "" else ping.error.ifBlank { "LAN 探测失败" }
                 } else if (routing == BrainEndpoint.Routing.CLOUD) {
@@ -591,8 +618,21 @@ class ConsoleViewModel(application: Application) : AndroidViewModel(application)
         val localAt = System.currentTimeMillis()
         clockSync = ClockSyncSample(localAtMs = localAt)
         viewModelScope.launch {
-            val lanUrl = BrainEndpoint.intentUrl(lanBrainUrl)
+            val lanBase = lanConnectBase()
+            val lanUrl = if (lanBase.isEmpty()) "" else BrainEndpoint.intentUrl(lanBase)
             val cloudUrl = BrainEndpoint.intentUrl(cloudBrainUrl)
+            if (lanUrl.isEmpty()) {
+                val cloud = api.ping(cloudUrl, timeoutSec = 10, clientTimeMs = localAt)
+                clockSync = ClockSyncSample(
+                    localAtMs = localAt,
+                    cloudServerAtMs = if (cloud.ok) cloud.serverTimeMs else null,
+                    cloudSkewMs = if (cloud.ok) cloud.skewMs else null,
+                    lanError = "没有可用的局域网 IPv4，不会用 brain.local 发请求。请先自动发现。",
+                    cloudError = if (cloud.ok) "" else cloud.error,
+                )
+                clockSyncBusy = false
+                return@launch
+            }
             val lanDeferred = async { api.ping(lanUrl, timeoutSec = 10, clientTimeMs = localAt) }
             val cloudDeferred = async { api.ping(cloudUrl, timeoutSec = 10, clientTimeMs = localAt) }
             val lan = lanDeferred.await()

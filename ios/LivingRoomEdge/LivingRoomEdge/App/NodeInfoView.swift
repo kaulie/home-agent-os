@@ -224,6 +224,12 @@ struct NodeInfoView: View {
                                 busy: model.clockSyncBusy
                             )
                         )
+                        if !sample.lanURL.isEmpty {
+                            Text(BrainEndpoint.displayBase(from: sample.lanURL))
+                                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                .foregroundStyle(EdgeTheme.dim)
+                                .textSelection(.enabled)
+                        }
                         if !sample.lanError.isEmpty {
                             Text(sample.lanError)
                                 .font(.system(size: 11, weight: .regular, design: .monospaced))

@@ -103,11 +103,21 @@ final class HomeMicController: NSObject {
         publishStatus("连接中…")
         let host = HomeMicSettings.host
         let port = HomeMicSettings.port
-        if host.isEmpty {
-            isConnecting = false
-            setConnection(.failed("尚未发现 \(HomeMicSettings.defaultMdnsHost)"))
-            publishStatus("正在发现客厅 Mac…")
-            scheduleReconnect()
+        if let refuse = MdnsDiscovery.refuseNonIPv4TCP(host) {
+            HomeMicSettings.host = ""
+            publishStatus("正在发现 \(HomeMicSettings.defaultMdnsHost)…")
+            HomeMicSettings.autoDiscoverGateway { [weak self] gateway in
+                guard let self = self else { return }
+                self.isConnecting = false
+                if gateway == nil {
+                    self.setConnection(.failed(refuse))
+                    if self.isListening {
+                        self.scheduleReconnect()
+                    }
+                    return
+                }
+                self.connectIfNeeded()
+            }
             return
         }
         let deviceId = PickupIdentity.deviceId
@@ -121,6 +131,7 @@ final class HomeMicController: NSObject {
             guard let self = self else { return }
             self.isConnecting = false
             if let error = error {
+                HomeMicSettings.host = ""
                 self.setConnection(.failed(error.localizedDescription))
                 self.publishStatus(error.localizedDescription)
                 if self.isListening {

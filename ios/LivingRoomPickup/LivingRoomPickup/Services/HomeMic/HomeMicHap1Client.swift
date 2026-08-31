@@ -72,12 +72,25 @@ final class HomeMicHap1Client {
         connectGeneration += 1
         let generation = connectGeneration
 
+        if let refuse = MdnsDiscovery.refuseNonIPv4TCP(host) {
+            DispatchQueue.main.async {
+                completion(HomeMicHap1Error.sendFailed(refuse))
+            }
+            return
+        }
+        guard let ipv4 = IPv4Address(host.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            DispatchQueue.main.async {
+                completion(HomeMicHap1Error.sendFailed("TCP 目标不是局域网 IPv4（\(host)）"))
+            }
+            return
+        }
+
         let tcp = NWProtocolTCP.Options()
         tcp.noDelay = true
         tcp.enableKeepalive = true
         let params = NWParameters(tls: nil, tcp: tcp)
         let conn = NWConnection(
-            host: NWEndpoint.Host(host),
+            host: .ipv4(ipv4),
             port: NWEndpoint.Port(rawValue: port) ?? 8792,
             using: params
         )

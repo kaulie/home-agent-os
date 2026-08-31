@@ -118,9 +118,9 @@ enum DevBrainEndpoint {
         return normalizeBase(identity)
     }
 
-    /// Discover LAN Brain via mDNS and remember IPv4. Does not replace the mDNS identity slot.
+    /// Discover LAN Brain via mDNS (A records + ping) and remember IPv4.
     static func autoDiscoverLanBrain() async {
-        guard let brain = await MdnsDiscovery.resolve(MdnsDiscovery.brainType) else { return }
+        guard let brain = await MdnsDiscovery.resolveBrainForAutoDiscover(mdnsTimeout: 8) else { return }
         rememberSuccessfulLAN(brain.baseURL)
         if DevBrainLANHostOrder.ipv4(from: lanBaseURL) != nil {
             lanBaseURL = defaultLanBase

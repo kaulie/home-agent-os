@@ -34,7 +34,7 @@ class AppSettings(context: Context) {
         set(value) = prefs.edit().putLong(KEY_REGISTERED_AT, value).apply()
 
     var lanBrainUrl: String
-        get() = stored(KEY_LAN_BRAIN, BrainEndpoint.DEFAULT_LAN_BASE)
+        get() = stored(KEY_LAN_BRAIN, "")
         set(value) = prefs.edit().putString(KEY_LAN_BRAIN, BrainEndpoint.normalizeBase(value)).apply()
 
     var cloudBrainUrl: String

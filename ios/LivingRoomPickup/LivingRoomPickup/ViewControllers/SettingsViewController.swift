@@ -95,6 +95,50 @@ final class SettingsViewController: UIViewController {
         attachDoneToolbar(to: participantField)
         attachDoneToolbar(to: hostField)
         stack.addArrangedSubview(participantField)
+
+        let discoverBtn = UIButton(type: .system)
+        discoverBtn.setTitle("重新发现 gateway.local", for: .normal)
+        discoverBtn.setTitleColor(.white, for: .normal)
+        discoverBtn.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        discoverBtn.addTarget(self, action: #selector(autoDiscover), for: .touchUpInside)
+        discoverBtn.tag = 8801
+        stack.addArrangedSubview(discoverBtn)
+
+        stack.addArrangedSubview(sectionTitle("局域网探测日志"))
+        let logSwitchRow = UIStackView()
+        logSwitchRow.axis = .horizontal
+        logSwitchRow.alignment = .center
+        logSwitchRow.spacing = 12
+        let logSwitchLabel = UILabel()
+        logSwitchLabel.text = "记录探测日志"
+        logSwitchLabel.font = PickupTheme.fontHint
+        logSwitchLabel.textColor = .white
+        let logSwitch = UISwitch()
+        logSwitch.onTintColor = PickupTheme.success
+        logSwitch.isOn = DiscoveryDebugLog.shared.isEnabled
+        logSwitch.tag = 8803
+        logSwitch.addTarget(self, action: #selector(discoveryLogEnabledChanged), for: .valueChanged)
+        logSwitchRow.addArrangedSubview(logSwitchLabel)
+        logSwitchRow.addArrangedSubview(logSwitch)
+        stack.addArrangedSubview(logSwitchRow)
+        stack.addArrangedSubview(hintLabel("默认关闭。打开后才写日志，避免本页一直刷新。"))
+
+        let logView = UITextView()
+        logView.isEditable = false
+        logView.isScrollEnabled = true
+        logView.font = UIFont(name: "Menlo-Regular", size: 11) ?? UIFont.systemFont(ofSize: 11)
+        logView.backgroundColor = UIColor(white: 0.12, alpha: 1)
+        logView.textColor = PickupTheme.textSecondary
+        logView.translatesAutoresizingMaskIntoConstraints = false
+        logView.heightAnchor.constraint(equalToConstant: 280).isActive = true
+        logView.tag = 8802
+        stack.addArrangedSubview(logView)
+        applyDiscoveryLogVisibility()
+
+        DiscoveryDebugLog.shared.onUpdate = { [weak self] in
+            self?.refreshDiscoveryLog()
+        }
+        refreshDiscoveryLog()
     }
 
     private func refreshValues() {
@@ -160,6 +204,53 @@ final class SettingsViewController: UIViewController {
 
     @objc private func participantChanged() {
         PickupIdentity.participantId = participantField.text ?? ""
+    }
+
+    private func discoveryLogSwitch() -> UISwitch? {
+        stack.arrangedSubviews.compactMap { view -> UISwitch? in
+            (view as? UIStackView)?.arrangedSubviews.compactMap { $0 as? UISwitch }.first { $0.tag == 8803 }
+        }.first
+    }
+
+    private func applyDiscoveryLogVisibility() {
+        let on = DiscoveryDebugLog.shared.isEnabled
+        let logView = stack.arrangedSubviews.first(where: { $0.tag == 8802 })
+        logView?.isHidden = !on
+        discoveryLogSwitch()?.isOn = on
+    }
+
+    @objc private func discoveryLogEnabledChanged() {
+        let on = discoveryLogSwitch()?.isOn ?? false
+        DiscoveryDebugLog.shared.isEnabled = on
+        applyDiscoveryLogVisibility()
+        refreshDiscoveryLog()
+    }
+
+    private func refreshDiscoveryLog() {
+        applyDiscoveryLogVisibility()
+        let logView = stack.arrangedSubviews.first(where: { $0.tag == 8802 }) as? UITextView
+        guard DiscoveryDebugLog.shared.isEnabled else { return }
+        let text = DiscoveryDebugLog.shared.text
+        logView?.text = text.isEmpty ? "（尚无日志；打开开关后再发现）" : text
+    }
+
+    @objc private func autoDiscover() {
+        if let btn = stack.arrangedSubviews.first(where: { $0.tag == 8801 }) as? UIButton {
+            btn.isEnabled = false
+            btn.setTitle("正在发现…", for: .normal)
+        }
+        HomeMicSettings.host = ""
+        HomeMicSettings.autoDiscoverGateway { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.refreshValues()
+                self.refreshDiscoveryLog()
+                if let btn = self.stack.arrangedSubviews.first(where: { $0.tag == 8801 }) as? UIButton {
+                    btn.isEnabled = true
+                    btn.setTitle("重新发现 gateway.local", for: .normal)
+                }
+            }
+        }
     }
 
     @objc private func saveAndClose() {

@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.smarthome.livingroom_android.brain.BrainEndpoint
+import com.smarthome.livingroom_android.brain.DiscoveryDebugLog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,6 +73,26 @@ fun ChatSettingsSheet(vm: ConsoleViewModel, onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = fieldColors(),
             )
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = { vm.autoDiscoverLanBrain() }) {
+                Text("自动发现局域网 Brain", color = EdgeTheme.sand)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text("记录探测日志", color = Color.White, fontSize = 14.sp)
+                    Text("默认关闭。打开后记录 mDNS / ping。", color = EdgeTheme.dim, fontSize = 12.sp)
+                }
+                Switch(
+                    checked = vm.discoveryDebugEnabled,
+                    onCheckedChange = { vm.setDiscoveryDebug(it) },
+                    colors = SwitchDefaults.colors(checkedTrackColor = EdgeTheme.sand, checkedThumbColor = EdgeTheme.ink),
+                )
+            }
+            if (vm.discoveryDebugEnabled && DiscoveryDebugLog.text.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(DiscoveryDebugLog.text, color = EdgeTheme.mist, fontSize = 11.sp)
+            }
             Spacer(Modifier.height(8.dp))
             TextButton(onClick = { vm.applyPinnedBrainUrls() }) {
                 Text("应用地址", color = EdgeTheme.sand)

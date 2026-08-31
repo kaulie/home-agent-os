@@ -75,7 +75,7 @@ private enum LANTestHelpers {
         subnet: Subnet,
         configuredHost: UInt8?,
         lastSuccessHost: UInt8?,
-        commonSuffixes: [UInt8] = [1, 73, 84, 100, 200]
+        commonSuffixes: [UInt8] = [1]
     ) -> [String] {
         var ordered: [UInt8] = []
         func add(_ octet: UInt8) {

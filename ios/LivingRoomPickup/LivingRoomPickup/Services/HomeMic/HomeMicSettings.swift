@@ -7,18 +7,30 @@ enum HomeMicSettings {
     private static let energyGateKey = "pickup.homeMic.energyGate"
 
     static let defaultMdnsHost = "gateway.local"
-    static let defaultHost = "gateway.local"
     static let defaultPort: UInt16 = 8792
 
-    /// Discover the Mac gateway voice ingest (`_ha-gateway._tcp`) via mDNS.
-    /// Persists IPv4 for TCP; UI still shows gateway.local as the identity.
-    @available(iOS 13.0, *)
-    static func autoDiscoverGateway() async {
-        guard let gateway = await MdnsDiscovery.resolve(MdnsDiscovery.gatewayType) else { return }
-        applyDiscovered(gateway)
+    /// Browse `_ha-gateway._tcp`, take A-record IPv4, persist for TCP (never `.local`).
+    static func autoDiscoverGateway(completion: @escaping (MdnsDiscovery.Endpoint?) -> Void) {
+        MdnsDiscovery.resolveGatewayForAutoDiscover(mdnsTimeout: 8) { gateway in
+            if let gateway, MdnsDiscovery.refuseNonIPv4TCP(gateway.host) == nil {
+                applyDiscovered(gateway)
+                DiscoveryDebugLog.shared.log(
+                    "saved gateway TCP \(gateway.host):\(gateway.voiceIngestPort)",
+                    category: "connect"
+                )
+                completion(gateway)
+            } else {
+                DiscoveryDebugLog.shared.log(
+                    "discover result not applied host=\(gateway?.host ?? "nil")",
+                    category: "connect"
+                )
+                completion(nil)
+            }
+        }
     }
 
     static func applyDiscovered(_ gateway: MdnsDiscovery.Endpoint) {
+        guard MdnsDiscovery.refuseNonIPv4TCP(gateway.host) == nil else { return }
         host = gateway.host
         port = gateway.voiceIngestPort
     }
@@ -28,15 +40,16 @@ enum HomeMicSettings {
         get {
             let saved = UserDefaults.standard.string(forKey: hostKey)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if saved.isEmpty { return "" }
-            if saved.lowercased().hasSuffix(".local") { return "" }
-            return saved
+            if MdnsDiscovery.refuseNonIPv4TCP(saved) == nil { return saved }
+            return ""
         }
         set {
-            UserDefaults.standard.set(
-                newValue.trimmingCharacters(in: .whitespacesAndNewlines),
-                forKey: hostKey
-            )
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if MdnsDiscovery.refuseNonIPv4TCP(trimmed) == nil {
+                UserDefaults.standard.set(trimmed, forKey: hostKey)
+            } else {
+                UserDefaults.standard.set("", forKey: hostKey)
+            }
         }
     }
 

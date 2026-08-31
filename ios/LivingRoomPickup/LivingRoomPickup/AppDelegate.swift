@@ -19,13 +19,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         window.rootViewController = nav
         window.makeKeyAndVisible()
         self.window = window
-        // mDNS discovery (iOS 12-safe completion API): follow the Mac gateway host.
-        MdnsDiscovery.resolve(MdnsDiscovery.gatewayType) { gateway in
-            guard let gateway else { return }
-            DispatchQueue.main.async {
-                HomeMicSettings.applyDiscovered(gateway)
-            }
-        }
+        MdnsDiscovery.logLaunchNetworkContext()
+        HomeMicSettings.autoDiscoverGateway { _ in }
         return true
     }
 }

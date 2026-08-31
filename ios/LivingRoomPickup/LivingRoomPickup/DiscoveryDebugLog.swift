@@ -8,7 +8,7 @@ extension Notification.Name {
 final class DiscoveryDebugLog {
     static let shared = DiscoveryDebugLog()
 
-    static let maxLines = 300
+    static let maxLines = 400
     private static let enabledKey = "ha.discoveryDebugLog.enabled"
 
     private(set) var text = ""

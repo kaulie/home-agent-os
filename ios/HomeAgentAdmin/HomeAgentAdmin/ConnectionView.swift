@@ -32,9 +32,27 @@ struct ConnectionView: View {
                         }
 
                         HStack(spacing: 10) {
-                            presetButton(title: "局域网", url: AdminSettings.defaultBrainURL)
+                            Button {
+                                focus = nil
+                                Task { await store.discoverLanBrain() }
+                            } label: {
+                                Text("自动发现")
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(AdminTheme.ink)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .fill(AdminTheme.sand)
+                                    )
+                            }
+                            .disabled(store.isLoading)
                             presetButton(title: "云", url: AdminSettings.cloudBrainURL)
                         }
+
+                        Text("局域网身份是 brain.local。点「自动发现」后填入 ping 过的 IPv4；HTTP 不用 .local。")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(AdminTheme.dim)
 
                         field(
                             title: "管理员令牌",
@@ -77,6 +95,11 @@ struct ConnectionView: View {
                         Text("没有直播、没有聊天、没有扫描。中控不发 intent。")
                             .font(.system(size: 13, design: .rounded))
                             .foregroundStyle(AdminTheme.dim)
+
+                        DiscoveryDebugLogView {
+                            await AdminSettings.autoDiscoverBrain()
+                            store.brainDraft = AdminSettings.brainURL
+                        }
                     }
                     .padding(16)
                 }

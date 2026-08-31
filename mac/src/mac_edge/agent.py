@@ -51,8 +51,10 @@ _BRAIN_WARN_EVERY_SEC = 60.0
 _MAX_BACKOFF_SEC = 120.0
 # Idle "no intents" chatter — once per minute is enough.
 _EMPTY_INTENTS_LOG_EVERY_SEC = 60.0
-# Heartbeat must not hang the channel forever; keep it snappier than pull/execute.
-_HEARTBEAT_HTTP_TIMEOUT_SEC = 8.0
+# Heartbeat: 5s × 3 (same as iOS/Android User Console). Timeout ≠ DNS.
+_HEARTBEAT_HTTP_TIMEOUT_SEC = 5.0
+_HEARTBEAT_MAX_ATTEMPTS = 3
+_HEARTBEAT_RETRY_GAP_SEC = 1.0
 
 
 class EdgeAgent:
@@ -336,21 +338,32 @@ class EdgeAgent:
                         started = time.monotonic()
                         eid = self._get_edge_id()
                         if eid:
-                            try:
-                                result = brain.heartbeat(eid)
-                                self._set_heartbeat_ok(eid)
-                                self._apply_music_linkage_hint(result)
-                            except BrainError as e:
-                                if e.is_unauthorized:
-                                    log.warning(
-                                        "heartbeat 401 — clearing edge_id (control will re-register)"
-                                    )
-                                    self._clear_edge_id()
-                                else:
-                                    self._note_brain_problem(e)
-                                    self._set_heartbeat_ok(None)
-                            except Exception:
-                                log.exception("heartbeat failed")
+                            for attempt in range(1, _HEARTBEAT_MAX_ATTEMPTS + 1):
+                                if self._stop:
+                                    break
+                                if attempt > 1:
+                                    self._interruptible_sleep(_HEARTBEAT_RETRY_GAP_SEC)
+                                    if self._stop:
+                                        break
+                                try:
+                                    result = brain.heartbeat(eid)
+                                    self._set_heartbeat_ok(eid)
+                                    self._apply_music_linkage_hint(result)
+                                    break
+                                except BrainError as e:
+                                    if e.is_unauthorized:
+                                        log.warning(
+                                            "heartbeat 401 — clearing edge_id (control will re-register)"
+                                        )
+                                        self._clear_edge_id()
+                                        break
+                                    if attempt >= _HEARTBEAT_MAX_ATTEMPTS:
+                                        self._note_brain_problem(e)
+                                        self._set_heartbeat_ok(None)
+                                except Exception:
+                                    if attempt >= _HEARTBEAT_MAX_ATTEMPTS:
+                                        log.exception("heartbeat failed")
+                                        self._set_heartbeat_ok(None)
                         elapsed = time.monotonic() - started
                         sleep_for = max(
                             DEADLINE_SLEEP_MIN_SEC,

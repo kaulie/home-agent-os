@@ -951,7 +951,7 @@ struct ChatSettingsSheet: View {
         } header: {
             Text("局域网探测日志")
         } footer: {
-            Text("mDNS browse/resolve、getaddrinfo A 记录、LAN 扫描、ping 验证与连接决策。最新在底部，可复制发给调试。")
+            Text("默认关闭。打开「记录探测日志」后才会写入 browse / A 记录 / 扫描 / ping。最新在底部，可复制。")
         }
     }
 

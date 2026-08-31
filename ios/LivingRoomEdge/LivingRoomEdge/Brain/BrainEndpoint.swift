@@ -86,13 +86,12 @@ enum BrainEndpoint {
         set { UserDefaults.standard.set(normalizeBase(newValue), forKey: cloudKey) }
     }
 
-    /// URL actually used to talk to LAN Brain. Never prefer `.local` when an IPv4 is known.
+    /// URL actually used to talk to LAN Brain. Empty until an IPv4 is discovered — never `brain.local`.
     static var lanConnectBaseURL: String {
         migrateLanIdentityIfNeeded()
-        let resolved = lanResolvedBaseURL
-        if !resolved.isEmpty, ipv4Host(from: resolved) != nil { return resolved }
-        if ipv4Host(from: lanBaseURL) != nil { return lanBaseURL }
-        return lanBaseURL
+        if let ip = ipv4Base(from: lanResolvedBaseURL) { return ip }
+        if let ip = ipv4Base(from: lanBaseURL) { return ip }
+        return ""
     }
 
     static var lanIntentURL: String { intentURL(from: lanConnectBaseURL) }
@@ -130,6 +129,55 @@ enum BrainEndpoint {
         return host
     }
 
+    /// `brain.local` / `gateway.local` — Bonjour names. Must not be used as HTTP/TCP host.
+    static func isBonjourHost(_ raw: String) -> Bool {
+        let trimmed = normalizeBase(raw)
+        let host: String
+        if let url = URL(string: trimmed), let urlHost = url.host, !urlHost.isEmpty {
+            host = urlHost
+        } else {
+            host = trimmed
+        }
+        let lower = host.lowercased()
+        return lower.hasSuffix(".local") || lower.contains(".local.")
+    }
+
+    /// Fail-fast copy for NSURLSession: never send `.local` over HTTP.
+    static func refuseBonjourHTTP(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "没有可用地址" }
+        if isBonjourHost(trimmed) {
+            return "拒绝用 mDNS 名发 HTTP（\(trimmed)）。必须先发现 IPv4。"
+        }
+        return nil
+    }
+
+    /// Distinguish DNS/mDNS failures from TCP/HTTP timeout (both are NSURLErrorDomain).
+    static func describeTransportError(_ error: Error, url: URL, elapsed: String) -> String {
+        let ns = error as NSError
+        let host = url.host ?? "?"
+        let viaIP = ipv4Host(from: url.absoluteString) != nil
+        let target = viaIP ? "IPv4 \(host)" : "主机名 \(host)"
+        let where_ = url.absoluteString
+        guard ns.domain == NSURLErrorDomain else {
+            return "\(ns.localizedDescription) · \(target) · \(where_) · \(elapsed)"
+        }
+        switch ns.code {
+        case NSURLErrorTimedOut:
+            return "请求超时（不是 DNS）· \(target) · \(where_) · \(elapsed)"
+        case NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed:
+            return "DNS/mDNS 解析失败 · \(target) · \(where_) · \(elapsed)"
+        case NSURLErrorCannotConnectToHost:
+            return "TCP 连不上 · \(target) · \(where_) · \(elapsed)"
+        case NSURLErrorNetworkConnectionLost:
+            return "连接中断 · \(target) · \(where_) · \(elapsed)"
+        case NSURLErrorNotConnectedToInternet:
+            return "无网络 · \(target) · \(where_) · \(elapsed)"
+        default:
+            return "NSURLError \(ns.code) \(ns.localizedDescription) · \(target) · \(where_) · \(elapsed)"
+        }
+    }
+
     static func ipv4Base(from raw: String) -> String? {
         guard let host = ipv4Host(from: raw) else { return nil }
         let port: Int
@@ -143,6 +191,8 @@ enum BrainEndpoint {
 
     static func intentURL(from raw: String) -> String {
         let base = normalizeBase(raw)
+        guard !base.isEmpty else { return "" }
+        if isBonjourHost(base) { return "" }
         if base.hasSuffix("/api/v1/intent") { return base }
         if base.contains("/api/v1/") { return base }
         return base + "/api/v1/intent"

@@ -14,9 +14,11 @@ final class SettingsViewController: UIViewController {
     private let macIngestField = UITextField()
     private let macIngestMdnsLabel = UILabel()
     private let discoverButton = UIButton(type: .system)
+    private let discoveryLogSwitch = UISwitch()
     private let discoveryLogTextView = UITextView()
     private let clearDiscoveryLogButton = UIButton(type: .system)
     private let copyDiscoveryLogButton = UIButton(type: .system)
+    private let discoveryLogButtons = UIStackView()
     private let participantLabel = LegacyUI.monoLabel(0)
     private let heartbeatHistoryLabel = LegacyUI.monoLabel(0)
     private var countdownTimer: Timer?
@@ -175,6 +177,28 @@ final class SettingsViewController: UIViewController {
         let discoveryLogTitle = LegacyUI.sectionTitle("局域网探测日志")
         advancedStack.addArrangedSubview(discoveryLogTitle)
 
+        let logSwitchRow = UIStackView()
+        logSwitchRow.axis = .horizontal
+        logSwitchRow.alignment = .center
+        logSwitchRow.spacing = 12
+        let logSwitchLabel = UILabel()
+        logSwitchLabel.text = "记录探测日志"
+        logSwitchLabel.font = LegacyTheme.fontBody
+        logSwitchLabel.textColor = LegacyTheme.textPrimary
+        discoveryLogSwitch.onTintColor = LegacyTheme.accent
+        discoveryLogSwitch.isOn = DiscoveryDebugLog.shared.isEnabled
+        discoveryLogSwitch.addTarget(self, action: #selector(discoveryLogEnabledChanged), for: .valueChanged)
+        logSwitchRow.addArrangedSubview(logSwitchLabel)
+        logSwitchRow.addArrangedSubview(discoveryLogSwitch)
+        advancedStack.addArrangedSubview(logSwitchRow)
+
+        let logHint = UILabel()
+        logHint.font = LegacyTheme.fontHint
+        logHint.textColor = LegacyTheme.textSecondary
+        logHint.numberOfLines = 0
+        logHint.text = "默认关闭。打开后才写入日志，避免设置页一直刷新。"
+        advancedStack.addArrangedSubview(logHint)
+
         discoveryLogTextView.isEditable = false
         discoveryLogTextView.isScrollEnabled = true
         discoveryLogTextView.font = UIFont(name: "Menlo-Regular", size: 11) ?? UIFont.systemFont(ofSize: 11)
@@ -185,7 +209,6 @@ final class SettingsViewController: UIViewController {
         discoveryLogTextView.heightAnchor.constraint(equalToConstant: 160).isActive = true
         advancedStack.addArrangedSubview(discoveryLogTextView)
 
-        let discoveryLogButtons = UIStackView()
         discoveryLogButtons.axis = .horizontal
         discoveryLogButtons.spacing = 12
         LegacyUI.styleSecondaryButton(clearDiscoveryLogButton, title: "清空")
@@ -195,6 +218,7 @@ final class SettingsViewController: UIViewController {
         discoveryLogButtons.addArrangedSubview(clearDiscoveryLogButton)
         discoveryLogButtons.addArrangedSubview(copyDiscoveryLogButton)
         advancedStack.addArrangedSubview(discoveryLogButtons)
+        applyDiscoveryLogVisibility()
 
         DiscoveryDebugLog.shared.onUpdate = { [weak self] in
             self?.refreshDiscoveryLog()
@@ -376,10 +400,24 @@ final class SettingsViewController: UIViewController {
         showAlert(message: lines.joined(separator: "\n"))
     }
 
+    private func applyDiscoveryLogVisibility() {
+        let on = DiscoveryDebugLog.shared.isEnabled
+        discoveryLogTextView.isHidden = !on
+        discoveryLogButtons.isHidden = !on
+    }
+
+    @objc private func discoveryLogEnabledChanged() {
+        DiscoveryDebugLog.shared.isEnabled = discoveryLogSwitch.isOn
+        applyDiscoveryLogVisibility()
+        refreshDiscoveryLog()
+    }
+
     private func refreshDiscoveryLog() {
+        applyDiscoveryLogVisibility()
+        guard DiscoveryDebugLog.shared.isEnabled else { return }
         let text = DiscoveryDebugLog.shared.text
         discoveryLogTextView.text = text.isEmpty
-            ? "（尚无日志；点「自动发现」或等 App 启动探测）"
+            ? "（尚无日志；打开开关后点「自动发现」）"
             : text
         let end = discoveryLogTextView.text.count
         if end > 0 {

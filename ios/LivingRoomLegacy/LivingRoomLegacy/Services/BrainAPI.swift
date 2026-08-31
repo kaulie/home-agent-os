@@ -9,11 +9,15 @@ enum BrainAPI {
     typealias JSONCompletion = (Result<[String: Any], BrainFailure>) -> Void
     typealias DataCompletion = (Result<Data, BrainFailure>) -> Void
 
+    /// Same as User Console: 5s × 3. Session caps stay high so timeout ≠ DNS.
+    static let heartbeatAttemptTimeout: TimeInterval = 5
+    static let heartbeatMaxAttempts = 3
+    static let heartbeatRetryGapSeconds: TimeInterval = 1
+
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
-        // iPhone 6 / iOS 12 on LAN: 5s was too tight for POST register after mDNS.
-        config.timeoutIntervalForRequest = 20
-        config.timeoutIntervalForResource = 30
+        config.timeoutIntervalForRequest = 90
+        config.timeoutIntervalForResource = 90
         return URLSession(configuration: config)
     }()
 
@@ -51,9 +55,24 @@ enum BrainAPI {
             return
         }
         let payload = ParticipantStore.heartbeatBody(participantId: participantId)
-        postJSON(url: url, payload: payload) { result in
+        heartbeatAttempt(url: url, payload: payload, attempt: 1, completion: completion)
+    }
+
+    private static func heartbeatAttempt(
+        url: URL,
+        payload: [String: Any],
+        attempt: Int,
+        completion: @escaping (Result<HeartbeatResult, BrainFailure>) -> Void
+    ) {
+        postJSON(url: url, payload: payload, timeout: heartbeatAttemptTimeout) { result in
             switch result {
             case .failure(let err):
+                if shouldRetryHeartbeat(err.message), attempt < heartbeatMaxAttempts {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + heartbeatRetryGapSeconds) {
+                        heartbeatAttempt(url: url, payload: payload, attempt: attempt + 1, completion: completion)
+                    }
+                    return
+                }
                 ParticipantStore.lastHeartbeatOk = false
                 HeartbeatLog.append(ok: false, detail: err.message)
                 completion(.failure(err))
@@ -65,13 +84,27 @@ enum BrainAPI {
                     HeartbeatLog.append(ok: true, detail: detail)
                     completion(.success(HeartbeatResult(ok: true, detail: detail)))
                 } else {
-                    ParticipantStore.lastHeartbeatOk = false
                     let err = (obj["error"] as? String ?? "heartbeat rejected")
+                    if shouldRetryHeartbeat(err), attempt < heartbeatMaxAttempts {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + heartbeatRetryGapSeconds) {
+                            heartbeatAttempt(url: url, payload: payload, attempt: attempt + 1, completion: completion)
+                        }
+                        return
+                    }
+                    ParticipantStore.lastHeartbeatOk = false
                     HeartbeatLog.append(ok: false, detail: err)
                     completion(.failure(BrainFailure(message: err)))
                 }
             }
         }
+    }
+
+    private static func shouldRetryHeartbeat(_ message: String) -> Bool {
+        let msg = message.lowercased()
+        if msg.contains("register first") || msg.contains("unknown edge") || msg.contains("http 401") {
+            return false
+        }
+        return true
     }
 
     private static func heartbeatDetail(from obj: [String: Any]) -> String {
@@ -152,7 +185,7 @@ enum BrainAPI {
         }
     }
 
-    private static func postJSON(url: URL, payload: [String: Any], completion: @escaping JSONCompletion) {
+    private static func postJSON(url: URL, payload: [String: Any], timeout: TimeInterval = 20, completion: @escaping JSONCompletion) {
         guard JSONSerialization.isValidJSONObject(payload),
               let body = try? JSONSerialization.data(withJSONObject: payload) else {
             completion(.failure(BrainFailure(message: "JSON encode failed")))
@@ -162,7 +195,7 @@ enum BrainAPI {
         request.httpMethod = "POST"
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
-        request.timeoutInterval = 20
+        request.timeoutInterval = timeout
         dataTask(request: request) { result in
             switch result {
             case .failure(let err):
@@ -182,7 +215,8 @@ enum BrainAPI {
         session.dataTask(with: request) { data, response, error in
             DispatchQueue.main.async {
                 if let error = error {
-                    completion(.failure(BrainFailure(message: error.localizedDescription)))
+                    let url = request.url ?? URL(string: "http://invalid")!
+                    completion(.failure(BrainFailure(message: BrainURL.describeTransportError(error, url: url))))
                     return
                 }
                 guard let http = response as? HTTPURLResponse else {

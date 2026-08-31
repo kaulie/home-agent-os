@@ -445,7 +445,9 @@ final class AppModel: ObservableObject {
     private var resolveWorkPending = false
     /// Keep ≤ Brain `ONLINE_TTL_SEC / 2` (TTL is 2× heartbeat).
     static let heartbeatIntervalSeconds: TimeInterval = 30
-    static let heartbeatAttemptTimeout: TimeInterval = 3
+    /// LAN Brain HTTP: 对时 ping 10s; heartbeat (LAN + Cloud) 5s × 3. Timeout ≠ DNS.
+    static let lanBrainHttpTimeout: TimeInterval = 10
+    static let heartbeatAttemptTimeout: TimeInterval = 5
     static let heartbeatMaxAttempts = 3
     static let heartbeatRetryGapSeconds: TimeInterval = 1
     /// Cap serial intent_detail refresh so a dead Brain cannot stall the UI for minutes.
@@ -464,6 +466,10 @@ final class AppModel: ObservableObject {
         lanBrainURL = BrainEndpoint.defaultLanBase
         BrainEndpoint.lanBaseURL = BrainEndpoint.defaultLanBase
         lanResolvedBase = BrainEndpoint.lanResolvedBaseURL
+        if BrainEndpoint.isBonjourHost(lanResolvedBase) || BrainEndpoint.ipv4Host(from: lanResolvedBase) == nil {
+            lanResolvedBase = ""
+            BrainEndpoint.lanResolvedBaseURL = ""
+        }
         cloudBrainURL = BrainEndpoint.cloudBaseURL
         brainRouting = BrainEndpoint.routing
         audioRecorder.objectWillChange
@@ -668,19 +674,17 @@ final class AppModel: ObservableObject {
             : BrainEndpoint.displayBase(from: cloudBrainURL)
     }
 
-    /// HTTP target for LAN Brain: resolved IPv4, never `brain.local` when an IP is known.
+    /// HTTP target for LAN Brain: ping-verified IPv4 only. Never `brain.local`.
     func lanConnectBase() -> String {
-        if BrainEndpoint.ipv4Host(from: lanResolvedBase) != nil {
-            return BrainEndpoint.normalizeBase(lanResolvedBase)
+        if let ip = BrainEndpoint.ipv4Base(from: lanResolvedBase) {
+            return ip
         }
-        if BrainEndpoint.ipv4Host(from: lanBrainURL) != nil {
-            return BrainEndpoint.normalizeBase(lanBrainURL)
-        }
-        return BrainEndpoint.lanConnectBaseURL
+        return ""
     }
 
     /// Store only ping-verified IPv4. Never persist `brain.local`.
     private func persistPingVerifiedLanBase(_ raw: String) {
+        if BrainEndpoint.isBonjourHost(raw) { return }
         let ipBase: String
         if let known = BrainEndpoint.ipv4Base(from: raw) {
             ipBase = known
@@ -732,7 +736,10 @@ final class AppModel: ObservableObject {
     }
 
     private func probeLanBrain(allowMdns: Bool) async -> (ok: Bool, detail: String) {
-        let first = await pingFirstReachableLan(bases: lanCandidateBases(), timeout: 3)
+        let first = await pingFirstReachableLan(
+            bases: lanCandidateBases(),
+            timeout: Self.lanBrainHttpTimeout
+        )
         if !first.base.isEmpty {
             persistPingVerifiedLanBase(first.base)
             DiscoveryDebugLog.shared.log("LAN ping OK \(first.base)", category: "connect")
@@ -746,7 +753,7 @@ final class AppModel: ObservableObject {
                 switch await intentClient.ping(
                     serverURL: BrainEndpoint.intentURL(from: discovered),
                     clientSentAt: Date(),
-                    timeout: 3
+                    timeout: Self.lanBrainHttpTimeout
                 ) {
                 case .ok:
                     persistPingVerifiedLanBase(discovered)
@@ -754,7 +761,10 @@ final class AppModel: ObservableObject {
                     return (true, "")
                 case let .failed(detail):
                     DiscoveryDebugLog.shared.log("LAN rediscover ping FAIL \(discovered): \(detail)", category: "connect")
-                    let retry = await pingFirstReachableLan(bases: lanCandidateBases(), timeout: 3)
+                    let retry = await pingFirstReachableLan(
+                        bases: lanCandidateBases(),
+                        timeout: Self.lanBrainHttpTimeout
+                    )
                     if !retry.base.isEmpty {
                         persistPingVerifiedLanBase(retry.base)
                         DiscoveryDebugLog.shared.log("LAN ping OK other candidate \(retry.base)", category: "connect")
@@ -777,25 +787,6 @@ final class AppModel: ObservableObject {
             )
         }
         return (false, first.failDetail.isEmpty ? "局域网 Brain 不可达" : first.failDetail)
-    }
-
-    /// 对时 ping succeeded: keep that IPv4 and, unless locked to cloud, actually use LAN.
-    private func adoptLanFromSuccessfulPing() async {
-        persistPingVerifiedLanBase(lanConnectBase())
-        guard brainRouting != .cloud else { return }
-        let next = BrainEndpoint.intentURL(from: lanConnectBase())
-        let changed = next != intentServerURL
-        intentServerURL = next
-        intentClient.lastServerURL = next
-        brainEnvironment.routing = brainRouting
-        brainEnvironment.lanProbeOk = true
-        brainEnvironment.lanProbeDetail = ""
-        brainEnvironment.mode = .lan
-        brainEnvironment.activeIntentURL = next
-        DiscoveryDebugLog.shared.log("adopt LAN after 对时/ping url=\(next) changed=\(changed)", category: "connect")
-        if changed, !coldBootstrapRunning {
-            await ensureRegistered(serverURL: next, force: true)
-        }
     }
 
     func applyBrainRouting(_ routing: BrainEndpoint.Routing) {
@@ -849,17 +840,26 @@ final class AppModel: ObservableObject {
             probeDetail = "当前不是家庭局域网，跳过 LAN 探测"
         }
 
-        let resolvedLanIntent = BrainEndpoint.intentURL(from: lanConnectBase())
+        let lanBase = lanConnectBase()
+        let lanIntent = BrainEndpoint.ipv4Host(from: lanBase).map { _ in
+            BrainEndpoint.intentURL(from: lanBase)
+        }
         let useLAN: Bool
         switch routing {
         case .lan:
-            useLAN = true
+            useLAN = lanIntent != nil
         case .cloud:
             useLAN = false
         case .auto:
-            useLAN = probeOk == true
+            useLAN = probeOk == true && lanIntent != nil
         }
-        let next = useLAN ? resolvedLanIntent : cloudIntent
+        if routing == .lan, lanIntent == nil {
+            probeDetail = probeDetail.isEmpty
+                ? "锁定局域网但还没有 IPv4（不会用 brain.local）"
+                : probeDetail
+            probeOk = false
+        }
+        let next = (useLAN ? lanIntent : nil) ?? cloudIntent
         let changed = next != intentServerURL
         intentServerURL = next
         intentClient.lastServerURL = next
@@ -1231,7 +1231,7 @@ final class AppModel: ObservableObject {
         _ = await beatOneBrain(serverURL: intentURL(for: mode), mode: mode)
     }
 
-    /// Beat one Brain only (3s × 3 attempts). Does not wait for the other Brain.
+    /// Beat one Brain only (5s × 3). Does not wait for the other Brain.
     @discardableResult
     func heartbeatNow(serverURL: String) async -> Bool {
         let mode = brainMode(for: serverURL)
@@ -1275,6 +1275,23 @@ final class AppModel: ObservableObject {
     private func beatOneBrain(serverURL: String, mode: BrainEndpoint.Mode) async -> Bool {
         let trimmed = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let isPrimary = trimmed == intentServerURL
+        if mode == .lan, let refuse = BrainEndpoint.refuseBonjourHTTP(trimmed) {
+            if isPrimary {
+                applyHeartbeatResult(ok: false, at: Date(), error: refuse)
+            }
+            updateHeartbeatStatus(mode, ok: false, at: Date(), error: refuse)
+            setHeartbeatPhase(mode, .idle)
+            return false
+        }
+        if mode == .lan, BrainEndpoint.ipv4Host(from: trimmed) == nil {
+            let err = "局域网心跳没有 IPv4（\(trimmed)），已跳过"
+            if isPrimary {
+                applyHeartbeatResult(ok: false, at: Date(), error: err)
+            }
+            updateHeartbeatStatus(mode, ok: false, at: Date(), error: err)
+            setHeartbeatPhase(mode, .idle)
+            return false
+        }
         let pid = participantId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !pid.isEmpty else {
             let err = "participant_id 为空，无法心跳"
@@ -1298,7 +1315,9 @@ final class AppModel: ObservableObject {
         }
 
         var lastError = ""
-        for attempt in 1 ... Self.heartbeatMaxAttempts {
+        let attemptTimeout = Self.heartbeatAttemptTimeout
+        let maxAttempts = Self.heartbeatMaxAttempts
+        for attempt in 1 ... maxAttempts {
             if attempt > 1 {
                 setHeartbeatPhase(mode, .retrying(attempt: attempt))
                 try? await Task.sleep(nanoseconds: UInt64(Self.heartbeatRetryGapSeconds * 1_000_000_000))
@@ -1309,7 +1328,7 @@ final class AppModel: ObservableObject {
                 serverURL: trimmed,
                 participantId: pid,
                 body: body,
-                hardTimeout: Self.heartbeatAttemptTimeout
+                hardTimeout: attemptTimeout
             )
             switch send {
             case let .ok(at, roles):
@@ -1324,14 +1343,14 @@ final class AppModel: ObservableObject {
                 guard needsRegister else { continue }
                 if let reg = await intentClient.registerParticipant(
                     serverURL: trimmed,
-                    timeout: Self.heartbeatAttemptTimeout
+                    timeout: attemptTimeout
                 ) {
                     markRegistered(mode, at: reg.ts ?? Date())
                     let retry = await intentClient.sendHeartbeat(
                         serverURL: trimmed,
                         participantId: pid,
                         body: body,
-                        hardTimeout: Self.heartbeatAttemptTimeout
+                        hardTimeout: attemptTimeout
                     )
                     switch retry {
                     case let .ok(at, roles):
@@ -1408,8 +1427,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Click「对时」: show local time immediately, then ping LAN and Cloud in parallel.
-    /// Snapshot is static for that click; unrelated to heartbeat / other UI.
+    /// Click「对时」: GET /api/v1/ping only. Does not register, heartbeat, or change routing.
     func syncClock() async {
         guard !clockSyncBusy else { return }
         clockSyncBusy = true
@@ -1417,19 +1435,42 @@ final class AppModel: ObservableObject {
         let local = Date()
         clockSync = ClockSyncSample(localAt: local)
         clockSyncError = ""
-        // Let SwiftUI paint 【本地时间】 before the network await.
         await Task.yield()
-        let lanURL = BrainEndpoint.intentURL(from: lanConnectBase())
+        let lanBase = lanConnectBase()
+        let lanURL: String
+        if BrainEndpoint.ipv4Host(from: lanBase) != nil {
+            lanURL = BrainEndpoint.intentURL(from: lanBase)
+        } else {
+            lanURL = ""
+        }
         let cloudURL = BrainEndpoint.intentURL(from: cloudBrainURL)
-        async let lanPing = intentClient.ping(serverURL: lanURL, clientSentAt: local)
+        var sample = ClockSyncSample(localAt: local, lanURL: lanURL, cloudURL: cloudURL)
+        if lanURL.isEmpty {
+            sample.lanError = "没有可用的局域网 IPv4，不会用 brain.local 发请求。请先自动发现。"
+            async let cloudPing = intentClient.ping(serverURL: cloudURL, clientSentAt: local)
+            let cloud = await cloudPing
+            switch cloud {
+            case let .ok(serverAt, skewMs):
+                sample.cloudServerAt = serverAt
+                sample.cloudSkewMs = skewMs
+            case let .failed(detail):
+                sample.cloudError = detail
+            }
+            clockSync = sample
+            clockSyncError = ""
+            return
+        }
+        async let lanPing = intentClient.ping(
+            serverURL: lanURL,
+            clientSentAt: local,
+            timeout: Self.lanBrainHttpTimeout
+        )
         async let cloudPing = intentClient.ping(serverURL: cloudURL, clientSentAt: local)
         let (lan, cloud) = await (lanPing, cloudPing)
-        var sample = ClockSyncSample(localAt: local)
         switch lan {
         case let .ok(serverAt, skewMs):
             sample.lanServerAt = serverAt
             sample.lanSkewMs = skewMs
-            await adoptLanFromSuccessfulPing()
         case let .failed(detail):
             sample.lanError = detail
         }

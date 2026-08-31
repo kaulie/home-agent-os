@@ -80,4 +80,29 @@ enum BrainURL {
         guard parts.count == 4, parts.allSatisfy({ UInt8($0) != nil }) else { return nil }
         return host
     }
+
+    /// Timeout ≠ DNS; both are NSURLErrorDomain.
+    static func describeTransportError(_ error: Error, url: URL) -> String {
+        let ns = error as NSError
+        let host = url.host ?? "?"
+        let viaIP = ipv4Host(from: url.absoluteString) != nil
+        let target = viaIP ? "IPv4 \(host)" : "主机名 \(host)"
+        guard ns.domain == NSURLErrorDomain else {
+            return "\(ns.localizedDescription) · \(target)"
+        }
+        switch ns.code {
+        case NSURLErrorTimedOut:
+            return "请求超时（不是 DNS）· \(target)"
+        case NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed:
+            return "DNS/mDNS 解析失败 · \(target)"
+        case NSURLErrorCannotConnectToHost:
+            return "TCP 连不上 · \(target)"
+        case NSURLErrorNetworkConnectionLost:
+            return "连接中断 · \(target)"
+        case NSURLErrorNotConnectedToInternet:
+            return "无网络 · \(target)"
+        default:
+            return "NSURLError \(ns.code) \(ns.localizedDescription) · \(target)"
+        }
+    }
 }
