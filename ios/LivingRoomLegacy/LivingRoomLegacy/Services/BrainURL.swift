@@ -67,4 +67,17 @@ enum BrainURL {
     static func debugReportURL(fromIntentURL intentURL: String) -> URL? {
         apiURL(fromIntentURL: intentURL, leaf: "debug/report")
     }
+
+    static func ipv4Host(from raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let host: String
+        if let url = URL(string: trimmed), let urlHost = url.host, !urlHost.isEmpty {
+            host = urlHost
+        } else {
+            host = trimmed
+        }
+        let parts = host.split(separator: ".")
+        guard parts.count == 4, parts.allSatisfy({ UInt8($0) != nil }) else { return nil }
+        return host
+    }
 }

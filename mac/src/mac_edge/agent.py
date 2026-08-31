@@ -142,6 +142,7 @@ class EdgeAgent:
                 "video_port": str(http_port),
                 "img_port": "8080",
                 "tts_port": "8000",
+                "lan_ip": mdns_service.lan_ipv4(),
             }
             pub.publish(
                 name=f"Home Agent Gateway {edge_id}",

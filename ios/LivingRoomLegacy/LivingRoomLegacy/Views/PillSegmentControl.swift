@@ -10,9 +10,13 @@ final class PillSegmentControl: UIView {
     private let highlightView = UIView()
     private var buttons: [UIButton] = []
     private var highlightLeading: NSLayoutConstraint?
+    private var highlightWidth: NSLayoutConstraint?
 
     init(titles: [String]) {
         super.init(frame: .zero)
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
         trackView.backgroundColor = LegacyTheme.segmentTrack
         trackView.layer.cornerRadius = 16
         trackView.translatesAutoresizingMaskIntoConstraints = false
@@ -55,20 +59,26 @@ final class PillSegmentControl: UIView {
             previous = button
         }
 
+        let trackHeight = trackView.heightAnchor.constraint(equalToConstant: 52)
+        trackHeight.priority = .required
+
+        highlightWidth = highlightView.widthAnchor.constraint(
+            equalTo: trackView.widthAnchor,
+            multiplier: 1.0 / CGFloat(max(titles.count, 1)),
+            constant: -10
+        )
+        highlightWidth?.priority = UILayoutPriority(999)
+
         NSLayoutConstraint.activate([
             trackView.topAnchor.constraint(equalTo: topAnchor),
             trackView.leadingAnchor.constraint(equalTo: leadingAnchor),
             trackView.trailingAnchor.constraint(equalTo: trailingAnchor),
             trackView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            trackView.heightAnchor.constraint(equalToConstant: 52),
+            trackHeight,
 
             highlightView.topAnchor.constraint(equalTo: trackView.topAnchor, constant: 5),
             highlightView.bottomAnchor.constraint(equalTo: trackView.bottomAnchor, constant: -5),
-            highlightView.widthAnchor.constraint(
-                equalTo: trackView.widthAnchor,
-                multiplier: 1.0 / CGFloat(max(titles.count, 1)),
-                constant: -10
-            ),
+            highlightWidth!,
         ])
         if let first = buttons.first {
             highlightLeading = highlightView.leadingAnchor.constraint(equalTo: first.leadingAnchor)
@@ -79,6 +89,10 @@ final class PillSegmentControl: UIView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: 52)
     }
 
     @objc private func tapped(_ sender: UIButton) {
@@ -92,15 +106,22 @@ final class PillSegmentControl: UIView {
             let selected = button.tag == selectedIndex
             button.setTitleColor(selected ? LegacyTheme.textPrimary : LegacyTheme.textMuted, for: .normal)
         }
-        guard let target = buttons.first(where: { $0.tag == selectedIndex }) else { return }
+        repositionHighlight()
+        guard animated, bounds.width > 1 else { return }
+        UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseOut) {
+            self.layoutIfNeeded()
+        }
+    }
+
+    private func repositionHighlight() {
+        guard bounds.width > 1, let target = buttons.first(where: { $0.tag == selectedIndex }) else { return }
         highlightLeading?.isActive = false
         highlightLeading = highlightView.leadingAnchor.constraint(equalTo: target.leadingAnchor)
         highlightLeading?.isActive = true
-        let animations = { self.layoutIfNeeded() }
-        if animated {
-            UIView.animate(withDuration: 0.22, delay: 0, options: .curveEaseOut, animations: animations)
-        } else {
-            animations()
-        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        repositionHighlight()
     }
 }

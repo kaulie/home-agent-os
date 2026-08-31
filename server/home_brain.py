@@ -8342,13 +8342,17 @@ if __name__ == "__main__":
         log.error("SQLite schema missing. DBA must run: python db.py init")
         raise SystemExit(1)
     try:
-        from mdns_service import BRAIN_TYPE, publish_service
+        from mdns_service import BRAIN_TYPE, lan_ipv4, publish_service
 
         _BRAIN_MDNS = publish_service(
             name="Home Agent Brain",
             type_=BRAIN_TYPE,
             port=9527,
-            txt={"role": "brain", "origin": os.environ.get("BRAIN_ORIGIN", "lan")},
+            txt={
+                "role": "brain",
+                "origin": os.environ.get("BRAIN_ORIGIN", "lan"),
+                "lan_ip": lan_ipv4(),
+            },
             hostname="brain.local",
         )
     except Exception:

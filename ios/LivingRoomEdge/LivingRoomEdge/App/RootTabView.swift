@@ -6,6 +6,9 @@ struct RootTabView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab: EdgeTab = .chat
+    /// Only mount tab roots after first visit — TabView otherwise instantiates all six
+    /// panes at launch (GameControllerView pulls in AVCaptureSession / Vision on main).
+    @State private var loadedTabs: Set<EdgeTab> = [.chat]
 
     enum EdgeTab: Hashable {
         case chat
@@ -18,49 +21,71 @@ struct RootTabView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            ContentView()
-                .tabItem {
-                    Label("互动", systemImage: "bubble.left.and.bubble.right.fill")
-                }
-                .tag(EdgeTab.chat)
+            lazyTab(.chat) {
+                ContentView()
+            }
 
-            GameControllerView()
-                .tabItem {
-                    Label("游戏", systemImage: "gamecontroller.fill")
-                }
-                .tag(EdgeTab.game)
+            lazyTab(.game) {
+                GameControllerView()
+            }
 
-            SystemObserverView()
-                .tabItem {
-                    Label("系统", systemImage: "antenna.radiowaves.left.and.right")
-                }
-                .tag(EdgeTab.system)
+            lazyTab(.system) {
+                SystemObserverView()
+            }
 
-            RuntimeCapabilitiesView()
-                .tabItem {
-                    Label("能力", systemImage: "square.stack.3d.up.fill")
-                }
-                .tag(EdgeTab.runtime)
+            lazyTab(.runtime) {
+                RuntimeCapabilitiesView()
+            }
 
-            EntityBrowserView()
-                .tabItem {
-                    Label("实体", systemImage: "shippingbox")
-                }
-                .tag(EdgeTab.entity)
+            lazyTab(.entity) {
+                EntityBrowserView()
+            }
 
-            NodeInfoView()
-                .tabItem {
-                    Label("节点", systemImage: "point.3.connected.trianglepath.dotted")
-                }
-                .tag(EdgeTab.node)
+            lazyTab(.node) {
+                NodeInfoView()
+            }
         }
         .tint(EdgeTheme.sand)
         .background(EdgeTheme.ink.ignoresSafeArea())
+        .onChange(of: tab) { _, newTab in
+            loadedTabs.insert(newTab)
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 model.onForeground()
             }
         }
+    }
+
+    @ViewBuilder
+    private func lazyTab<Content: View>(
+        _ edge: EdgeTab,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Group {
+            if loadedTabs.contains(edge) {
+                content()
+            } else {
+                EdgeTheme.ink
+            }
+        }
+        .tabItem {
+            switch edge {
+            case .chat:
+                Label("互动", systemImage: "bubble.left.and.bubble.right.fill")
+            case .game:
+                Label("游戏", systemImage: "gamecontroller.fill")
+            case .system:
+                Label("系统", systemImage: "antenna.radiowaves.left.and.right")
+            case .runtime:
+                Label("能力", systemImage: "square.stack.3d.up.fill")
+            case .entity:
+                Label("实体", systemImage: "shippingbox")
+            case .node:
+                Label("节点", systemImage: "point.3.connected.trianglepath.dotted")
+            }
+        }
+        .tag(edge)
     }
 
     private static var didConfigureTabBar = false

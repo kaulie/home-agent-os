@@ -9,8 +9,8 @@ final class GameGestureController: NSObject, ObservableObject {
     @Published private(set) var lastError: String = ""
     @Published private(set) var previewLayer: AVCaptureVideoPreviewLayer?
 
-    private let session = AVCaptureSession()
-    private let poseRequest = VNDetectHumanBodyPoseRequest()
+    /// Created on first start() — eager AVCaptureSession init at tab load has hung launch.
+    private var session: AVCaptureSession?
     private let queue = DispatchQueue(label: "game.gesture.pose")
     private var lastSample: (centerX: CGFloat, leftWrist: CGPoint?, rightWrist: CGPoint?, ts: CFTimeInterval)?
     private var neutralCenterX: CGFloat?
@@ -38,20 +38,31 @@ final class GameGestureController: NSObject, ObservableObject {
         configureSession()
         calibrateUntil = CACurrentMediaTime() + 1.0
         neutralCenterX = nil
-        queue.async { [weak self] in
-            self?.session.startRunning()
+        let captureSession = ensureSession()
+        queue.async {
+            captureSession.startRunning()
         }
         isRunning = true
     }
 
     func stop() {
-        queue.async { [weak self] in
-            self?.session.stopRunning()
+        if let session {
+            queue.async {
+                session.stopRunning()
+            }
         }
         isRunning = false
     }
 
+    private func ensureSession() -> AVCaptureSession {
+        if let session { return session }
+        let next = AVCaptureSession()
+        session = next
+        return next
+    }
+
     private func configureSession() {
+        let session = ensureSession()
         session.beginConfiguration()
         session.sessionPreset = .vga640x480
         session.inputs.forEach { session.removeInput($0) }
@@ -144,10 +155,11 @@ extension GameGestureController: AVCaptureVideoDataOutputSampleBufferDelegate {
         from connection: AVCaptureConnection
     ) {
         guard let pixel = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        let request = VNDetectHumanBodyPoseRequest()
         let handler = VNImageRequestHandler(cvPixelBuffer: pixel, orientation: .leftMirrored, options: [:])
         do {
-            try handler.perform([poseRequest])
-            guard let obs = poseRequest.results?.first else { return }
+            try handler.perform([request])
+            guard let obs = request.results?.first else { return }
             let ts = CACurrentMediaTime()
             Task { @MainActor in
                 self.processPose(obs, ts: ts)

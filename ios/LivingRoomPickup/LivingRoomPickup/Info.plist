@@ -29,6 +29,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>拾音需要在同一 Wi‑Fi 上发现客厅 Mac（gateway.local）并把音频传到实际 IP。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>拾音需要持续采集麦克风音频并推送到家里 Mac 拾音服务，本机不播放声音。</string>
 	<key>UILaunchScreen</key>

@@ -12,7 +12,7 @@ enum BrainEndpoint: Int {
 
     var intentURL: String {
         switch self {
-        case .home: return ParticipantStore.homeBrainIntentURL
+        case .home: return ParticipantStore.homeBrainConnectIntentURL
         case .cloud: return BrainEndpoint.cloudIntentURL
         }
     }

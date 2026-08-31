@@ -29,13 +29,14 @@ struct PickupSettingsView: View {
                 }
 
                 Section("Mac 拾音地址") {
-                    TextField("Mac 主机", text: $pickupHost)
+                    LabeledContent("mDNS 名", value: "gateway.local")
+                    TextField("实际 IP", text: $pickupHost)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
                     TextField("端口（voice.stream ingest）", text: $pickupPort)
                         .keyboardType(.numberPad)
-                    Text("音频直连客厅 Mac（默认 192.168.3.84:8792），由 Mac 切句 / STT 后再到 Brain Intent。")
+                    Text("默认身份 gateway.local。启动时自动发现实际 IP；音频直连客厅 Mac（:8792），由 Mac 切句 / STT 后再到 Brain。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

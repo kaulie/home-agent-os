@@ -72,7 +72,7 @@ def sync_ios() -> None:
     _sub_file(
         ROOT / "ios/HomeAgentDev/HomeAgentDev/DevBrainEndpoint.swift",
         r'static let defaultLanBase = "[^"]+"',
-        f'static let defaultLanBase = "{lan}"',
+        f'static let defaultLanBase = "{brain_lan_dns}"',
     )
     _sub_file(
         ROOT / "ios/HomeAgentDev/HomeAgentDev/DevBrainEndpoint.swift",

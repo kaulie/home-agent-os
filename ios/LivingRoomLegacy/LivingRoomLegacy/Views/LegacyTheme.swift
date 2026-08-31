@@ -22,15 +22,28 @@ enum LegacyTheme {
 
     static func applyNavigationBar(_ navigationBar: UINavigationBar?) {
         guard let bar = navigationBar else { return }
-        bar.barTintColor = background
         bar.isTranslucent = false
         bar.tintColor = accent
         bar.titleTextAttributes = [
             .foregroundColor: textPrimary,
             .font: fontTitle,
         ]
-        bar.shadowImage = UIImage()
-        bar.setBackgroundImage(UIImage(), for: .default)
+        if #available(iOS 13.0, *) {
+            let appearance = UINavigationBarAppearance()
+            appearance.configureWithOpaqueBackground()
+            appearance.backgroundColor = background
+            appearance.titleTextAttributes = [
+                .foregroundColor: textPrimary,
+                .font: fontTitle,
+            ]
+            appearance.shadowColor = border
+            bar.standardAppearance = appearance
+            bar.scrollEdgeAppearance = appearance
+        } else {
+            // Empty backgroundImage makes the bar transparent on iOS 12 → looks like a white screen.
+            bar.barTintColor = background
+            bar.shadowImage = UIImage()
+        }
     }
 
     static func applyTabBar(_ tabBar: UITabBar) {
@@ -168,8 +181,9 @@ enum TabIcons {
 enum ChatIcons {
     /// Hold-to-talk mic glyph. iOS 13+ uses SF Symbol; iOS 12 uses a filled vector fallback.
     static func microphone(diameter: CGFloat, color: UIColor) -> UIImage? {
-        let pointSize = max(28, diameter * 0.88)
+        _ = color
         if #available(iOS 13.0, *) {
+            let pointSize = max(28, diameter * 0.88)
             let config = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .semibold)
             if let symbol = UIImage(systemName: "mic.fill", withConfiguration: config)?
                 .withRenderingMode(.alwaysTemplate) {

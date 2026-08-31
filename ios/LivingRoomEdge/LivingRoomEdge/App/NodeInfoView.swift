@@ -121,7 +121,7 @@ struct NodeInfoView: View {
     private func heartbeatRow(_ status: BrainHeartbeatStatus) -> some View {
         let active = status.mode == model.brainEnvironment.mode
         let baseURL = BrainEndpoint.displayBase(
-            from: status.mode == .lan ? model.lanBrainURL : model.cloudBrainURL
+            from: status.mode == .lan ? model.lanConnectBase() : model.cloudBrainURL
         )
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {

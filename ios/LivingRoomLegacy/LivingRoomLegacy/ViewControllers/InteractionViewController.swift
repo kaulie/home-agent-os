@@ -3,9 +3,10 @@ import UIKit
 final class InteractionViewController: UIViewController {
     private let segment = PillSegmentControl(titles: ["打字", "看书", "直播"])
     private let containerView = UIView()
-    private let chatViewController = ChatViewController()
-    private let readingViewController = ReadingModeViewController()
-    private let liveStreamViewController = LiveStreamViewController()
+    private var chatViewController: ChatViewController?
+    private var chatEmbedScheduled = false
+    private var readingViewController: ReadingModeViewController?
+    private var liveStreamViewController: LiveStreamViewController?
     private var segmentHeight: NSLayoutConstraint?
     private var containerTopToSegment: NSLayoutConstraint?
     private var containerTopToSafeArea: NSLayoutConstraint?
@@ -13,15 +14,17 @@ final class InteractionViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "面条之家"
+        edgesForExtendedLayout = []
         view.backgroundColor = LegacyTheme.background
 
         segment.selectedIndex = 0
         segment.onSelectionChanged = { [weak self] index in
-            self?.chatViewController.dismissKeyboard()
+            self?.chatViewController?.dismissKeyboard()
             self?.showChild(at: index)
         }
         segment.translatesAutoresizingMaskIntoConstraints = false
         containerView.translatesAutoresizingMaskIntoConstraints = false
+        containerView.backgroundColor = LegacyTheme.background
 
         view.addSubview(segment)
         view.addSubview(containerView)
@@ -42,23 +45,31 @@ final class InteractionViewController: UIViewController {
             containerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
-        readingViewController.onCaptureSessionActive = { [weak self] active in
-            self?.setCaptureChromeHidden(active)
-        }
-        liveStreamViewController.onStreamActive = { [weak self] active in
-            self?.setCaptureChromeHidden(active)
-        }
-
-        embed(chatViewController)
-        embed(readingViewController)
-        embed(liveStreamViewController)
-        readingViewController.view.isHidden = true
-        liveStreamViewController.view.isHidden = true
-        showChild(at: 0)
+        // Mount chat immediately on iOS 12 (async embed left a blank/black content area).
+        let chat = ensureChatViewController()
+        embed(chat)
     }
 
     func refreshConnectionUI() {
-        chatViewController.refreshConnectionStatus()
+        chatViewController?.refreshConnectionStatus()
+    }
+
+    private func ensureChatViewController() -> ChatViewController {
+        if let chatViewController { return chatViewController }
+        let vc = ChatViewController()
+        chatViewController = vc
+        return vc
+    }
+
+    private func scheduleChatEmbedIfNeeded() {
+        guard !chatEmbedScheduled else { return }
+        chatEmbedScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            let chat = self.ensureChatViewController()
+            guard chat.parent == nil else { return }
+            self.embed(chat)
+        }
     }
 
     private func setCaptureChromeHidden(_ hidden: Bool) {
@@ -72,23 +83,63 @@ final class InteractionViewController: UIViewController {
     }
 
     private func showChild(at index: Int) {
-        chatViewController.dismissKeyboard()
+        chatViewController?.dismissKeyboard()
         let showReading = index == 1
         let showLive = index == 2
-        readingViewController.view.isHidden = !showReading
-        liveStreamViewController.view.isHidden = !showLive
-        chatViewController.view.isHidden = showReading || showLive
+
         if showReading {
-            readingViewController.beginSessionIfNeeded()
-            liveStreamViewController.endSession()
+            let reading = ensureReadingViewController()
+            reading.view.isHidden = false
+            liveStreamViewController?.view.isHidden = true
+            chatViewController?.view.isHidden = true
+            reading.beginSessionIfNeeded()
+            liveStreamViewController?.endSession()
         } else if showLive {
-            readingViewController.endSession()
-            liveStreamViewController.beginSessionIfNeeded()
+            let live = ensureLiveStreamViewController()
+            readingViewController?.view.isHidden = true
+            live.view.isHidden = false
+            chatViewController?.view.isHidden = true
+            readingViewController?.endSession()
+            live.beginSessionIfNeeded()
         } else {
-            readingViewController.endSession()
-            liveStreamViewController.endSession()
+            scheduleChatEmbedIfNeeded()
+            let chat = ensureChatViewController()
+            if chat.parent == nil {
+                embed(chat)
+            }
+            readingViewController?.view.isHidden = true
+            liveStreamViewController?.view.isHidden = true
+            chat.view.isHidden = false
+            readingViewController?.endSession()
+            liveStreamViewController?.endSession()
             setCaptureChromeHidden(false)
         }
+    }
+
+    private func ensureReadingViewController() -> ReadingModeViewController {
+        if let readingViewController {
+            return readingViewController
+        }
+        let vc = ReadingModeViewController()
+        vc.onCaptureSessionActive = { [weak self] active in
+            self?.setCaptureChromeHidden(active)
+        }
+        readingViewController = vc
+        embed(vc)
+        return vc
+    }
+
+    private func ensureLiveStreamViewController() -> LiveStreamViewController {
+        if let liveStreamViewController {
+            return liveStreamViewController
+        }
+        let vc = LiveStreamViewController()
+        vc.onStreamActive = { [weak self] active in
+            self?.setCaptureChromeHidden(active)
+        }
+        liveStreamViewController = vc
+        embed(vc)
+        return vc
     }
 
     private func embed(_ child: UIViewController) {

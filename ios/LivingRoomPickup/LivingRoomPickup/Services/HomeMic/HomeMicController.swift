@@ -103,6 +103,13 @@ final class HomeMicController: NSObject {
         publishStatus("连接中…")
         let host = HomeMicSettings.host
         let port = HomeMicSettings.port
+        if host.isEmpty {
+            isConnecting = false
+            setConnection(.failed("尚未发现 \(HomeMicSettings.defaultMdnsHost)"))
+            publishStatus("正在发现客厅 Mac…")
+            scheduleReconnect()
+            return
+        }
         let deviceId = PickupIdentity.deviceId
         let participantId = PickupIdentity.participantId
         client.connect(

@@ -23,7 +23,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         MdnsDiscovery.resolve(MdnsDiscovery.gatewayType) { gateway in
             guard let gateway else { return }
             DispatchQueue.main.async {
-                HomeMicSettings.host = gateway.host
+                HomeMicSettings.applyDiscovered(gateway)
             }
         }
         return true

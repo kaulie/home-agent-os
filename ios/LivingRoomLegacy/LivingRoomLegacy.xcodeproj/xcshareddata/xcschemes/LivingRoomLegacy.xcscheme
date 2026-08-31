@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "96898808BC174DD49A7865F7"
+               BlueprintIdentifier = "D4A7EEF83D764FF7BFCB7546"
                BuildableName = "LivingRoomLegacy.app"
                BlueprintName = "LivingRoomLegacy"
                ReferencedContainer = "container:LivingRoomLegacy.xcodeproj">
@@ -43,7 +43,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "96898808BC174DD49A7865F7"
+            BlueprintIdentifier = "D4A7EEF83D764FF7BFCB7546"
             BuildableName = "LivingRoomLegacy.app"
             BlueprintName = "LivingRoomLegacy"
             ReferencedContainer = "container:LivingRoomLegacy.xcodeproj">
@@ -60,7 +60,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "96898808BC174DD49A7865F7"
+            BlueprintIdentifier = "D4A7EEF83D764FF7BFCB7546"
             BuildableName = "LivingRoomLegacy.app"
             BlueprintName = "LivingRoomLegacy"
             ReferencedContainer = "container:LivingRoomLegacy.xcodeproj">

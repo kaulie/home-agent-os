@@ -282,8 +282,10 @@ struct BrainHeartbeatStatus: Equatable {
 struct MdnsDiscoverOutcome {
     var brainFound = false
     var brainURL = ""
+    var brainMdns = ""
     var gatewayFound = false
     var gatewayURL = ""
+    var gatewayMdns = ""
 }
 
 @MainActor
@@ -306,6 +308,17 @@ final class AppModel: ObservableObject {
                 return
             }
             BrainEndpoint.lanBaseURL = next
+        }
+    }
+    /// IPv4 Brain base after mDNS / probe (`http://x.x.x.x:9527`). Empty = not found yet.
+    @Published var lanResolvedBase = BrainEndpoint.lanResolvedBaseURL {
+        didSet {
+            let next = BrainEndpoint.normalizeBase(lanResolvedBase)
+            if next != lanResolvedBase {
+                lanResolvedBase = next
+                return
+            }
+            BrainEndpoint.lanResolvedBaseURL = next
         }
     }
     @Published var cloudBrainURL = BrainEndpoint.cloudBaseURL {
@@ -426,6 +439,10 @@ final class AppModel: ObservableObject {
     private var cloudBeatPending = false
     /// Suppress duplicate foreground work while cold-start bootstrap is still running.
     private var coldBootstrapRunning = true
+    private var pendingForegroundRefresh = false
+    private var pendingPathResolve = false
+    private var lanDiscoveryRetryTask: Task<Void, Never>?
+    private var resolveWorkPending = false
     /// Keep ≤ Brain `ONLINE_TTL_SEC / 2` (TTL is 2× heartbeat).
     static let heartbeatIntervalSeconds: TimeInterval = 30
     static let heartbeatAttemptTimeout: TimeInterval = 3
@@ -443,8 +460,10 @@ final class AppModel: ObservableObject {
         // P0: ensure a stable Runtime Identity exists before first register.
         ParticipantStore.ensureRuntimeId()
         enabledRoles = ParticipantStore.reportedRoles
-        turns = ChatPersistence.load()
-        lanBrainURL = BrainEndpoint.lanBaseURL
+        BrainEndpoint.migrateLanIdentityIfNeeded()
+        lanBrainURL = BrainEndpoint.defaultLanBase
+        BrainEndpoint.lanBaseURL = BrainEndpoint.defaultLanBase
+        lanResolvedBase = BrainEndpoint.lanResolvedBaseURL
         cloudBrainURL = BrainEndpoint.cloudBaseURL
         brainRouting = BrainEndpoint.routing
         audioRecorder.objectWillChange
@@ -461,21 +480,98 @@ final class AppModel: ObservableObject {
             .store(in: &cancellables)
         startPathMonitor()
 
-        Task {
-            // Let the first TabView frame paint before any network / @Published storm.
+        Task { @MainActor in
+            MdnsDiscovery.logLaunchNetworkContext()
+            DiscoveryDebugLog.shared.log("cold bootstrap start phase1 allowMdns=false allowLanProbe=false", category: "connect")
+            // Let TabView / ContentView paint before sync load + network.
             await Task.yield()
-            await refreshMdnsEndpoints()
-            await resolveBrainEndpoint(reregister: false)
+            await Task.yield()
+            turns = ChatPersistence.load()
+
+            await resolveBrainEndpoint(reregister: false, allowMdns: false, allowLanProbe: false)
+            DiscoveryDebugLog.shared.log("cold bootstrap phase1 done intentURL=\(intentServerURL)", category: "connect")
             let url = intentServerURL
             await ensureRegistered(serverURL: url, force: true)
             _ = await heartbeatNow(serverURL: url)
             enqueueBrainHeartbeat(mode: secondaryMode(for: url))
             startHeartbeatLoopIfNeeded()
-            await loadOlderHistory(serverURL: url, silent: true)
-            await refreshVisibleTurns(serverURL: url, onlyAwaiting: true)
-            coldBootstrapRunning = false
             resumePendingPhotoUploads()
+
+            async let history: Void = loadOlderHistory(serverURL: intentServerURL, silent: true)
+            async let visible: Void = refreshVisibleTurns(serverURL: intentServerURL, onlyAwaiting: true)
+            async let mdnsOutcome: MdnsDiscoverOutcome = refreshMdnsEndpoints()
+            _ = await (history, visible, mdnsOutcome)
+
+            DiscoveryDebugLog.shared.log("cold bootstrap phase2 allowMdns=true allowLanProbe=true", category: "connect")
+            let baseline = url
+            await resolveBrainEndpoint(reregister: true, allowMdns: true, allowLanProbe: true)
+            let refreshed = intentServerURL
+            if refreshed != baseline {
+                DiscoveryDebugLog.shared.log("cold bootstrap phase2 switched \(baseline) → \(refreshed)", category: "connect")
+                await ensureRegistered(serverURL: refreshed, force: true)
+                _ = await heartbeatNow(serverURL: refreshed)
+            }
+
+            coldBootstrapRunning = false
+            DiscoveryDebugLog.shared.log("cold bootstrap done intentURL=\(intentServerURL)", category: "connect")
+            await flushPendingBrainRefreshWork()
         }
+    }
+
+    /// Run after bootstrap or when a refresh was skipped during cold start.
+    private func flushPendingBrainRefreshWork() async {
+        if pendingForegroundRefresh {
+            pendingForegroundRefresh = false
+            await performForegroundBrainRefresh()
+            return
+        }
+        if pendingPathResolve {
+            pendingPathResolve = false
+            await resolveBrainEndpoint(reregister: true)
+        }
+        scheduleLanDiscoveryRetryIfNeeded()
+    }
+
+    /// If still on cloud while at home, retry LAN discovery once Bonjour has warmed up.
+    private func scheduleLanDiscoveryRetryIfNeeded(delay: TimeInterval = 2.5) {
+        lanDiscoveryRetryTask?.cancel()
+        lanDiscoveryRetryTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            guard brainRouting != .cloud else {
+                DiscoveryDebugLog.shared.log("LAN retry skipped: routing=cloud", category: "connect")
+                return
+            }
+            guard brainEnvironment.looksOnHomeLAN else {
+                DiscoveryDebugLog.shared.log("LAN retry skipped: not on home LAN", category: "connect")
+                return
+            }
+            guard brainEnvironment.mode != .lan || brainEnvironment.lanProbeOk != true else {
+                DiscoveryDebugLog.shared.log("LAN retry skipped: already on LAN with probe OK", category: "connect")
+                return
+            }
+            DiscoveryDebugLog.shared.log("LAN retry scheduled (still on cloud at home)", category: "connect")
+            let before = intentServerURL
+            _ = await refreshMdnsEndpoints()
+            await resolveBrainEndpoint(reregister: true)
+            if intentServerURL != before {
+                DiscoveryDebugLog.shared.log("LAN retry switched \(before) → \(intentServerURL)", category: "connect")
+                await ensureRegistered(serverURL: intentServerURL, force: true)
+                _ = await heartbeatNow(serverURL: intentServerURL)
+            } else {
+                DiscoveryDebugLog.shared.log("LAN retry unchanged url=\(intentServerURL)", category: "connect")
+            }
+        }
+    }
+
+    private func performForegroundBrainRefresh() async {
+        DiscoveryDebugLog.shared.log("foreground refresh start", category: "connect")
+        _ = await refreshMdnsEndpoints()
+        await resolveBrainEndpoint(reregister: true)
+        await catchUpHeartbeatIfOverdue()
+        await refreshVisibleTurns(serverURL: intentServerURL, onlyAwaiting: true)
+        resumePendingPhotoUploads()
+        DiscoveryDebugLog.shared.log("foreground refresh done url=\(intentServerURL)", category: "connect")
     }
 
     /// Discover Brain / Gateway / img-server via mDNS and update the LAN slots so
@@ -486,40 +582,70 @@ final class AppModel: ObservableObject {
     @discardableResult
     @MainActor
     func refreshMdnsEndpoints(force: Bool = false) async -> MdnsDiscoverOutcome {
-        let timeout: TimeInterval = force ? 5 : 2.5
-        var outcome = MdnsDiscoverOutcome()
-        if let brain = await MdnsDiscovery.resolve(MdnsDiscovery.brainType, timeout: timeout) {
-            outcome.brainFound = true
-            outcome.brainURL = brain.baseURL
-            if force || BrainEndpoint.normalizeBase(brain.baseURL) != BrainEndpoint.lanBaseURL {
-                lanBrainURL = brain.baseURL
+        let timeout: TimeInterval = force ? 8 : 6
+        DiscoveryDebugLog.shared.log(
+            "refreshMdnsEndpoints force=\(force) timeout=\(timeout)s needGateway=\(force || macIngestURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)",
+            category: "connect"
+        )
+        if force {
+            // Rediscover Gateway independently. Keep last ping-verified Brain IP until a new Brain is found.
+            DiscoveryDebugLog.shared.log("refreshMdnsEndpoints force: clearing macIngestURL only (keep lanResolvedBase until Brain hit)", category: "connect")
+            macIngestURL = ""
+        }
+        let needGateway = force || macIngestURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        var brain: MdnsDiscovery.Endpoint?
+        var gateway: MdnsDiscovery.Endpoint?
+
+        await withTaskGroup(of: (Int, MdnsDiscovery.Endpoint?).self) { group in
+            group.addTask {
+                (0, await MdnsDiscovery.resolveBrainForAutoDiscover(mdnsTimeout: timeout))
+            }
+            if needGateway {
+                group.addTask {
+                    (1, await MdnsDiscovery.resolveGatewayForAutoDiscover(mdnsTimeout: timeout))
+                }
+            }
+            for await (kind, ep) in group {
+                if kind == 0 { brain = ep } else { gateway = ep }
             }
         }
-        if (force || macIngestURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
-           let gateway = await MdnsDiscovery.resolve(MdnsDiscovery.gatewayType, timeout: timeout) {
+
+        var outcome = MdnsDiscoverOutcome()
+        if let brain {
+            outcome.brainFound = true
+            outcome.brainURL = brain.baseURL
+            outcome.brainMdns = brain.mdnsBaseURL
+            lanBrainURL = BrainEndpoint.defaultLanBase
+            persistPingVerifiedLanBase(brain.baseURL)
+        }
+        if let gateway {
             outcome.gatewayFound = true
             outcome.gatewayURL = gateway.baseURL
+            outcome.gatewayMdns = gateway.mdnsBaseURL
             macIngestURL = gateway.baseURL
         }
+        DiscoveryDebugLog.shared.log(
+            "refreshMdnsEndpoints outcome brain=\(outcome.brainFound ? outcome.brainURL : "—") gateway=\(outcome.gatewayFound ? outcome.gatewayURL : "—")",
+            category: "connect"
+        )
         return outcome
     }
 
     func onForeground() {
-        Task {
-            // Cold-start Task already registers / heartbeats / refreshes.
-            // scenePhase → .active often fires in the same window and must not double-run.
-            guard !coldBootstrapRunning else { return }
-            await resolveBrainEndpoint(reregister: true)
-            // Brief Control Center flips: nextHeartbeatAt still in the future → no beat.
-            // Long background suspend: cadence overdue → one catch-up beat, then resume 30s.
-            await catchUpHeartbeatIfOverdue()
-            await refreshVisibleTurns(serverURL: intentServerURL, onlyAwaiting: true)
-            resumePendingPhotoUploads()
+        Task { @MainActor in
+            if coldBootstrapRunning {
+                pendingForegroundRefresh = true
+                return
+            }
+            await performForegroundBrainRefresh()
         }
     }
 
     func applyPinnedBrainURLs() async {
-        BrainEndpoint.lanBaseURL = lanBrainURL
+        BrainEndpoint.lanBaseURL = BrainEndpoint.defaultLanBase
+        lanBrainURL = BrainEndpoint.defaultLanBase
+        BrainEndpoint.lanResolvedBaseURL = lanResolvedBase
         BrainEndpoint.cloudBaseURL = cloudBrainURL
         BrainEndpoint.routing = brainRouting
         await resolveBrainEndpoint(reregister: true)
@@ -538,39 +664,183 @@ final class AppModel: ObservableObject {
 
     func predictedBrainBase(for routing: BrainEndpoint.Routing) -> String {
         predictedBrainMode(for: routing) == .lan
-            ? BrainEndpoint.displayBase(from: lanBrainURL)
+            ? BrainEndpoint.displayBase(from: lanConnectBase())
             : BrainEndpoint.displayBase(from: cloudBrainURL)
     }
 
+    /// HTTP target for LAN Brain: resolved IPv4, never `brain.local` when an IP is known.
+    func lanConnectBase() -> String {
+        if BrainEndpoint.ipv4Host(from: lanResolvedBase) != nil {
+            return BrainEndpoint.normalizeBase(lanResolvedBase)
+        }
+        if BrainEndpoint.ipv4Host(from: lanBrainURL) != nil {
+            return BrainEndpoint.normalizeBase(lanBrainURL)
+        }
+        return BrainEndpoint.lanConnectBaseURL
+    }
+
+    /// Store only ping-verified IPv4. Never persist `brain.local`.
+    private func persistPingVerifiedLanBase(_ raw: String) {
+        let ipBase: String
+        if let known = BrainEndpoint.ipv4Base(from: raw) {
+            ipBase = known
+        } else if let host = URL(string: BrainEndpoint.normalizeBase(raw))?.host,
+                  let ip = MdnsDiscovery.resolveIPv4Host(host) {
+            let port = URL(string: BrainEndpoint.normalizeBase(raw))?.port ?? 9527
+            ipBase = "http://\(ip):\(port)"
+        } else {
+            return
+        }
+        if lanResolvedBase != ipBase {
+            DiscoveryDebugLog.shared.log("persist ping-verified LAN \(ipBase)", category: "connect")
+        }
+        lanResolvedBase = ipBase
+        BrainEndpoint.lanResolvedBaseURL = ipBase
+        if let host = BrainEndpoint.ipv4Host(from: ipBase) {
+            MdnsDiscovery.rememberBrainIP(host)
+        }
+    }
+
+    private func lanCandidateBases() -> [String] {
+        var bases: [String] = []
+        func add(_ raw: String) {
+            guard let ipBase = BrainEndpoint.ipv4Base(from: raw), !bases.contains(ipBase) else { return }
+            bases.append(ipBase)
+        }
+        add(lanResolvedBase)
+        add(lanBrainURL)
+        for ip in MdnsDiscovery.rememberedBrainIPs() {
+            add("http://\(ip):9527")
+        }
+        return bases
+    }
+
+    /// Probe known IPv4s in order; do not treat one timeout as “LAN is gone”.
+    private func pingFirstReachableLan(bases: [String], timeout: TimeInterval) async -> (base: String, failDetail: String) {
+        var lastFail = ""
+        for base in bases {
+            let intent = BrainEndpoint.intentURL(from: base)
+            switch await intentClient.ping(serverURL: intent, clientSentAt: Date(), timeout: timeout) {
+            case .ok:
+                return (base, "")
+            case let .failed(detail):
+                lastFail = detail
+                DiscoveryDebugLog.shared.log("LAN candidate ping FAIL \(intent): \(detail)", category: "connect")
+            }
+        }
+        return ("", lastFail)
+    }
+
+    private func probeLanBrain(allowMdns: Bool) async -> (ok: Bool, detail: String) {
+        let first = await pingFirstReachableLan(bases: lanCandidateBases(), timeout: 3)
+        if !first.base.isEmpty {
+            persistPingVerifiedLanBase(first.base)
+            DiscoveryDebugLog.shared.log("LAN ping OK \(first.base)", category: "connect")
+            return (true, "")
+        }
+        let kept = lanResolvedBase
+        if allowMdns {
+            if let brain = await MdnsDiscovery.resolveBrainForAutoDiscover(mdnsTimeout: 6) {
+                lanBrainURL = BrainEndpoint.defaultLanBase
+                let discovered = BrainEndpoint.normalizeBase(brain.baseURL)
+                switch await intentClient.ping(
+                    serverURL: BrainEndpoint.intentURL(from: discovered),
+                    clientSentAt: Date(),
+                    timeout: 3
+                ) {
+                case .ok:
+                    persistPingVerifiedLanBase(discovered)
+                    DiscoveryDebugLog.shared.log("LAN ping OK after rediscover \(discovered)", category: "connect")
+                    return (true, "")
+                case let .failed(detail):
+                    DiscoveryDebugLog.shared.log("LAN rediscover ping FAIL \(discovered): \(detail)", category: "connect")
+                    let retry = await pingFirstReachableLan(bases: lanCandidateBases(), timeout: 3)
+                    if !retry.base.isEmpty {
+                        persistPingVerifiedLanBase(retry.base)
+                        DiscoveryDebugLog.shared.log("LAN ping OK other candidate \(retry.base)", category: "connect")
+                        return (true, "")
+                    }
+                    if !kept.isEmpty {
+                        DiscoveryDebugLog.shared.log(
+                            "LAN probe failed; keeping last verified \(kept) (not dropping on one timeout)",
+                            category: "connect"
+                        )
+                    }
+                    return (false, detail)
+                }
+            }
+        }
+        if !kept.isEmpty {
+            DiscoveryDebugLog.shared.log(
+                "LAN probe failed; keeping last verified \(kept) (not dropping on one timeout)",
+                category: "connect"
+            )
+        }
+        return (false, first.failDetail.isEmpty ? "局域网 Brain 不可达" : first.failDetail)
+    }
+
+    /// 对时 ping succeeded: keep that IPv4 and, unless locked to cloud, actually use LAN.
+    private func adoptLanFromSuccessfulPing() async {
+        persistPingVerifiedLanBase(lanConnectBase())
+        guard brainRouting != .cloud else { return }
+        let next = BrainEndpoint.intentURL(from: lanConnectBase())
+        let changed = next != intentServerURL
+        intentServerURL = next
+        intentClient.lastServerURL = next
+        brainEnvironment.routing = brainRouting
+        brainEnvironment.lanProbeOk = true
+        brainEnvironment.lanProbeDetail = ""
+        brainEnvironment.mode = .lan
+        brainEnvironment.activeIntentURL = next
+        DiscoveryDebugLog.shared.log("adopt LAN after 对时/ping url=\(next) changed=\(changed)", category: "connect")
+        if changed, !coldBootstrapRunning {
+            await ensureRegistered(serverURL: next, force: true)
+        }
+    }
+
     func applyBrainRouting(_ routing: BrainEndpoint.Routing) {
+        let prev = brainRouting
         brainRouting = routing
+        if prev != routing {
+            DiscoveryDebugLog.shared.log("routing changed \(prev) → \(routing)", category: "connect")
+        }
     }
 
     /// Auto: LAN when `/api/v1/ping` succeeds, else Cloud. Forced LAN / Cloud skip that choice.
-    func resolveBrainEndpoint(reregister: Bool) async {
-        while brainResolveBusy {
-            try? await Task.sleep(nanoseconds: 80_000_000)
+    /// `allowMdns` / `allowLanProbe`: false during cold start so Bonjour / LAN ping do not block first frame.
+    func resolveBrainEndpoint(
+        reregister: Bool,
+        allowMdns: Bool = true,
+        allowLanProbe: Bool = true
+    ) async {
+        if brainResolveBusy {
+            resolveWorkPending = true
+            return
         }
         brainResolveBusy = true
-        defer { brainResolveBusy = false }
+        defer {
+            brainResolveBusy = false
+            if resolveWorkPending {
+                resolveWorkPending = false
+                Task { await self.resolveBrainEndpoint(reregister: true) }
+            }
+        }
 
         let routing = brainRouting
-        let lanIntent = BrainEndpoint.intentURL(from: lanBrainURL)
+        DiscoveryDebugLog.shared.log(
+            "resolveBrainEndpoint routing=\(routing) allowMdns=\(allowMdns) allowLanProbe=\(allowLanProbe) lanBase=\(lanConnectBase())",
+            category: "connect"
+        )
         let cloudIntent = BrainEndpoint.intentURL(from: cloudBrainURL)
         let looksLAN = brainEnvironment.looksOnHomeLAN
         var probeOk: Bool?
         var probeDetail = ""
 
-        let shouldProbeLAN = routing != .cloud && (looksLAN || routing == .lan)
+        let shouldProbeLAN = allowLanProbe && routing != .cloud && (looksLAN || routing == .lan)
         if shouldProbeLAN {
-            switch await intentClient.ping(serverURL: lanIntent, clientSentAt: Date(), timeout: 2) {
-            case .ok:
-                probeOk = true
-                probeDetail = ""
-            case let .failed(detail):
-                probeOk = false
-                probeDetail = detail
-            }
+            let probed = await probeLanBrain(allowMdns: allowMdns)
+            probeOk = probed.ok
+            probeDetail = probed.detail
         } else if routing == .cloud {
             probeOk = nil
             probeDetail = "已强制走云 Brain，跳过 LAN 探测"
@@ -579,6 +849,7 @@ final class AppModel: ObservableObject {
             probeDetail = "当前不是家庭局域网，跳过 LAN 探测"
         }
 
+        let resolvedLanIntent = BrainEndpoint.intentURL(from: lanConnectBase())
         let useLAN: Bool
         switch routing {
         case .lan:
@@ -588,7 +859,7 @@ final class AppModel: ObservableObject {
         case .auto:
             useLAN = probeOk == true
         }
-        let next = useLAN ? lanIntent : cloudIntent
+        let next = useLAN ? resolvedLanIntent : cloudIntent
         let changed = next != intentServerURL
         intentServerURL = next
         intentClient.lastServerURL = next
@@ -597,6 +868,11 @@ final class AppModel: ObservableObject {
         brainEnvironment.lanProbeDetail = probeDetail
         brainEnvironment.mode = useLAN ? .lan : .cloud
         brainEnvironment.activeIntentURL = next
+
+        DiscoveryDebugLog.shared.log(
+            "resolveBrainEndpoint → mode=\(useLAN ? "lan" : "cloud") url=\(next) changed=\(changed) probeOk=\(String(describing: probeOk)) detail=\(probeDetail)",
+            category: "connect"
+        )
 
         if reregister, changed, !coldBootstrapRunning {
             await ensureRegistered(serverURL: next, force: true)
@@ -629,8 +905,13 @@ final class AppModel: ObservableObject {
         let pathChanged = kind != brainEnvironment.pathKind
         brainEnvironment.pathKind = kind
         brainEnvironment.looksOnHomeLAN = looks
-        if pathChanged, !coldBootstrapRunning {
-            Task { await resolveBrainEndpoint(reregister: true) }
+        if pathChanged {
+            DiscoveryDebugLog.shared.log("network path → \(kind) looksOnHomeLAN=\(looks)", category: "connect")
+            if coldBootstrapRunning {
+                pendingPathResolve = true
+            } else {
+                Task { await resolveBrainEndpoint(reregister: true) }
+            }
         }
     }
 
@@ -865,7 +1146,7 @@ final class AppModel: ObservableObject {
 
     /// P0 dual-Brain: classify an intent URL as LAN or Cloud for per-Brain status.
     private func brainMode(for url: String) -> BrainEndpoint.Mode {
-        let lan = BrainEndpoint.intentURL(from: lanBrainURL)
+        let lan = BrainEndpoint.intentURL(from: lanConnectBase())
         let cloud = BrainEndpoint.intentURL(from: cloudBrainURL)
         if url == cloud { return .cloud }
         return .lan
@@ -905,7 +1186,7 @@ final class AppModel: ObservableObject {
 
     private func intentURL(for mode: BrainEndpoint.Mode) -> String {
         mode == .lan
-            ? BrainEndpoint.intentURL(from: lanBrainURL)
+            ? BrainEndpoint.intentURL(from: lanConnectBase())
             : BrainEndpoint.intentURL(from: cloudBrainURL)
     }
 
@@ -1032,6 +1313,9 @@ final class AppModel: ObservableObject {
             )
             switch send {
             case let .ok(at, roles):
+                if mode == .lan {
+                    persistPingVerifiedLanBase(BrainEndpoint.displayBase(from: trimmed))
+                }
                 finishHeartbeatSuccess(mode: mode, isPrimary: isPrimary, at: at, roles: roles)
                 return true
             case let .failed(detail):
@@ -1075,6 +1359,9 @@ final class AppModel: ObservableObject {
         at: Date,
         roles: [String]
     ) {
+        if mode == .lan {
+            persistPingVerifiedLanBase(lanConnectBase())
+        }
         if isPrimary {
             applyHeartbeatResult(ok: true, at: at, error: "")
         }
@@ -1132,7 +1419,7 @@ final class AppModel: ObservableObject {
         clockSyncError = ""
         // Let SwiftUI paint 【本地时间】 before the network await.
         await Task.yield()
-        let lanURL = BrainEndpoint.intentURL(from: lanBrainURL)
+        let lanURL = BrainEndpoint.intentURL(from: lanConnectBase())
         let cloudURL = BrainEndpoint.intentURL(from: cloudBrainURL)
         async let lanPing = intentClient.ping(serverURL: lanURL, clientSentAt: local)
         async let cloudPing = intentClient.ping(serverURL: cloudURL, clientSentAt: local)
@@ -1142,6 +1429,7 @@ final class AppModel: ObservableObject {
         case let .ok(serverAt, skewMs):
             sample.lanServerAt = serverAt
             sample.lanSkewMs = skewMs
+            await adoptLanFromSuccessfulPing()
         case let .failed(detail):
             sample.lanError = detail
         }

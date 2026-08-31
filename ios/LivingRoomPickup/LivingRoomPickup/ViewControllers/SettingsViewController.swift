@@ -54,9 +54,10 @@ final class SettingsViewController: UIViewController {
         ])
 
         stack.addArrangedSubview(sectionTitle("Mac 拾音服务"))
-        stack.addArrangedSubview(hintLabel("voice.stream HAP1，默认 :8792。手机与 Mac 需同一 Wi‑Fi。"))
+        stack.addArrangedSubview(hintLabel("默认 mDNS 名 gateway.local。发现后下面显示实际 IP。voice.stream HAP1，默认 :8792。"))
+        stack.addArrangedSubview(hintLabel("身份：\(HomeMicSettings.defaultMdnsHost)"))
 
-        styleField(hostField, placeholder: HomeMicSettings.defaultHost, keyboard: .URL)
+        styleField(hostField, placeholder: "实际 IP（自动发现）", keyboard: .URL)
         hostField.addTarget(self, action: #selector(hostChanged), for: .editingChanged)
         stack.addArrangedSubview(hostField)
 

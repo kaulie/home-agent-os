@@ -11,9 +11,11 @@ enum PickupSettings {
     static var serverHost: String {
         get {
             let stored = UserDefaults.standard.string(forKey: hostKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let stored, !stored.isEmpty { return stored }
-            // Living-room Mac LAN IP (voice.stream HAP1 ingest).
-            return "192.168.3.84"
+            if let stored, !stored.isEmpty {
+                if stored.lowercased().hasSuffix(".local") { return "" }
+                return stored
+            }
+            return ""
         }
         set { UserDefaults.standard.set(newValue, forKey: hostKey) }
     }
@@ -49,7 +51,7 @@ enum PickupSettings {
         get {
             let stored = UserDefaults.standard.string(forKey: brainURLKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
             if let stored, !stored.isEmpty { return stored }
-            return "http://192.168.3.84:9527/api/v1/intent"
+            return "http://brain.local:9527/api/v1/intent"
         }
         set { UserDefaults.standard.set(newValue, forKey: brainURLKey) }
     }
@@ -65,6 +67,7 @@ enum PickupSettings {
     static func autoDiscoverGateway() async {
         if let gateway = await MdnsDiscovery.resolve(MdnsDiscovery.gatewayType) {
             serverHost = gateway.host
+            serverPort = gateway.voiceIngestPort
         }
         if let brain = await MdnsDiscovery.resolve(MdnsDiscovery.brainType) {
             brainIntentURL = brain.baseURL + "/api/v1/intent"

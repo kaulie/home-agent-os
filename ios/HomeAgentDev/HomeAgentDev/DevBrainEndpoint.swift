@@ -2,7 +2,8 @@ import Foundation
 
 /// LAN / Cloud Brain slots and routing policy (aligned with LivingRoomEdge User Console).
 enum DevBrainEndpoint {
-    static let defaultLanBase = "http://192.168.3.84:9527"
+    /// LAN identity shown in settings. HTTP uses resolved IPv4 (`lastSuccessfulLanHost`).
+    static let defaultLanBase = "http://brain.local:9527"
     static let defaultCloudBase = "http://115.190.153.53:9527"
 
     private static let lanKey = "homeagent.dev.brain.lanURL"
@@ -59,6 +60,21 @@ enum DevBrainEndpoint {
         set { UserDefaults.standard.set(normalizeBase(newValue), forKey: lanKey) }
     }
 
+    /// IPv4 Brain base for HTTP after mDNS / probe.
+    static var lanResolvedBaseURL: String {
+        get {
+            if let ip = lastSuccessfulLanHost, DevBrainLANHostOrder.ipv4(from: ip) != nil {
+                return "http://\(ip):9527"
+            }
+            return ""
+        }
+        set {
+            if let ip = DevBrainLANHostOrder.ipv4(from: newValue) {
+                lastSuccessfulLanHost = ip
+            }
+        }
+    }
+
     static var cloudBaseURL: String {
         get { stored(key: cloudKey, fallback: defaultCloudBase) }
         set { UserDefaults.standard.set(normalizeBase(newValue), forKey: cloudKey) }
@@ -90,30 +106,48 @@ enum DevBrainEndpoint {
         }
     }
 
-    /// Discover the LAN Brain via mDNS (`_ha-brain._tcp`) and persist it into the
-    /// LAN slot so the app stops depending on a fixed LAN IP (IP changes are
-    /// followed automatically by mDNS).
+    static func lanConnectBase(identity: String? = nil) -> String {
+        migrateLegacyIfNeeded()
+        if let ip = lastSuccessfulLanHost, DevBrainLANHostOrder.ipv4(from: ip) != nil {
+            return "http://\(ip):9527"
+        }
+        let identity = identity ?? lanBaseURL
+        if DevBrainLANHostOrder.ipv4(from: identity) != nil {
+            return normalizeBase(identity)
+        }
+        return normalizeBase(identity)
+    }
+
+    /// Discover LAN Brain via mDNS and remember IPv4. Does not replace the mDNS identity slot.
     static func autoDiscoverLanBrain() async {
         guard let brain = await MdnsDiscovery.resolve(MdnsDiscovery.brainType) else { return }
-        let resolved = normalizeBase(brain.baseURL)
-        if resolved != lanBaseURL {
-            lanBaseURL = resolved
+        rememberSuccessfulLAN(brain.baseURL)
+        if DevBrainLANHostOrder.ipv4(from: lanBaseURL) != nil {
+            lanBaseURL = defaultLanBase
         }
     }
 
     static func migrateLegacyIfNeeded() {
-        guard !UserDefaults.standard.bool(forKey: migratedKey) else { return }
-        if let legacy = UserDefaults.standard.string(forKey: legacyBrainKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !legacy.isEmpty {
-            let normalized = normalizeBase(legacy)
-            if normalized == normalizeBase(defaultCloudBase) {
-                routing = .cloud
-            } else if normalized != normalizeBase(defaultLanBase) {
-                lanBaseURL = normalized
+        if !UserDefaults.standard.bool(forKey: migratedKey) {
+            if let legacy = UserDefaults.standard.string(forKey: legacyBrainKey)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+                !legacy.isEmpty {
+                let normalized = normalizeBase(legacy)
+                if normalized == normalizeBase(defaultCloudBase) {
+                    routing = .cloud
+                } else if let ip = DevBrainLANHostOrder.ipv4(from: normalized) {
+                    rememberSuccessfulLAN(normalized)
+                    lanBaseURL = defaultLanBase
+                } else if normalized != normalizeBase(defaultLanBase) {
+                    lanBaseURL = normalized
+                }
             }
+            UserDefaults.standard.set(true, forKey: migratedKey)
         }
-        UserDefaults.standard.set(true, forKey: migratedKey)
+        if let ip = DevBrainLANHostOrder.ipv4(from: lanBaseURL) {
+            rememberSuccessfulLAN(lanBaseURL)
+            lanBaseURL = defaultLanBase
+        }
     }
 
     static func normalizeBase(_ raw: String) -> String {

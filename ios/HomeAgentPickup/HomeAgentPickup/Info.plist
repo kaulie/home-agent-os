@@ -34,6 +34,9 @@
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_hap1._tcp</string>
+		<string>_ha-brain._tcp</string>
+		<string>_ha-gateway._tcp</string>
+		<string>_ha-img-server._tcp</string>
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Home Mic 需要持续采集麦克风音频并推送到家里 HomeAgent，本机不播放声音。</string>

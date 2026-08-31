@@ -6,22 +6,31 @@ enum HomeMicSettings {
     private static let portKey = "pickup.homeMic.port"
     private static let energyGateKey = "pickup.homeMic.energyGate"
 
-    static let defaultHost = "192.168.3.84"
+    static let defaultMdnsHost = "gateway.local"
+    static let defaultHost = "gateway.local"
     static let defaultPort: UInt16 = 8792
 
-    /// Discover the Mac gateway voice ingest (`_ha-gateway._tcp`) via mDNS so the
-    /// app stops depending on a fixed LAN IP.
+    /// Discover the Mac gateway voice ingest (`_ha-gateway._tcp`) via mDNS.
+    /// Persists IPv4 for TCP; UI still shows gateway.local as the identity.
     @available(iOS 13.0, *)
     static func autoDiscoverGateway() async {
         guard let gateway = await MdnsDiscovery.resolve(MdnsDiscovery.gatewayType) else { return }
-        host = gateway.host
+        applyDiscovered(gateway)
     }
 
+    static func applyDiscovered(_ gateway: MdnsDiscovery.Endpoint) {
+        host = gateway.host
+        port = gateway.voiceIngestPort
+    }
+
+    /// TCP connect host (IPv4). Empty until mDNS/probe; never use `.local` for sockets.
     static var host: String {
         get {
             let saved = UserDefaults.standard.string(forKey: hostKey)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return saved.isEmpty ? defaultHost : saved
+            if saved.isEmpty { return "" }
+            if saved.lowercased().hasSuffix(".local") { return "" }
+            return saved
         }
         set {
             UserDefaults.standard.set(

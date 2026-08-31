@@ -179,6 +179,14 @@ final class PickupViewModel: NSObject, ObservableObject {
         while !Task.isCancelled {
             do {
                 isConnected = false
+                if PickupSettings.serverHost.isEmpty {
+                    connectionLabel = "正在发现 gateway.local…"
+                    try await PickupSettings.autoDiscoverGateway()
+                    if PickupSettings.serverHost.isEmpty {
+                        try await Task.sleep(nanoseconds: 2_000_000_000)
+                        continue
+                    }
+                }
                 connectionLabel = "连接中…"
                 try await client.connect(
                     host: PickupSettings.serverHost,

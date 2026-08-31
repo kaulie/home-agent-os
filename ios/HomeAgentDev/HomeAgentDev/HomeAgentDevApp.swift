@@ -13,7 +13,7 @@ struct HomeAgentDevApp: App {
             RootTabView()
                 .environmentObject(store)
                 .preferredColorScheme(.dark)
-                .task { await DevBrainEndpoint.autoDiscoverLanBrain() }
+                .task { await store.resolveBrainEndpoint() }
         }
     }
 }

@@ -11,8 +11,9 @@ enum BrainAPI {
 
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 60
+        // iPhone 6 / iOS 12 on LAN: 5s was too tight for POST register after mDNS.
+        config.timeoutIntervalForRequest = 20
+        config.timeoutIntervalForResource = 30
         return URLSession(configuration: config)
     }()
 
@@ -21,6 +22,7 @@ enum BrainAPI {
             completion(.failure(BrainFailure(message: "invalid register URL")))
             return
         }
+        DiscoveryDebugLog.shared.log("HTTP POST \(url.absoluteString)", category: "connect")
         let payload = ParticipantStore.registrationBody()
         postJSON(url: url, payload: payload) { result in
             switch result {
@@ -160,6 +162,7 @@ enum BrainAPI {
         request.httpMethod = "POST"
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
+        request.timeoutInterval = 20
         dataTask(request: request) { result in
             switch result {
             case .failure(let err):

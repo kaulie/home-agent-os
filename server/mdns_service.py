@@ -98,10 +98,12 @@ class MdnsPublisher:
         txt: dict[str, Any] | None = None,
         hostname: str | None = None,
     ) -> None:
+        merged = dict(txt or {})
+        merged.setdefault("lan_ip", lan_ipv4())
         if HAS_ZEROCONF:
-            self._publish_zeroconf(name, type_, port, txt, hostname)
+            self._publish_zeroconf(name, type_, port, merged, hostname)
         else:
-            self._publish_dns_sd(name, type_, port, txt)
+            self._publish_dns_sd(name, type_, port, merged)
 
     def _publish_zeroconf(
         self,

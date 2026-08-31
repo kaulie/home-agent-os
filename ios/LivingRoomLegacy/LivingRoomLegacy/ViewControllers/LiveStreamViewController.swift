@@ -119,7 +119,7 @@ final class LiveStreamViewController: UIViewController {
     }
 
     @objc private func startTapped() {
-        let ingest = ParticipantStore.macIngestURL
+        let ingest = ParticipantStore.macIngestConnectURL
         statusLabel.text = "正在连接 Mac…"
         startButton.isEnabled = false
         controller.startStream(ingestBaseURL: ingest, includeAudio: false) { [weak self] err in

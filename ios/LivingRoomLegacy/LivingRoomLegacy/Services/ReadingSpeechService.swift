@@ -13,13 +13,29 @@ protocol ReadingSpeechServiceDelegate: AnyObject {
 final class ReadingSpeechService {
     weak var delegate: ReadingSpeechServiceDelegate?
 
+    static var isSupported: Bool {
+        SFSpeechRecognizer(locale: Locale(identifier: "zh-CN")) != nil
+            || SFSpeechRecognizer() != nil
+    }
+
     private(set) var isListening = false
     private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
-    private let audioEngine = AVAudioEngine()
+    private var audioEngine: AVAudioEngine?
+
+    private func ensureAudioEngine() -> AVAudioEngine {
+        if let existing = audioEngine { return existing }
+        let engine = AVAudioEngine()
+        audioEngine = engine
+        return engine
+    }
 
     func start() {
+        guard Self.isSupported else {
+            delegate?.speechService(self, didFail: "本机不支持语音")
+            return
+        }
         requestPermissions { [weak self] ok, message in
             guard let self = self else { return }
             guard ok else {
@@ -31,9 +47,9 @@ final class ReadingSpeechService {
     }
 
     func stop() {
-        if audioEngine.isRunning {
-            audioEngine.stop()
-            audioEngine.inputNode.removeTap(onBus: 0)
+        if let engine = audioEngine, engine.isRunning {
+            engine.stop()
+            engine.inputNode.removeTap(onBus: 0)
         }
         recognitionRequest?.endAudio()
         recognitionRequest = nil
@@ -76,15 +92,20 @@ final class ReadingSpeechService {
             let request = SFSpeechAudioBufferRecognitionRequest()
             request.shouldReportPartialResults = true
             recognitionRequest = request
-            let input = audioEngine.inputNode
+            let engine = ensureAudioEngine()
+            let input = engine.inputNode
             let format = input.outputFormat(forBus: 0)
+            guard format.sampleRate > 0, format.channelCount > 0 else {
+                delegate?.speechService(self, didFail: "本机不支持语音")
+                return
+            }
             input.removeTap(onBus: 0)
             input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
                 self?.recognitionRequest?.append(buffer)
                 self?.reportLevel(from: buffer)
             }
-            audioEngine.prepare()
-            try audioEngine.start()
+            engine.prepare()
+            try engine.start()
             isListening = true
             delegate?.speechService(self, didUpdateStatus: "可以直接说话")
             recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in

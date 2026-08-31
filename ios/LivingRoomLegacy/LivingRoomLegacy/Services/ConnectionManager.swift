@@ -11,6 +11,7 @@ final class ConnectionManager {
     private var pendingParticipantId: String = ""
     private var allowEndpointFallback = false
     private var triedEndpointFallback = false
+    private var connectGeneration = 0
 
     private(set) var isConnecting = false
     private(set) var lastError: String = ""
@@ -22,11 +23,28 @@ final class ConnectionManager {
 
     private init() {}
 
-    /// Launch / foreground: try preferred (default 家里), optionally fall back once without saving.
+    /// Launch / foreground: try preferred (default 家里). Home never auto-falls back to cloud.
     func startAutoConnect() {
-        allowEndpointFallback = true
         triedEndpointFallback = false
-        start(intentURL: ParticipantStore.preferredEndpoint.intentURL)
+        let preferred = ParticipantStore.preferredEndpoint
+        if preferred == .home {
+            allowEndpointFallback = false
+            connectHomeIfResolved(reason: "auto-connect")
+            return
+        }
+        allowEndpointFallback = true
+        DiscoveryDebugLog.shared.log("auto-connect 外面 \(preferred.intentURL)", category: "connect")
+        start(intentURL: preferred.intentURL)
+    }
+
+    /// After mDNS/LAN discover: register against the saved IPv4, never brain.local / cloud.
+    func connectAfterHomeDiscover() {
+        triedEndpointFallback = false
+        allowEndpointFallback = false
+        ParticipantStore.preferredEndpoint = .home
+        ParticipantStore.participantId = ""
+        ParticipantStore.lastHeartbeatOk = false
+        connectHomeIfResolved(reason: "after-discover")
     }
 
     /// Parent picked 家里 / 外面 — connect to that endpoint only.
@@ -36,7 +54,29 @@ final class ConnectionManager {
         ParticipantStore.preferredEndpoint = endpoint
         ParticipantStore.participantId = ""
         ParticipantStore.lastHeartbeatOk = false
+        if endpoint == .home {
+            connectHomeIfResolved(reason: "switch-家里")
+            return
+        }
+        DiscoveryDebugLog.shared.log("switch 外面 \(endpoint.intentURL)", category: "connect")
         start(intentURL: endpoint.intentURL)
+    }
+
+    private func connectHomeIfResolved(reason: String) {
+        let resolved = ParticipantStore.homeBrainConnectIntentURL
+        let host = BrainURL.ipv4Host(from: resolved) ?? ""
+        if resolved.isEmpty || !MdnsDiscovery.isUsableLanIPv4(host) || resolved.contains("brain.local") {
+            DiscoveryDebugLog.shared.log(
+                "\(reason) skip register: no usable LAN IPv4 (url=\(resolved.isEmpty ? "empty" : resolved))",
+                category: "connect"
+            )
+            isConnecting = false
+            lastError = "还没发现家里 Brain，请点「自动发现」"
+            notify()
+            return
+        }
+        DiscoveryDebugLog.shared.log("\(reason) register \(resolved)", category: "connect")
+        start(intentURL: resolved)
     }
 
     func start(intentURL: String) {
@@ -55,11 +95,23 @@ final class ConnectionManager {
     }
 
     func connect(intentURL: String) {
+        connectGeneration += 1
+        let generation = connectGeneration
         let url = BrainURL.normalizeIntentURL(intentURL)
+        if url.contains("brain.local") {
+            DiscoveryDebugLog.shared.log("refuse HTTP to brain.local — need IPv4", category: "connect")
+            isConnecting = false
+            lastError = "还没发现家里 Brain，请点「自动发现」"
+            ParticipantStore.lastHeartbeatOk = false
+            notify()
+            return
+        }
+        DiscoveryDebugLog.shared.log("POST edge-register \(url)", category: "connect")
         BrainAPI.register(intentURL: url) { [weak self] registerResult in
-            guard let self = self else { return }
+            guard let self, generation == self.connectGeneration else { return }
             switch registerResult {
             case .failure(let err):
+                DiscoveryDebugLog.shared.log("register FAIL \(url) — \(err.message)", category: "connect")
                 if self.tryFallbackEndpoint(after: err, failedURL: url) {
                     return
                 }
@@ -69,6 +121,7 @@ final class ConnectionManager {
                 self.nextHeartbeatAt = nil
                 self.notify()
             case .success(let pid):
+                DiscoveryDebugLog.shared.log("register OK pid=\(pid) \(url)", category: "connect")
                 self.activeEndpoint = BrainEndpoint.matching(savedURL: url)
                 ParticipantStore.setActiveIntentURL(url)
                 self.lastError = ""
@@ -81,10 +134,24 @@ final class ConnectionManager {
         guard allowEndpointFallback, !triedEndpointFallback, isNetworkError(error.message) else {
             return false
         }
-        triedEndpointFallback = true
         let current = BrainEndpoint.matching(savedURL: failedURL)
         let other = current.opposite
+        if other == .home {
+            let resolved = ParticipantStore.homeBrainConnectIntentURL
+            let host = BrainURL.ipv4Host(from: resolved) ?? ""
+            guard MdnsDiscovery.isUsableLanIPv4(host), !resolved.contains("brain.local") else {
+                DiscoveryDebugLog.shared.log("fallback skip: no home IPv4", category: "connect")
+                return false
+            }
+            triedEndpointFallback = true
+            ParticipantStore.participantId = ""
+            DiscoveryDebugLog.shared.log("fallback → 家里 \(resolved) after \(error.message)", category: "connect")
+            connect(intentURL: resolved)
+            return true
+        }
+        triedEndpointFallback = true
         ParticipantStore.participantId = ""
+        DiscoveryDebugLog.shared.log("fallback → 外面 after \(error.message)", category: "connect")
         connect(intentURL: other.intentURL)
         return true
     }
@@ -114,10 +181,11 @@ final class ConnectionManager {
         notify()
 
         BrainAPI.heartbeat(intentURL: intentURL, participantId: participantId) { [weak self] result in
-            guard let self = self else { return }
+            guard let self else { return }
             self.isConnecting = false
             switch result {
             case .failure(let err):
+                DiscoveryDebugLog.shared.log("heartbeat FAIL \(err.message)", category: "connect")
                 self.lastError = err.message
                 self.nextHeartbeatAt = nil
                 if self.shouldReregister(after: err.message) {
