@@ -78,6 +78,12 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+	</array>	<key>NSBonjourServices</key>
+	<array>
+		<string>_ha-brain._tcp</string>
+		<string>_ha-gateway._tcp</string>
+		<string>_ha-img-server._tcp</string>
 	</array>
+
 </dict>
 </plist>

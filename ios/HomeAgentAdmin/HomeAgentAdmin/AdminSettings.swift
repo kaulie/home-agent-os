@@ -28,6 +28,16 @@ enum AdminSettings {
         set { UserDefaults.standard.set(newValue, forKey: tokenKey) }
     }
 
+    /// Discover the LAN Brain via mDNS (`_ha-brain._tcp`) and persist it, so the
+    /// app stops depending on a fixed LAN IP.
+    static func autoDiscoverBrain() async {
+        guard let brain = await MdnsDiscovery.resolve(MdnsDiscovery.brainType) else { return }
+        let resolved = normalize(brain.baseURL)
+        if !resolved.isEmpty {
+            brainURL = resolved
+        }
+    }
+
     static func normalize(_ raw: String) -> String {
         var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         while value.hasSuffix("/") {

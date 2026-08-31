@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		09FCACF3A22649F5888CE7B5 /* AdminClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 769ACD8258F14D2C8809F247 /* AdminClient.swift */; };
+		0610877F3F2D25227C0F6CBA /* MdnsDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 826556791BC1DFE299745FF9 /* MdnsDiscovery.swift */; };
 		2842F77945D041CEBB0ACAFF /* ManagementLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74123686CCA1474091B92C1D /* ManagementLogView.swift */; };
 		52A5A420A8C148EAA3389D44 /* NodeListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8699DA5A535495EAD316221 /* NodeListView.swift */; };
 		5B0D42FDE0774D12A5BB21B1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2ABA8C871E314E90977C5C70 /* Assets.xcassets */; };
@@ -24,6 +25,7 @@
 
 /* Begin PBXFileReference section */
 		150B7BC799B14B2B94615842 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		826556791BC1DFE299745FF9 /* MdnsDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MdnsDiscovery.swift; sourceTree = "<group>"; };
 		1A7C064C1D364397B690B7FE /* HomeAgentAdmin.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomeAgentAdmin.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1F3A75BF4EF94C01A4A37144 /* EventStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EventStreamView.swift; sourceTree = "<group>"; };
 		2ABA8C871E314E90977C5C70 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -62,6 +64,7 @@
 		55335E8C68EE472794F5FF57 /* HomeAgentAdmin */ = {
 			isa = PBXGroup;
 			children = (
+				826556791BC1DFE299745FF9 /* MdnsDiscovery.swift */,
 				769ACD8258F14D2C8809F247 /* AdminClient.swift */,
 				2BB00E13AB22442F983DCEB8 /* AdminSettings.swift */,
 				7FF6D52A70934EC38B8F6D05 /* AdminStore.swift */,
@@ -156,6 +159,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0610877F3F2D25227C0F6CBA /* MdnsDiscovery.swift in Sources */,
 				09FCACF3A22649F5888CE7B5 /* AdminClient.swift in Sources */,
 				BD4FCB8435D842F0AEC90A44 /* AdminSettings.swift in Sources */,
 				C09AF39ECF7642D4BFF1C44F /* AdminStore.swift in Sources */,

@@ -1,0 +1,42 @@
+{
+  "brain": "http://127.0.0.1:9527",
+  "sha": "9c17848",
+  "ts": "2026-08-30T11:42:45+0800",
+  "cases": [
+    {
+      "id": "C1",
+      "name": "usage_cloud_calls_schema",
+      "ok": true,
+      "http": 200,
+      "errors": [],
+      "period_sample": [
+        {
+          "count": 0,
+          "fail": 0,
+          "label": "方舟规划",
+          "ok": 0,
+          "service_id": "ark.planner"
+        },
+        {
+          "count": 0,
+          "fail": 0,
+          "label": "方舟视觉",
+          "ok": 0,
+          "service_id": "ark.vision"
+        }
+      ]
+    },
+    {
+      "id": "C2",
+      "name": "heartbeat_cloud_usage_delta",
+      "ok": true,
+      "skipped": false,
+      "edge_id": "edge-node-blackbox-cloud-usage",
+      "heartbeat_http": 200,
+      "heartbeat_body_ok": true,
+      "ark_vision_before": 0,
+      "ark_vision_after": 1
+    }
+  ],
+  "ok": true
+}

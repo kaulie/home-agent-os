@@ -15,7 +15,9 @@ enum ParticipantStore {
 
     static let defaultHomeBrainIntentURL = BrainEndpoint.defaultHomeIntentURL
     static let defaultBrainIntentURL = BrainEndpoint.defaultHomeIntentURL
-    static let defaultMacIngestURL = "http://192.168.3.73:8790"
+    /// Mac Edge video-live ingest is addressed by its well-known mDNS hostname
+    /// (`_ha-gateway._tcp` → `gateway.local`), not a fixed LAN IP.
+    static let defaultMacIngestURL = "http://gateway.local:8790"
 
     /// URL used for API calls (set after a successful register).
     private(set) static var activeIntentURL: String = BrainEndpoint.defaultHomeIntentURL
@@ -103,6 +105,18 @@ enum ParticipantStore {
                 newValue.trimmingCharacters(in: .whitespacesAndNewlines),
                 forKey: macIngestKey
             )
+        }
+    }
+
+    /// Discover the LAN Brain (`_ha-brain._tcp`) and the Mac gateway
+    /// (`_ha-gateway._tcp`) via mDNS so the app stops depending on a fixed LAN IP.
+    @available(iOS 13.0, *)
+    static func autoDiscoverLanEndpoints() async {
+        if let brain = await MdnsDiscovery.resolve(MdnsDiscovery.brainType) {
+            homeBrainIntentURL = brain.baseURL + "/api/v1/intent"
+        }
+        if let gateway = await MdnsDiscovery.resolve(MdnsDiscovery.gatewayType) {
+            macIngestURL = gateway.baseURL
         }
     }
 

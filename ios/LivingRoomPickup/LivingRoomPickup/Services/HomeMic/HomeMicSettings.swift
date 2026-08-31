@@ -9,6 +9,14 @@ enum HomeMicSettings {
     static let defaultHost = "192.168.3.84"
     static let defaultPort: UInt16 = 8792
 
+    /// Discover the Mac gateway voice ingest (`_ha-gateway._tcp`) via mDNS so the
+    /// app stops depending on a fixed LAN IP.
+    @available(iOS 13.0, *)
+    static func autoDiscoverGateway() async {
+        guard let gateway = await MdnsDiscovery.resolve(MdnsDiscovery.gatewayType) else { return }
+        host = gateway.host
+    }
+
     static var host: String {
         get {
             let saved = UserDefaults.standard.string(forKey: hostKey)?

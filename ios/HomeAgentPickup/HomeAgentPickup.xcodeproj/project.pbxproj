@@ -7,6 +7,7 @@
 
 /* Begin PBXBuildFile section */
 		09EDA654EC454D8EAE98A8DE /* PcmCaptureEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5AD0EABB8744192B7E09557 /* PcmCaptureEngine.swift */; };
+		B1C2E3B2980764AFCC8299D0 /* MdnsDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9231D1C8D37176EF468D0B8 /* MdnsDiscovery.swift */; };
 		09763FB8A26F44BD96CA2067 /* PcmEnergyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FFA72DB691441CD82439686 /* PcmEnergyGate.swift */; };
 		4822ECB7B73B47A5A81D2241 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C05FE173BA944E0B637D101 /* ContentView.swift */; };
 		3D4FC25144D64058829642F1 /* FeedbackSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A147127C86249A0AAF52E87 /* FeedbackSheetView.swift */; };
@@ -24,6 +25,7 @@
 /* Begin PBXFileReference section */
 		C42B2C6B19DF4CE6B9EF2112 /* HomeAgentPickup.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HomeAgentPickup.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C5AD0EABB8744192B7E09557 /* PcmCaptureEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PcmCaptureEngine.swift; sourceTree = "<group>"; };
+		F9231D1C8D37176EF468D0B8 /* MdnsDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MdnsDiscovery.swift; sourceTree = "<group>"; };
 		4FFA72DB691441CD82439686 /* PcmEnergyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PcmEnergyGate.swift; sourceTree = "<group>"; };
 		0C05FE173BA944E0B637D101 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		4A147127C86249A0AAF52E87 /* FeedbackSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackSheetView.swift; sourceTree = "<group>"; };
@@ -69,6 +71,7 @@
 		2AEDC08F17264071BD4D3808 /* HomeAgentPickup */ = {
 			isa = PBXGroup;
 			children = (
+				F9231D1C8D37176EF468D0B8 /* MdnsDiscovery.swift */,
 				6A5E8E2040E14FB0877EB444,
 				68EA538ED4C74006B22401F1,
 				0C05FE173BA944E0B637D101,
@@ -171,6 +174,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B1C2E3B2980764AFCC8299D0 /* MdnsDiscovery.swift in Sources */,
 				09EDA654EC454D8EAE98A8DE /* PcmCaptureEngine.swift in Sources */,
 				09763FB8A26F44BD96CA2067 /* PcmEnergyGate.swift in Sources */,
 				4822ECB7B73B47A5A81D2241 /* ContentView.swift in Sources */,

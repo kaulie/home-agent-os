@@ -278,6 +278,14 @@ struct BrainHeartbeatStatus: Equatable {
     var hasAttempted: Bool { lastAttemptAt != nil }
 }
 
+/// What the settings「自动发现」button managed to resolve over mDNS.
+struct MdnsDiscoverOutcome {
+    var brainFound = false
+    var brainURL = ""
+    var gatewayFound = false
+    var gatewayURL = ""
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     static let shared = AppModel()
@@ -456,6 +464,7 @@ final class AppModel: ObservableObject {
         Task {
             // Let the first TabView frame paint before any network / @Published storm.
             await Task.yield()
+            await refreshMdnsEndpoints()
             await resolveBrainEndpoint(reregister: false)
             let url = intentServerURL
             await ensureRegistered(serverURL: url, force: true)
@@ -467,6 +476,32 @@ final class AppModel: ObservableObject {
             coldBootstrapRunning = false
             resumePendingPhotoUploads()
         }
+    }
+
+    /// Discover Brain / Gateway / img-server via mDNS and update the LAN slots so
+    /// the app stops depending on a fixed LAN IP (IP changes are followed by mDNS).
+    /// `force` (settings「自动发现」button) overwrites saved LAN slots and uses a
+    /// longer browse timeout; cold start keeps a manual macIngest value unless it
+    /// is still empty. Returns what was found so the button can show feedback.
+    @discardableResult
+    @MainActor
+    func refreshMdnsEndpoints(force: Bool = false) async -> MdnsDiscoverOutcome {
+        let timeout: TimeInterval = force ? 5 : 2.5
+        var outcome = MdnsDiscoverOutcome()
+        if let brain = await MdnsDiscovery.resolve(MdnsDiscovery.brainType, timeout: timeout) {
+            outcome.brainFound = true
+            outcome.brainURL = brain.baseURL
+            if force || BrainEndpoint.normalizeBase(brain.baseURL) != BrainEndpoint.lanBaseURL {
+                lanBrainURL = brain.baseURL
+            }
+        }
+        if (force || macIngestURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
+           let gateway = await MdnsDiscovery.resolve(MdnsDiscovery.gatewayType, timeout: timeout) {
+            outcome.gatewayFound = true
+            outcome.gatewayURL = gateway.baseURL
+            macIngestURL = gateway.baseURL
+        }
+        return outcome
     }
 
     func onForeground() {

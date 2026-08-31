@@ -11,6 +11,7 @@ final class SettingsViewController: UIViewController {
     private let advancedStack = UIStackView()
     private let homeBrainField = UITextField()
     private let macIngestField = UITextField()
+    private let discoverButton = UIButton(type: .system)
     private let participantLabel = LegacyUI.monoLabel(0)
     private let heartbeatHistoryLabel = LegacyUI.monoLabel(0)
     private var countdownTimer: Timer?
@@ -111,7 +112,7 @@ final class SettingsViewController: UIViewController {
         brainHint.font = LegacyTheme.fontHint
         brainHint.textColor = LegacyTheme.textSecondary
         brainHint.numberOfLines = 0
-        brainHint.text = "局域网 Brain Intent（默认 :9527）。与下面 Mac 直播 ingest 分开填。"
+        brainHint.text = "局域网 Brain，默认 http://brain.local:9527（DNS 名，不用记 IP）。与下面 Mac 直播 ingest 分开填。"
 
         homeBrainField.borderStyle = .roundedRect
         homeBrainField.font = UIFont(name: "Menlo-Regular", size: 15) ?? UIFont.systemFont(ofSize: 15)
@@ -131,7 +132,7 @@ final class SettingsViewController: UIViewController {
         ingestHint.font = LegacyTheme.fontHint
         ingestHint.textColor = LegacyTheme.textSecondary
         ingestHint.numberOfLines = 0
-        ingestHint.text = "推流到 Mac Edge 的 video-live 端口（默认 :8790），不要填 Brain :9527。"
+        ingestHint.text = "推流到 Mac Edge，默认 http://gateway.local:8790（DNS 名，不用记 IP）。不要填 Brain :9527。"
 
         macIngestField.borderStyle = .roundedRect
         macIngestField.font = UIFont(name: "Menlo-Regular", size: 15) ?? UIFont.systemFont(ofSize: 15)
@@ -145,6 +146,17 @@ final class SettingsViewController: UIViewController {
         advancedStack.addArrangedSubview(ingestTitle)
         advancedStack.addArrangedSubview(ingestHint)
         advancedStack.addArrangedSubview(macIngestField)
+
+        LegacyUI.styleSecondaryButton(discoverButton, title: "自动发现")
+        discoverButton.addTarget(self, action: #selector(autoDiscover), for: .touchUpInside)
+        advancedStack.addArrangedSubview(discoverButton)
+
+        let discoverHint = UILabel()
+        discoverHint.font = LegacyTheme.fontHint
+        discoverHint.textColor = LegacyTheme.textSecondary
+        discoverHint.numberOfLines = 0
+        discoverHint.text = "点一下用 mDNS 自动找到 brain.local / gateway.local 并填入上面（iPhone 和 Mac 在同一 WiFi 时可用）。"
+        advancedStack.addArrangedSubview(discoverHint)
 
         let heartbeatTitle = LegacyUI.sectionTitle("心跳记录")
         advancedStack.addArrangedSubview(heartbeatTitle)
@@ -240,6 +252,54 @@ final class SettingsViewController: UIViewController {
         ConnectionManager.shared.startAutoConnect()
         refreshValues()
         showAlert(message: "正在重新连接…")
+    }
+
+    /// Re-run mDNS discovery and fill the LAN slots with the discovered
+    /// well-known DNS hostnames (`brain.local` / `gateway.local`) instead of IPs.
+    @objc private func autoDiscover() {
+        discoverButton.isEnabled = false
+        discoverButton.setTitle("正在自动发现…", for: .normal)
+
+        let group = DispatchGroup()
+        var foundBrain = false
+        var foundGateway = false
+
+        group.enter()
+        MdnsDiscovery.resolve(MdnsDiscovery.brainType) { brain in
+            if let brain {
+                DispatchQueue.main.async {
+                    ParticipantStore.homeBrainIntentURL = brain.baseURL + "/api/v1/intent"
+                }
+                foundBrain = true
+            }
+            group.leave()
+        }
+
+        group.enter()
+        MdnsDiscovery.resolve(MdnsDiscovery.gatewayType) { gateway in
+            if let gateway {
+                DispatchQueue.main.async {
+                    ParticipantStore.macIngestURL = gateway.baseURL
+                }
+                foundGateway = true
+            }
+            group.leave()
+        }
+
+        group.notify(queue: .main) { [weak self] in
+            guard let self else { return }
+            self.discoverButton.isEnabled = true
+            self.discoverButton.setTitle("自动发现", for: .normal)
+            self.refreshValues()
+            var found: [String] = []
+            if foundBrain { found.append("brain.local") }
+            if foundGateway { found.append("gateway.local") }
+            if found.isEmpty {
+                self.showAlert(message: "没找到 Brain / Mac，请确认 iPhone 和 Mac 在同一 WiFi")
+            } else {
+                self.showAlert(message: "已用 mDNS 找到并填入：\(found.joined(separator: "、"))")
+            }
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {

@@ -90,6 +90,17 @@ enum DevBrainEndpoint {
         }
     }
 
+    /// Discover the LAN Brain via mDNS (`_ha-brain._tcp`) and persist it into the
+    /// LAN slot so the app stops depending on a fixed LAN IP (IP changes are
+    /// followed automatically by mDNS).
+    static func autoDiscoverLanBrain() async {
+        guard let brain = await MdnsDiscovery.resolve(MdnsDiscovery.brainType) else { return }
+        let resolved = normalizeBase(brain.baseURL)
+        if resolved != lanBaseURL {
+            lanBaseURL = resolved
+        }
+    }
+
     static func migrateLegacyIfNeeded() {
         guard !UserDefaults.standard.bool(forKey: migratedKey) else { return }
         if let legacy = UserDefaults.standard.string(forKey: legacyBrainKey)?

@@ -7,6 +7,7 @@
 
 /* Begin PBXBuildFile section */
 		2F988584949F4D31AD2EC173 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7B991612C1340DF9EF6CCBF /* AppDelegate.swift */; };
+		0F043506020F7E1410254F59 /* MdnsDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B20C767380D6AA727F25676 /* MdnsDiscovery.swift */; };
 		F0A2D88DB7BC4294B35D5E9D /* HomeMicController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88A8E0B5D75D46D984F01022 /* HomeMicController.swift */; };
 		ADFE4DC2714C49D9AC2EAF07 /* HomeMicEnergyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B49748F879E94AF0B6FB305B /* HomeMicEnergyGate.swift */; };
 		436109565059466A99C2BDE6 /* HomeMicHap1Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D42812D5644B47A0D2EC58 /* HomeMicHap1Client.swift */; };
@@ -24,6 +25,7 @@
 /* Begin PBXFileReference section */
 		430B0D1D7C0C42BFAB7A8A09 /* LivingRoomPickup.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LivingRoomPickup.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7B991612C1340DF9EF6CCBF /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		0B20C767380D6AA727F25676 /* MdnsDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MdnsDiscovery.swift; sourceTree = "<group>"; };
 		88A8E0B5D75D46D984F01022 /* HomeMicController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicController.swift; sourceTree = "<group>"; };
 		B49748F879E94AF0B6FB305B /* HomeMicEnergyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicEnergyGate.swift; sourceTree = "<group>"; };
 		A3D42812D5644B47A0D2EC58 /* HomeMicHap1Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicHap1Client.swift; sourceTree = "<group>"; };
@@ -69,6 +71,7 @@
 		0F43F19B0A6F4BDC987996AE /* LivingRoomPickup */ = {
 			isa = PBXGroup;
 			children = (
+				0B20C767380D6AA727F25676 /* MdnsDiscovery.swift */,
 				61A45E4857434E11B0E26B25,
 				B8972976F75E431B918BFD05,
 				4F811B406843445A96C3950A,
@@ -197,6 +200,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0F043506020F7E1410254F59 /* MdnsDiscovery.swift in Sources */,
 				2F988584949F4D31AD2EC173 /* AppDelegate.swift in Sources */,
 				F0A2D88DB7BC4294B35D5E9D /* HomeMicController.swift in Sources */,
 				ADFE4DC2714C49D9AC2EAF07 /* HomeMicEnergyGate.swift in Sources */,

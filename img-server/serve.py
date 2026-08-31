@@ -288,11 +288,32 @@ class Handler(BaseHTTPRequestHandler):
         )
 
 
+def _publish_img_mdns():
+    """Publish `_home-agent-img-server._tcp` via shared server/mdns_service.py."""
+    try:
+        import sys
+
+        sys.path.insert(0, str(ROOT.parent / "server"))
+        import mdns_service
+
+        return mdns_service.publish_service(
+            name="Home Agent img-server",
+            type_=mdns_service.IMG_SERVER_TYPE,
+            port=PORT,
+            txt={"role": "img-server"},
+            hostname="img-server.local",
+        )
+    except Exception:
+        print("WARN mdns img-server publish skipped; LAN discovery unavailable", flush=True)
+        return None
+
+
 def main() -> None:
     _load_env()
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     (ROOT / "logs").mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), Handler)
+    _IMG_MDNS = _publish_img_mdns()
     print(f"img-server listening on http://{HOST}:{PORT}{UPLOAD_PATH}", flush=True)
     print(f"health GET http://{HOST}:{PORT}/health", flush=True)
     print(f"static GET http://{HOST}:{PORT}/{{saved_as}}", flush=True)

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		006B0632E2C2476A9982CAAE /* DeployModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF963244BFF408F98ABD912 /* DeployModels.swift */; };
+		202B6B7A6A8D47A50AF8CD1D /* MdnsDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D92CEF3361289B1A20C4AD /* MdnsDiscovery.swift */; };
 		1A1A44870FC44C85A5A6E46E /* ChatMessageBodyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F59C19D9A912433DBE0BB946 /* ChatMessageBodyView.swift */; };
 		1DA8FD0F9DA84F2095D80432 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62B051ED330144A4BDA9B891 /* Theme.swift */; };
 		292D86C975464FF18161FBC5 /* DevConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 476CE6478F574095AD4BFDED /* DevConnectionView.swift */; };
@@ -65,6 +66,7 @@
 
 /* Begin PBXFileReference section */
 		0774128A204A4A028582D91A /* MarkdownReaderUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownReaderUITests.swift; sourceTree = "<group>"; };
+		C0D92CEF3361289B1A20C4AD /* MdnsDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MdnsDiscovery.swift; sourceTree = "<group>"; };
 		12BE980820D34085ADEE4956 /* ChatConsoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatConsoleView.swift; sourceTree = "<group>"; };
 		B2C3D4E5F6A7489012345EF01 /* DevChatSpeechRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevChatSpeechRecognizer.swift; sourceTree = "<group>"; };
 		16CB6C4F3EDC43D5AEEE2FE2 /* ChatDocReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatDocReference.swift; sourceTree = "<group>"; };
@@ -153,6 +155,7 @@
 		D7589A73BDD648DDBBE59C02 /* HomeAgentDev */ = {
 			isa = PBXGroup;
 			children = (
+				C0D92CEF3361289B1A20C4AD /* MdnsDiscovery.swift */,
 				12BE980820D34085ADEE4956 /* ChatConsoleView.swift */,
 				16CB6C4F3EDC43D5AEEE2FE2 /* ChatDocReference.swift */,
 				637F26711D6E4DB3B381F830 /* ChatMention.swift */,
@@ -302,6 +305,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				202B6B7A6A8D47A50AF8CD1D /* MdnsDiscovery.swift in Sources */,
 				B8B3E6DD43974DA989AF2A78 /* ChatConsoleView.swift in Sources */,
 				D5461D6BE2F74B59852EEA4A /* ChatDocReference.swift in Sources */,
 				403C081C95174E6694F8212C /* ChatMention.swift in Sources */,

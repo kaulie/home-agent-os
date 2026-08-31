@@ -60,6 +60,17 @@ enum PickupSettings {
         set { UserDefaults.standard.set(newValue, forKey: feedbackParticipantKey) }
     }
 
+    /// Discover the Mac gateway (voice ingest `_ha-gateway._tcp`) and the LAN Brain
+    /// (`_ha-brain._tcp`) via mDNS, so the app stops depending on a fixed LAN IP.
+    static func autoDiscoverGateway() async {
+        if let gateway = await MdnsDiscovery.resolve(MdnsDiscovery.gatewayType) {
+            serverHost = gateway.host
+        }
+        if let brain = await MdnsDiscovery.resolve(MdnsDiscovery.brainType) {
+            brainIntentURL = brain.baseURL + "/api/v1/intent"
+        }
+    }
+
     /// iPhone Runtime participant_id (same as LivingRoomEdge heartbeat registration).
     /// Prefer Settings override; otherwise fall back to deviceId until Edge shares via App Group.
     static var edgeParticipantId: String {

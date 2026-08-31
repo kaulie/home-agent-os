@@ -780,6 +780,9 @@ struct ChatSettingsSheet: View {
     @State private var hisenseConfigured = HisenseCredentials.configured
     @State private var hisenseBoundTick = 0
     @FocusState private var macIngestFocused: Bool
+    @State private var discovering = false
+    @State private var showDiscoverAlert = false
+    @State private var discoverAlertMessage = ""
 
     var body: some View {
         NavigationStack {
@@ -840,6 +843,11 @@ struct ChatSettingsSheet: View {
             .onDisappear {
                 Task { await model.applyPinnedBrainURLs() }
             }
+            .alert("自动发现", isPresented: $showDiscoverAlert) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(discoverAlertMessage)
+            }
         }
     }
 
@@ -868,6 +876,31 @@ struct ChatSettingsSheet: View {
                     .textContentType(.URL)
                     .keyboardType(.URL)
             }
+            Button {
+                discovering = true
+                discoverAlertMessage = ""
+                Task {
+                    let outcome = await model.refreshMdnsEndpoints(force: true)
+                    await model.applyPinnedBrainURLs()
+                    discovering = false
+                    if outcome.brainFound || outcome.gatewayFound {
+                        var parts: [String] = []
+                        if outcome.brainFound { parts.append("brain.local（Brain）") }
+                        if outcome.gatewayFound { parts.append("gateway.local（直播）") }
+                        discoverAlertMessage = "已用 mDNS 找到并填入：\n\(parts.joined(separator: "、"))"
+                    } else {
+                        discoverAlertMessage = "没找到 Brain / Mac。请确认：\n① iPhone 和 Mac 在同一 WiFi\n② Mac 已运行 mac_edge / Brain 并发布 mDNS\n③ 设置里已允许本 App 的「本地网络」权限"
+                    }
+                    showDiscoverAlert = true
+                }
+            } label: {
+                if discovering || model.brainResolveBusy {
+                    ProgressView()
+                } else {
+                    Text("自动发现")
+                }
+            }
+            .disabled(discovering || model.brainResolveBusy)
             Button {
                 Task { await model.applyPinnedBrainURLs() }
             } label: {
@@ -908,13 +941,13 @@ struct ChatSettingsSheet: View {
                 .font(.body.monospaced())
                 .focused($macIngestFocused)
                 .id("macIngestField")
-            Text("要填的内容示例（请自己敲进去，不要以为框里已经有了）：")
+            Text("要填的内容示例（也可以点「Brain 环境」里的「自动发现」自动填入）：")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text("http://192.168.x.x:8790")
+            Text("http://gateway.local:8790")
                 .font(.caption.monospaced())
                 .textSelection(.enabled)
-            Text("电脑查 IP：终端执行 ipconfig getifaddr en0，把 x.x 换成查到的地址。端口 8790。")
+            Text("gateway.local 是客厅 Mac Edge 的 mDNS 名字（不用记 IP）。iPhone 和电脑同一 Wi‑Fi 时可用。端口 8790。")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)

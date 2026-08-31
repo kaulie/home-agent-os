@@ -14,6 +14,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         self.window = window
 
         ConnectionManager.shared.startAutoConnect()
+        // mDNS discovery (iOS 12-safe completion API): keep LAN slots in sync with
+        // the discoverable Brain / Gateway instead of a fixed LAN IP.
+        MdnsDiscovery.resolve(MdnsDiscovery.brainType) { brain in
+            guard let brain else { return }
+            DispatchQueue.main.async {
+                ParticipantStore.homeBrainIntentURL = brain.baseURL + "/api/v1/intent"
+            }
+        }
+        MdnsDiscovery.resolve(MdnsDiscovery.gatewayType) { gateway in
+            guard let gateway else { return }
+            DispatchQueue.main.async {
+                ParticipantStore.macIngestURL = gateway.baseURL
+            }
+        }
         return true
     }
 
