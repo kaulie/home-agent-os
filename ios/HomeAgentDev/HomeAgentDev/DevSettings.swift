@@ -10,7 +10,7 @@ enum DevSettings {
 
     /// Resolved active Brain base (LAN or Cloud). Prefer `DevStore.activeBrainURL`.
     static var brainURL: String {
-        DevBrainEndpoint.lanBaseURL
+        DevBrainEndpoint.lanConnectBase()
     }
 
     static func normalize(_ raw: String) -> String {

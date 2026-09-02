@@ -4,6 +4,13 @@ struct DevConnectionView: View {
     @EnvironmentObject private var store: DevStore
     @FocusState private var focus: Field?
 
+    private var lanResolvedCaption: String {
+        if let ip = DevBrainEndpoint.lastSuccessfulLanHost {
+            return "实际 IP：http://\(ip):9527"
+        }
+        return "实际 IP：尚未发现（点「重新扫描」）"
+    }
+
     private enum Field {
         case lan
         case cloud
@@ -21,7 +28,7 @@ struct DevConnectionView: View {
                         DevPanel {
                             VStack(alignment: .leading, spacing: 12) {
                                 DevTheme.sectionLabel("局域网发现")
-                                Text("在家 Wi‑Fi 且配置的 LAN 地址 ping 失败时，会自动扫描本机网段 :9527 寻找 Brain。")
+                                Text("局域网身份是 brain.local。在家 Wi‑Fi 时用 mDNS 发现并探测实际 IP；云端仍用固定 IP。")
                                     .font(.system(size: 12, design: .rounded))
                                     .foregroundStyle(DevTheme.dim)
 
@@ -59,6 +66,15 @@ struct DevConnectionView: View {
                         }
 
                         DevPanel {
+                            VStack(alignment: .leading, spacing: 8) {
+                                DevTheme.sectionLabel("局域网探测日志")
+                                DiscoveryDebugLogView {
+                                    await store.rescanLANBrain()
+                                }
+                            }
+                        }
+
+                        DevPanel {
                             VStack(alignment: .leading, spacing: 12) {
                                 DevTheme.sectionLabel("地址槽")
                                 Text("顶栏显示的是「当前实际连接」。改连接方式要点「更改连接方式」并确认，不会一碰就切走。")
@@ -66,16 +82,14 @@ struct DevConnectionView: View {
                                     .foregroundStyle(DevTheme.dim)
 
                                 field(title: "局域网 Brain", field: .lan) {
-                                    TextField(
-                                        "",
-                                        text: $store.lanDraft,
-                                        prompt: Text(DevBrainEndpoint.defaultLanBase).foregroundColor(DevTheme.dim)
-                                    )
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    .keyboardType(.URL)
-                                    .focused($focus, equals: .lan)
-                                    .foregroundStyle(Color.white.opacity(0.92))
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(DevBrainEndpoint.defaultLanBase)
+                                            .font(.system(size: 14, design: .monospaced))
+                                            .foregroundStyle(Color.white.opacity(0.92))
+                                        Text(lanResolvedCaption)
+                                            .font(.system(size: 12, design: .rounded))
+                                            .foregroundStyle(DevTheme.dim)
+                                    }
                                 }
 
                                 field(title: "云端 Brain", field: .cloud) {

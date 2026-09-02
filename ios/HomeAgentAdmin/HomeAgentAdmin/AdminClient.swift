@@ -215,6 +215,10 @@ enum AdminClient {
 
     private static func endpoint(_ brainURL: String, path: String) throws -> URL {
         let base = AdminSettings.normalize(brainURL)
+        let host = URL(string: base)?.host?.lowercased() ?? ""
+        if host.hasSuffix(".local") || host.contains(".local.") {
+            throw AdminClientError.invalidURL
+        }
         guard let url = URL(string: base + path) else {
             throw AdminClientError.invalidURL
         }

@@ -21,7 +21,14 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
     private var feedbackErrors: [String: String] = [:]
 
     private var inputMode: ChatInputMode = .typing
-    private let speech = ReadingSpeechService()
+    private var speechService: ReadingSpeechService?
+    private var speech: ReadingSpeechService {
+        if let existing = speechService { return existing }
+        let service = ReadingSpeechService()
+        service.delegate = self
+        speechService = service
+        return service
+    }
     private var voicePartialText = ""
     private var voiceHoldActive = false
     private var voiceFinalizePending = false
@@ -40,9 +47,12 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
     private let voiceHintLabel = UILabel()
     private let holdMicButton = UIButton(type: .custom)
     private var inputBottomConstraint: NSLayoutConstraint?
+    private var typingPinConstraints: [NSLayoutConstraint] = []
+    private var voicePinConstraints: [NSLayoutConstraint] = []
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        edgesForExtendedLayout = []
         view.backgroundColor = LegacyTheme.background
         poller.delegate = self
 
@@ -50,7 +60,6 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
         setupTable()
         setupInputBar()
         setupKeyboardDismiss()
-        speech.delegate = self
         refreshConnectionStatus()
 
         NotificationCenter.default.addObserver(
@@ -81,7 +90,7 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
     }
 
     deinit {
-        speech.stop()
+        speechService?.stop()
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -205,32 +214,39 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
         holdMicButton.addTarget(self, action: #selector(voiceTouchDown), for: .touchDown)
         holdMicButton.addTarget(self, action: #selector(voiceTouchUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
 
-        typingContainer.addSubview(modeToggleButton)
         typingContainer.addSubview(inputField)
         typingContainer.addSubview(sendButton)
         voiceContainer.addSubview(voiceHintLabel)
         voiceContainer.addSubview(holdMicButton)
         inputBar.addSubview(typingContainer)
         inputBar.addSubview(voiceContainer)
+        // Stay in inputBar: moving this button off its superview during touchUpInside crashes on iOS 12.
+        inputBar.addSubview(modeToggleButton)
 
         inputBottomConstraint = inputBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+
+        typingPinConstraints = [
+            typingContainer.topAnchor.constraint(equalTo: inputBar.topAnchor, constant: 6),
+            typingContainer.leadingAnchor.constraint(equalTo: inputBar.leadingAnchor),
+            typingContainer.trailingAnchor.constraint(equalTo: inputBar.trailingAnchor),
+            typingContainer.bottomAnchor.constraint(equalTo: inputBar.bottomAnchor, constant: -6),
+        ]
+        voicePinConstraints = [
+            voiceContainer.topAnchor.constraint(equalTo: inputBar.topAnchor, constant: 6),
+            voiceContainer.leadingAnchor.constraint(equalTo: inputBar.leadingAnchor),
+            voiceContainer.trailingAnchor.constraint(equalTo: inputBar.trailingAnchor),
+            voiceContainer.bottomAnchor.constraint(equalTo: inputBar.bottomAnchor, constant: -6),
+        ]
+
+        let micHeight = holdMicButton.heightAnchor.constraint(equalToConstant: 88)
+        micHeight.priority = UILayoutPriority(999)
 
         NSLayoutConstraint.activate([
             inputBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             inputBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             inputBottomConstraint!,
             tableView.bottomAnchor.constraint(equalTo: inputBar.topAnchor),
-
-            typingContainer.topAnchor.constraint(equalTo: inputBar.topAnchor, constant: 6),
-            typingContainer.leadingAnchor.constraint(equalTo: inputBar.leadingAnchor),
-            typingContainer.trailingAnchor.constraint(equalTo: inputBar.trailingAnchor),
-            typingContainer.bottomAnchor.constraint(equalTo: inputBar.bottomAnchor, constant: -6),
-
-            voiceContainer.topAnchor.constraint(equalTo: inputBar.topAnchor, constant: 6),
-            voiceContainer.leadingAnchor.constraint(equalTo: inputBar.leadingAnchor),
-            voiceContainer.trailingAnchor.constraint(equalTo: inputBar.trailingAnchor),
-            voiceContainer.bottomAnchor.constraint(equalTo: inputBar.bottomAnchor, constant: -6),
-
+        ] + typingPinConstraints + [
             inputField.topAnchor.constraint(equalTo: typingContainer.topAnchor),
             inputField.leadingAnchor.constraint(equalTo: typingContainer.leadingAnchor, constant: 72),
             inputField.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -4),
@@ -243,14 +259,15 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
 
             voiceHintLabel.centerYAnchor.constraint(equalTo: voiceContainer.topAnchor, constant: 14),
             voiceHintLabel.leadingAnchor.constraint(equalTo: voiceContainer.leadingAnchor, constant: 12),
+            voiceHintLabel.trailingAnchor.constraint(lessThanOrEqualTo: voiceContainer.trailingAnchor, constant: -72),
 
             holdMicButton.topAnchor.constraint(equalTo: voiceHintLabel.bottomAnchor, constant: 6),
             holdMicButton.centerXAnchor.constraint(equalTo: voiceContainer.centerXAnchor),
             holdMicButton.widthAnchor.constraint(equalToConstant: 88),
-            holdMicButton.heightAnchor.constraint(equalToConstant: 88),
-            holdMicButton.bottomAnchor.constraint(equalTo: voiceContainer.bottomAnchor),
+            micHeight,
+            holdMicButton.bottomAnchor.constraint(lessThanOrEqualTo: voiceContainer.bottomAnchor),
         ])
-        moveModeToggle(to: typingContainer)
+        applyModeToggleLayout(showVoice: false)
     }
 
     private var modeToggleLeadingTyping: NSLayoutConstraint?
@@ -258,25 +275,17 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
     private var modeToggleTopVoice: NSLayoutConstraint?
     private var modeToggleTrailingVoice: NSLayoutConstraint?
 
-    private func moveModeToggle(to container: UIView) {
-        modeToggleButton.removeFromSuperview()
-        container.addSubview(modeToggleButton)
-        modeToggleButton.translatesAutoresizingMaskIntoConstraints = false
-        modeToggleLeadingTyping?.isActive = false
-        modeToggleCenterTyping?.isActive = false
-        modeToggleTopVoice?.isActive = false
-        modeToggleTrailingVoice?.isActive = false
-        if container === typingContainer {
-            modeToggleLeadingTyping = modeToggleButton.leadingAnchor.constraint(equalTo: typingContainer.leadingAnchor, constant: 12)
+    private func applyModeToggleLayout(showVoice: Bool) {
+        if modeToggleLeadingTyping == nil {
+            modeToggleLeadingTyping = modeToggleButton.leadingAnchor.constraint(equalTo: inputBar.leadingAnchor, constant: 12)
             modeToggleCenterTyping = modeToggleButton.centerYAnchor.constraint(equalTo: inputField.centerYAnchor)
-            modeToggleLeadingTyping?.isActive = true
-            modeToggleCenterTyping?.isActive = true
-        } else {
-            modeToggleTopVoice = modeToggleButton.centerYAnchor.constraint(equalTo: voiceContainer.topAnchor, constant: 14)
-            modeToggleTrailingVoice = modeToggleButton.trailingAnchor.constraint(equalTo: voiceContainer.trailingAnchor, constant: -12)
-            modeToggleTopVoice?.isActive = true
-            modeToggleTrailingVoice?.isActive = true
+            modeToggleTopVoice = modeToggleButton.centerYAnchor.constraint(equalTo: voiceHintLabel.centerYAnchor)
+            modeToggleTrailingVoice = modeToggleButton.trailingAnchor.constraint(equalTo: inputBar.trailingAnchor, constant: -12)
         }
+        modeToggleLeadingTyping?.isActive = !showVoice
+        modeToggleCenterTyping?.isActive = !showVoice
+        modeToggleTopVoice?.isActive = showVoice
+        modeToggleTrailingVoice?.isActive = showVoice
     }
 
     private func updateHoldMicAppearance(listening: Bool) {
@@ -312,22 +321,47 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
             cancelVoiceInputIfNeeded()
         }
         modeToggleButton.setTitle(showVoice ? "打字" : "语音", for: .normal)
-        let changes = {
-            self.typingContainer.isHidden = showVoice
-            self.voiceContainer.isHidden = !showVoice
-            self.moveModeToggle(to: showVoice ? self.voiceContainer : self.typingContainer)
-            self.view.layoutIfNeeded()
-        }
-        if animated {
-            UIView.transition(with: inputBar, duration: 0.2, options: .transitionCrossDissolve, animations: changes)
+        // Never mutate installed required (1000) priorities — that throws on iOS 12.
+        if showVoice {
+            NSLayoutConstraint.deactivate(typingPinConstraints)
+            NSLayoutConstraint.activate(voicePinConstraints)
         } else {
-            changes()
+            NSLayoutConstraint.deactivate(voicePinConstraints)
+            NSLayoutConstraint.activate(typingPinConstraints)
+        }
+        typingContainer.isHidden = showVoice
+        voiceContainer.isHidden = !showVoice
+        applyModeToggleLayout(showVoice: showVoice)
+        if animated {
+            UIView.animate(withDuration: 0.2) {
+                self.view.layoutIfNeeded()
+            }
+        } else {
+            view.layoutIfNeeded()
         }
     }
 
     @objc private func toggleInputMode() {
-        dismissKeyboard()
-        applyInputMode(inputMode == .typing ? .voice : .typing, animated: true)
+        if inputMode == .typing {
+            guard ReadingSpeechService.isSupported else {
+                presentVoiceUnsupportedAlert()
+                return
+            }
+            dismissKeyboard()
+            applyInputMode(.voice, animated: true)
+            return
+        }
+        applyInputMode(.typing, animated: true)
+    }
+
+    private func presentVoiceUnsupportedAlert() {
+        let alert = UIAlertController(
+            title: "本机不支持语音",
+            message: "这台设备不能语音输入，请用打字。",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "好", style: .default, handler: nil))
+        present(alert, animated: true)
     }
 
     @objc private func voiceTouchDown() {
@@ -388,9 +422,9 @@ final class ChatViewController: UIViewController, UIGestureRecognizerDelegate {
     private func cancelVoiceInputIfNeeded() {
         voiceFinalizeWorkItem?.cancel()
         voiceFinalizePending = false
-        if voiceHoldActive || speech.isListening {
+        if voiceHoldActive || (speechService?.isListening ?? false) {
             voiceHoldActive = false
-            speech.stop()
+            speechService?.stop()
             updateHoldMicAppearance(listening: false)
             if inputMode == .voice {
                 voiceHintLabel.text = "按住话筒说话"

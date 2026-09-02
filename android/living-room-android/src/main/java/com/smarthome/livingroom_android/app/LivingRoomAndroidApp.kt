@@ -11,6 +11,7 @@ import com.smarthome.livingroom_android.R
 import com.smarthome.livingroom_android.brain.BrainEndpoint
 import com.smarthome.livingroom_android.brain.CompositeBrainClient
 import com.smarthome.livingroom_android.brain.HttpEdgeReporter
+import com.smarthome.livingroom_android.brain.MdnsDiscovery
 import com.smarthome.livingroom_android.brain.MockBrainClient
 import com.smarthome.livingroom_android.brain.ParticipantStore
 import com.smarthome.livingroom_android.brain.dto.EdgeDeviceType
@@ -25,6 +26,10 @@ import com.smarthome.livingroom_android.command.runtime.LocalEdgeRuntime
 import com.smarthome.livingroom_android.edge.IntentRuntimeLog
 import com.smarthome.livingroom_android.data.AppSettings
 import com.smarthome.livingroom_android.data.EdgeIdStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import com.smarthome.livingroom_android.data.HouseholdDirectory
 import com.smarthome.livingroom_android.edge.EdgeAgent
 import com.smarthome.livingroom_android.edge.SkillRegistry
@@ -46,6 +51,8 @@ import org.json.JSONObject
  */
 class LivingRoomAndroidApp : Application() {
     lateinit var settings: AppSettings
+
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         private set
     lateinit var participant: ParticipantStore
         private set
@@ -87,6 +94,13 @@ class LivingRoomAndroidApp : Application() {
         createNotificationChannel()
         settings = AppSettings(this)
         settings.ensureClientHint(Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID))
+        // mDNS discovery: keep the LAN Brain slot following the discoverable Brain
+        // instead of a fixed LAN IP (IP changes are followed by mDNS).
+        appScope.launch {
+            MdnsDiscovery.resolve(this@LivingRoomAndroidApp, MdnsDiscovery.BRAIN_TYPE)?.let {
+                settings.lanBrainUrl = it.baseUrl
+            }
+        }
         participant = ParticipantStore(settings)
         intentJourney = IntentJourneyStore()
         intentApi = IntentApi()

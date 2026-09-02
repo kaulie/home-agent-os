@@ -1,6 +1,6 @@
 # Pronunciation assessment service. CPU WhisperX baseline.
 # Cloud host uses DaoCloud mirror + Tsinghua PyPI like ocr-service.
-FROM docker.m.daocloud.io/library/python:3.10-bookworm
+FROM python:3.10-bookworm
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \

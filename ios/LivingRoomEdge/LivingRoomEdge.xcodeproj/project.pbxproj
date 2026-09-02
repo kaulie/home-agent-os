@@ -33,6 +33,8 @@
 		59E27611C2E64977900D20EE /* MpegTsTcpTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF7EC0391C5F4B8CADC3FB2E /* MpegTsTcpTransport.swift */; };
 		5B8A50EC511D4656B862098D /* NodeInfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDF5C7351124ED69EBFE5AE /* NodeInfoView.swift */; };
 		5EC092DBE27B4CD1B76D6AF5 /* TimedHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BF8149E043B4012B973B8CC /* TimedHTTP.swift */; };
+		3A1B2C3D4E5F60718293A4B6 /* DiscoveryDebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B2C3D4E5F60718293A4B6 /* DiscoveryDebugLog.swift */; };
+		3A1B2C3D4E5F60718293A4B5 /* MdnsDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1B2C3D4E5F60718293A4B5 /* MdnsDiscovery.swift */; };
 		68FF973A34FE4390BFD017E4 /* PhotoImgUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1970F74B1A745A18B9D6E0C /* PhotoImgUpload.swift */; };
 		71F4B5351B6641308793533D /* VideoLiveStreamController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B262D5C6F7124CE1945E6230 /* VideoLiveStreamController.swift */; };
 		7D42614020F340CF890308AC /* SpeechRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F81558A996B493CAB2AEFEF /* SpeechRecognizer.swift */; };
@@ -109,6 +111,8 @@
 		783289C93729404B9225B3AB /* RuntimeLoop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeLoop.swift; sourceTree = "<group>"; };
 		7874BF5F0F664EFAB5328106 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		7BF8149E043B4012B973B8CC /* TimedHTTP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimedHTTP.swift; sourceTree = "<group>"; };
+		2A1B2C3D4E5F60718293A4B5 /* MdnsDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MdnsDiscovery.swift; sourceTree = "<group>"; };
+		2A1B2C3D4E5F60718293A4B6 /* DiscoveryDebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryDebugLog.swift; sourceTree = "<group>"; };
 		81937BDF4FA54FBC96A6E8AE /* HomeAgentMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeAgentMark.swift; sourceTree = "<group>"; };
 		86B1ECA5A5EE41AF81B3C65B /* VisualInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualInput.swift; sourceTree = "<group>"; };
 		87090D6CD5FE4BB1A3D7C35A /* PhotoWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoWorkspaceView.swift; sourceTree = "<group>"; };
@@ -327,7 +331,9 @@
 		C6EDC5A53C3244118D540D44 /* Net */ = {
 			isa = PBXGroup;
 			children = (
+				2A1B2C3D4E5F60718293A4B6 /* DiscoveryDebugLog.swift */,
 				7BF8149E043B4012B973B8CC /* TimedHTTP.swift */,
+				2A1B2C3D4E5F60718293A4B5 /* MdnsDiscovery.swift */,
 			);
 			path = Net;
 			sourceTree = "<group>";
@@ -481,6 +487,8 @@
 				FDB13527A3B642329BADB7A5 /* JourneyLocalCache.swift in Sources */,
 				C6A4DD93606A428FA1DDEDD8 /* LivingRoomLight.swift in Sources */,
 				5EC092DBE27B4CD1B76D6AF5 /* TimedHTTP.swift in Sources */,
+				3A1B2C3D4E5F60718293A4B6 /* DiscoveryDebugLog.swift in Sources */,
+				3A1B2C3D4E5F60718293A4B5 /* MdnsDiscovery.swift in Sources */,
 				B01CB7E24CBE4012884C567B /* AudioPlayer.swift in Sources */,
 				23AC1919D0384B32969CE4AC /* AudioPreviewStore.swift in Sources */,
 				965998B669F04A73AE87777F /* AudioRecorder.swift in Sources */,
@@ -522,7 +530,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = JD4B775BJ5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -546,7 +554,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = JD4B775BJ5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;

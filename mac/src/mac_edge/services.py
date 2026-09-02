@@ -142,6 +142,59 @@ LOCAL_NOTIFY_SERVICE: dict[str, Any] = {
     ],
 }
 
+LOCAL_PRINTER_SERVICE: dict[str, Any] = {
+    "service_id": "local.printer",
+    "display_name": "米家喷墨一体机",
+    "version": "0.1.0",
+    "group": "printer",
+    "capabilities": [
+        attach(
+            "printer.print",
+            input_schema={
+                "asset_ref": {
+                    "type": "object",
+                    "required": True,
+                    "description": (
+                        "必填 AssetRef JSON，type=document（PDF）。"
+                        "例 {\"asset_id\":\"asset_…\",\"type\":\"document\"}。"
+                        "禁止 path / 永久 URL；缺则本能力无效。"
+                    ),
+                },
+                "copies": {
+                    "type": "number",
+                    "required": False,
+                    "description": "份数，正整数，默认 1",
+                },
+                "printer_name": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "可选 CUPS 队列名；未传则用 MAC_EDGE_PRINTER_NAME，"
+                        "再否则匹配名含 Mi_All_in_One_Inkjet 的队列"
+                    ),
+                },
+            },
+            output_schema={
+                "status_text": {
+                    "type": "string",
+                    "required": True,
+                    "description": "人类可读状态，如「已提交打印到 …」",
+                },
+                "job_id": {
+                    "type": "string",
+                    "required": True,
+                    "description": "CUPS 任务号，如 Queue-123",
+                },
+                "printer_name": {
+                    "type": "string",
+                    "required": True,
+                    "description": "实际使用的 CUPS 队列名",
+                },
+            },
+        ),
+    ],
+}
+
 XIAODU_SPEAKER_SERVICE: dict[str, Any] = {
     "service_id": "xiaodu.speaker",
     "display_name": "小度音箱",
@@ -1317,6 +1370,7 @@ HOME_SERVER_SERVICES = frozenset(
 _LAPTOP_SERVICE_ORDER = (
     CHROMECAST_DISPLAY_SERVICE,
     LOCAL_NOTIFY_SERVICE,
+    LOCAL_PRINTER_SERVICE,
     XIAODU_SPEAKER_SERVICE,
     NETEASE_MUSIC_SERVICE,
     LOCAL_VISION_SERVICE,
@@ -1427,6 +1481,14 @@ def default_services() -> list[dict[str, Any]]:
             log.info("skip chromecast.display — no Cast HTTP on this machine")
     if _allow_service(LOCAL_NOTIFY_SERVICE["service_id"], allowed_set):
         services.append(dict(LOCAL_NOTIFY_SERVICE))
+    if _allow_service(LOCAL_PRINTER_SERVICE["service_id"], allowed_set):
+        from mac_edge.plugins.xiaomi_aio_printer import cups_available
+
+        if cups_available():
+            services.append(dict(LOCAL_PRINTER_SERVICE))
+            log.info("advertise local.printer (lp/lpstat found)")
+        else:
+            log.info("skip local.printer — lp/lpstat not found")
     if _allow_service(XIAODU_SPEAKER_SERVICE["service_id"], allowed_set):
         from mac_edge.plugins.xiaodu_speaker import xiaodu_configured
 

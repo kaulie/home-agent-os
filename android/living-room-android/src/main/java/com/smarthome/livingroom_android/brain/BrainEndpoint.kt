@@ -6,7 +6,7 @@ package com.smarthome.livingroom_android.brain
  * Fresh-install defaults: edit `config/endpoints.json` then `python3 tools/sync_endpoints.py`.
  */
 object BrainEndpoint {
-    const val DEFAULT_LAN_BASE = "http://192.168.3.84:9527"
+    const val DEFAULT_LAN_BASE = "http://brain.local:9527"
     const val DEFAULT_CLOUD_BASE = "http://115.190.153.53:9527"
 
     enum class Mode {
@@ -168,6 +168,32 @@ object BrainEndpoint {
 
     fun livingRoomIntentsPullUrl(fromIntentOrBase: String): String =
         apiUrl(fromIntentOrBase, "devices/living-room/intents")
+
+    fun ipv4Host(raw: String): String? {
+        val host = runCatching { java.net.URI(normalizeBase(raw)).host }.getOrNull() ?: return null
+        val parts = host.split('.')
+        if (parts.size != 4) return null
+        val nums = parts.map { it.toIntOrNull() ?: return null }
+        if (nums.any { it !in 0..255 }) return null
+        val a = nums[0]
+        val b = nums[1]
+        val ok = a == 10 || (a == 172 && b in 16..31) || (a == 192 && b == 168)
+        return if (ok) host else null
+    }
+
+    fun ipv4Base(raw: String): String? {
+        val host = ipv4Host(raw) ?: return null
+        val uri = runCatching { java.net.URI(normalizeBase(raw)) }.getOrNull() ?: return null
+        val port = if (uri.port > 0) uri.port else 9527
+        return "http://$host:$port"
+    }
+
+    fun isBonjourHost(raw: String): Boolean {
+        val host = runCatching { java.net.URI(normalizeBase(raw)).host }.getOrNull()
+            ?: raw
+        val lower = host.lowercase()
+        return lower.endsWith(".local") || lower.contains(".local.")
+    }
 }
 
 data class BrainNetworkEnvironment(

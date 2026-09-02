@@ -4,7 +4,8 @@ import Network
 /// Two persisted Brain slots (LAN / Cloud) plus helpers to turn a base into `/api/v1/intent`.
 /// Fresh-install defaults come from `config/endpoints.json` via `python3 tools/sync_endpoints.py`.
 enum BrainEndpoint {
-    static let defaultLanBase = "http://192.168.3.84:9527"
+    /// LAN identity (settings). HTTP uses `lanResolvedBaseURL` (IPv4 from mDNS/probe).
+    static let defaultLanBase = "http://brain.local:9527"
     static let defaultCloudBase = "http://115.190.153.53:9527"
 
     static let defaultLanIntentURL = intentURL(from: defaultLanBase)
@@ -12,6 +13,8 @@ enum BrainEndpoint {
 
     private static let lanKey = "livingroom.brain.lanURL"
     private static let cloudKey = "livingroom.brain.cloudURL"
+    private static let lanResolvedKey = "livingroom.brain.lanResolvedBase"
+    private static let identityMigratedKey = "livingroom.brain.lanIdentityMigrated"
 
     enum Mode: String {
         case lan
@@ -65,16 +68,131 @@ enum BrainEndpoint {
         set { UserDefaults.standard.set(normalizeBase(newValue), forKey: lanKey) }
     }
 
+    /// IPv4 Brain base used for HTTP (`http://192.168.x.x:9527`). Empty until discovery/probe.
+    static var lanResolvedBaseURL: String {
+        get { stored(key: lanResolvedKey, fallback: "") }
+        set {
+            let next = normalizeBase(newValue)
+            if next.isEmpty {
+                UserDefaults.standard.removeObject(forKey: lanResolvedKey)
+            } else {
+                UserDefaults.standard.set(next, forKey: lanResolvedKey)
+            }
+        }
+    }
+
     static var cloudBaseURL: String {
         get { stored(key: cloudKey, fallback: defaultCloudBase) }
         set { UserDefaults.standard.set(normalizeBase(newValue), forKey: cloudKey) }
     }
 
-    static var lanIntentURL: String { intentURL(from: lanBaseURL) }
+    /// URL actually used to talk to LAN Brain. Empty until an IPv4 is discovered — never `brain.local`.
+    static var lanConnectBaseURL: String {
+        migrateLanIdentityIfNeeded()
+        if let ip = ipv4Base(from: lanResolvedBaseURL) { return ip }
+        if let ip = ipv4Base(from: lanBaseURL) { return ip }
+        return ""
+    }
+
+    static var lanIntentURL: String { intentURL(from: lanConnectBaseURL) }
     static var cloudIntentURL: String { intentURL(from: cloudBaseURL) }
+
+    static func migrateLanIdentityIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: identityMigratedKey) else {
+            if ipv4Host(from: lanBaseURL) != nil, lanResolvedBaseURL.isEmpty {
+                lanResolvedBaseURL = lanBaseURL
+                lanBaseURL = defaultLanBase
+            }
+            return
+        }
+        if let ipBase = ipv4Base(from: lanBaseURL) {
+            if lanResolvedBaseURL.isEmpty {
+                lanResolvedBaseURL = ipBase
+            }
+            lanBaseURL = defaultLanBase
+        } else if lanBaseURL.isEmpty {
+            lanBaseURL = defaultLanBase
+        }
+        UserDefaults.standard.set(true, forKey: identityMigratedKey)
+    }
+
+    static func ipv4Host(from raw: String) -> String? {
+        let trimmed = normalizeBase(raw)
+        let host: String
+        if let url = URL(string: trimmed), let urlHost = url.host, !urlHost.isEmpty {
+            host = urlHost
+        } else {
+            host = trimmed
+        }
+        let parts = host.split(separator: ".")
+        guard parts.count == 4, parts.allSatisfy({ UInt8($0) != nil }) else { return nil }
+        return host
+    }
+
+    /// `brain.local` / `gateway.local` — Bonjour names. Must not be used as HTTP/TCP host.
+    static func isBonjourHost(_ raw: String) -> Bool {
+        let trimmed = normalizeBase(raw)
+        let host: String
+        if let url = URL(string: trimmed), let urlHost = url.host, !urlHost.isEmpty {
+            host = urlHost
+        } else {
+            host = trimmed
+        }
+        let lower = host.lowercased()
+        return lower.hasSuffix(".local") || lower.contains(".local.")
+    }
+
+    /// Fail-fast copy for NSURLSession: never send `.local` over HTTP.
+    static func refuseBonjourHTTP(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "没有可用地址" }
+        if isBonjourHost(trimmed) {
+            return "拒绝用 mDNS 名发 HTTP（\(trimmed)）。必须先发现 IPv4。"
+        }
+        return nil
+    }
+
+    /// Distinguish DNS/mDNS failures from TCP/HTTP timeout (both are NSURLErrorDomain).
+    static func describeTransportError(_ error: Error, url: URL, elapsed: String) -> String {
+        let ns = error as NSError
+        let host = url.host ?? "?"
+        let viaIP = ipv4Host(from: url.absoluteString) != nil
+        let target = viaIP ? "IPv4 \(host)" : "主机名 \(host)"
+        let where_ = url.absoluteString
+        guard ns.domain == NSURLErrorDomain else {
+            return "\(ns.localizedDescription) · \(target) · \(where_) · \(elapsed)"
+        }
+        switch ns.code {
+        case NSURLErrorTimedOut:
+            return "请求超时（不是 DNS）· \(target) · \(where_) · \(elapsed)"
+        case NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed:
+            return "DNS/mDNS 解析失败 · \(target) · \(where_) · \(elapsed)"
+        case NSURLErrorCannotConnectToHost:
+            return "TCP 连不上 · \(target) · \(where_) · \(elapsed)"
+        case NSURLErrorNetworkConnectionLost:
+            return "连接中断 · \(target) · \(where_) · \(elapsed)"
+        case NSURLErrorNotConnectedToInternet:
+            return "无网络 · \(target) · \(where_) · \(elapsed)"
+        default:
+            return "NSURLError \(ns.code) \(ns.localizedDescription) · \(target) · \(where_) · \(elapsed)"
+        }
+    }
+
+    static func ipv4Base(from raw: String) -> String? {
+        guard let host = ipv4Host(from: raw) else { return nil }
+        let port: Int
+        if let url = URL(string: normalizeBase(raw)), let urlPort = url.port {
+            port = urlPort
+        } else {
+            port = 9527
+        }
+        return "http://\(host):\(port)"
+    }
 
     static func intentURL(from raw: String) -> String {
         let base = normalizeBase(raw)
+        guard !base.isEmpty else { return "" }
+        if isBonjourHost(base) { return "" }
         if base.hasSuffix("/api/v1/intent") { return base }
         if base.contains("/api/v1/") { return base }
         return base + "/api/v1/intent"

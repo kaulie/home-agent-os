@@ -780,6 +780,17 @@ struct ChatSettingsSheet: View {
     @State private var hisenseConfigured = HisenseCredentials.configured
     @State private var hisenseBoundTick = 0
     @FocusState private var macIngestFocused: Bool
+    @State private var discovering = false
+    @State private var showDiscoverAlert = false
+    @State private var discoverAlertMessage = ""
+
+    private var lanResolvedLabel: String {
+        let resolved = model.lanResolvedBase.trimmingCharacters(in: .whitespacesAndNewlines)
+        if resolved.isEmpty {
+            return "实际 IP：尚未发现（点「自动发现」或等探测）"
+        }
+        return "实际 IP：\(resolved)"
+    }
 
     var body: some View {
         NavigationStack {
@@ -792,6 +803,7 @@ struct ChatSettingsSheet: View {
                         brainSection
                         macIngestSection
                     }
+                    discoveryLogSection
                     participantSection
                     runtimeSection
                     Section("文档扫描") {
@@ -823,6 +835,10 @@ struct ChatSettingsSheet: View {
                     lastResponseSection
                 }
                 .onAppear {
+                    DiscoveryDebugLog.shared.log(
+                        "settings opened routing=\(model.brainRouting) intentURL=\(model.intentServerURL)",
+                        category: "connect"
+                    )
                     guard focus == .macIngest else { return }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                         proxy.scrollTo("macIngestField", anchor: .center)
@@ -840,6 +856,11 @@ struct ChatSettingsSheet: View {
             .onDisappear {
                 Task { await model.applyPinnedBrainURLs() }
             }
+            .alert("自动发现", isPresented: $showDiscoverAlert) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(discoverAlertMessage)
+            }
         }
     }
 
@@ -850,12 +871,13 @@ struct ChatSettingsSheet: View {
                 Text("局域网地址")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                TextField(AppModel.defaultLanBrainURL, text: $model.lanBrainURL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .font(.caption)
-                    .textContentType(.URL)
-                    .keyboardType(.URL)
+                Text(BrainEndpoint.defaultLanBase)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+                Text(lanResolvedLabel)
+                    .font(.caption2)
+                    .foregroundStyle(model.lanResolvedBase.isEmpty ? .orange : .secondary)
+                    .textSelection(.enabled)
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("云端地址")
@@ -869,19 +891,67 @@ struct ChatSettingsSheet: View {
                     .keyboardType(.URL)
             }
             Button {
-                Task { await model.applyPinnedBrainURLs() }
+                guard !discovering else { return }
+                discovering = true
+                discoverAlertMessage = ""
+                DiscoveryDebugLog.shared.log("auto-discover button tapped (force=true)", category: "connect")
+                Task { @MainActor in
+                    defer { discovering = false }
+                    let outcome = await model.refreshMdnsEndpoints(force: true)
+                    if outcome.brainFound || outcome.gatewayFound {
+                        var parts: [String] = []
+                        if outcome.brainFound {
+                            parts.append("\(MdnsDiscovery.brainMdnsHost) → \(outcome.brainURL)")
+                        }
+                        if outcome.gatewayFound {
+                            parts.append("\(MdnsDiscovery.gatewayMdnsHost) → \(outcome.gatewayURL)")
+                        }
+                        discoverAlertMessage = "已用 mDNS 找到：\n\(parts.joined(separator: "\n"))"
+                    } else {
+                        discoverAlertMessage = "没找到 Brain / Mac。请确认：\n① iPhone 和 Mac 在同一 WiFi\n② Mac 上 Brain 已运行（Mac 终端 dns-sd -L \"Home Agent Brain\" _ha-brain._tcp . 有输出）\n③ 设置里已允许本 App 的「本地网络」\n④ 若路由器开了「AP 隔离」，请关闭或改用手机热点测试"
+                    }
+                    showDiscoverAlert = true
+                    Task { await model.applyPinnedBrainURLs() }
+                }
             } label: {
-                if model.brainResolveBusy {
-                    ProgressView()
-                } else {
-                    Text("保存地址")
+                HStack(spacing: 8) {
+                    if discovering {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(discovering ? "自动发现中…" : "自动发现")
                 }
             }
-            .disabled(model.brainResolveBusy)
+            .disabled(discovering)
+            Button {
+                Task { await model.applyPinnedBrainURLs() }
+            } label: {
+                HStack(spacing: 8) {
+                    if model.brainResolveBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(model.brainResolveBusy ? "保存中…" : "保存地址")
+                }
+            }
+            .disabled(model.brainResolveBusy || discovering)
         } header: {
             Text("Brain 环境")
         } footer: {
-            Text("顶栏始终显示当前实际连接的是局域网还是云端。改连接方式要进确认页，不会一碰分段开关就切走。地址改完点「保存地址」。直播地址不要填到这里。")
+            Text("顶栏始终显示当前实际连接的是局域网还是云端。局域网身份是 brain.local，连接走探测到的 IP。云端仍用固定 IP。改连接方式要进确认页。直播地址不要填到这里。")
+        }
+    }
+
+    private var discoveryLogSection: some View {
+        Section {
+            DiscoveryDebugLogView {
+                _ = await model.refreshMdnsEndpoints(force: true)
+                await model.applyPinnedBrainURLs()
+            }
+        } header: {
+            Text("局域网探测日志")
+        } footer: {
+            Text("默认关闭。打开「记录探测日志」后才会写入 browse / A 记录 / 扫描 / ping。最新在底部，可复制。")
         }
     }
 
@@ -908,13 +978,13 @@ struct ChatSettingsSheet: View {
                 .font(.body.monospaced())
                 .focused($macIngestFocused)
                 .id("macIngestField")
-            Text("要填的内容示例（请自己敲进去，不要以为框里已经有了）：")
+            Text("要填的内容示例（也可以点「Brain 环境」里的「自动发现」自动填入）：")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text("http://192.168.x.x:8790")
+            Text("http://gateway.local:8790")
                 .font(.caption.monospaced())
                 .textSelection(.enabled)
-            Text("电脑查 IP：终端执行 ipconfig getifaddr en0，把 x.x 换成查到的地址。端口 8790。")
+            Text("默认 mDNS 名是 gateway.local。点「自动发现」后下面会填入实际 IP；HTTP 走 IP，不要填 brain.local。")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)

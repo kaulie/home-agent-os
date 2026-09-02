@@ -20,7 +20,7 @@ import kotlinx.coroutines.sync.withLock
  * Plans / intents are pulled only via [com.smarthome.livingroom_android.command.HttpCommandSource].
  *
  * Dual-Brain: LAN and Cloud heartbeats run on independent serial queues and do not
- * wait for each other. Each round is 3 attempts × 3s timeout, 1s apart.
+ * wait for each other. Each round is 3 attempts × 5s timeout, 1s apart.
  */
 class CompositeBrainClient(
     val local: MockBrainClient,
@@ -187,7 +187,7 @@ class CompositeBrainClient(
     companion object {
         private const val TAG = "CompositeBrainClient"
         const val MAX_ATTEMPTS = 3
-        const val ATTEMPT_TIMEOUT_SEC = 3L
+        const val ATTEMPT_TIMEOUT_SEC = 5L
         const val RETRY_GAP_MS = 1_000L
     }
 }

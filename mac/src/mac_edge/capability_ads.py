@@ -427,6 +427,13 @@ ADS: dict[str, dict[str, Any]] = {
         typical_triggers=["大声念出来", "提醒我说", "一分钟后说", "提醒萱萱", "该喝水了"],
         do_not_dispatch=["知识生成", "拍照", "投图", "唤醒应答", "把答案用语音告诉我", "用语音播放结果", "念出执行结果"],
     ),
+    "printer.print": _ad(
+        kind="output",
+        role="文档打印机",
+        planner_recognize="把本步已有的 PDF/document Asset 经本机 CUPS 队列打出纸。入参 asset_ref（必填，type=document），可选 copies、printer_name。不配网、不切 SoftAP、不走米家云",
+        typical_triggers=["打印这份 PDF", "把文档打出来", "打印一下", "打印这个文件"],
+        do_not_dispatch=["配网", "切 SoftAP", "扫描", "投屏", "TTS", "知识问答"],
+    ),
     "xiaodu.speak": _ad(
         kind="output",
         role="小度音箱播报器",

@@ -12,6 +12,7 @@ struct HomeAgentPickupApp: App {
                     UIApplication.shared.isIdleTimerDisabled = true
                     Task { await model.bootstrap() }
                 }
+                .task { await PickupSettings.autoDiscoverGateway() }
         }
     }
 }

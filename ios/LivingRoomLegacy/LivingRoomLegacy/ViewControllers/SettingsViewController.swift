@@ -10,7 +10,15 @@ final class SettingsViewController: UIViewController {
     private let advancedToggle = UIButton(type: .system)
     private let advancedStack = UIStackView()
     private let homeBrainField = UITextField()
+    private let homeBrainIPLabel = UILabel()
     private let macIngestField = UITextField()
+    private let macIngestMdnsLabel = UILabel()
+    private let discoverButton = UIButton(type: .system)
+    private let discoveryLogSwitch = UISwitch()
+    private let discoveryLogTextView = UITextView()
+    private let clearDiscoveryLogButton = UIButton(type: .system)
+    private let copyDiscoveryLogButton = UIButton(type: .system)
+    private let discoveryLogButtons = UIStackView()
     private let participantLabel = LegacyUI.monoLabel(0)
     private let heartbeatHistoryLabel = LegacyUI.monoLabel(0)
     private var countdownTimer: Timer?
@@ -111,40 +119,111 @@ final class SettingsViewController: UIViewController {
         brainHint.font = LegacyTheme.fontHint
         brainHint.textColor = LegacyTheme.textSecondary
         brainHint.numberOfLines = 0
-        brainHint.text = "局域网 Brain Intent（默认 :9527）。与下面 Mac 直播 ingest 分开填。"
+        brainHint.text = "局域网身份是 http://brain.local:9527。自动发现后显示实际 IP；HTTP 走 IP。云端仍是固定 IP。"
 
         homeBrainField.borderStyle = .roundedRect
         homeBrainField.font = UIFont(name: "Menlo-Regular", size: 15) ?? UIFont.systemFont(ofSize: 15)
         homeBrainField.autocapitalizationType = .none
         homeBrainField.autocorrectionType = .no
         homeBrainField.keyboardType = .URL
-        homeBrainField.placeholder = ParticipantStore.defaultHomeBrainIntentURL
-        homeBrainField.addTarget(self, action: #selector(homeBrainChanged), for: .editingChanged)
-        attachDoneToolbar(to: homeBrainField)
+        homeBrainField.isEnabled = false
+        homeBrainField.text = ParticipantStore.defaultHomeBrainIntentURL
+
+        homeBrainIPLabel.font = LegacyTheme.fontHint
+        homeBrainIPLabel.textColor = LegacyTheme.textSecondary
+        homeBrainIPLabel.numberOfLines = 0
 
         advancedStack.addArrangedSubview(brainTitle)
         advancedStack.addArrangedSubview(brainHint)
         advancedStack.addArrangedSubview(homeBrainField)
+        advancedStack.addArrangedSubview(homeBrainIPLabel)
 
         let ingestTitle = LegacyUI.sectionTitle("Mac 直播 ingest")
         let ingestHint = UILabel()
         ingestHint.font = LegacyTheme.fontHint
         ingestHint.textColor = LegacyTheme.textSecondary
         ingestHint.numberOfLines = 0
-        ingestHint.text = "推流到 Mac Edge 的 video-live 端口（默认 :8790），不要填 Brain :9527。"
+        ingestHint.text = "默认 http://gateway.local:8790。发现后下面填实际 IP。"
+
+        macIngestMdnsLabel.font = UIFont(name: "Menlo-Regular", size: 15) ?? UIFont.systemFont(ofSize: 15)
+        macIngestMdnsLabel.textColor = LegacyTheme.textSecondary
+        macIngestMdnsLabel.text = ParticipantStore.defaultMacIngestURL
 
         macIngestField.borderStyle = .roundedRect
         macIngestField.font = UIFont(name: "Menlo-Regular", size: 15) ?? UIFont.systemFont(ofSize: 15)
         macIngestField.autocapitalizationType = .none
         macIngestField.autocorrectionType = .no
         macIngestField.keyboardType = .URL
-        macIngestField.placeholder = ParticipantStore.defaultMacIngestURL
+        macIngestField.placeholder = "实际 IP（自动发现）"
         macIngestField.addTarget(self, action: #selector(macIngestChanged), for: .editingChanged)
         attachDoneToolbar(to: macIngestField)
 
         advancedStack.addArrangedSubview(ingestTitle)
         advancedStack.addArrangedSubview(ingestHint)
+        advancedStack.addArrangedSubview(macIngestMdnsLabel)
         advancedStack.addArrangedSubview(macIngestField)
+
+        LegacyUI.styleSecondaryButton(discoverButton, title: "自动发现")
+        discoverButton.addTarget(self, action: #selector(autoDiscover), for: .touchUpInside)
+        advancedStack.addArrangedSubview(discoverButton)
+
+        let discoverHint = UILabel()
+        discoverHint.font = LegacyTheme.fontHint
+        discoverHint.textColor = LegacyTheme.textSecondary
+        discoverHint.numberOfLines = 0
+        discoverHint.text = "点一下用 mDNS 找 brain.local / gateway.local，并把实际 IP 填到上面。"
+        advancedStack.addArrangedSubview(discoverHint)
+
+        let discoveryLogTitle = LegacyUI.sectionTitle("局域网探测日志")
+        advancedStack.addArrangedSubview(discoveryLogTitle)
+
+        let logSwitchRow = UIStackView()
+        logSwitchRow.axis = .horizontal
+        logSwitchRow.alignment = .center
+        logSwitchRow.spacing = 12
+        let logSwitchLabel = UILabel()
+        logSwitchLabel.text = "记录探测日志"
+        logSwitchLabel.font = LegacyTheme.fontBody
+        logSwitchLabel.textColor = LegacyTheme.textPrimary
+        discoveryLogSwitch.onTintColor = LegacyTheme.accent
+        discoveryLogSwitch.isOn = DiscoveryDebugLog.shared.isEnabled
+        discoveryLogSwitch.addTarget(self, action: #selector(discoveryLogEnabledChanged), for: .valueChanged)
+        logSwitchRow.addArrangedSubview(logSwitchLabel)
+        logSwitchRow.addArrangedSubview(discoveryLogSwitch)
+        advancedStack.addArrangedSubview(logSwitchRow)
+
+        let logHint = UILabel()
+        logHint.font = LegacyTheme.fontHint
+        logHint.textColor = LegacyTheme.textSecondary
+        logHint.numberOfLines = 0
+        logHint.text = "默认关闭。打开后才写入日志，避免设置页一直刷新。"
+        advancedStack.addArrangedSubview(logHint)
+
+        discoveryLogTextView.isEditable = false
+        discoveryLogTextView.isScrollEnabled = true
+        discoveryLogTextView.font = UIFont(name: "Menlo-Regular", size: 11) ?? UIFont.systemFont(ofSize: 11)
+        discoveryLogTextView.backgroundColor = LegacyTheme.background
+        discoveryLogTextView.textColor = LegacyTheme.textSecondary
+        discoveryLogTextView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
+        discoveryLogTextView.translatesAutoresizingMaskIntoConstraints = false
+        discoveryLogTextView.heightAnchor.constraint(equalToConstant: 160).isActive = true
+        advancedStack.addArrangedSubview(discoveryLogTextView)
+
+        discoveryLogButtons.axis = .horizontal
+        discoveryLogButtons.spacing = 12
+        LegacyUI.styleSecondaryButton(clearDiscoveryLogButton, title: "清空")
+        clearDiscoveryLogButton.addTarget(self, action: #selector(clearDiscoveryLog), for: .touchUpInside)
+        LegacyUI.styleSecondaryButton(copyDiscoveryLogButton, title: "复制到剪贴板")
+        copyDiscoveryLogButton.addTarget(self, action: #selector(copyDiscoveryLog), for: .touchUpInside)
+        discoveryLogButtons.addArrangedSubview(clearDiscoveryLogButton)
+        discoveryLogButtons.addArrangedSubview(copyDiscoveryLogButton)
+        advancedStack.addArrangedSubview(discoveryLogButtons)
+        applyDiscoveryLogVisibility()
+
+        DiscoveryDebugLog.shared.onUpdate = { [weak self] in
+            self?.refreshDiscoveryLog()
+        }
+        refreshDiscoveryLog()
 
         let heartbeatTitle = LegacyUI.sectionTitle("心跳记录")
         advancedStack.addArrangedSubview(heartbeatTitle)
@@ -165,8 +244,16 @@ final class SettingsViewController: UIViewController {
 
         let pid = ParticipantStore.participantId
         participantLabel.text = pid.isEmpty ? "participant: 未登记" : "participant: \(pid)"
-        homeBrainField.text = ParticipantStore.homeBrainIntentURL
-        macIngestField.text = ParticipantStore.macIngestURL
+        homeBrainField.text = ParticipantStore.defaultHomeBrainIntentURL
+        let resolved = ParticipantStore.homeBrainResolvedIntentURL
+        if resolved.isEmpty {
+            homeBrainIPLabel.text = "实际 IP：尚未发现"
+        } else {
+            homeBrainIPLabel.text = "实际 IP：\(BrainURL.displayBase(from: resolved))"
+        }
+        macIngestField.text = ParticipantStore.macIngestConnectURL.isEmpty
+            ? ""
+            : ParticipantStore.macIngestConnectURL
         refreshStatusLabel()
         refreshHeartbeatHistory()
     }
@@ -240,6 +327,112 @@ final class SettingsViewController: UIViewController {
         ConnectionManager.shared.startAutoConnect()
         refreshValues()
         showAlert(message: "正在重新连接…")
+    }
+
+    /// Re-run mDNS discovery and fill the LAN slots with the discovered
+    /// well-known DNS hostnames (`brain.local` / `gateway.local`) instead of IPs.
+    @objc private func autoDiscover() {
+        DiscoveryDebugLog.shared.log("Legacy settings: 自动发现 tapped", category: "connect")
+        discoverButton.isEnabled = false
+        discoverButton.setTitle("正在自动发现…", for: .normal)
+        ParticipantStore.clearDiscoveredEndpoints()
+        refreshValues()
+
+        let group = DispatchGroup()
+        var foundBrain = false
+        var foundGateway = false
+
+        group.enter()
+        MdnsDiscovery.resolveBrainForAutoDiscover(mdnsTimeout: 6) { brain in
+            if let brain {
+                ParticipantStore.applyDiscoveredBrain(brain)
+                foundBrain = MdnsDiscovery.isUsableLanIPv4(brain.host)
+            }
+            group.leave()
+        }
+
+        group.enter()
+        MdnsDiscovery.resolveGatewayForAutoDiscover(mdnsTimeout: 6) { gateway in
+            if let gateway {
+                ParticipantStore.applyDiscoveredGateway(gateway)
+                foundGateway = MdnsDiscovery.isUsableLanIPv4(gateway.host)
+            }
+            group.leave()
+        }
+
+        group.notify(queue: .main) { [weak self] in
+            guard let self = self else { return }
+            self.discoverButton.isEnabled = true
+            self.discoverButton.setTitle("自动发现", for: .normal)
+            self.refreshValues()
+            self.presentDiscoverResult(foundBrain: foundBrain, foundGateway: foundGateway)
+            if foundBrain {
+                ConnectionManager.shared.connectAfterHomeDiscover()
+            } else {
+                DiscoveryDebugLog.shared.log("auto-discover finished: no Brain, skip register", category: "connect")
+            }
+        }
+    }
+
+    private func presentDiscoverResult(foundBrain: Bool, foundGateway: Bool) {
+        let resolved = ParticipantStore.homeBrainResolvedIntentURL
+        let brainBase = BrainURL.displayBase(from: resolved)
+        let brainOK = foundBrain && MdnsDiscovery.isUsableLanIPv4(BrainURL.ipv4Host(from: resolved) ?? "")
+        let gwURL = ParticipantStore.macIngestConnectURL
+        let gwOK = foundGateway && MdnsDiscovery.isUsableLanIPv4(BrainURL.ipv4Host(from: gwURL) ?? "")
+
+        if !brainOK && !gwOK {
+            showAlert(message: "没找到可用的 Brain / Mac。\n\n请确认 iPhone 与 Mac 在同一 WiFi，并已重启 Brain 与 Mac Edge。")
+            return
+        }
+
+        var lines = ["发现结果", ""]
+        if brainOK {
+            lines.append("Brain：\(brainBase)")
+        } else {
+            lines.append("Brain：未发现（请检查 Brain 是否在运行）")
+        }
+        if gwOK {
+            lines.append("直播：\(gwURL)")
+        } else {
+            lines.append("直播：未发现（请检查 Mac Edge 是否在运行）")
+        }
+        showAlert(message: lines.joined(separator: "\n"))
+    }
+
+    private func applyDiscoveryLogVisibility() {
+        let on = DiscoveryDebugLog.shared.isEnabled
+        discoveryLogTextView.isHidden = !on
+        discoveryLogButtons.isHidden = !on
+    }
+
+    @objc private func discoveryLogEnabledChanged() {
+        DiscoveryDebugLog.shared.isEnabled = discoveryLogSwitch.isOn
+        applyDiscoveryLogVisibility()
+        refreshDiscoveryLog()
+    }
+
+    private func refreshDiscoveryLog() {
+        applyDiscoveryLogVisibility()
+        guard DiscoveryDebugLog.shared.isEnabled else { return }
+        let text = DiscoveryDebugLog.shared.text
+        discoveryLogTextView.text = text.isEmpty
+            ? "（尚无日志；打开开关后点「自动发现」）"
+            : text
+        let end = discoveryLogTextView.text.count
+        if end > 0 {
+            discoveryLogTextView.scrollRangeToVisible(NSRange(location: end - 1, length: 1))
+        }
+    }
+
+    @objc private func clearDiscoveryLog() {
+        DiscoveryDebugLog.shared.clear()
+        refreshDiscoveryLog()
+    }
+
+    @objc private func copyDiscoveryLog() {
+        UIPasteboard.general.string = DiscoveryDebugLog.shared.text
+        showAlert(message: "已复制探测日志")
     }
 
     override func viewWillAppear(_ animated: Bool) {

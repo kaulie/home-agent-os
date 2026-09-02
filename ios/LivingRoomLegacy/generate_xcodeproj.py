@@ -127,6 +127,7 @@ def main() -> None:
     files = collect_swift()
     info_plist = SRC / "Info.plist"
     assets = SRC / "Assets.xcassets"
+    launch_storyboard = SRC / "LaunchScreen.storyboard"
 
     project_id = xid()
     target_id = xid()
@@ -145,6 +146,8 @@ def main() -> None:
     project_config_list = xid()
     assets_ref = xid() if assets.is_dir() else None
     assets_build = xid() if assets.is_dir() else None
+    launch_ref = xid() if launch_storyboard.is_file() else None
+    launch_build = xid() if launch_storyboard.is_file() else None
 
     file_refs: dict[SwiftFile, str] = {}
     build_files: dict[SwiftFile, str] = {}
@@ -181,6 +184,8 @@ def main() -> None:
             out.append(info_ref)
         if group_path == "" and assets_ref:
             out.append(assets_ref)
+        if group_path == "" and launch_ref:
+            out.append(launch_ref)
         return out
 
     lines: list[str] = []
@@ -201,6 +206,10 @@ def main() -> None:
         lines.append(
             f"\t\t{assets_build} /* Assets.xcassets in Resources */ = {{isa = PBXBuildFile; fileRef = {assets_ref} /* Assets.xcassets */; }};"
         )
+    if launch_ref and launch_build:
+        lines.append(
+            f"\t\t{launch_build} /* LaunchScreen.storyboard in Resources */ = {{isa = PBXBuildFile; fileRef = {launch_ref} /* LaunchScreen.storyboard */; }};"
+        )
     lines.append("/* End PBXBuildFile section */")
     lines.append("")
 
@@ -218,6 +227,10 @@ def main() -> None:
     if assets_ref:
         lines.append(
             f"\t\t{assets_ref} /* Assets.xcassets */ = {{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = \"<group>\"; }};"
+        )
+    if launch_ref:
+        lines.append(
+            f"\t\t{launch_ref} /* LaunchScreen.storyboard */ = {{isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = \"<group>\"; }};"
         )
     lines.append("/* End PBXFileReference section */")
     lines.append("")
@@ -331,6 +344,8 @@ def main() -> None:
     lines.append("\t\t\tfiles = (")
     if assets_build:
         lines.append(f"\t\t\t\t{assets_build} /* Assets.xcassets in Resources */,")
+    if launch_build:
+        lines.append(f"\t\t\t\t{launch_build} /* LaunchScreen.storyboard in Resources */,")
     lines.append("\t\t\t);")
     lines.append("\t\t\trunOnlyForDeploymentPostprocessing = 0;")
     lines.append("\t\t};")
@@ -382,6 +397,7 @@ def main() -> None:
         lines.append("\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;")
         lines.append("\t\t\t\tCODE_SIGN_STYLE = Automatic;")
         lines.append("\t\t\t\tCURRENT_PROJECT_VERSION = 1;")
+        lines.append("\t\t\t\tENABLE_DEBUG_DYLIB = NO;")
         lines.append('\t\t\t\tDEVELOPMENT_TEAM = "' + DEVELOPMENT_TEAM + '";')
         lines.append("\t\t\t\tGENERATE_INFOPLIST_FILE = NO;")
         lines.append(f"\t\t\t\tINFOPLIST_FILE = {APP_NAME}/Info.plist;")

@@ -341,7 +341,7 @@ def main() -> None:
         lines.append("\t\t\tisa = XCBuildConfiguration;")
         lines.append("\t\t\tbuildSettings = {")
         lines.append("\t\t\t\tCODE_SIGN_STYLE = Automatic;")
-        lines.append("\t\t\t\tCURRENT_PROJECT_VERSION = 4;")
+        lines.append("\t\t\t\tCURRENT_PROJECT_VERSION = 5;")
         lines.append('\t\t\t\tDEVELOPMENT_TEAM = "";')
         lines.append("\t\t\t\tENABLE_PREVIEWS = YES;")
         lines.append("\t\t\t\tGENERATE_INFOPLIST_FILE = NO;")

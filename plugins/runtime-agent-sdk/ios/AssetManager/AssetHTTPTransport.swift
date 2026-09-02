@@ -28,11 +28,20 @@ enum AssetTransportError: LocalizedError {
 
 /// Owns business-server HTTP details for digital assets (SDK-internal).
 enum AssetHTTPTransport {
-    /// LAN img-server on this Mac (reachable on home Wi-Fi).
-    static let defaultUploadURL = "http://192.168.3.73:8080/api/v1/photos/upload"
-    static let defaultDownloadLatestURL = "http://192.168.3.73:8080/api/v1/photos/download_latest"
+    /// LAN img-server base, refreshable via mDNS (`_ha-img-server._tcp`) so the
+    /// SDK does not depend on a fixed LAN IP. Fallback keeps the old default.
+    private static var lanBase = "http://192.168.3.73:8080"
+
+    static var uploadURL: String { lanBase + "/api/v1/photos/upload" }
+    static var downloadLatestURL: String { lanBase + "/api/v1/photos/download_latest" }
     /// Public static host for Cast / download.
-    static let defaultPublicPhotoBaseURL = "http://192.168.3.73:8080"
+    static var publicPhotoBaseURL: String { lanBase }
+
+    /// Resolve the LAN img-server via mDNS and refresh `lanBase`.
+    static func refreshLanBaseFromMdns() async {
+        guard let endpoint = await MdnsDiscovery.resolve(MdnsDiscovery.imgServerType) else { return }
+        lanBase = endpoint.baseURL
+    }
 
     struct UploadResult {
         let message: String
@@ -54,7 +63,7 @@ enum AssetHTTPTransport {
     }
 
     static func uploadPhoto(data: Data, filename: String) async throws -> UploadResult {
-        let trimmed = defaultUploadURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = uploadURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed), !trimmed.isEmpty else {
             throw AssetTransportError.invalidURL(trimmed)
         }
@@ -108,7 +117,7 @@ enum AssetHTTPTransport {
     }
 
     static func downloadLatestPhoto() async throws -> DownloadResult {
-        let trimmed = defaultDownloadLatestURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = downloadLatestURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var components = URLComponents(string: trimmed), components.url != nil, !trimmed.isEmpty else {
             throw AssetTransportError.invalidURL(trimmed)
         }
@@ -178,7 +187,7 @@ enum AssetHTTPTransport {
         }
         let safe = (name as NSString).lastPathComponent
         guard !safe.isEmpty, !safe.hasPrefix(".") else { return nil }
-        let base = defaultPublicPhotoBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let base = publicPhotoBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return "\(base)/\(safe)"
     }
 

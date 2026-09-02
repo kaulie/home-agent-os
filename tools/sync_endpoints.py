@@ -51,11 +51,18 @@ def sync_ios() -> None:
     cloud = brain_cloud_base()
     mac_host = mac_lan_host()
     video = mac_service_url("video_live_port")
+    # LAN device addressing migrates to well-known mDNS hostnames
+    # (agent_plans/service_discovery_mdns_migration_v2.md): the mac_edge gateway
+    # publishes `_ha-gateway._tcp` under `gateway.local` (hosts video-live ingest).
+    gateway_video = re.sub(r"http://[^/]+", "http://gateway.local", video)
+    # Brain publishes `_ha-brain._tcp` under `brain.local`; keep the LAN Brain slot
+    # on the mDNS hostname instead of a fixed LAN IP.
+    brain_lan_dns = re.sub(r"http://[^/]+", "http://brain.local", lan)
 
     _sub_file(
         ROOT / "ios/LivingRoomEdge/LivingRoomEdge/Brain/BrainEndpoint.swift",
         r'static let defaultLanBase = "[^"]+"',
-        f'static let defaultLanBase = "{lan}"',
+        f'static let defaultLanBase = "{brain_lan_dns}"',
     )
     _sub_file(
         ROOT / "ios/LivingRoomEdge/LivingRoomEdge/Brain/BrainEndpoint.swift",
@@ -65,7 +72,7 @@ def sync_ios() -> None:
     _sub_file(
         ROOT / "ios/HomeAgentDev/HomeAgentDev/DevBrainEndpoint.swift",
         r'static let defaultLanBase = "[^"]+"',
-        f'static let defaultLanBase = "{lan}"',
+        f'static let defaultLanBase = "{brain_lan_dns}"',
     )
     _sub_file(
         ROOT / "ios/HomeAgentDev/HomeAgentDev/DevBrainEndpoint.swift",
@@ -90,7 +97,7 @@ def sync_ios() -> None:
     _sub_file(
         ROOT / "ios/LivingRoomLegacy/LivingRoomLegacy/Services/ParticipantStore.swift",
         r'static let defaultMacIngestURL = "[^"]+"',
-        f'static let defaultMacIngestURL = "{video}"',
+        f'static let defaultMacIngestURL = "{gateway_video}"',
     )
     _sub_file(
         ROOT / "ios/HomeAgentPickup/HomeAgentPickup/Net/PickupSettings.swift",

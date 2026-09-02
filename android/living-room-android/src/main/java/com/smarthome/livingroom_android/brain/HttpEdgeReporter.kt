@@ -113,7 +113,7 @@ class HttpEdgeReporter(
 
     companion object {
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
-        private const val HEARTBEAT_TIMEOUT_SEC = 3L
+        private const val HEARTBEAT_TIMEOUT_SEC = 5L
 
         private fun defaultClient(): OkHttpClient =
             OkHttpClient.Builder()

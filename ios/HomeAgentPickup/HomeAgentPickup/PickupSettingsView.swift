@@ -29,15 +29,33 @@ struct PickupSettingsView: View {
                 }
 
                 Section("Mac 拾音地址") {
-                    TextField("Mac 主机", text: $pickupHost)
+                    LabeledContent("mDNS 名", value: "gateway.local")
+                    TextField("实际 IP", text: $pickupHost)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
                     TextField("端口（voice.stream ingest）", text: $pickupPort)
                         .keyboardType(.numberPad)
-                    Text("音频直连客厅 Mac（默认 192.168.3.84:8792），由 Mac 切句 / STT 后再到 Brain Intent。")
+                    Button("重新发现 gateway.local") {
+                        Task {
+                            await model.rediscoverGatewayAndReconnect()
+                            pickupHost = PickupSettings.serverHost
+                            pickupPort = String(PickupSettings.serverPort)
+                            brainURL = PickupSettings.brainIntentURL
+                        }
+                    }
+                    Text("默认身份 gateway.local。mDNS 取 A 记录并验证后再缓存实际 IP；TCP 不用 .local。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                }
+
+                Section("局域网探测日志") {
+                    DiscoveryDebugLogView {
+                        await model.rediscoverGatewayAndReconnect()
+                        pickupHost = PickupSettings.serverHost
+                        pickupPort = String(PickupSettings.serverPort)
+                        brainURL = PickupSettings.brainIntentURL
+                    }
                 }
 
                 Section("发送初筛") {

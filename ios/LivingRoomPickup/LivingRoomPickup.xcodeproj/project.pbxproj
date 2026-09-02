@@ -6,41 +6,45 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		2F988584949F4D31AD2EC173 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7B991612C1340DF9EF6CCBF /* AppDelegate.swift */; };
-		F0A2D88DB7BC4294B35D5E9D /* HomeMicController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88A8E0B5D75D46D984F01022 /* HomeMicController.swift */; };
-		ADFE4DC2714C49D9AC2EAF07 /* HomeMicEnergyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B49748F879E94AF0B6FB305B /* HomeMicEnergyGate.swift */; };
-		436109565059466A99C2BDE6 /* HomeMicHap1Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D42812D5644B47A0D2EC58 /* HomeMicHap1Client.swift */; };
-		468EC1876D3849AC859E9F5E /* HomeMicPcmCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 383EE92AD06B44DF91C613B4 /* HomeMicPcmCapture.swift */; };
-		F0DF4BAA1AB84E888DD6AEF4 /* HomeMicSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 336BAA56E5314614BEBECA77 /* HomeMicSettings.swift */; };
-		9C105DCEA17E462CA44F9FB5 /* PickupIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = B200D198027B44D0952C0ACA /* PickupIdentity.swift */; };
-		E7045540BC464751BB8A5ECE /* HomeMicViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDE6AA5B0AA4CCEBC0FD44C /* HomeMicViewController.swift */; };
-		E719D8ADB0104F84A5DB3A32 /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69D5FD845C3B41CA98B840C4 /* SettingsViewController.swift */; };
-		739F7122391148999859825E /* PickupTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E8FDBB5621E4F8F99384110 /* PickupTheme.swift */; };
-		2D612AAB503345F1A07A70D7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 4244EBED6F2A43E69CE039B9 /* Assets.xcassets */; };
-		67A1E26F36AE443C9F176890 /* wake_ack_wozaine.caf in Resources */ = {isa = PBXBuildFile; fileRef = B897445A067242C8964C9012 /* wake_ack_wozaine.caf */; };
-		1C752385D94F476890C63B3B /* wake_ack_youzale.caf in Resources */ = {isa = PBXBuildFile; fileRef = 4FCB6B67495C4130A5C3498D /* wake_ack_youzale.caf */; };
+		1D4637897F694E76A558D4FB /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2CD5F4D071E4EE9A1725F50 /* AppDelegate.swift */; };
+		42621AB327174F5280A5F563 /* DiscoveryDebugLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73C46BCDD6A4E34A593B674 /* DiscoveryDebugLog.swift */; };
+		7875D09AB5CD4F2887FBBC15 /* MdnsDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDB4FEC57F30402B97022A49 /* MdnsDiscovery.swift */; };
+		89FA03B6802F4D84AA24C3A9 /* HomeMicController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7752D88FAA53453C8BDDC5C9 /* HomeMicController.swift */; };
+		68953ABC551E40F4992207A8 /* HomeMicEnergyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E81D08E639468980D4875D /* HomeMicEnergyGate.swift */; };
+		9276BAF477A3471BA9568044 /* HomeMicHap1Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37D8EDE52824D8B85D439C3 /* HomeMicHap1Client.swift */; };
+		9D8E4E1955A8483084DD3A3E /* HomeMicPcmCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56C0E6654395445BAC207185 /* HomeMicPcmCapture.swift */; };
+		92C6C33CA0BB45D39F2337F3 /* HomeMicSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 871B90DE5E6E4701B7B390E2 /* HomeMicSettings.swift */; };
+		631A7AAD1C26497DA2442D1B /* PickupIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64D6D8F953774F34AB0A0A42 /* PickupIdentity.swift */; };
+		10D92BB543A14120AD353051 /* HomeMicViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C42F97CC3534005941302CD /* HomeMicViewController.swift */; };
+		1FC546646FCF4052AADC82FE /* SettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A7E15C2E96E4B9EB877B6AD /* SettingsViewController.swift */; };
+		8CAB018562F5412AAD624F68 /* PickupTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 402D6E4F91D34FE5B3AD3875 /* PickupTheme.swift */; };
+		B40BFCA8BBF74CB59FBF3D77 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 60C3E7ACB34E49FA839E48EF /* Assets.xcassets */; };
+		592AA2EFFBA74D14911C57EB /* wake_ack_wozaine.caf in Resources */ = {isa = PBXBuildFile; fileRef = 9CDF14FF84AA4288A39DE64A /* wake_ack_wozaine.caf */; };
+		2E6366C2339A43CD980B9657 /* wake_ack_youzale.caf in Resources */ = {isa = PBXBuildFile; fileRef = 018621C7BCD84808BA5F7112 /* wake_ack_youzale.caf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		430B0D1D7C0C42BFAB7A8A09 /* LivingRoomPickup.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LivingRoomPickup.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		B7B991612C1340DF9EF6CCBF /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		88A8E0B5D75D46D984F01022 /* HomeMicController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicController.swift; sourceTree = "<group>"; };
-		B49748F879E94AF0B6FB305B /* HomeMicEnergyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicEnergyGate.swift; sourceTree = "<group>"; };
-		A3D42812D5644B47A0D2EC58 /* HomeMicHap1Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicHap1Client.swift; sourceTree = "<group>"; };
-		383EE92AD06B44DF91C613B4 /* HomeMicPcmCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicPcmCapture.swift; sourceTree = "<group>"; };
-		336BAA56E5314614BEBECA77 /* HomeMicSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicSettings.swift; sourceTree = "<group>"; };
-		B200D198027B44D0952C0ACA /* PickupIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickupIdentity.swift; sourceTree = "<group>"; };
-		FEDE6AA5B0AA4CCEBC0FD44C /* HomeMicViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicViewController.swift; sourceTree = "<group>"; };
-		69D5FD845C3B41CA98B840C4 /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
-		7E8FDBB5621E4F8F99384110 /* PickupTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickupTheme.swift; sourceTree = "<group>"; };
-		B897445A067242C8964C9012 /* wake_ack_wozaine.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = wake_ack_wozaine.caf; sourceTree = "<group>"; };
-		4FCB6B67495C4130A5C3498D /* wake_ack_youzale.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = wake_ack_youzale.caf; sourceTree = "<group>"; };
-		3AA160ABE21B4E7E8D3EE30A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		4244EBED6F2A43E69CE039B9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		DBDE60E7A4A34550BA451AC6 /* LivingRoomPickup.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LivingRoomPickup.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E2CD5F4D071E4EE9A1725F50 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B73C46BCDD6A4E34A593B674 /* DiscoveryDebugLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoveryDebugLog.swift; sourceTree = "<group>"; };
+		DDB4FEC57F30402B97022A49 /* MdnsDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MdnsDiscovery.swift; sourceTree = "<group>"; };
+		7752D88FAA53453C8BDDC5C9 /* HomeMicController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicController.swift; sourceTree = "<group>"; };
+		C8E81D08E639468980D4875D /* HomeMicEnergyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicEnergyGate.swift; sourceTree = "<group>"; };
+		F37D8EDE52824D8B85D439C3 /* HomeMicHap1Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicHap1Client.swift; sourceTree = "<group>"; };
+		56C0E6654395445BAC207185 /* HomeMicPcmCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicPcmCapture.swift; sourceTree = "<group>"; };
+		871B90DE5E6E4701B7B390E2 /* HomeMicSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicSettings.swift; sourceTree = "<group>"; };
+		64D6D8F953774F34AB0A0A42 /* PickupIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickupIdentity.swift; sourceTree = "<group>"; };
+		0C42F97CC3534005941302CD /* HomeMicViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeMicViewController.swift; sourceTree = "<group>"; };
+		0A7E15C2E96E4B9EB877B6AD /* SettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewController.swift; sourceTree = "<group>"; };
+		402D6E4F91D34FE5B3AD3875 /* PickupTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PickupTheme.swift; sourceTree = "<group>"; };
+		9CDF14FF84AA4288A39DE64A /* wake_ack_wozaine.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = wake_ack_wozaine.caf; sourceTree = "<group>"; };
+		018621C7BCD84808BA5F7112 /* wake_ack_youzale.caf */ = {isa = PBXFileReference; lastKnownFileType = file; path = wake_ack_youzale.caf; sourceTree = "<group>"; };
+		7BD509BE24CB443C99991EDC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		60C3E7ACB34E49FA839E48EF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		127F5DD76C034C68B2328870 /* Frameworks */ = {
+		3621D4F0B67A4142A423BC37 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -50,79 +54,81 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		42F520DB0DBE43E28A37D16C = {
+		4A04CF2E6D1F4FB3814E35CC = {
 			isa = PBXGroup;
 			children = (
-				0F43F19B0A6F4BDC987996AE /* LivingRoomPickup */,
-				42BEC14D21E64BDCA92E697B /* Products */,
+				16341847243C41CCBF5FE693 /* LivingRoomPickup */,
+				5A36E274B43949369249141C /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		42BEC14D21E64BDCA92E697B /* Products */ = {
+		5A36E274B43949369249141C /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				430B0D1D7C0C42BFAB7A8A09 /* LivingRoomPickup.app */,
+				DBDE60E7A4A34550BA451AC6 /* LivingRoomPickup.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		0F43F19B0A6F4BDC987996AE /* LivingRoomPickup */ = {
+		16341847243C41CCBF5FE693 /* LivingRoomPickup */ = {
 			isa = PBXGroup;
 			children = (
-				61A45E4857434E11B0E26B25,
-				B8972976F75E431B918BFD05,
-				4F811B406843445A96C3950A,
-				37D217A6B6A84F22BA9F6E86,
-				B7B991612C1340DF9EF6CCBF,
-				3AA160ABE21B4E7E8D3EE30A,
-				4244EBED6F2A43E69CE039B9,
+				5308B8A448A549B6A17B91CC,
+				96AD893C65C3406C8CD8CF20,
+				BEC3E111E0F44900814A4387,
+				93D2F94517D24585805DF704,
+				E2CD5F4D071E4EE9A1725F50,
+				B73C46BCDD6A4E34A593B674,
+				DDB4FEC57F30402B97022A49,
+				7BD509BE24CB443C99991EDC,
+				60C3E7ACB34E49FA839E48EF,
 			);
 			path = LivingRoomPickup;
 			sourceTree = "<group>";
 		};
-		61A45E4857434E11B0E26B25 /* Resources */ = {
+		5308B8A448A549B6A17B91CC /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				B897445A067242C8964C9012,
-				4FCB6B67495C4130A5C3498D,
+				9CDF14FF84AA4288A39DE64A,
+				018621C7BCD84808BA5F7112,
 			);
 			path = Resources;
 			sourceTree = "<group>";
 		};
-		B8972976F75E431B918BFD05 /* Services */ = {
+		96AD893C65C3406C8CD8CF20 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				542C4592A56F4077804D2E63,
-				B200D198027B44D0952C0ACA,
+				530A044F74D0423D80DA195B,
+				64D6D8F953774F34AB0A0A42,
 			);
 			path = Services;
 			sourceTree = "<group>";
 		};
-		542C4592A56F4077804D2E63 /* HomeMic */ = {
+		530A044F74D0423D80DA195B /* HomeMic */ = {
 			isa = PBXGroup;
 			children = (
-				88A8E0B5D75D46D984F01022,
-				B49748F879E94AF0B6FB305B,
-				A3D42812D5644B47A0D2EC58,
-				383EE92AD06B44DF91C613B4,
-				336BAA56E5314614BEBECA77,
+				7752D88FAA53453C8BDDC5C9,
+				C8E81D08E639468980D4875D,
+				F37D8EDE52824D8B85D439C3,
+				56C0E6654395445BAC207185,
+				871B90DE5E6E4701B7B390E2,
 			);
 			path = HomeMic;
 			sourceTree = "<group>";
 		};
-		4F811B406843445A96C3950A /* ViewControllers */ = {
+		BEC3E111E0F44900814A4387 /* ViewControllers */ = {
 			isa = PBXGroup;
 			children = (
-				FEDE6AA5B0AA4CCEBC0FD44C,
-				69D5FD845C3B41CA98B840C4,
+				0C42F97CC3534005941302CD,
+				0A7E15C2E96E4B9EB877B6AD,
 			);
 			path = ViewControllers;
 			sourceTree = "<group>";
 		};
-		37D217A6B6A84F22BA9F6E86 /* Views */ = {
+		93D2F94517D24585805DF704 /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				7E8FDBB5621E4F8F99384110,
+				402D6E4F91D34FE5B3AD3875,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -130,13 +136,13 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		3209EB8570C34E4485B2AF3F /* LivingRoomPickup */ = {
+		32FD510948174B9FB9DD6F34 /* LivingRoomPickup */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = FD590A95403746F0ABF16E5C /* Build configuration list for PBXNativeTarget "LivingRoomPickup" */;
+			buildConfigurationList = A0CAB12CF68047BB85142931 /* Build configuration list for PBXNativeTarget "LivingRoomPickup" */;
 			buildPhases = (
-				A601111245094849AF440470 /* Sources */,
-				127F5DD76C034C68B2328870 /* Frameworks */,
-				E4DE4E0103D44C24A2F4AD2A /* Resources */,
+				C3852CD2399C449BA9F37FF1 /* Sources */,
+				3621D4F0B67A4142A423BC37 /* Frameworks */,
+				8503EC2614EE48A39FC71332 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -146,20 +152,20 @@
 			packageProductDependencies = (
 			);
 			productName = LivingRoomPickup;
-			productReference = 430B0D1D7C0C42BFAB7A8A09 /* LivingRoomPickup.app */;
+			productReference = DBDE60E7A4A34550BA451AC6 /* LivingRoomPickup.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		699ECEADF5C04E02BE16DDAE /* Project object */ = {
+		C3B2018CA8B145709CA24936 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1500;
 				LastUpgradeCheck = 1500;
 			};
-			buildConfigurationList = C4D6857D56864809B87654D2 /* Build configuration list for PBXProject "LivingRoomPickup" */;
+			buildConfigurationList = 84E3D614733243C8B1E9E81D /* Build configuration list for PBXProject "LivingRoomPickup" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -167,53 +173,55 @@
 				en,
 				Base,
 			);
-			mainGroup = 42F520DB0DBE43E28A37D16C;
+			mainGroup = 4A04CF2E6D1F4FB3814E35CC;
 			packageReferences = (
 			);
-			productRefGroup = 42BEC14D21E64BDCA92E697B /* Products */;
+			productRefGroup = 5A36E274B43949369249141C /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				3209EB8570C34E4485B2AF3F /* LivingRoomPickup */,
+				32FD510948174B9FB9DD6F34 /* LivingRoomPickup */,
 			);
 			};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		E4DE4E0103D44C24A2F4AD2A /* Resources */ = {
+		8503EC2614EE48A39FC71332 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				2D612AAB503345F1A07A70D7 /* Assets.xcassets in Resources */,
-				67A1E26F36AE443C9F176890 /* wake_ack_wozaine.caf in Resources */,
-				1C752385D94F476890C63B3B /* wake_ack_youzale.caf in Resources */,
+				B40BFCA8BBF74CB59FBF3D77 /* Assets.xcassets in Resources */,
+				592AA2EFFBA74D14911C57EB /* wake_ack_wozaine.caf in Resources */,
+				2E6366C2339A43CD980B9657 /* wake_ack_youzale.caf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		A601111245094849AF440470 /* Sources */ = {
+		C3852CD2399C449BA9F37FF1 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				2F988584949F4D31AD2EC173 /* AppDelegate.swift in Sources */,
-				F0A2D88DB7BC4294B35D5E9D /* HomeMicController.swift in Sources */,
-				ADFE4DC2714C49D9AC2EAF07 /* HomeMicEnergyGate.swift in Sources */,
-				436109565059466A99C2BDE6 /* HomeMicHap1Client.swift in Sources */,
-				468EC1876D3849AC859E9F5E /* HomeMicPcmCapture.swift in Sources */,
-				F0DF4BAA1AB84E888DD6AEF4 /* HomeMicSettings.swift in Sources */,
-				9C105DCEA17E462CA44F9FB5 /* PickupIdentity.swift in Sources */,
-				E7045540BC464751BB8A5ECE /* HomeMicViewController.swift in Sources */,
-				E719D8ADB0104F84A5DB3A32 /* SettingsViewController.swift in Sources */,
-				739F7122391148999859825E /* PickupTheme.swift in Sources */,
+				1D4637897F694E76A558D4FB /* AppDelegate.swift in Sources */,
+				42621AB327174F5280A5F563 /* DiscoveryDebugLog.swift in Sources */,
+				7875D09AB5CD4F2887FBBC15 /* MdnsDiscovery.swift in Sources */,
+				89FA03B6802F4D84AA24C3A9 /* HomeMicController.swift in Sources */,
+				68953ABC551E40F4992207A8 /* HomeMicEnergyGate.swift in Sources */,
+				9276BAF477A3471BA9568044 /* HomeMicHap1Client.swift in Sources */,
+				9D8E4E1955A8483084DD3A3E /* HomeMicPcmCapture.swift in Sources */,
+				92C6C33CA0BB45D39F2337F3 /* HomeMicSettings.swift in Sources */,
+				631A7AAD1C26497DA2442D1B /* PickupIdentity.swift in Sources */,
+				10D92BB543A14120AD353051 /* HomeMicViewController.swift in Sources */,
+				1FC546646FCF4052AADC82FE /* SettingsViewController.swift in Sources */,
+				8CAB018562F5412AAD624F68 /* PickupTheme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		E4235B917F7E4676BE67D68F /* Debug */ = {
+		B50199BFEA4A475298968237 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -232,7 +240,7 @@
 			};
 			name = Debug;
 		};
-		13B79760D1534FDD8EBFDEFE /* Release */ = {
+		FBDABFEC58EA4EC6A9FE499F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -246,7 +254,7 @@
 			};
 			name = Release;
 		};
-		E5794E72A5E449DB9B828EC1 /* Debug */ = {
+		323B51F997B64FD0AFD30CCA /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -269,7 +277,7 @@
 			};
 			name = Debug;
 		};
-		2EE28FAE670F440ABD6DF0D5 /* Release */ = {
+		14FC3D4EAA214D75904625BD /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -295,25 +303,25 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		C4D6857D56864809B87654D2 /* Build configuration list for PBXProject "LivingRoomPickup" */ = {
+		84E3D614733243C8B1E9E81D /* Build configuration list for PBXProject "LivingRoomPickup" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E4235B917F7E4676BE67D68F /* Debug */,
-				13B79760D1534FDD8EBFDEFE /* Release */,
+				B50199BFEA4A475298968237 /* Debug */,
+				FBDABFEC58EA4EC6A9FE499F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		FD590A95403746F0ABF16E5C /* Build configuration list for PBXNativeTarget "LivingRoomPickup" */ = {
+		A0CAB12CF68047BB85142931 /* Build configuration list for PBXNativeTarget "LivingRoomPickup" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E5794E72A5E449DB9B828EC1 /* Debug */,
-				2EE28FAE670F440ABD6DF0D5 /* Release */,
+				323B51F997B64FD0AFD30CCA /* Debug */,
+				14FC3D4EAA214D75904625BD /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = 699ECEADF5C04E02BE16DDAE /* Project object */;
+	rootObject = C3B2018CA8B145709CA24936 /* Project object */;
 }

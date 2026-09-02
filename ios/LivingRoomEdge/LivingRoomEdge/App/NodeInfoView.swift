@@ -121,7 +121,7 @@ struct NodeInfoView: View {
     private func heartbeatRow(_ status: BrainHeartbeatStatus) -> some View {
         let active = status.mode == model.brainEnvironment.mode
         let baseURL = BrainEndpoint.displayBase(
-            from: status.mode == .lan ? model.lanBrainURL : model.cloudBrainURL
+            from: status.mode == .lan ? model.lanConnectBase() : model.cloudBrainURL
         )
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -224,6 +224,12 @@ struct NodeInfoView: View {
                                 busy: model.clockSyncBusy
                             )
                         )
+                        if !sample.lanURL.isEmpty {
+                            Text(BrainEndpoint.displayBase(from: sample.lanURL))
+                                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                .foregroundStyle(EdgeTheme.dim)
+                                .textSelection(.enabled)
+                        }
                         if !sample.lanError.isEmpty {
                             Text(sample.lanError)
                                 .font(.system(size: 11, weight: .regular, design: .monospaced))

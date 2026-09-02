@@ -30,14 +30,12 @@ enum TimedHTTP {
         var nsError: NSError { underlying as NSError }
     }
 
-    /// Edge control-plane calls (ping / heartbeat / register). Must not wait for
-    /// connectivity: on GoPro Wi‑Fi the LAN Brain is unroutable and TCP SYN
-    /// would otherwise sit far past `URLRequest.timeoutInterval`.
+    /// Edge control-plane. Request/resource session caps are high; callers pass `hardTimeout`.
     private static let controlSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.waitsForConnectivity = false
-        config.timeoutIntervalForRequest = 5
-        config.timeoutIntervalForResource = 8
+        config.timeoutIntervalForRequest = 90
+        config.timeoutIntervalForResource = 90
         return URLSession(configuration: config)
     }()
 
@@ -52,7 +50,7 @@ enum TimedHTTP {
         var req = request
         let session: URLSession
         if let hardTimeout {
-            req.timeoutInterval = min(max(0.5, hardTimeout), req.timeoutInterval)
+            req.timeoutInterval = max(0.5, hardTimeout)
             session = controlSession
             return try await withHardTimeout(hardTimeout) {
                 try await perform(req, label: label, session: session)

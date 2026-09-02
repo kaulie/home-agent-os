@@ -13,6 +13,7 @@ struct HomeAgentAdminApp: App {
             RootTabView()
                 .environmentObject(store)
                 .preferredColorScheme(.dark)
+                .task { await AdminSettings.autoDiscoverBrain() }
         }
     }
 }

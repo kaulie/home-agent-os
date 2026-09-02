@@ -1,0 +1,122 @@
+{
+  "brain": "http://127.0.0.1:9527",
+  "sha": "d677ee3",
+  "participant": "edge-node-CiqVl9ZB",
+  "cases": [
+    {
+      "id": "VP1",
+      "text": "现在几点了",
+      "source": "text",
+      "want_presentation_type": "text",
+      "post_http": 200,
+      "intent_id": 481,
+      "status": "succeeded",
+      "presentation": {
+        "channel": "iphone",
+        "endpoint": "edge-node-CiqVl9ZB",
+        "endpoint_id": "edge-node-CiqVl9ZB",
+        "from": "time_text",
+        "text": "现在是 17 点 23 分",
+        "type": "audio"
+      },
+      "caps": [
+        "clock.now"
+      ],
+      "errors": [
+        "presentation.type=audio want text"
+      ],
+      "ok": false
+    },
+    {
+      "id": "VP2",
+      "text": "用语音告诉我现在几点了",
+      "source": "voice",
+      "want_presentation_type": "audio",
+      "post_http": 200,
+      "intent_id": 482,
+      "status": "succeeded",
+      "presentation": {
+        "channel": "iphone",
+        "endpoint": "edge-node-CiqVl9ZB",
+        "endpoint_id": "edge-node-CiqVl9ZB",
+        "from": "time_text",
+        "text": "现在是 17 点 23 分",
+        "type": "audio"
+      },
+      "caps": [
+        "clock.now"
+      ],
+      "errors": [],
+      "ok": true
+    },
+    {
+      "id": "VP3",
+      "text": "一加一等于几",
+      "source": "text",
+      "want_presentation_type": "text",
+      "post_http": 200,
+      "intent_id": 483,
+      "status": "succeeded",
+      "presentation": {
+        "channel": "iphone",
+        "endpoint": "edge-node-CiqVl9ZB",
+        "endpoint_id": "edge-node-CiqVl9ZB",
+        "from": "answer_text",
+        "text": "一加一等于二。",
+        "type": "text"
+      },
+      "caps": [
+        "math.calculate"
+      ],
+      "errors": [],
+      "ok": true
+    },
+    {
+      "id": "VP4",
+      "text": "用语音告诉我一加一等于几",
+      "source": "voice",
+      "want_presentation_type": "audio",
+      "post_http": 200,
+      "intent_id": 484,
+      "status": "succeeded",
+      "presentation": {
+        "channel": "iphone",
+        "endpoint": "edge-node-CiqVl9ZB",
+        "endpoint_id": "edge-node-CiqVl9ZB",
+        "from": "answer_text",
+        "text": "一加一等于二。",
+        "type": "audio"
+      },
+      "caps": [
+        "math.calculate"
+      ],
+      "errors": [],
+      "ok": true
+    },
+    {
+      "id": "VP5",
+      "text": "用语音说：你好，这是TTS测试",
+      "source": "voice",
+      "want_presentation_type": "audio",
+      "post_http": 200,
+      "intent_id": 485,
+      "status": "failed",
+      "presentation": {
+        "channel": "iphone",
+        "endpoint": "edge-node-CiqVl9ZB",
+        "endpoint_id": "edge-node-CiqVl9ZB",
+        "from": "msg",
+        "text": "用户明确要求用语音播报指定文案“你好，这是TTS测试”，匹配语音播报器 notify.speak 的典型触发场景，且不是回读执行结果。",
+        "type": "text"
+      },
+      "caps": [],
+      "errors": [
+        "status=failed",
+        "presentation.type=text want audio",
+        "missing notify.speak"
+      ],
+      "ok": false
+    }
+  ],
+  "ok": false
+}

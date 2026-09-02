@@ -1,0 +1,175 @@
+{
+  "case": "music.cache",
+  "sha": "89b7535",
+  "chatbox": "#309",
+  "intent_id": 399,
+  "verdict": "pass",
+  "note": "LAN smoke; cloud 4G+dual-brain not tested",
+  "detail": {
+    "base_time": 1788006802623,
+    "better_capabilities": [],
+    "context": {
+      "output_affinity": {
+        "participant_id": "edge-node-blackbox-q01",
+        "reason": "input_source"
+      },
+      "source_context": {
+        "capability_id": "text.input",
+        "device_id": "edge-node-blackbox-q01",
+        "endpoint_id": "keyboard"
+      },
+      "task_kind": "shortcut"
+    },
+    "created_at": 1788006802.6516511,
+    "ctx_param": {
+      "output_affinity": {
+        "participant_id": "edge-node-blackbox-q01",
+        "reason": "input_source"
+      },
+      "source_context": {
+        "capability_id": "text.input",
+        "device_id": "edge-node-blackbox-q01",
+        "endpoint_id": "keyboard"
+      },
+      "task_kind": "shortcut"
+    },
+    "edge_id": "edge-node-blackbox-q01",
+    "edge_node_id": "edge-node-IAtuhLSy",
+    "execution_plan": [
+      {
+        "assigned_edge_id": "edge-node-IAtuhLSy",
+        "capability": "music.cache",
+        "execution_timing": null,
+        "input_constrict": {
+          "appliance": "网易云音乐",
+          "count": 5,
+          "song": "刘德华的歌",
+          "user_input": "下载刘德华的歌5首"
+        },
+        "output_constrict": {},
+        "status": 2,
+        "step": 1
+      }
+    ],
+    "exposed_outputs": {
+      "channel": "iphone",
+      "endpoint": "edge-node-blackbox-q01",
+      "endpoint_id": "iphone.display",
+      "type": "text"
+    },
+    "id": 399,
+    "intent_base_time": 1788006802623,
+    "intent_id": 399,
+    "intent_origin": "lan",
+    "intent_status": "succeeded",
+    "job_id": "399",
+    "missing_capabilities": [],
+    "output_affinity": {
+      "participant_id": "edge-node-blackbox-q01",
+      "reason": "input_source"
+    },
+    "outputs": {
+      "channel": "iphone",
+      "endpoint": "edge-node-blackbox-q01",
+      "endpoint_id": "iphone.display",
+      "type": "text"
+    },
+    "planner_cost_ms": 0,
+    "planner_has_request_payload": true,
+    "presentation": {
+      "channel": "iphone",
+      "endpoint": "edge-node-blackbox-q01",
+      "endpoint_id": "iphone.display",
+      "type": "text"
+    },
+    "source": "text",
+    "source_context": {
+      "capability_id": "text.input",
+      "device_id": "edge-node-blackbox-q01",
+      "endpoint_id": "keyboard"
+    },
+    "status": "succeeded",
+    "status_log": [
+      {
+        "status": "intent_received",
+        "ts": 1788006802651
+      },
+      {
+        "status": "intent_parsed",
+        "ts": 1788006804422
+      },
+      {
+        "status": "intent_scheduled",
+        "ts": 1788006812603
+      },
+      {
+        "status": "intent_dispatched",
+        "ts": 1788006815003
+      },
+      {
+        "status": "succeeded",
+        "ts": 1788006851322
+      }
+    ],
+    "step_log": [
+      {
+        "edge_id": "edge-node-IAtuhLSy",
+        "msg": null,
+        "status": 1,
+        "step": 1,
+        "ts": 1788006815771
+      },
+      {
+        "edge_id": "edge-node-IAtuhLSy",
+        "msg": null,
+        "status": 2,
+        "step": 1,
+        "ts": 1788006844405
+      }
+    ],
+    "step_outputs": {
+      "1": {
+        "cached": 5,
+        "fetch_audio": false,
+        "timing": {
+          "total": 24847
+        }
+      }
+    },
+    "steps": [
+      {
+        "at": 1788006802.651767,
+        "detail": "下载刘德华的歌5首",
+        "intent_status": "intent_received",
+        "status": "intent_received"
+      },
+      {
+        "at": 1788006804.42259,
+        "detail": "",
+        "intent_status": "intent_parsed",
+        "status": "intent_parsed"
+      },
+      {
+        "at": 1788006812.603909,
+        "detail": "",
+        "intent_status": "intent_scheduled",
+        "status": "intent_scheduled"
+      },
+      {
+        "at": 1788006815.0037582,
+        "detail": "",
+        "intent_status": "intent_dispatched",
+        "status": "intent_dispatched"
+      },
+      {
+        "at": 1788006851.3222039,
+        "detail": "",
+        "intent_status": "succeeded",
+        "status": "succeeded"
+      }
+    ],
+    "task_kind": "shortcut",
+    "text": "下载刘德华的歌5首",
+    "updated_at": 1788006852.5908952
+  }
+}

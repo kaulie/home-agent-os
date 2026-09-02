@@ -367,6 +367,56 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         },
         'output_schema': {},
     },
+    'printer.print': {
+        'kind': 'output',
+        'group': 'printer',
+        'service_id': 'local.printer',
+        'role': '文档打印机',
+        'planner_recognize': '把本步已有的 PDF/document Asset 经本机 CUPS 队列打出纸',
+        'typical_triggers': ['打印这份 PDF', '把文档打出来', '打印一下'],
+        'do_not_dispatch': ['配网', '切 SoftAP', '扫描', '投屏', 'TTS', '知识问答'],
+        'input_schema': {
+            'asset_ref': {
+                'type': 'object',
+                'required': True,
+                'description': (
+                    '必填 AssetRef JSON，type=document（PDF）。'
+                    '例 {"asset_id":"asset_…","type":"document"}。'
+                    '禁止 path / 永久 URL；缺则本能力无效。'
+                ),
+            },
+            'copies': {
+                'type': 'number',
+                'required': False,
+                'description': '份数，正整数，默认 1',
+            },
+            'printer_name': {
+                'type': 'string',
+                'required': False,
+                'description': (
+                    '可选 CUPS 队列名；未传则用 MAC_EDGE_PRINTER_NAME，'
+                    '再否则匹配名含 Mi_All_in_One_Inkjet 的队列'
+                ),
+            },
+        },
+        'output_schema': {
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '人类可读状态，如「已提交打印到 …」',
+            },
+            'job_id': {
+                'type': 'string',
+                'required': True,
+                'description': 'CUPS 任务号，如 Queue-123',
+            },
+            'printer_name': {
+                'type': 'string',
+                'required': True,
+                'description': '实际使用的 CUPS 队列名',
+            },
+        },
+    },
     'xiaodu.speak': {
         'kind': 'output',
         'group': 'notify',

@@ -1,0 +1,24 @@
+id: xiaomi-aio-printer
+service_id: local.printer
+group: printer
+version: "0.1.0"
+display_name: 米家喷墨一体机
+description: >
+  经本机 CUPS（lp/lpstat）把已有 PDF/document Asset 打到家宽 Wi-Fi 上的
+  米家喷墨一体机队列。不切 SoftAP、不连打印机热点、不走米家云。
+
+capabilities:
+  - capability_id: printer.print
+    description: >
+      能：把本步已有的 document Asset（PDF）经 CUPS 队列出纸。
+      不能：配网、切 SoftAP、扫描、走米家云、自己造文件。
+      缺 asset_ref / 非 document / 队列不可用则失败。
+
+entry:
+  mac: mac/src/mac_edge/plugins/xiaomi_aio_printer.py
+config:
+  - key: MAC_EDGE_PRINTER_NAME
+    platform: mac
+    description: >
+      可选；CUPS 队列名。未设时自动匹配名含 Mi_All_in_One_Inkjet 的队列
+      （例 Mi_All_in_One_Inkjet_Printer__1EB808_）

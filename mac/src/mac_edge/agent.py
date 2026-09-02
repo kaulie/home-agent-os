@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import signal
 import threading
 import time
@@ -28,6 +29,20 @@ from mac_edge.voice_supervisor import VoiceSupervisor
 from mac_edge.plugins.video_live_ingest import VideoLiveIngestServer
 from mac_edge.plugins.xiaodu_speaker import XiaoduTtsHttpServer, bind_server
 
+try:
+    import importlib.util
+    from pathlib import Path
+
+    # Load the shared server/mdns_service.py by file path so we don't add
+    # server/ to sys.path (which would shadow the mac `tests` namespace package).
+    _MDNS_PATH = Path(__file__).resolve().parents[3] / "server" / "mdns_service.py"
+    _spec = importlib.util.spec_from_file_location("home_agent_mdns_service", _MDNS_PATH)
+    mdns_service = importlib.util.module_from_spec(_spec)
+    if _spec is not None and _spec.loader is not None:
+        _spec.loader.exec_module(mdns_service)
+except Exception:
+    mdns_service = None
+
 log = logging.getLogger("mac_edge.agent")
 
 # While Brain is down: warn at most once per this interval (no stack traces).
@@ -36,8 +51,10 @@ _BRAIN_WARN_EVERY_SEC = 60.0
 _MAX_BACKOFF_SEC = 120.0
 # Idle "no intents" chatter — once per minute is enough.
 _EMPTY_INTENTS_LOG_EVERY_SEC = 60.0
-# Heartbeat must not hang the channel forever; keep it snappier than pull/execute.
-_HEARTBEAT_HTTP_TIMEOUT_SEC = 8.0
+# Heartbeat: 5s × 3 (same as iOS/Android User Console). Timeout ≠ DNS.
+_HEARTBEAT_HTTP_TIMEOUT_SEC = 5.0
+_HEARTBEAT_MAX_ATTEMPTS = 3
+_HEARTBEAT_RETRY_GAP_SEC = 1.0
 
 
 class EdgeAgent:
@@ -95,6 +112,7 @@ class EdgeAgent:
         )
         self._video_ingest = VideoLiveIngestServer.from_env(config.data_dir)
         self._xiaodu_tts = XiaoduTtsHttpServer.from_env(config.data_dir)
+        self._mdns: Any = None
 
     def request_stop(self, *_args: Any) -> None:
         log.info("stop requested")
@@ -107,6 +125,45 @@ class EdgeAgent:
         if self._xiaodu_tts is not None:
             self._xiaodu_tts.stop()
             bind_server(None)
+        if self._mdns is not None:
+            self._mdns.close()
+            self._mdns = None
+
+    def _start_mdns_publish(self) -> None:
+        """Publish this Mac as gateway + runtime via mDNS (multi-identity)."""
+        if mdns_service is None:
+            log.info("mdns publish skipped (mdns_service not importable)")
+            return
+        try:
+            pub = mdns_service.MdnsPublisher()
+            edge_id = (self._get_edge_id() or "mac").strip()
+            http_port = int(os.environ.get("MAC_EDGE_VIDEO_INGEST_HTTP_PORT") or 8790)
+            txt = {
+                "edge_id": edge_id,
+                "voice_port": os.environ.get("MAC_EDGE_VOICE_INGEST_PORT") or "8792",
+                "video_port": str(http_port),
+                "img_port": "8080",
+                "tts_port": "8000",
+                "lan_ip": mdns_service.lan_ipv4(),
+            }
+            pub.publish(
+                name=f"Home Agent Gateway {edge_id}",
+                type_=mdns_service.GATEWAY_TYPE,
+                port=http_port,
+                txt=txt,
+                hostname="gateway.local",
+            )
+            pub.publish(
+                name=f"Home Agent Runtime {edge_id}",
+                type_=mdns_service.RUNTIME_TYPE,
+                port=http_port,
+                txt={"edge_id": edge_id},
+                hostname=f"runtime-{edge_id}.local",
+            )
+            self._mdns = pub
+            log.info("mdns published gateway+runtime edge_id=%s txt=%s", edge_id, txt)
+        except Exception:
+            log.warning("mdns publish failed; continuing without it", exc_info=True)
 
     def run(self) -> None:
         signal.signal(signal.SIGINT, self.request_stop)
@@ -144,6 +201,7 @@ class EdgeAgent:
                 log.exception("xiaodu TTS HTTP failed to bind; continuing without it")
                 self._xiaodu_tts = None
                 bind_server(None)
+        self._start_mdns_publish()
         self._ensure_channel_threads()
 
         try:
@@ -280,21 +338,32 @@ class EdgeAgent:
                         started = time.monotonic()
                         eid = self._get_edge_id()
                         if eid:
-                            try:
-                                result = brain.heartbeat(eid)
-                                self._set_heartbeat_ok(eid)
-                                self._apply_music_linkage_hint(result)
-                            except BrainError as e:
-                                if e.is_unauthorized:
-                                    log.warning(
-                                        "heartbeat 401 — clearing edge_id (control will re-register)"
-                                    )
-                                    self._clear_edge_id()
-                                else:
-                                    self._note_brain_problem(e)
-                                    self._set_heartbeat_ok(None)
-                            except Exception:
-                                log.exception("heartbeat failed")
+                            for attempt in range(1, _HEARTBEAT_MAX_ATTEMPTS + 1):
+                                if self._stop:
+                                    break
+                                if attempt > 1:
+                                    self._interruptible_sleep(_HEARTBEAT_RETRY_GAP_SEC)
+                                    if self._stop:
+                                        break
+                                try:
+                                    result = brain.heartbeat(eid)
+                                    self._set_heartbeat_ok(eid)
+                                    self._apply_music_linkage_hint(result)
+                                    break
+                                except BrainError as e:
+                                    if e.is_unauthorized:
+                                        log.warning(
+                                            "heartbeat 401 — clearing edge_id (control will re-register)"
+                                        )
+                                        self._clear_edge_id()
+                                        break
+                                    if attempt >= _HEARTBEAT_MAX_ATTEMPTS:
+                                        self._note_brain_problem(e)
+                                        self._set_heartbeat_ok(None)
+                                except Exception:
+                                    if attempt >= _HEARTBEAT_MAX_ATTEMPTS:
+                                        log.exception("heartbeat failed")
+                                        self._set_heartbeat_ok(None)
                         elapsed = time.monotonic() - started
                         sleep_for = max(
                             DEADLINE_SLEEP_MIN_SEC,

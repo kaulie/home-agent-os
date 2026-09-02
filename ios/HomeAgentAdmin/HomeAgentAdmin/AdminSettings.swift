@@ -1,7 +1,7 @@
 import Foundation
 
 enum AdminSettings {
-    static let defaultBrainURL = "http://192.168.3.84:9527"
+    static let defaultBrainURL = "http://brain.local:9527"
     static let cloudBrainURL = "http://115.190.153.53:9527"
 
     private static let brainKey = "homeagent.admin.brainURL"
@@ -14,7 +14,7 @@ enum AdminSettings {
             let saved = UserDefaults.standard.string(forKey: brainKey)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if saved.isEmpty {
-                return defaultBrainURL
+                return ""
             }
             return saved
         }
@@ -26,6 +26,15 @@ enum AdminSettings {
     static var adminToken: String {
         get { UserDefaults.standard.string(forKey: tokenKey) ?? "" }
         set { UserDefaults.standard.set(newValue, forKey: tokenKey) }
+    }
+
+    /// Discover LAN Brain via mDNS A records + ping; persist IPv4 only (never brain.local).
+    static func autoDiscoverBrain() async {
+        guard let brain = await MdnsDiscovery.resolveBrainForAutoDiscover(mdnsTimeout: 8) else { return }
+        let resolved = normalize(brain.baseURL)
+        guard !resolved.isEmpty, MdnsDiscovery.isUsableLanIPv4(brain.host) else { return }
+        brainURL = resolved
+        DiscoveryDebugLog.shared.log("admin auto-discover Brain \(resolved)", category: "connect")
     }
 
     static func normalize(_ raw: String) -> String {

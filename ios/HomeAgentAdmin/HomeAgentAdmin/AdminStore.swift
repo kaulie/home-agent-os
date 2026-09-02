@@ -22,6 +22,12 @@ final class AdminStore: ObservableObject {
     private var intentPollTask: Task<Void, Never>?
     private var intentsNextBeforeId: Int?
 
+    func discoverLanBrain() async {
+        await AdminSettings.autoDiscoverBrain()
+        brainDraft = AdminSettings.brainURL
+        await load(showSpinner: true)
+    }
+
     var filteredNodes: [AdminNode] {
         nodes.filter { $0.onlineStatus == filter.rawValue }
             .sorted { lhs, rhs in

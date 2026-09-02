@@ -71,7 +71,8 @@ final class DevStore: ObservableObject {
 
     init() {
         DevBrainEndpoint.migrateLegacyIfNeeded()
-        lanDraft = DevBrainEndpoint.lanBaseURL
+        lanDraft = DevBrainEndpoint.defaultLanBase
+        DevBrainEndpoint.lanBaseURL = DevBrainEndpoint.defaultLanBase
         cloudDraft = DevBrainEndpoint.cloudBaseURL
         brainRouting = DevBrainEndpoint.routing
         startPathMonitor()
@@ -79,11 +80,11 @@ final class DevStore: ObservableObject {
     }
 
     func saveConnection() {
-        DevBrainEndpoint.lanBaseURL = lanDraft
+        DevBrainEndpoint.lanBaseURL = DevBrainEndpoint.defaultLanBase
+        lanDraft = DevBrainEndpoint.defaultLanBase
         DevBrainEndpoint.cloudBaseURL = cloudDraft
         DevBrainEndpoint.routing = brainRouting
         DevSettings.adminToken = tokenDraft
-        lanDraft = DevBrainEndpoint.lanBaseURL
         cloudDraft = DevBrainEndpoint.cloudBaseURL
         Task {
             await resolveBrainEndpoint()
@@ -111,7 +112,7 @@ final class DevStore: ObservableObject {
 
     func predictedBrainBase(for routing: DevBrainEndpoint.Routing) -> String {
         predictedBrainMode(for: routing) == .lan
-            ? DevBrainEndpoint.normalizeBase(lanDraft)
+            ? DevBrainEndpoint.lanConnectBase()
             : DevBrainEndpoint.normalizeBase(cloudDraft)
     }
 
@@ -132,7 +133,9 @@ final class DevStore: ObservableObject {
         defer { brainResolveBusy = false }
 
         let routing = brainRouting
-        var lan = DevBrainEndpoint.normalizeBase(lanDraft)
+        lanDraft = DevBrainEndpoint.defaultLanBase
+        DevBrainEndpoint.lanBaseURL = DevBrainEndpoint.defaultLanBase
+        var lan = DevBrainEndpoint.lanConnectBase()
         let cloud = DevBrainEndpoint.normalizeBase(cloudDraft)
         let looksLAN = brainEnvironment.looksOnHomeLAN
         var probeOk: Bool?
@@ -142,50 +145,31 @@ final class DevStore: ObservableObject {
         if shouldProbeLAN {
             var ok = false
             if forceDiscovery {
-                probeDetail = "正在扫描局域网 Brain…"
+                DevBrainEndpoint.lastSuccessfulLanHost = nil
+                lan = DevBrainEndpoint.lanConnectBase()
+            }
+            let cachedIP = DevBrainLANHostOrder.ipv4(from: lan)
+            if !forceDiscovery, let cachedIP {
+                probeDetail = "探测已缓存 IP \(cachedIP)…"
                 brainEnvironment.lanProbeDetail = probeDetail
-                if let discovered = await DevBrainLANDiscovery.discover(
-                    configuredLAN: lan,
-                    lastSuccessHost: DevBrainEndpoint.lastSuccessfulLanHost
-                ) {
-                    lan = discovered
-                    lanDraft = discovered
-                    DevBrainEndpoint.lanBaseURL = discovered
-                    DevBrainEndpoint.rememberSuccessfulLAN(discovered)
-                    ok = true
-                    probeDetail = "已自动发现局域网 Brain → \(discovered)"
-                } else {
-                    ok = await DevBrainProbe.ping(baseURL: lan)
-                    if ok {
-                        DevBrainEndpoint.rememberSuccessfulLAN(lan)
-                        probeDetail = "扫描未发现新地址，当前配置仍可达"
-                    } else {
-                        probeDetail = "扫描完成，未在本机 Wi‑Fi 网段发现 Brain（:9527）。"
-                    }
-                }
-            } else {
-                ok = await DevBrainProbe.ping(baseURL: lan)
+                ok = await DevBrainProbe.ping(baseURL: "http://\(cachedIP):9527")
                 if ok {
+                    lan = "http://\(cachedIP):9527"
                     DevBrainEndpoint.rememberSuccessfulLAN(lan)
-                    probeDetail = ""
-                } else if looksLAN || routing == .lan {
-                    probeDetail = "局域网 Brain ping 失败（\(lan)），正在自动扫描…"
-                    brainEnvironment.lanProbeDetail = probeDetail
-                    if let discovered = await DevBrainLANDiscovery.discover(
-                        configuredLAN: lan,
-                        lastSuccessHost: DevBrainEndpoint.lastSuccessfulLanHost
-                    ) {
-                        lan = discovered
-                        lanDraft = discovered
-                        DevBrainEndpoint.lanBaseURL = discovered
-                        DevBrainEndpoint.rememberSuccessfulLAN(discovered)
-                        ok = true
-                        probeDetail = "已自动发现局域网 Brain → \(discovered)"
-                    } else {
-                        probeDetail = "局域网 Brain ping 失败（\(lan)），自动扫描未找到 Brain"
-                    }
+                    probeDetail = "\(MdnsDiscovery.brainMdnsHost) → \(lan)（缓存仍通）"
+                }
+            }
+            if !ok {
+                probeDetail = "正在用 mDNS 发现局域网 Brain…"
+                brainEnvironment.lanProbeDetail = probeDetail
+                DiscoveryDebugLog.shared.log(probeDetail, category: "connect")
+                if let mdns = await MdnsDiscovery.resolveBrainForAutoDiscover(mdnsTimeout: 8) {
+                    lan = mdns.baseURL
+                    DevBrainEndpoint.rememberSuccessfulLAN(mdns.baseURL)
+                    ok = true
+                    probeDetail = "mDNS \(MdnsDiscovery.brainMdnsHost) → \(lan)"
                 } else {
-                    probeDetail = "局域网 Brain ping 失败（\(lan)）"
+                    probeDetail = "未在本机 Wi‑Fi 发现 Brain（:9527）。"
                 }
             }
             probeOk = ok

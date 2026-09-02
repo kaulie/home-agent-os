@@ -225,6 +225,9 @@ class IntentApi(
     ): ClockPing =
         withContext(Dispatchers.IO) {
             val localAt = clientTimeMs ?: System.currentTimeMillis()
+            if (BrainEndpoint.isBonjourHost(intentOrBaseUrl)) {
+                return@withContext ClockPing(false, error = "拒绝用 mDNS 名发 HTTP。必须先发现 IPv4。")
+            }
             val url = BrainEndpoint.pingUrl(intentOrBaseUrl, localAt)
             val req = Request.Builder().url(url).get().build()
             val pingClient = client.newBuilder()

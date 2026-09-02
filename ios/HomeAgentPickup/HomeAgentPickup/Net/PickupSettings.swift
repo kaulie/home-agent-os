@@ -11,11 +11,17 @@ enum PickupSettings {
     static var serverHost: String {
         get {
             let stored = UserDefaults.standard.string(forKey: hostKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let stored, !stored.isEmpty { return stored }
-            // Living-room Mac LAN IP (voice.stream HAP1 ingest).
-            return "192.168.3.84"
+            if let stored, MdnsDiscovery.refuseNonIPv4TCP(stored) == nil { return stored }
+            return ""
         }
-        set { UserDefaults.standard.set(newValue, forKey: hostKey) }
+        set {
+            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if MdnsDiscovery.refuseNonIPv4TCP(trimmed) == nil {
+                UserDefaults.standard.set(trimmed, forKey: hostKey)
+            } else {
+                UserDefaults.standard.set("", forKey: hostKey)
+            }
+        }
     }
 
     /// Mac voice.stream Home Mic ingest (HAP1), not Brain.
@@ -48,8 +54,8 @@ enum PickupSettings {
     static var brainIntentURL: String {
         get {
             let stored = UserDefaults.standard.string(forKey: brainURLKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let stored, !stored.isEmpty { return stored }
-            return "http://192.168.3.84:9527/api/v1/intent"
+            if let stored, !stored.isEmpty, !stored.lowercased().contains(".local") { return stored }
+            return ""
         }
         set { UserDefaults.standard.set(newValue, forKey: brainURLKey) }
     }
@@ -58,6 +64,19 @@ enum PickupSettings {
     static var feedbackParticipantId: String {
         get { UserDefaults.standard.string(forKey: feedbackParticipantKey) ?? "" }
         set { UserDefaults.standard.set(newValue, forKey: feedbackParticipantKey) }
+    }
+
+    /// Discover Mac gateway (voice ingest) and LAN Brain. TCP/HTTP use ping-verified IPv4.
+    static func autoDiscoverGateway() async {
+        if let gateway = await MdnsDiscovery.resolveGatewayForAutoDiscover(mdnsTimeout: 8),
+           MdnsDiscovery.refuseNonIPv4TCP(gateway.host) == nil {
+            serverHost = gateway.host
+            serverPort = gateway.voiceIngestPort
+        }
+        if let brain = await MdnsDiscovery.resolveBrainForAutoDiscover(mdnsTimeout: 8),
+           MdnsDiscovery.isUsableLanIPv4(brain.host) {
+            brainIntentURL = brain.baseURL + "/api/v1/intent"
+        }
     }
 
     /// iPhone Runtime participant_id (same as LivingRoomEdge heartbeat registration).

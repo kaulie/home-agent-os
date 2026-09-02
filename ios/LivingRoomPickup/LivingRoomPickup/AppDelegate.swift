@@ -19,6 +19,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         window.rootViewController = nav
         window.makeKeyAndVisible()
         self.window = window
+        MdnsDiscovery.logLaunchNetworkContext()
+        HomeMicSettings.autoDiscoverGateway { _ in }
         return true
     }
 }

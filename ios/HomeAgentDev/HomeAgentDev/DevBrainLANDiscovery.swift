@@ -18,7 +18,8 @@ enum DevBrainPingParser {
 }
 
 enum DevBrainLANHostOrder {
-    static let commonSuffixes: [UInt8] = [1, 73, 84, 100, 200]
+    /// Prefer last-known ping-verified octet and this phone; do not hardcode home hosts.
+    static let commonSuffixes: [UInt8] = [1]
 
     static func hostOctet(from ipOrURL: String) -> UInt8? {
         let ip = DevBrainLANHostOrder.ipv4(from: ipOrURL)
@@ -121,7 +122,7 @@ enum DevBrainLANInterface {
     static func preferredSubnets() -> [DevBrainLANSubnet] {
         let addresses = ipv4Addresses()
         let wifiFirst = addresses.sorted { lhs, rhs in
-            score(lhs.interface) > score(rhs.interface)
+            score(lhs.interface, address: lhs.address) > score(rhs.interface, address: rhs.address)
         }
         var subnets: [DevBrainLANSubnet] = []
         var seen = Set<String>()
@@ -133,11 +134,14 @@ enum DevBrainLANInterface {
         return subnets
     }
 
-    private static func score(_ interface: String) -> Int {
-        if interface == "en0" { return 100 }
-        if interface.hasPrefix("en") { return 80 }
-        if interface.hasPrefix("bridge") { return 10 }
-        return 50
+    private static func score(_ interface: String, address: String) -> Int {
+        var score = 0
+        if address.hasPrefix("192.168.") { score += 200 }
+        if interface == "en0" { score += 100 }
+        else if interface.hasPrefix("en") { score += 80 }
+        else if interface.hasPrefix("bridge") { score += 10 }
+        else { score += 50 }
+        return score
     }
 }
 
