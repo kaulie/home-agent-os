@@ -51,6 +51,10 @@ from mac_edge.plugins.xiaomi_aquarium import (
     XiaomiAquariumError,
     set_from_params as aquarium_set_from_params,
 )
+from mac_edge.plugins.xiaomi_aio_printer import (
+    XiaomiPrinterError,
+    print_from_params as printer_print_from_params,
+)
 from mac_edge.plugins.xiaomi_lock import (
     XiaomiLockError,
     status_from_params as lock_status_from_params,
@@ -1508,6 +1512,14 @@ def _execute_capability(
             msg = speak_from_params(params)
             return True, msg, {}
         except NotifySpeakError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "printer.print":
+        try:
+            msg, outputs = printer_print_from_params(params, asset=asset)
+            return True, msg, outputs
+        except (XiaomiPrinterError, AssetError) as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}
