@@ -309,6 +309,57 @@ NETEASE_MUSIC_SERVICE: dict[str, Any] = {
     ],
 }
 
+MUSIC_RECOGNIZE_SERVICE: dict[str, Any] = {
+    "service_id": "music.recognize",
+    "display_name": "识曲（听歌识曲）",
+    "version": "0.1.0",
+    "group": "music",
+    "capabilities": [
+        attach(
+            "music.recognize",
+            input_schema={
+                "min_sec": {
+                    "type": "number",
+                    "required": False,
+                    "description": "最短收录/首次识曲窗口秒数，可选，默认环境值",
+                },
+                "max_sec": {
+                    "type": "number",
+                    "required": False,
+                    "description": "最长收录秒数，可选，默认环境值（≤60）",
+                },
+            },
+            output_schema={
+                "answer_text": {
+                    "type": "string",
+                    "required": True,
+                    "description": "给用户的一句话播报（歌名）；命中或超时都有",
+                },
+                "matched": {
+                    "type": "boolean",
+                    "required": False,
+                    "description": "是否识别成功",
+                },
+                "song_title": {
+                    "type": "string",
+                    "required": False,
+                    "description": "识别出的歌名",
+                },
+                "artist": {
+                    "type": "string",
+                    "required": False,
+                    "description": "歌手",
+                },
+                "confidence": {
+                    "type": "number",
+                    "required": False,
+                    "description": "置信度（可选）",
+                },
+            },
+        ),
+    ],
+}
+
 LOCAL_QUERY_SERVICE: dict[str, Any] = {
     "service_id": "local.query",
     "display_name": "Local Query",
@@ -1438,6 +1489,7 @@ _LAPTOP_SERVICE_ORDER = (
     LOCAL_PRINTER_SERVICE,
     XIAODU_SPEAKER_SERVICE,
     NETEASE_MUSIC_SERVICE,
+    MUSIC_RECOGNIZE_SERVICE,
     LOCAL_VISION_SERVICE,
     LOCAL_CHARACTER_SERVICE,
     LOCAL_PRONUNCIATION_SERVICE,
@@ -1571,6 +1623,18 @@ def default_services() -> list[dict[str, Any]]:
             log.info("advertise netease.music (ncm-cli found)")
         else:
             log.info("skip netease.music — ncm-cli not found")
+    if _allow_service(MUSIC_RECOGNIZE_SERVICE["service_id"], allowed_set):
+        from mac_edge.plugins.music_recognize import configured as music_recognize_configured
+
+        if music_recognize_configured():
+            services.append(dict(MUSIC_RECOGNIZE_SERVICE))
+            log.info(
+                "advertise music.recognize (MAC_EDGE_MUSIC_RECOGNIZE_PROVIDER configured)"
+            )
+        else:
+            log.info(
+                "skip music.recognize — MAC_EDGE_MUSIC_RECOGNIZE_PROVIDER unset/none"
+            )
     if _allow_service(LOCAL_VISION_SERVICE["service_id"], allowed_set):
         services.append(dict(LOCAL_VISION_SERVICE))
     if _allow_service(LOCAL_CHARACTER_SERVICE["service_id"], allowed_set):

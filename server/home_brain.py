@@ -1860,6 +1860,8 @@ def _presentation_kind_from_plan(intent):
     caps = _caps_in_plan(intent)
     if any(c in _DISPLAY_CAPS for c in caps):
         return "image", "asset_ref"
+    if "music.recognize" in caps:
+        return _voice_symmetric_presentation_kind(intent, "text", "answer_text")
     if "clock.now" in caps:
         return _voice_symmetric_presentation_kind(intent, "text", "time_text")
     if "map.route.estimate" in caps:
