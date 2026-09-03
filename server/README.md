@@ -37,7 +37,7 @@ iPhone 是 **Intent Source**：只发自然语言、只轮询 `intent_detail`，
 `music.play` 参数：`song` / `artist` / `album`（均可选，至少填一个）。  
 勿再使用 `author`、`singer_name`、`song_name`。  
 `camera.capture` 输出：`photo_url`（必填）、`photo_local_path`、`saved_as`。默认 `upload_dest=lan`；投屏/电视禁止 `cloud`。  
-`photo_url` 形如 `http://192.168.3.73:8080/{saved_as}`（本机 img-server）。  
+`photo_url` 形如 `http://<mac-lan-ip>:8080/{saved_as}`（本机 img-server；LAN IP 自动探测，可用 `PHOTO_PUBLIC_BASE` 覆盖）。  
 `display.photo` 参数：`photo_url`（必填，须 LAN，Chromecast 在家里 Wi‑Fi 拉取）。  
 `display.slideshow` 参数：`photo_urls`（必填 JSON 数组）、`interval_sec`（默认 5）、`order`（`array_asc` 默认 / `array_desc` / `alphabet_asc` / `alphabet_desc` / `random`）。轮播用本能力，不要拆成多个 `display.photo`。不传 `photo_urls` 则失败。  
 `notify.speak` 参数：`text`（必填）、`lang`（可选，如 `zh_CN`）；仅 Mac Edge；定时提醒用 step 上 `execution_timing`。`text` 支持内嵌 `$photo_url`；视觉结果用 `$summary`（也兼容旧写法 `$perception_json.summary`）。  

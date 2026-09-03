@@ -2662,7 +2662,7 @@ class HomeBrainPersistTest(unittest.TestCase):
                 "storage": {
                     "backend": "img_server",
                     "key": "photo.jpg",
-                    "public_base": "http://192.168.3.73:8080",
+                    "public_base": "http://192.168.0.88:8080",
                 },
             }
         )
@@ -3816,8 +3816,8 @@ class HomeBrainPersistTest(unittest.TestCase):
         client = hb.app.test_client()
         fake_store = {
             "saved_as": "aabbccdd_scan.jpg",
-            "public_base": "http://192.168.3.73:8080",
-            "url": "http://192.168.3.73:8080/aabbccdd_scan.jpg",
+            "public_base": "http://192.168.0.88:8080",
+            "url": "http://192.168.0.88:8080/aabbccdd_scan.jpg",
         }
         with patch.object(hb, "_put_bytes_on_img_server", return_value=fake_store):
             resp = client.post(
@@ -3846,7 +3846,66 @@ class HomeBrainPersistTest(unittest.TestCase):
         storage = rec.get("storage") or {}
         self.assertEqual(storage.get("backend"), "img_server")
         self.assertEqual(storage.get("key"), "aabbccdd_scan.jpg")
-        self.assertEqual(storage.get("public_base"), "http://192.168.3.73:8080")
+        self.assertEqual(storage.get("public_base"), "http://192.168.0.88:8080")
+
+    def test_img_server_public_base_prefers_img_server_health(self) -> None:
+        from unittest.mock import patch
+
+        prev_origin = os.environ.get("BRAIN_ORIGIN")
+        os.environ["BRAIN_ORIGIN"] = "lan"
+        try:
+            os.environ.pop("BRAIN_IMG_PUBLIC_BASE", None)
+            os.environ.pop("PHOTO_PUBLIC_BASE", None)
+            # img-server /health is authoritative when reachable.
+            with patch.object(
+                hb, "_img_server_health_public_base", return_value="http://192.168.3.44:8080"
+            ), patch.object(
+                hb, "_lan_img_server_public_base", return_value="http://192.168.0.88:8080"
+            ):
+                self.assertEqual(hb._img_server_public_base(), "http://192.168.3.44:8080")
+            # When img-server /health is unreachable, fall back to LAN auto-detect.
+            with patch.object(
+                hb, "_img_server_health_public_base", return_value=""
+            ), patch.object(
+                hb, "_lan_img_server_public_base", return_value="http://192.168.0.88:8080"
+            ):
+                self.assertEqual(hb._img_server_public_base(), "http://192.168.0.88:8080")
+                self.assertNotIn("192.168.3.73", hb._img_server_public_base())
+        finally:
+            if prev_origin is None:
+                os.environ.pop("BRAIN_ORIGIN", None)
+            else:
+                os.environ["BRAIN_ORIGIN"] = prev_origin
+            os.environ.pop("PHOTO_PUBLIC_BASE", None)
+
+    def test_img_server_public_base_env_and_cloud_win(self) -> None:
+        from unittest.mock import patch
+
+        prev_origin = os.environ.get("BRAIN_ORIGIN")
+        os.environ["BRAIN_ORIGIN"] = "lan"
+        try:
+            os.environ.pop("BRAIN_IMG_PUBLIC_BASE", None)
+            os.environ.pop("PHOTO_PUBLIC_BASE", None)
+            with patch.object(hb, "_img_server_health_public_base", return_value=""):
+                # Explicit env override wins regardless of origin.
+                os.environ["PHOTO_PUBLIC_BASE"] = "http://192.168.0.99:8080"
+                self.assertEqual(hb._img_server_public_base(), "http://192.168.0.99:8080")
+                # Cloud origin keeps the fixed cloud public base.
+                os.environ.pop("PHOTO_PUBLIC_BASE", None)
+                os.environ["BRAIN_ORIGIN"] = "cloud"
+                self.assertEqual(hb._img_server_public_base(), "http://115.190.153.53:8080")
+        finally:
+            if prev_origin is None:
+                os.environ.pop("BRAIN_ORIGIN", None)
+            else:
+                os.environ["BRAIN_ORIGIN"] = prev_origin
+            os.environ.pop("PHOTO_PUBLIC_BASE", None)
+
+    def test_lan_img_server_public_base_no_stale_lan_ip(self) -> None:
+        base = hb._lan_img_server_public_base()
+        self.assertTrue(base.startswith("http://"))
+        self.assertTrue(base.endswith(":8080"))
+        self.assertNotIn("192.168.3.73", base)
 
     def test_assets_upload_fails_when_img_server_down(self) -> None:
         from io import BytesIO
@@ -4014,8 +4073,8 @@ class HomeBrainPersistTest(unittest.TestCase):
             "_put_bytes_on_img_server",
             return_value={
                 "saved_as": "aabbccddeeff_录音_1257.m4a",
-                "public_base": "http://192.168.3.73:8080",
-                "url": "http://192.168.3.73:8080/aabbccddeeff_录音_1257.m4a",
+                "public_base": "http://192.168.0.88:8080",
+                "url": "http://192.168.0.88:8080/aabbccddeeff_录音_1257.m4a",
             },
         ):
             ok = client.post(

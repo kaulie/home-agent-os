@@ -15,7 +15,7 @@ Env:
   PHOTO_UPLOAD_HOST   default 0.0.0.0
   PHOTO_UPLOAD_PORT   default 8080
   PHOTO_UPLOAD_DIR    default <this dir>/img
-  PHOTO_PUBLIC_BASE   default http://<lan-ip>:8080 (fallback 192.168.3.73)
+  PHOTO_PUBLIC_BASE   default http://<lan-ip>:8080 (auto-detected; loopback last resort)
 """
 
 from __future__ import annotations
@@ -34,24 +34,62 @@ ROOT = Path(__file__).resolve().parent
 HOST = "0.0.0.0"
 PORT = 8080
 UPLOAD_DIR = ROOT / "img"
-PUBLIC_BASE = "http://192.168.3.73:8080"
+PUBLIC_BASE = "http://127.0.0.1:8080"  # real value is auto-detected in _load_env()
 UPLOAD_PATH = "/api/v1/photos/upload"
 DOWNLOAD_LATEST_PATH = "/api/v1/photos/download_latest"
 MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif"}
 
 
-def guess_lan_public_base(port: int) -> str:
+def _detect_lan_ipv4() -> str:
+    """Primary LAN IPv4 of this host — no hardcoded home-LAN IP.
+
+    1. UDP "connect" picks the interface used for the default route.
+    2. Without a default route, enumerate hostname-resolved IPv4 addresses.
+    3. Last resort is loopback (still better than a stale fixed LAN IP).
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.connect(("8.8.8.8", 80))
-        ip = sock.getsockname()[0]
-        sock.close()
-        if ip and not ip.startswith("127."):
-            return f"http://{ip}:{port}"
+        try:
+            sock.connect(("8.8.8.8", 80))
+            ip = sock.getsockname()[0]
+            if ip and not ip.startswith("127."):
+                return ip
+        except OSError:
+            pass
+        finally:
+            sock.close()
     except OSError:
         pass
-    return f"http://192.168.3.73:{port}"
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip and not ip.startswith("127."):
+                return ip
+    except OSError:
+        pass
+    try:
+        # macOS / Linux: enumerate every interface so a DHCP re-lease on an
+        # interface that hostname does not resolve is still discovered.
+        import subprocess
+
+        out = subprocess.run(
+            ["ifconfig"], capture_output=True, text=True, timeout=3.0
+        )
+        for line in (out.stdout or "").splitlines():
+            line = line.strip()
+            if not line.startswith("inet "):
+                continue
+            ip = line.split()[1].split("%", 1)[0]
+            if ip and not ip.startswith("127."):
+                return ip
+    except Exception:
+        pass
+    return "127.0.0.1"
+
+
+def guess_lan_public_base(port: int) -> str:
+    return f"http://{_detect_lan_ipv4()}:{port}"
 
 
 def _load_env() -> None:

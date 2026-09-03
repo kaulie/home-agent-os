@@ -15,8 +15,8 @@ python3 img-server/serve.py
 ```bash
 curl -s http://127.0.0.1:8080/health
 curl -s -F "file=@a.jpg" http://127.0.0.1:8080/api/v1/photos/upload
-# 其它设备用公网/LAN URL（PHOTO_PUBLIC_BASE，默认本机 LAN IP）
-curl -OJ http://192.168.3.73:8080/<saved_as>
+# 其它设备用 LAN URL（默认自动探测本机 LAN IP，可用 PHOTO_PUBLIC_BASE 覆盖）
+curl -OJ http://<lan-ip>:8080/<saved_as>
 ```
 
 ## 环境变量

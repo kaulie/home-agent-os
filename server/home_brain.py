@@ -5374,6 +5374,44 @@ def _store_uploaded_asset_bytes(
     return stored
 
 
+def _img_server_health_public_base() -> str:
+    """Ask the co-located img-server for its own LAN public_base.
+
+    img-server is the single source of truth for the LAN URL it advertises
+    (it runs the same auto-detection, and `PHOTO_PUBLIC_BASE` can pin it).
+    We query its /health before falling back to our own LAN-IP detection so a
+    manually pinned value there can never diverge from what we store in DB.
+    """
+    upload_url = _img_server_upload_url().rstrip("/")
+    if not upload_url:
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(upload_url)
+        health_url = f"{parsed.scheme}://{parsed.netloc}/health"
+        with urllib.request.urlopen(health_url, timeout=2.0) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        payload = json.loads(raw) if raw.strip() else {}
+        base = str((payload or {}).get("public_base") or "").strip().rstrip("/")
+        if base.startswith("http://") or base.startswith("https://"):
+            return base
+    except Exception:
+        pass
+    return ""
+
+
+def _lan_img_server_public_base() -> str:
+    """LAN public base for this host's co-located img-server — auto-detected."""
+    try:
+        from mdns_service import lan_ipv4
+
+        ip = (lan_ipv4() or "127.0.0.1").strip()
+        if ip.startswith("127."):
+            ip = "127.0.0.1"
+        return f"http://{ip}:8080"
+    except Exception:
+        return "http://127.0.0.1:8080"
+
+
 def _img_server_public_base() -> str:
     explicit = (
         os.environ.get("BRAIN_IMG_PUBLIC_BASE")
@@ -5384,7 +5422,7 @@ def _img_server_public_base() -> str:
         return explicit
     if instance_intent_origin() == "cloud":
         return "http://115.190.153.53:8080"
-    return "http://192.168.3.73:8080"
+    return _img_server_health_public_base() or _lan_img_server_public_base()
 
 
 def _put_bytes_on_img_server(

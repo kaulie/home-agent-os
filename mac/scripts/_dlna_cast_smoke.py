@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 from mac_edge.plugins.xiaomi_tv_display import _ssdp_search, discover_renderer, play_photo
 
-PHOTO = "http://192.168.3.73:8080/1e41fc7d_20260824_194504_search_1.jpg"
+# Manual smoke: point DLNA_PHOTO_URL at an img-server file on this LAN, e.g.
+#   DLNA_PHOTO_URL="http://<mac-lan-ip>:8080/<saved_as>" python3 mac/scripts/_dlna_cast_smoke.py
+PHOTO = (os.environ.get("DLNA_PHOTO_URL") or "").strip().rstrip("/")
 
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    if not PHOTO:
+        print("set DLNA_PHOTO_URL=http://<lan-ip>:8080/<saved_as> first")
+        return 2
     print("ssdp search...")
     locs = _ssdp_search(3.0)
     print("ssdp locations:", locs)

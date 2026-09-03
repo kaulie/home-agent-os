@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from mac_edge.asset.manager import AssetManager
 from mac_edge.asset.types import AssetNotFoundError, AssetRef
@@ -59,14 +60,19 @@ class AssetManagerTests(unittest.TestCase):
             },
         }
         mgr = AssetManager(brain=brain, edge_id="edge-mac")
-        rep = mgr.resolve_for_capability(
-            AssetRef(asset_id="asset_iphone", type="image"),
-            intent_id="168",
-            need="http_url",
-        )
+        with patch.dict(
+            os.environ,
+            {"MAC_EDGE_LAN_PUBLIC_BASE": "http://192.168.3.96:8080"},
+            clear=False,
+        ):
+            rep = mgr.resolve_for_capability(
+                AssetRef(asset_id="asset_iphone", type="image"),
+                intent_id="168",
+                need="http_url",
+            )
         self.assertEqual(
             rep.url,
-            "http://192.168.3.73:9527/api/v1/assets/asset_iphone/content"
+            "http://192.168.3.96:9527/api/v1/assets/asset_iphone/content"
             "?intent_id=168&representation=original",
         )
 

@@ -58,14 +58,49 @@ except Exception:  # pragma: no cover - depends on environment
 
 
 def lan_ipv4() -> str:
+    """Primary LAN IPv4 of this host — never a hardcoded home-LAN IP.
+
+    1. UDP "connect" picks the interface used for the default route (no packets
+       are actually sent).
+    2. Without a default route, fall back to hostname-resolved IPv4 addresses.
+    3. Last resort is loopback.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        sock.connect(("8.8.8.8", 80))
-        return sock.getsockname()[0]
+        try:
+            sock.connect(("8.8.8.8", 80))
+            ip = sock.getsockname()[0]
+            if ip and not ip.startswith("127."):
+                return ip
+        except OSError:
+            pass
+        finally:
+            sock.close()
     except OSError:
-        return "127.0.0.1"
-    finally:
-        sock.close()
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip and not ip.startswith("127."):
+                return ip
+    except OSError:
+        pass
+    try:
+        # macOS / Linux: enumerate every interface so a DHCP re-lease on an
+        # interface that hostname does not resolve is still discovered.
+        out = subprocess.run(
+            ["ifconfig"], capture_output=True, text=True, timeout=3.0
+        )
+        for line in (out.stdout or "").splitlines():
+            line = line.strip()
+            if not line.startswith("inet "):
+                continue
+            ip = line.split()[1].split("%", 1)[0]
+            if ip and not ip.startswith("127."):
+                return ip
+    except Exception:
+        pass
+    return "127.0.0.1"
 
 
 def _encode_txt(txt: dict[str, Any] | None) -> dict[str, bytes]:
