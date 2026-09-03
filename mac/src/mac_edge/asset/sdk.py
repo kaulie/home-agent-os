@@ -103,7 +103,6 @@ class CapAsset:
         self,
         *,
         key: str,
-        public_base: str,
         producer: str,
         mime_type: str = "image/jpeg",
         type: str = "image",
@@ -122,7 +121,6 @@ class CapAsset:
             step_num=self.step_num,
             size_bytes=size_bytes,
             metadata=metadata,
-            public_base=public_base.rstrip("/"),
             cloud_public_base=cloud_public_base,
             cloud_key=cloud_key,
         )
@@ -137,21 +135,20 @@ class CapAsset:
         cloud_public_base: str | None = None,
         cloud_saved_as: str | None = None,
     ) -> AssetRef:
-        """Register blob already on img_server; returns AssetRef only (no URL identity)."""
-        url = (photo_url or "").strip()
+        """Register blob already on img_server; returns AssetRef only (no URL identity).
+
+        The blob's durable storage address is `saved_as` on the img-server; the
+        img-server's LAN `public_base` is DHCP-volatile and resolved fresh at
+        fetch time, so it is never stored on the asset.
+        """
         saved = (saved_as or "").strip()
-        if not url:
-            raise AssetError(f"{producer}: missing upload url for asset registration")
         if not saved:
-            path = urlparse(url).path.rstrip("/")
+            path = urlparse((photo_url or "")).path.rstrip("/")
             saved = path.rsplit("/", 1)[-1] if path else ""
         if not saved:
             raise AssetError(f"{producer}: missing saved_as for asset registration")
-        parsed = urlparse(url)
-        public_base = f"{parsed.scheme}://{parsed.netloc}"
         return self.register_img_server(
             key=saved,
-            public_base=public_base,
             producer=producer,
             mime_type=mime_type,
             cloud_public_base=cloud_public_base,
