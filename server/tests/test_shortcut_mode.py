@@ -125,6 +125,20 @@ class ShortcutModeTest(unittest.TestCase):
         self.assertEqual(ic["song"], "周杰伦的歌曲")
         self.assertNotIn("artist", ic)
 
+    def test_music_play_strips_leading_quantity(self) -> None:
+        ic = self._music_ic("放几首周杰伦的歌")
+        self.assertEqual(ic["song"], "周杰伦的歌")
+        self.assertEqual(ic["count"], 5)
+        self.assertEqual(ic["user_input"], "放几首周杰伦的歌")
+
+        ic = self._music_ic("放3首五月天的歌")
+        self.assertEqual(ic["song"], "五月天的歌")
+        self.assertEqual(ic["count"], 3)
+
+        ic = self._music_ic("听几首周杰伦的歌")
+        self.assertEqual(ic["song"], "周杰伦的歌")
+        self.assertEqual(ic["count"], 5)
+
     def test_music_play_without_de_particle(self) -> None:
         ic = self._music_ic("播放陈奕迅十年")
         self.assertEqual(ic["song"], "陈奕迅十年")
@@ -216,6 +230,14 @@ class ShortcutModeTest(unittest.TestCase):
                 ic = self._music_ctrl(text, cap)
                 self.assertEqual(ic["user_input"], text)
                 self.assertNotIn("song", ic)
+
+    def test_music_control_collapses_asr_duplicate_chars(self) -> None:
+        ic = self._music_ctrl("继继续播放。", "music.resume")
+        self.assertEqual(ic["user_input"], "继继续播放。")
+        self.assertNotIn("song", ic)
+
+        ic = self._music_ctrl("继继续播放", "music.resume")
+        self.assertEqual(ic["user_input"], "继继续播放")
 
     def test_music_control_skips_ambiguous_play(self) -> None:
         self.assertIsNone(intercept("播放"))

@@ -69,7 +69,7 @@ final class NetEaseMusicSkill: Skill {
         let artist = trim(params["artist"])
         let album = trim(params["album"])
         if song.isEmpty && artist.isEmpty && album.isEmpty {
-            return .error("\(Capabilities.musicPlay) requires song, artist, or album")
+            return .error("无法开播：请说出歌名，或在 Mac 上使用空参每日推荐")
         }
 
         if !song.isEmpty {

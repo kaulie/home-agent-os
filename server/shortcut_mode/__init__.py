@@ -129,6 +129,8 @@ def intercept(text: str, *, intent: dict[str, Any] | None = None) -> InterceptRe
         constrict = {"user_input": music_hit.user_input}
         if music_hit.song:
             constrict["song"] = music_hit.song
+        if music_hit.count is not None:
+            constrict["count"] = music_hit.count
         return InterceptResult(
             kind="plan",
             mode=None,

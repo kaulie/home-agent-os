@@ -5,6 +5,8 @@ reads/writes ``mac_edge.ncm_songs``. Keyword is one argv value.
 
 「xxx的歌/歌曲」: exact title search first; if no same-name hit, search
 keyword=xxx and pick by ``artists`` (NetEase order).
+
+Empty song+artist (e.g. 「播放音乐」): try resume, else daily recommend queue.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -37,6 +40,8 @@ log = logging.getLogger("mac_edge.netease_music")
 SEARCH_TIMEOUT_SEC = 30.0
 SEARCH_LIMIT = 10
 ARTIST_QUEUE_MAX = 20
+DAILY_RECOMMEND_LIMIT = 20
+FEW_SONGS_DEFAULT = 5
 CACHE_PAGE = 20
 CACHE_DEFAULT_COUNT = 100
 CACHE_MAX_COUNT = 200
@@ -45,10 +50,13 @@ PLAY_TIMEOUT_SEC = 20.0
 CONTROL_TIMEOUT_SEC = 15.0
 
 NO_SONG_MSG = "目前只支持按歌曲播放，请说出歌名"
+BARE_PLAY_FAIL_MSG = "无法开播：没有可继续的播放，且每日推荐不可用"
 
 # Longer first: 「的歌曲」 before 「的歌」. Not play-verb prefixes.
 _PLAYLIST_SUFFIXES = ("的歌曲", "的歌")
 _TRAILING_PUNCT = "。．.！!？?，,、；;：:…~～"
+# Leading quantity is not part of the artist/title (「几首周杰伦的歌」).
+_LEADING_QUANTITY = re.compile(r"^(?:几首|几曲|一些|(\d+)\s*首)\s*")
 
 _MUSIC_CAPS = frozenset(
     {
@@ -120,12 +128,50 @@ def search_keyword(*, song: str, artist: str | None = None) -> str:
     return title
 
 
+def strip_leading_quantity(text: str) -> tuple[str, int | None]:
+    """Strip leading 「几首/几曲/一些/N首」. Returns (rest, count_hint).
+
+    ``几首/几曲/一些`` → count ``FEW_SONGS_DEFAULT`` (5).
+    Arabic ``N首`` → clamp(N, 1, ARTIST_QUEUE_MAX).
+    Chinese numerals are out of scope.
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        return "", None
+    matched = _LEADING_QUANTITY.match(raw)
+    if not matched:
+        return raw, None
+    rest = raw[matched.end() :].strip()
+    if matched.group(1):
+        n = int(matched.group(1))
+        return rest, max(1, min(n, ARTIST_QUEUE_MAX))
+    return rest, FEW_SONGS_DEFAULT
+
+
+def clamp_play_queue_count(raw: Any, *, fallback: int = ARTIST_QUEUE_MAX) -> int:
+    """Clamp music.play artist-queue size to 1..ARTIST_QUEUE_MAX."""
+    if raw is None or raw == "":
+        return max(1, min(int(fallback), ARTIST_QUEUE_MAX))
+    if isinstance(raw, bool):
+        return max(1, min(int(fallback), ARTIST_QUEUE_MAX))
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        try:
+            n = int(float(str(raw).strip()))
+        except (TypeError, ValueError):
+            return max(1, min(int(fallback), ARTIST_QUEUE_MAX))
+    return max(1, min(n, ARTIST_QUEUE_MAX))
+
+
 def artist_from_playlist_remainder(remainder: str) -> str:
     """If remainder is 「xxx的歌/歌曲」, return xxx; else empty.
 
-    Does not strip play verbs. Empty artist (remainder is only the suffix) is not this mode.
+    Strips leading quantity first. Does not strip play verbs.
+    Empty artist (remainder is only the suffix) is not this mode.
     """
     text = str(remainder or "").strip().rstrip(_TRAILING_PUNCT).strip()
+    text, _qty = strip_leading_quantity(text)
     if not text:
         return ""
     for suffix in _PLAYLIST_SUFFIXES:
@@ -669,6 +715,178 @@ def is_artist_queue_mode(
     return not str(song or "").strip() and bool(str(artist or "").strip())
 
 
+def try_resume() -> str | None:
+    """Return resume message on success; None when nothing to continue."""
+    try:
+        payload = _run_ncm(["resume"], timeout_sec=CONTROL_TIMEOUT_SEC)
+    except NeteaseMusicError as e:
+        log.info("music.play bare: resume skipped: %s", e)
+        return None
+    if payload.get("success") is not True:
+        log.info(
+            "music.play bare: resume not active: %s",
+            payload.get("message"),
+        )
+        return None
+    return str(payload.get("message") or "").strip() or "已继续播放"
+
+
+def fetch_daily_recommend(
+    *,
+    limit: int = DAILY_RECOMMEND_LIMIT,
+) -> list[dict[str, Any]]:
+    """Daily songs from ``ncm-cli recommend daily`` (same id fields as search)."""
+    want = max(1, min(int(limit), ARTIST_QUEUE_MAX))
+    payload = _run_ncm(
+        ["recommend", "daily", "--limit", str(want)],
+        timeout_sec=SEARCH_TIMEOUT_SEC,
+    )
+    code = payload.get("code")
+    if code not in (200, None, "200"):
+        try:
+            if int(code) != 200:
+                msg = str(payload.get("message") or "").strip()
+                raise NeteaseMusicError(msg or f"每日推荐失败 code={code}")
+        except (TypeError, ValueError):
+            msg = str(payload.get("message") or "").strip()
+            raise NeteaseMusicError(msg or f"每日推荐失败 code={code}") from None
+    data = payload.get("data")
+    if not isinstance(data, list) or not data:
+        raise NeteaseMusicError("每日推荐为空")
+    records: list[dict[str, Any]] = []
+    for rec in data:
+        if not isinstance(rec, dict):
+            continue
+        encrypted = str(rec.get("id") or "").strip()
+        original = rec.get("originalId")
+        if not encrypted or original in (None, ""):
+            continue
+        records.append(rec)
+        if len(records) >= want:
+            break
+    if not records:
+        raise NeteaseMusicError("每日推荐缺少可用歌曲")
+    return records
+
+
+def play_daily_recommend_queue(
+    params: dict[str, Any] | None = None,
+    *,
+    trigger_text: str = "每日推荐",
+    resume_ms: int = 0,
+) -> tuple[str, dict[str, Any]]:
+    """Clear queue and play daily recommend. Used by bare play and resume fallback."""
+    t0 = time.perf_counter()
+    intent_id = _str_param(params, "intent_id") or "-"
+    t_search = time.perf_counter()
+    try:
+        queue_records = fetch_daily_recommend(limit=DAILY_RECOMMEND_LIMIT)
+    except NeteaseMusicError as e:
+        log.info("daily recommend failed: %s", e)
+        raise NeteaseMusicError(BARE_PLAY_FAIL_MSG) from e
+    search_ms = int(round((time.perf_counter() - t_search) * 1000))
+    t_play = time.perf_counter()
+    msg, queue_added = play_artist_queue(queue_records)
+    play_ms = int(round((time.perf_counter() - t_play) * 1000))
+    record = queue_records[0]
+    try:
+        oid = upsert_record(record)
+        record_play(
+            oid,
+            str(_str_param(params, "participant_id") or "").strip(),
+            intent_id=_str_param(params, "intent_id") or None,
+        )
+        for extra in queue_records[1:]:
+            try:
+                upsert_record(extra)
+            except NcmSongsError as e:
+                log.warning("ncm_songs skip daily queue hit: %s", e)
+    except NcmSongsError as e:
+        log.warning("ncm_songs record_play failed: %s", e)
+    enter_music_mode(trigger_text=trigger_text)
+    total_ms = int(round((time.perf_counter() - t0) * 1000)) + int(resume_ms)
+    log.info(
+        "music daily intent=%s trigger=%s resume_ms=%s search_ms=%s "
+        "play_ms=%s total_ms=%s queue=%s",
+        intent_id,
+        trigger_text,
+        resume_ms,
+        search_ms,
+        play_ms,
+        total_ms,
+        len(queue_records),
+    )
+    return msg, {
+        "bare_mode": "daily",
+        "queue_count": len(queue_records),
+        "queue_added": queue_added,
+        "timing": {
+            "resume": resume_ms,
+            "search": search_ms,
+            "play": play_ms,
+            "total": total_ms,
+        },
+    }
+
+
+def play_bare_default(
+    params: dict[str, Any] | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Empty song/artist: resume if possible, else daily-recommend queue."""
+    t0 = time.perf_counter()
+    intent_id = _str_param(params, "intent_id") or "-"
+    t_resume = time.perf_counter()
+    resumed = try_resume()
+    resume_ms = int(round((time.perf_counter() - t_resume) * 1000))
+    if resumed is not None:
+        enter_music_mode(trigger_text="播放音乐")
+        total_ms = int(round((time.perf_counter() - t0) * 1000))
+        log.info(
+            "music.play bare intent=%s mode=resume resume_ms=%s total_ms=%s",
+            intent_id,
+            resume_ms,
+            total_ms,
+        )
+        return resumed, {
+            "bare_mode": "resume",
+            "timing": {"resume": resume_ms, "total": total_ms},
+        }
+    return play_daily_recommend_queue(
+        params,
+        trigger_text="每日推荐",
+        resume_ms=resume_ms,
+    )
+
+
+def _is_empty_queue_error(exc: BaseException) -> bool:
+    msg = str(exc or "")
+    return "播放列表为空" in msg or "请先使用 play" in msg
+
+
+def resume_from_params(
+    params: dict[str, Any] | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Continue playback; empty queue → daily recommend."""
+    t0 = time.perf_counter()
+    try:
+        msg = _control("music.resume")
+    except NeteaseMusicError as e:
+        if not _is_empty_queue_error(e):
+            raise
+        log.info("music.resume empty queue → daily recommend: %s", e)
+        resume_ms = int(round((time.perf_counter() - t0) * 1000))
+        _msg, outputs = play_daily_recommend_queue(
+            params,
+            trigger_text="继续播放·每日推荐",
+            resume_ms=resume_ms,
+        )
+        outputs = dict(outputs)
+        outputs["resume_fallback"] = "daily"
+        return "无可继续，已改播每日推荐", outputs
+    enter_music_mode(trigger_text="继续播放")
+    return msg or "已继续播放", {}
+
+
 def _control(cap: str) -> str:
     argv = _CONTROL_CMD.get(cap)
     if not argv:
@@ -686,12 +904,14 @@ def _control(cap: str) -> str:
 
 def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[str, Any]]:
     t0 = time.perf_counter()
+    raw = params if isinstance(params, dict) else {}
     song = str(_str_param(params, "song") or "").strip().rstrip(_TRAILING_PUNCT).strip()
     artist = str(_str_param(params, "artist") or "").strip().rstrip(_TRAILING_PUNCT).strip()
     user_input = _str_param(params, "user_input")
     intent_id = _str_param(params, "intent_id") or "-"
+    song, qty_from_song = strip_leading_quantity(song)
     if not song and not artist:
-        raise NeteaseMusicError(NO_SONG_MSG)
+        return play_bare_default(params)
     playlist_artist = artist_from_playlist_remainder(song)
     artist_queue = is_artist_queue_mode(
         song=song,
@@ -699,6 +919,12 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
         playlist_artist=playlist_artist,
     )
     queue_artist = playlist_artist or artist
+    queue_limit = ARTIST_QUEUE_MAX
+    if artist_queue:
+        if raw.get("count") not in (None, ""):
+            queue_limit = clamp_play_queue_count(raw.get("count"))
+        elif qty_from_song is not None:
+            queue_limit = clamp_play_queue_count(qty_from_song)
     t_cache = time.perf_counter()
     if artist_queue:
         cached = None
@@ -720,6 +946,7 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
         queue_records = collect_artist_queue_records(
             artist=queue_artist,
             user_input=user_input or None,
+            limit=queue_limit,
         )
         search_ms = int(round((time.perf_counter() - t_search) * 1000))
         cache_label = "artist-queue"
@@ -917,6 +1144,8 @@ def run_from_params(
         return play_from_params(params)
     if cap == "music.cache":
         return cache_from_params(params)
+    if cap == "music.resume":
+        return resume_from_params(params)
     msg = _control(cap)
     if cap == "music.stop":
         exit_music_mode(reason="music.stop")

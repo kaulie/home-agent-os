@@ -34,8 +34,8 @@ class NetEaseMusicSkill(
             CapabilityDescriptor(
                 capabilityId = Capabilities.MUSIC_PLAY,
                 role = "音乐播放器",
-                plannerRecognize = "按歌名/歌手/专辑开始放歌（网易云）。入参 song/artist/album。不负责连蓝牙音箱，不负责暂停/切歌",
-                typicalTriggers = listOf("放一首周杰伦", "播放歌曲", "放歌", "放十年", "来首邓丽君"),
+                plannerRecognize = "按歌名/歌手/专辑开始放歌（网易云）。入参 song/artist/album；无歌名时尝试继续/开始播放。不负责连蓝牙音箱，不负责暂停/切歌",
+                typicalTriggers = listOf("放一首周杰伦", "播放歌曲", "播放音乐", "放歌", "放十年", "来首邓丽君"),
                 doNotDispatch = listOf("蓝牙连接", "TTS", "开灯", "暂停", "下一首"),
                 kind = "action",
                 inputSchema = mapOf(
@@ -124,9 +124,9 @@ class NetEaseMusicSkill(
         val artist = params.stringParam("artist")
         val album = params.stringParam("album")
         if (song.isEmpty() && artist.isEmpty() && album.isEmpty()) {
-            return SkillResult.error(
-                "${Capabilities.MUSIC_PLAY} requires song, artist, or album",
-            )
+            // Mac: resume → daily recommend. Android: media play key (resume/start).
+            dispatchMediaKey(context, KeyEvent.KEYCODE_MEDIA_PLAY)
+            return SkillResult.ok("已尝试继续/开始播放；说出歌名可指定歌曲")
         }
 
         return when {

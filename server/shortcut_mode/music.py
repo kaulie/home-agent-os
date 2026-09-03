@@ -23,7 +23,8 @@ _CONTROL_EXACT = (
     ("上一首", "music.previous"),
 )
 
-# Strong music talk — intercept even when remainder is empty (Mac then asks for a title).
+# Strong music talk — intercept even when remainder is empty
+# (Mac: resume if possible, else daily recommend queue).
 # Longer tokens first. 听歌曲 before 听歌 so 「听歌曲」 is not song=「曲」.
 STRONG_TRIGGERS = (
     "听听歌",
@@ -80,6 +81,11 @@ _TRAILING_PUNCT = "。．.！!？?，,、；;：:…~～"
 _CACHE_SONG_PREFIXES = ("下载歌曲", "缓存歌曲")
 _CACHE_BARE_PREFIXES = ("下载", "缓存")
 _COUNT_TAIL = re.compile(r"(\d+)\s*首$")
+# Leading quantity is not part of the artist/title (「几首周杰伦的歌」).
+_LEADING_QUANTITY = re.compile(r"^(?:几首|几曲|一些|(\d+)\s*首)\s*")
+_PLAY_QUEUE_MAX = 20
+_FEW_SONGS_DEFAULT = 5
+
 
 _COURTESY_PREFIXES = (
     "请帮我",
@@ -109,6 +115,7 @@ class MusicPlayHit:
     song: str
     user_input: str
     match_ms: int
+    count: int | None = None
 
 
 @dataclass(frozen=True)
@@ -175,6 +182,33 @@ def _split_trailing_count(remainder: str) -> tuple[str, int | None]:
     return rest, int(matched.group(1))
 
 
+def strip_leading_quantity(text: str) -> tuple[str, int | None]:
+    """Strip leading 「几首/几曲/一些/N首」. Returns (rest, count_hint)."""
+    raw = str(text or "").strip()
+    if not raw:
+        return "", None
+    matched = _LEADING_QUANTITY.match(raw)
+    if not matched:
+        return raw, None
+    rest = raw[matched.end() :].strip()
+    if matched.group(1):
+        n = int(matched.group(1))
+        return rest, max(1, min(n, _PLAY_QUEUE_MAX))
+    return rest, _FEW_SONGS_DEFAULT
+
+
+def _collapse_duplicate_chars(text: str) -> str:
+    """Collapse consecutive identical chars (ASR: 「继继续播放」→「继续播放」)."""
+    raw = str(text or "")
+    if not raw:
+        return raw
+    out: list[str] = [raw[0]]
+    for ch in raw[1:]:
+        if ch != out[-1]:
+            out.append(ch)
+    return "".join(out)
+
+
 def match_control(text: str) -> MusicControlHit | None:
     t0 = time.perf_counter()
     utterance = str(text or "").strip()
@@ -183,8 +217,9 @@ def match_control(text: str) -> MusicControlHit | None:
     stripped = _rstrip_punct(_lstrip_courtesy(utterance))
     if not stripped:
         return None
+    normalized = _collapse_duplicate_chars(stripped)
     for phrase, capability in _CONTROL_EXACT:
-        if stripped == phrase:
+        if stripped == phrase or normalized == phrase:
             match_ms = int(round((time.perf_counter() - t0) * 1000))
             return MusicControlHit(
                 capability=capability,
@@ -225,8 +260,17 @@ def match_play(text: str) -> MusicPlayHit | None:
     else:
         return None
 
+    count: int | None = None
+    if song:
+        song, count = strip_leading_quantity(song)
+
     match_ms = int(round((time.perf_counter() - t0) * 1000))
-    return MusicPlayHit(song=song, user_input=utterance, match_ms=match_ms)
+    return MusicPlayHit(
+        song=song,
+        user_input=utterance,
+        match_ms=match_ms,
+        count=count,
+    )
 
 
 def match_cache(text: str) -> MusicCacheHit | None:

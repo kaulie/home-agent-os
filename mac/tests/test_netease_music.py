@@ -65,11 +65,35 @@ def _ncm_action(cmd: list[str]) -> str:
         return ""
     if cmd[1] == "search":
         return "search"
+    if cmd[1] == "recommend":
+        return "recommend"
     if cmd[1] == "queue" and len(cmd) > 2:
         return cmd[2]
     if cmd[1] == "play":
         return "play"
     return cmd[1]
+
+
+DAILY_JSON = json.dumps(
+    {
+        "code": 200,
+        "data": [
+            {
+                "originalId": 4132379,
+                "id": "C03EEFFC1E4FADF72D5EEB5894F720DF",
+                "name": "I Hate Myself for Loving You",
+                "artists": [{"name": "Joan Jett & the Blackhearts"}],
+            },
+            {
+                "originalId": 1315441719,
+                "id": "227DD9269B88C743F96B825D3B9B8D1D",
+                "name": "Always Remember Us This Way",
+                "artists": [{"name": "Lady Gaga"}],
+            },
+        ],
+    },
+    ensure_ascii=False,
+)
 
 
 class NeteaseMusicTests(unittest.TestCase):
@@ -125,10 +149,77 @@ class NeteaseMusicTests(unittest.TestCase):
                     )
                 self.assertIn("JSON", str(ctx.exception))
 
-    def test_play_requires_song_or_artist(self) -> None:
-        with self.assertRaises(nm.NeteaseMusicError) as ctx:
-            nm.play_from_params({})
-        self.assertIn("请说出歌名", str(ctx.exception))
+    def test_play_bare_resume_when_possible(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if cmd[1] == "resume":
+                return _completed('{"success": true, "message": "已继续播放"}')
+            self.fail(f"unexpected ncm-cli {cmd}")
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm, "enter_music_mode") as enter:
+                    msg, outputs = nm.play_from_params(
+                        self._with_issuer({"user_input": "播放音乐"})
+                    )
+        self.assertEqual(msg, "已继续播放")
+        self.assertEqual(outputs.get("bare_mode"), "resume")
+        self.assertEqual([c[1] for c in calls], ["resume"])
+        enter.assert_called_once()
+
+    def test_play_bare_daily_when_resume_fails(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            action = _ncm_action(cmd)
+            if action == "resume":
+                return _completed(
+                    '{"success": false, "message": "播放列表为空，请先使用 play 命令播放歌曲"}'
+                )
+            if action == "recommend":
+                return _completed(DAILY_JSON)
+            if action == "clear":
+                return _completed(QUEUE_CLEAR_JSON)
+            if action == "add":
+                return _completed(QUEUE_ADD_JSON)
+            if action == "play":
+                return _completed(PLAY_STDOUT)
+            self.fail(f"unexpected ncm-cli {cmd}")
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm, "enter_music_mode"):
+                    msg, outputs = nm.play_from_params(
+                        self._with_issuer({"user_input": "播放音乐"})
+                    )
+        self.assertIn("66842", msg)  # PLAY_STDOUT message uses 66842 from play path
+        # play_record uses mocked PLAY_STDOUT; daily first song id differs but play stdout is fixed
+        self.assertEqual(outputs.get("bare_mode"), "daily")
+        self.assertEqual(outputs.get("queue_count"), 2)
+        self.assertEqual(outputs.get("queue_added"), 1)
+        self.assertEqual(calls[0][1], "resume")
+        self.assertEqual(calls[1][1:], ["recommend", "daily", "--limit", "20"])
+        self.assertIn("clear", [_ncm_action(c) for c in calls])
+        self.assertEqual(self._play_oids(), [4132379])
+
+    def test_play_bare_fails_when_resume_and_daily_fail(self) -> None:
+        def fake_run(cmd, **_kwargs):
+            if cmd[1] == "resume":
+                return _completed(
+                    '{"success": false, "message": "播放列表为空"}'
+                )
+            if cmd[1] == "recommend":
+                return _completed('{"code": 500, "message": "fail", "data": []}')
+            self.fail(f"unexpected ncm-cli {cmd}")
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with self.assertRaises(nm.NeteaseMusicError) as ctx:
+                    nm.play_from_params({})
+        self.assertIn("无法开播", str(ctx.exception))
 
     def test_play_artist_only_artist_queue(self) -> None:
         records = [
@@ -271,6 +362,40 @@ class NeteaseMusicTests(unittest.TestCase):
                     nm.run_from_params("music.previous", {})
         self.assertEqual(seen, ["pause", "resume", "stop", "next", "prev"])
 
+    def test_resume_empty_queue_falls_back_to_daily(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            action = _ncm_action(cmd)
+            if action == "resume":
+                return _completed(
+                    '{"success": false, "message": "播放列表为空，请先使用 play 命令播放歌曲"}'
+                )
+            if action == "recommend":
+                return _completed(DAILY_JSON)
+            if action == "clear":
+                return _completed(QUEUE_CLEAR_JSON)
+            if action == "add":
+                return _completed(QUEUE_ADD_JSON)
+            if action == "play":
+                return _completed(PLAY_STDOUT)
+            self.fail(f"unexpected ncm-cli {cmd}")
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm, "enter_music_mode"):
+                    msg, outputs = nm.run_from_params(
+                        "music.resume",
+                        self._with_issuer({}),
+                    )
+        self.assertEqual(msg, "无可继续，已改播每日推荐")
+        self.assertEqual(outputs.get("resume_fallback"), "daily")
+        self.assertEqual(outputs.get("bare_mode"), "daily")
+        self.assertEqual(outputs.get("queue_count"), 2)
+        self.assertEqual(calls[0][1], "resume")
+        self.assertEqual(calls[1][1:], ["recommend", "daily", "--limit", "20"])
+
     def test_search_user_input_and_keyword_argv(self) -> None:
         calls: list[list[str]] = []
 
@@ -391,10 +516,65 @@ class NeteaseMusicTests(unittest.TestCase):
     def test_artist_from_playlist_remainder(self) -> None:
         self.assertEqual(nm.artist_from_playlist_remainder("张三的歌"), "张三")
         self.assertEqual(nm.artist_from_playlist_remainder("周杰伦的歌曲"), "周杰伦")
+        self.assertEqual(nm.artist_from_playlist_remainder("几首周杰伦的歌"), "周杰伦")
+        self.assertEqual(nm.artist_from_playlist_remainder("3首周杰伦的歌"), "周杰伦")
         self.assertEqual(nm.artist_from_playlist_remainder("陈奕迅的十年"), "")
         self.assertEqual(nm.artist_from_playlist_remainder("我的歌声里"), "")
         self.assertEqual(nm.artist_from_playlist_remainder("的歌"), "")
         self.assertEqual(nm.artist_from_playlist_remainder("的歌曲"), "")
+
+    def test_strip_leading_quantity(self) -> None:
+        self.assertEqual(
+            nm.strip_leading_quantity("几首周杰伦的歌"),
+            ("周杰伦的歌", 5),
+        )
+        self.assertEqual(
+            nm.strip_leading_quantity("3首五月天的歌"),
+            ("五月天的歌", 3),
+        )
+        self.assertEqual(nm.strip_leading_quantity("周杰伦的歌"), ("周杰伦的歌", None))
+
+    def test_play_ji_shou_artist_queue_limit_5(self) -> None:
+        records = [
+            {
+                "originalId": 100 + i,
+                "id": f"enc{i}",
+                "name": f"song{i}",
+                "artists": [{"name": "周杰伦"}],
+            }
+            for i in range(10)
+        ]
+        payload = json.dumps({"code": 200, "data": {"records": records}}, ensure_ascii=False)
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if _ncm_action(cmd) == "search":
+                return _completed(payload)
+            if _ncm_action(cmd) == "clear":
+                return _completed(QUEUE_CLEAR_JSON)
+            if _ncm_action(cmd) == "add":
+                return _completed(QUEUE_ADD_JSON)
+            return _completed(PLAY_STDOUT)
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with patch.object(nm, "enter_music_mode"):
+                    msg, outputs = nm.play_from_params(
+                        self._with_issuer(
+                            {
+                                "song": "几首周杰伦的歌",
+                                "user_input": "放几首周杰伦的歌",
+                            }
+                        )
+                    )
+        self.assertEqual(outputs.get("queue_count"), 5)
+        self.assertEqual(outputs.get("queue_added"), 4)
+        search = next(c for c in calls if _ncm_action(c) == "search")
+        # keyword must be artist only (not 「几首周杰伦」)
+        kw_idx = search.index("--keyword")
+        self.assertEqual(search[kw_idx + 1], "周杰伦")
+        self.assertEqual(search[search.index("--limit") + 1], "5")
 
     def test_pick_search_record_by_artist_first_exact(self) -> None:
         records = [
