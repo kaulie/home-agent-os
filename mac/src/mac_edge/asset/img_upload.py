@@ -20,11 +20,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from mac_edge.asset.backends.img_server import default_lan_public_base
+
 log = logging.getLogger("mac_edge.asset.img_upload")
 
 # Mac uploads to loopback; public_base is the LAN URL other devices fetch.
 DEFAULT_LAN_UPLOAD_URL = "http://127.0.0.1:8080/api/v1/photos/upload"
-DEFAULT_LAN_PUBLIC_BASE = "http://192.168.3.73:8080"
+# Auto-detected LAN IP (no hardcoded home-LAN address); env overrides in upload_endpoints.
+DEFAULT_LAN_PUBLIC_BASE = default_lan_public_base()
 DEFAULT_CLOUD_UPLOAD_URL = "http://127.0.0.1:9527/api/v1/photos/upload"
 DEFAULT_CLOUD_PUBLIC_BASE = "http://115.190.153.53:8080"
 STUB_DESTS = frozenset({"gdrive", "dropbox"})
@@ -101,7 +104,7 @@ def upload_endpoints(dest: str) -> tuple[str, str, str]:
     """Return (upload_url, public_base, probe_url)."""
     if dest == "lan":
         upload = _env("MAC_EDGE_LAN_PHOTO_UPLOAD_URL") or DEFAULT_LAN_UPLOAD_URL
-        public = _env("MAC_EDGE_LAN_PHOTO_PUBLIC_BASE") or DEFAULT_LAN_PUBLIC_BASE
+        public = _env("MAC_EDGE_LAN_PHOTO_PUBLIC_BASE") or default_lan_public_base()
         parsed = urlparse(upload)
         origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else public.rstrip("/")
         probe = origin.rstrip("/") + "/health"

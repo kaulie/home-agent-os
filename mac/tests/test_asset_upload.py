@@ -33,10 +33,16 @@ class DestRegistryTests(unittest.TestCase):
 
     def test_default_lan_is_local_img_server(self) -> None:
         self.assertEqual(DEFAULT_LAN_UPLOAD_URL, "http://127.0.0.1:8080/api/v1/photos/upload")
-        self.assertEqual(DEFAULT_LAN_PUBLIC_BASE, "http://192.168.3.73:8080")
+        # LAN public base is auto-detected from this host — never a stale fixed LAN IP.
+        self.assertTrue(DEFAULT_LAN_PUBLIC_BASE.startswith("http://"))
+        self.assertTrue(DEFAULT_LAN_PUBLIC_BASE.endswith(":8080"))
+        self.assertNotIn("192.168.3.73", DEFAULT_LAN_PUBLIC_BASE)
         self.assertNotIn("192.168.3.65", DEFAULT_LAN_UPLOAD_URL)
         self.assertNotIn("192.168.3.65", DEFAULT_LAN_PUBLIC_BASE)
-        with patch.dict(
+        fake_lan = "http://192.168.3.96:8080"
+        with patch(
+            "mac_edge.asset.img_upload.default_lan_public_base", return_value=fake_lan
+        ), patch.dict(
             os.environ,
             {
                 "MAC_EDGE_LAN_PHOTO_UPLOAD_URL": "",
@@ -46,7 +52,7 @@ class DestRegistryTests(unittest.TestCase):
         ):
             upload, public, probe = upload_endpoints("lan")
         self.assertEqual(upload, DEFAULT_LAN_UPLOAD_URL)
-        self.assertEqual(public, DEFAULT_LAN_PUBLIC_BASE)
+        self.assertEqual(public, fake_lan)
         self.assertTrue(probe.startswith("http://127.0.0.1:8080/"))
 
     def test_gdrive_dropbox_fail(self) -> None:

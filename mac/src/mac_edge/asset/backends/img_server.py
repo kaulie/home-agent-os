@@ -3,12 +3,69 @@
 from __future__ import annotations
 
 import os
+import socket
 from typing import Any
 from urllib.parse import urlparse
 
 from mac_edge.asset.types import AssetStorageError, HttpUrlRepresentation
 
-DEFAULT_LAN_PUBLIC_BASE = "http://192.168.3.73:8080"
+
+def detect_lan_ipv4() -> str:
+    """Primary LAN IPv4 of this host — no hardcoded home-LAN IP.
+
+    1. UDP "connect" picks the interface used for the default route (no packets
+       are actually sent).
+    2. If there is no default route, enumerate hostname-resolved IPv4 addresses
+       and keep the first non-loopback one.
+    3. Last resort is loopback — still better than a stale fixed LAN IP.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        try:
+            sock.connect(("8.8.8.8", 80))
+            ip = sock.getsockname()[0]
+            if ip and not ip.startswith("127."):
+                return ip
+        except OSError:
+            pass
+        finally:
+            sock.close()
+    except OSError:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip and not ip.startswith("127."):
+                return ip
+    except OSError:
+        pass
+    try:
+        # macOS / Linux: enumerate every interface so a DHCP re-lease on an
+        # interface that hostname does not resolve is still discovered.
+        import subprocess
+
+        out = subprocess.run(
+            ["ifconfig"], capture_output=True, text=True, timeout=3.0
+        )
+        for line in (out.stdout or "").splitlines():
+            line = line.strip()
+            if not line.startswith("inet "):
+                continue
+            ip = line.split()[1].split("%", 1)[0]
+            if ip and not ip.startswith("127."):
+                return ip
+    except Exception:
+        pass
+    return "127.0.0.1"
+
+
+def default_lan_public_base(port: int = 8080) -> str:
+    """LAN URL of this host's img-server (the address other devices fetch)."""
+    return f"http://{detect_lan_ipv4()}:{port}"
+
+
+# Backward-compatible name; computed once at import time.
+DEFAULT_LAN_PUBLIC_BASE = default_lan_public_base()
 
 
 def lan_facing_brain_base(brain_base_url: str) -> str:
@@ -21,9 +78,9 @@ def lan_facing_brain_base(brain_base_url: str) -> str:
     host = (parsed.hostname or "").strip().lower()
     if host not in ("127.0.0.1", "localhost", "::1"):
         return raw.rstrip("/")
-    lan = (os.environ.get("MAC_EDGE_LAN_PUBLIC_BASE") or DEFAULT_LAN_PUBLIC_BASE).strip()
+    lan = (os.environ.get("MAC_EDGE_LAN_PUBLIC_BASE") or default_lan_public_base()).strip()
     lan_parsed = urlparse(lan if "://" in lan else f"http://{lan}")
-    lan_host = lan_parsed.hostname or "192.168.3.73"
+    lan_host = lan_parsed.hostname or detect_lan_ipv4()
     port = parsed.port or 9527
     scheme = parsed.scheme or "http"
     return f"{scheme}://{lan_host}:{port}"
@@ -39,7 +96,7 @@ def brain_content_http_url(brain_base_url: str, asset_id: str, intent_id: str) -
 
 
 def _lan_public_base() -> str:
-    raw = (os.environ.get("MAC_EDGE_LAN_PUBLIC_BASE") or DEFAULT_LAN_PUBLIC_BASE).strip()
+    raw = (os.environ.get("MAC_EDGE_LAN_PUBLIC_BASE") or default_lan_public_base()).strip()
     return raw.rstrip("/")
 
 

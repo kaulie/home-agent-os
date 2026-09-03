@@ -10,6 +10,7 @@ import time
 import unittest
 from http.client import HTTPConnection
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -24,7 +25,8 @@ class ImgServerHTTPTests(unittest.TestCase):
         self.img_dir = Path(self._tmp.name) / "img"
         self.img_dir.mkdir()
         serve.UPLOAD_DIR = self.img_dir
-        serve.PUBLIC_BASE = "http://192.168.3.73:8080"
+        # Any valid URL shape works here; only the response body echoes it back.
+        serve.PUBLIC_BASE = "http://192.168.0.88:8080"
         serve.HOST = "127.0.0.1"
         serve.PORT = 0
         self.server = serve.ThreadingHTTPServer(("127.0.0.1", 0), serve.Handler)
@@ -83,7 +85,7 @@ class ImgServerHTTPTests(unittest.TestCase):
         self.assertTrue(data.get("ok"))
         saved = data["saved_as"]
         self.assertTrue(saved.endswith("_a.jpg") or saved.endswith("a.jpg"))
-        self.assertEqual(data["url"], f"http://192.168.3.73:8080/{saved}")
+        self.assertEqual(data["url"], f"{serve.PUBLIC_BASE}/{saved}")
 
         status, got, ctype = self._get(f"/{saved}")
         self.assertEqual(status, 200)
@@ -97,6 +99,96 @@ class ImgServerHTTPTests(unittest.TestCase):
         status, got, _ = self._get("/latest")
         self.assertEqual(status, 200)
         self.assertEqual(got, payload)
+
+
+class LanPublicBaseTests(unittest.TestCase):
+    def test_guess_uses_auto_detected_ip(self) -> None:
+        with patch("serve._detect_lan_ipv4", return_value="192.168.3.96"):
+            self.assertEqual(
+                serve.guess_lan_public_base(8080), "http://192.168.3.96:8080"
+            )
+
+    def test_guess_never_returns_stale_fixed_lan_ip(self) -> None:
+        base = serve.guess_lan_public_base(8080)
+        self.assertNotIn("192.168.3.73", base)
+
+    def test_detect_uses_udp_route(self) -> None:
+        class FakeSocket:
+            def __init__(self, *_a, **_k) -> None:
+                self._ip = None
+
+            def connect(self, _target) -> None:
+                self._ip = "192.168.3.96"
+
+            def getsockname(self) -> tuple[str, int]:
+                return (self._ip or "0.0.0.0", 0)
+
+            def close(self) -> None:
+                pass
+
+        with patch("serve.socket.socket", return_value=FakeSocket()):
+            self.assertEqual(serve._detect_lan_ipv4(), "192.168.3.96")
+
+    def test_detect_falls_back_to_ifconfig(self) -> None:
+        class FakeFailingSocket:
+            def __init__(self, *_a, **_k) -> None:
+                pass
+
+            def connect(self, _target) -> None:
+                raise OSError("no route to host")
+
+            def getsockname(self) -> tuple[str, int]:
+                return ("0.0.0.0", 0)
+
+            def close(self) -> None:
+                pass
+
+        from types import SimpleNamespace
+
+        ifconfig_out = (
+            "lo0: flags=8049<UP,LOOPBACK,RUNNING> mtu 16384\n"
+            "\tinet 127.0.0.1 netmask 0xff000000\n"
+            "en0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX> mtu 1500\n"
+            "\tinet 192.168.3.96 netmask 0xffffff00 broadcast 192.168.3.255\n"
+        )
+        with patch(
+            "serve.socket.socket", return_value=FakeFailingSocket()
+        ), patch("serve.socket.getaddrinfo", return_value=[]), patch(
+            "subprocess.run",
+            return_value=SimpleNamespace(stdout=ifconfig_out, stderr=""),
+        ):
+            self.assertEqual(serve._detect_lan_ipv4(), "192.168.3.96")
+
+    def test_detect_falls_back_to_hostname_then_loopback(self) -> None:
+        class FakeFailingSocket:
+            def __init__(self, *_a, **_k) -> None:
+                pass
+
+            def connect(self, _target) -> None:
+                raise OSError("no route to host")
+
+            def getsockname(self) -> tuple[str, int]:
+                return ("0.0.0.0", 0)
+
+            def close(self) -> None:
+                pass
+
+        import socket as _socket
+
+        addrinfo = [
+            (_socket.AF_INET, _socket.SOCK_STREAM, 6, "", ("192.168.3.96", 0)),
+        ]
+        with patch(
+            "serve.socket.socket", return_value=FakeFailingSocket()
+        ), patch("serve.socket.getaddrinfo", return_value=addrinfo):
+            self.assertEqual(serve._detect_lan_ipv4(), "192.168.3.96")
+
+        with patch(
+            "serve.socket.socket", return_value=FakeFailingSocket()
+        ), patch(
+            "serve.socket.getaddrinfo", side_effect=OSError("no such host")
+        ), patch("subprocess.run", side_effect=OSError("no ifconfig")):
+            self.assertEqual(serve._detect_lan_ipv4(), "127.0.0.1")
 
 
 if __name__ == "__main__":
