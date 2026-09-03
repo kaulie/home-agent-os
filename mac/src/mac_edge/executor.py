@@ -33,6 +33,10 @@ from mac_edge.capability_ads import composition_of, decomposes_to
 from mac_edge.capability_availability import is_available
 from mac_edge.plugins.clock_now import ClockNowError, now_from_params
 from mac_edge.plugins.netease_music import NeteaseMusicError, run_from_params as music_from_params
+from mac_edge.plugins.music_recognize import (
+    MusicRecognizeError,
+    run_from_params as music_recognize_from_params,
+)
 from mac_edge.plugins.math_calculate import MathCalculateError, calculate_from_params
 from mac_edge.plugins.chat_smalltalk import ChatSmalltalkError, smalltalk_from_params
 from mac_edge.plugins.asset_upload import AssetUploadError, upload_from_params
@@ -109,6 +113,7 @@ _CAP_EXEC_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cap-exec"
 _CAP_TIMEOUT_SEC: dict[str, float] = {
     "reading.point_to_character": 120.0,
     "music.cache": 360.0,
+    "music.recognize": 90.0,
 }
 
 
@@ -1629,6 +1634,14 @@ def _execute_capability(
             msg, outputs = now_from_params(params)
             return True, msg, outputs
         except ClockNowError as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "music.recognize":
+        try:
+            msg, outputs = music_recognize_from_params(params)
+            return True, msg, outputs
+        except MusicRecognizeError as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}

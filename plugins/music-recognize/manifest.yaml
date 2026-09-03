@@ -1,0 +1,48 @@
+id: music-recognize
+service_id: music.recognize
+group: music
+version: "0.1.0"
+display_name: 识曲（听歌识曲）
+description: 用麦连续收录客厅 10–30 秒外放音乐并识别歌名（识别服务 Provider 可插拔）
+
+capabilities:
+  - capability_id: music.recognize
+    description: >
+      能：收录最近 10–30 秒环境声音，识别出客厅正在外放的背景音乐是哪首歌，
+      输出 answer_text 由原设备播报歌名。只识别一首，命中或 30 秒超时即结束。
+      不能：播放/暂停/切歌（music.play 等）；连蓝牙音箱；识别手机/电脑播放器内部
+      正在播放的曲目元数据（只做声学识曲）。
+
+entry:
+  mac: mac/src/mac_edge/plugins/music_recognize/__init__.py
+config:
+  - key: MAC_EDGE_MUSIC_RECOGNIZE_PROVIDER
+    platform: mac
+    description: none（默认，不广告）/ mock（自测）/ audd / acrcloud / shazam
+  - key: MAC_EDGE_MUSIC_RECOGNIZE_MIN_SEC
+    platform: mac
+    description: 最短收录秒数，默认 10
+  - key: MAC_EDGE_MUSIC_RECOGNIZE_MAX_SEC
+    platform: mac
+    description: 最长收录秒数，默认 30，超时自动退出
+  - key: MAC_EDGE_MUSIC_RECOGNIZE_RETRY_EVERY_SEC
+    platform: mac
+    description: 滚动重试间隔，默认 5
+  - key: MAC_EDGE_MUSIC_RECOGNIZE_AUDD_TOKEN
+    platform: mac
+    description: audd.io 识曲密钥（留空不启用该 Provider）
+  - key: MAC_EDGE_MUSIC_RECOGNIZE_ACR_ACCESS_KEY
+    platform: mac
+    description: ACRCloud access key（留空不启用）
+  - key: MAC_EDGE_MUSIC_RECOGNIZE_ACR_ACCESS_SECRET
+    platform: mac
+    description: ACRCloud access secret（留空不启用）
+  - key: MAC_EDGE_MUSIC_RECOGNIZE_ACR_HOST
+    platform: mac
+    description: ACRCloud host（如 identify-ap-southeast-1.acrcloud.com）
+  - key: MAC_EDGE_MUSIC_RECOGNIZE_SHAZAM_KEY
+    platform: mac
+    description: Shazam/RapidAPI key（留空不启用）
+  - key: MAC_EDGE_MUSIC_RECOGNIZE_SHAZAM_HOST
+    platform: mac
+    description: Shazam/RapidAPI host

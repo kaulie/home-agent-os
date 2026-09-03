@@ -52,6 +52,7 @@ DEFAULT_WAKE_SCOPE = "participant"
 MUSIC_IDLE_STT_MODES = frozenset({"all", "skip_long", "none"})
 DEFAULT_MUSIC_IDLE_STT = "skip_long"
 DEFAULT_MUSIC_IDLE_STT_MAX_MS = 2500
+DEFAULT_RECOGNIZE_ACK = "好，开始识曲，我最多听 30 秒"
 
 
 @dataclass(frozen=True)
@@ -100,6 +101,8 @@ class VoiceConfig:
     music_idle_stt: str
     music_idle_stt_max_ms: int
     wake_scope: str
+    recognize_ack: str = ""
+    recognize_ack_enabled: bool = False
 
 
 def _parse_device(raw: str) -> int | str | None:
@@ -204,6 +207,16 @@ def load_config() -> VoiceConfig:
         wake_ack = wake_ack_env
     else:
         wake_ack = _brain_wake_ack(brain) or DEFAULT_WAKE_ACK
+    recognize_ack_env = _env("MAC_VOICE_RECOGNIZE_ACK")
+    recognize_ack = (
+        (recognize_ack_env or DEFAULT_RECOGNIZE_ACK).strip() or DEFAULT_RECOGNIZE_ACK
+    )
+    recognize_ack_enabled = _env("MAC_VOICE_RECOGNIZE_ACK_ENABLED", "1").lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
     return VoiceConfig(
         brain_url=brain.rstrip("/"),
         client_hint=client_hint,
@@ -328,6 +341,8 @@ def load_config() -> VoiceConfig:
             hi=60_000,
         ),
         wake_scope=_parse_wake_scope(_env("MAC_VOICE_WAKE_SCOPE")),
+        recognize_ack=recognize_ack,
+        recognize_ack_enabled=recognize_ack_enabled,
     )
 
 

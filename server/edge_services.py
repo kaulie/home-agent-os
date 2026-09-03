@@ -114,6 +114,54 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         'typical_triggers': ['上一首'],
         'do_not_dispatch': ['选歌', '蓝牙连接', 'TTS'],
     },
+    'music.recognize': {
+        'kind': 'action',
+        'group': 'music',
+        'service_id': 'music.recognize',
+        'role': '识曲器（听歌识曲）',
+        'planner_recognize': '用麦连续收录客厅 10~30 秒外放声音，识别是哪首歌，输出一句话 answer_text（歌名）。只识别一首，命中或超时结束。',
+        'typical_triggers': ['打开识曲模式', '这是什么歌', '帮我听一下这首歌', '听歌识曲'],
+        'do_not_dispatch': ['按歌名点播', '暂停', '切歌', '连蓝牙', '知识问答', '播放音乐'],
+        'input_schema': {
+            'min_sec': {
+                'type': 'number',
+                'required': False,
+                'description': '最短收录/首次识曲窗口秒数，可选，默认环境值',
+            },
+            'max_sec': {
+                'type': 'number',
+                'required': False,
+                'description': '最长收录秒数，可选，默认环境值（≤60）',
+            },
+        },
+        'output_schema': {
+            'answer_text': {
+                'type': 'string',
+                'required': True,
+                'description': '给用户的一句话播报（歌名）；命中或超时都有',
+            },
+            'matched': {
+                'type': 'boolean',
+                'required': False,
+                'description': '是否识别成功',
+            },
+            'song_title': {
+                'type': 'string',
+                'required': False,
+                'description': '识别出的歌名',
+            },
+            'artist': {
+                'type': 'string',
+                'required': False,
+                'description': '歌手',
+            },
+            'confidence': {
+                'type': 'number',
+                'required': False,
+                'description': '置信度（可选）',
+            },
+        },
+    },
     'camera.capture': {
         'kind': 'input',
         'group': 'camera',

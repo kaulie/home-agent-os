@@ -459,6 +459,13 @@ ADS: dict[str, dict[str, Any]] = {
         typical_triggers=["用小度说", "小度播报", "客厅音箱说", "让小度念", "小度音箱播报"],
         do_not_dispatch=["Mac 本机播报", "知识问答", "放歌", "投屏", "回读上一步答案"],
     ),
+    "music.recognize": _ad(
+        kind="action",
+        role="识曲器（听歌识曲）",
+        planner_recognize="用户想听歌识曲时（打开识曲模式/这是什么歌/帮我听听），收录客厅 10~30 秒外放声音识别是哪首歌，输出一句话 answer_text（歌名）。只识别一首，命中或 30 秒超时结束。不是按歌名点播/暂停/切歌，不是读播放器正在播放的元数据",
+        typical_triggers=["打开识曲模式", "这是什么歌", "帮我听一下这首歌", "听歌识曲", "识别一下现在放的歌"],
+        do_not_dispatch=["按歌名点播", "暂停", "切歌", "连蓝牙", "知识问答", "读 ncm 正在播放元数据", "播放音乐"],
+    ),
     "music.play": _ad(
         kind="action",
         role="音乐播放器",

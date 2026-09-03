@@ -111,6 +111,37 @@ def looks_like_light_command_echo(text: str) -> bool:
     return bool(compact) and compact in _LIGHT_COMMAND_ECHO
 
 
+_MUSIC_RECOGNIZE_MARKERS = (
+    "识曲",
+    "听歌识曲",
+    "这是什么歌",
+    "什么歌",
+    "叫什么歌",
+    "是什么音乐",
+    "这是什么音乐",
+    "这首歌是什么",
+    "这首歌叫什么",
+    "听一下这首歌",
+    "听听这首",
+    "识别一下现在放的歌",
+    "识别这首歌",
+)
+
+
+def looks_like_music_recognize_request(text: str) -> bool:
+    """True when the utterance asks to identify the currently playing song.
+
+    Keeps the voice-local ack (好，开始识曲，我最多听…) from matching itself:
+    a re-transcribed self-ack contains 「最多听」.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    if "最多听" in raw:
+        return False
+    return any(marker in raw for marker in _MUSIC_RECOGNIZE_MARKERS)
+
+
 def contains_ack_echo(text: str) -> bool:
     """True when our spoken reply is in the transcript (alone or mixed)."""
     compact = _compact_ack_text(text)
