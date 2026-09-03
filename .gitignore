@@ -87,3 +87,7 @@ local-rt/test-imgs/
 # Node / game build artifacts
 **/node_modules/
 games/coin-catcher/dist/
+
+# Xcode / Swift build outputs
+.build/
+DerivedData/
