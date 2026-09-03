@@ -42,12 +42,19 @@ class AssetManagerTests(unittest.TestCase):
             },
         }
         mgr = AssetManager(brain=brain, edge_id="edge-a")
-        rep = mgr.resolve_for_capability(
-            AssetRef(asset_id="asset_x", type="image"),
-            intent_id="42",
-            need="http_url",
-        )
-        self.assertEqual(rep.url, "http://192.168.3.65:8080/a.jpg")
+        # Stored private-LAN public_base may be stale (DHCP); resolve the current
+        # LAN base at use time.
+        with patch.dict(
+            os.environ,
+            {"MAC_EDGE_LAN_PUBLIC_BASE": "http://192.168.3.96:8080"},
+            clear=False,
+        ):
+            rep = mgr.resolve_for_capability(
+                AssetRef(asset_id="asset_x", type="image"),
+                intent_id="42",
+                need="http_url",
+            )
+        self.assertEqual(rep.url, "http://192.168.3.96:8080/a.jpg")
 
     def test_resolve_local_upload_uses_brain_content_url(self) -> None:
         brain = MagicMock()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import socket
 from typing import Any
 from urllib.parse import urlparse
@@ -100,12 +101,38 @@ def _lan_public_base() -> str:
     return raw.rstrip("/")
 
 
+def _is_private_lan_base(base: str) -> bool:
+    """True when base points at a loopback / RFC1918 private-LAN host.
+
+    img-server's LAN IP is DHCP-assigned, so a stored private-LAN public_base
+    may be stale (e.g. an old .x from a previous re-lease). Public/cloud hosts
+    are stable and not subject to this.
+    """
+    try:
+        host = (urlparse(base).hostname or "").strip().lower()
+    except Exception:
+        return False
+    if host in ("localhost", "::1", "127.0.0.1"):
+        return True
+    return bool(re.match(r"^(10\.|192\.168\.|127\.|172\.(1[6-9]|2\d|3[01])\.)", host))
+
+
 def _pick_base(storage: dict[str, Any], *, prefer_cloud: bool) -> str:
     pub = str(storage.get("public_base") or "").strip().rstrip("/")
     cloud = str(storage.get("cloud_public_base") or "").strip().rstrip("/")
-    if prefer_cloud:
-        return cloud or pub or _lan_public_base()
-    return pub or cloud or _lan_public_base()
+    if prefer_cloud and cloud:
+        return cloud
+    # A stored non-private (public/cloud) base is stable — keep using it.
+    if pub and not _is_private_lan_base(pub):
+        return pub
+    # A stored private-LAN/loopback public_base is DHCP-volatile and may be
+    # stale; resolve the CURRENT LAN base at use time for the co-located
+    # img-server (cloud mirror is kept as a fallback).
+    if pub:
+        return _lan_public_base() or cloud or pub
+    # No stored public_base: prefer the cloud mirror if present, else the
+    # current LAN base (co-located img-server).
+    return cloud or _lan_public_base()
 
 
 def _locator_candidates(storage: dict[str, Any]) -> list[tuple[str, str]]:

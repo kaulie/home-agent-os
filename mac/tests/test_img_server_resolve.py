@@ -18,15 +18,22 @@ from mac_edge.asset.types import AssetStorageError
 
 class ImgServerResolveTests(unittest.TestCase):
     def test_prefers_original_key(self) -> None:
-        rep = http_url_from_storage(
-            {
-                "backend": "img_server",
-                "key": "orig.jpg",
-                "preview_key": "prev.jpg",
-                "public_base": "http://192.168.3.65:8080",
-            }
-        )
-        self.assertEqual(rep.url, "http://192.168.3.65:8080/orig.jpg")
+        # A stored private-LAN public_base is DHCP-volatile and possibly stale,
+        # so the current LAN base is resolved at use time instead.
+        with patch.dict(
+            os.environ,
+            {"MAC_EDGE_LAN_PUBLIC_BASE": "http://192.168.3.96:8080"},
+            clear=False,
+        ):
+            rep = http_url_from_storage(
+                {
+                    "backend": "img_server",
+                    "key": "orig.jpg",
+                    "preview_key": "prev.jpg",
+                    "public_base": "http://192.168.3.65:8080",
+                }
+            )
+        self.assertEqual(rep.url, "http://192.168.3.96:8080/orig.jpg")
 
     def test_fallback_preview_when_original_pending(self) -> None:
         rep = http_url_from_storage(
