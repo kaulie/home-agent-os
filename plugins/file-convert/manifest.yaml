@@ -1,0 +1,22 @@
+id: file-convert
+service_id: local.file.convert
+group: convert
+version: "0.1.0"
+display_name: 文件格式转换器
+description: >
+  纯标准库 image→pdf：把 N 张 type=image 的 Brain Asset（JPEG baseline/顺序、
+  PNG 8bit 非隔行）按顺序合成单文件 A4 纵向多页 PDF（1 张=1 页），
+  上传登记为 document(PDF) Asset。其它 from→to 与 HEIC/WebP 等明确中文失败。
+
+capabilities:
+  - capability_id: file.convert
+    description: >
+      能：把本步已有的 Image Asset 按 asset_refs 顺序合并转成一个 PDF 文档 Asset
+      （A4 多页、等比居中），并在 Brain 登记为 type=document。
+      不能：打印、OCR、看图理解、投屏、拍照、图片上传本身、文字识别；
+      不接受 HEIC/WebP、隔行 PNG、16bit PNG、渐进/算术 JPEG；
+      缺 asset_refs / 非 image / 非 pdf / 非 image 源格式则明确中文失败。
+
+entry:
+  mac: mac/src/mac_edge/plugins/file_convert.py
+config: []

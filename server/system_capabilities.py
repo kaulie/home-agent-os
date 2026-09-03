@@ -36,6 +36,7 @@ _GROUP_ORDER = (
     "notify",
     "query",
     "math",
+    "convert",
     "clock",
     "light",
     "climate",

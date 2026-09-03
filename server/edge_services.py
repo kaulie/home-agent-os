@@ -908,6 +908,69 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             },
         },
     },
+    'file.convert': {
+        'kind': 'action',
+        'group': 'convert',
+        'service_id': 'local.file.convert',
+        'role': '文件格式转换器',
+        'planner_recognize': (
+            '把本步已有的一张或多张 Image Asset 按顺序合并转成一个 PDF 文档 Asset。'
+            '入参 asset_refs（必填，type=image 数组，顺序即页码）、to_format=pdf'
+            '（可选 from_format=image）。本能力只产出 PDF，不打印、不 OCR、不识别内容'
+        ),
+        'typical_triggers': [
+            '把这几张图转成 PDF',
+            '图片转 PDF',
+            '合成一个 PDF',
+            '把这几张照片合并成 PDF',
+            '转成 PDF 文件',
+            '把扫描件导成 PDF',
+        ],
+        'do_not_dispatch': ['打印', 'OCR', '看图理解', '投屏', '拍照', '图片上传本身', '文字识别'],
+        'input_schema': {
+            'to_format': {
+                'type': 'string',
+                'required': True,
+                'description': '目标格式；一期仅接受 pdf，其它值明确失败。例 "pdf"。',
+            },
+            'from_format': {
+                'type': 'string',
+                'required': False,
+                'description': '源格式；缺省按 asset_refs 类型推断为 image。显式传非 image 则明确失败。',
+            },
+            'asset_refs': {
+                'type': 'string',
+                'required': True,
+                'description': (
+                    '必填 AssetRef JSON 数组，至少一张，type 必须为 image（JPEG/PNG）。'
+                    '数组顺序 = PDF 页码顺序。例 [{"asset_id":"asset_…","type":"image"}]。'
+                    '禁止 path / 永久 URL / base64。'
+                ),
+            },
+            'name': {
+                'type': 'string',
+                'required': False,
+                'description': '可选生成的 PDF 展示名（不含或自动补 .pdf）；不传则用 convert-<时间戳>.pdf。',
+            },
+        },
+        'output_schema': {
+            'asset_ref': {
+                'type': 'object',
+                'required': True,
+                'description': '新登记 document（PDF）Asset 的 AssetRef JSON',
+            },
+            'page_count': {
+                'type': 'number',
+                'required': True,
+                'description': 'PDF 页数（= 图片数）',
+            },
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话结果，含页数与 asset_id',
+            },
+        },
+    },
     'asset.inventory': {
         'kind': 'system',
         'group': 'asset',

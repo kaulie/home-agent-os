@@ -488,6 +488,71 @@ LOCAL_MATH_SERVICE: dict[str, Any] = {
     ],
 }
 
+LOCAL_FILE_CONVERT_SERVICE: dict[str, Any] = {
+    "service_id": "local.file.convert",
+    "display_name": "文件格式转换器",
+    "version": "0.1.0",
+    "group": "convert",
+    "capabilities": [
+        attach(
+            "file.convert",
+            input_schema={
+                "to_format": {
+                    "type": "string",
+                    "required": True,
+                    "description": (
+                        "目标格式；一期仅接受 pdf，其它值明确失败。"
+                        "例 \"pdf\"。"
+                    ),
+                },
+                "from_format": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "源格式；缺省按 asset_refs 类型推断为 image。"
+                        "显式传非 image 则明确失败。"
+                    ),
+                },
+                "asset_refs": {
+                    "type": "string",
+                    "required": True,
+                    "description": (
+                        "必填 AssetRef JSON 数组，至少一张，type 必须为 image"
+                        "（JPEG/PNG）。数组顺序 = PDF 页码顺序。"
+                        "例 [{\"asset_id\":\"asset_…\",\"type\":\"image\"}]。"
+                        "禁止 path / 永久 URL / base64。"
+                    ),
+                },
+                "name": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "可选生成的 PDF 展示名（不含或自动补 .pdf）；"
+                        "不传则用 convert-<时间戳>.pdf。"
+                    ),
+                },
+            },
+            output_schema={
+                "asset_ref": {
+                    "type": "object",
+                    "required": True,
+                    "description": "新登记 document（PDF）Asset 的 AssetRef JSON",
+                },
+                "page_count": {
+                    "type": "number",
+                    "required": True,
+                    "description": "PDF 页数（= 图片数）",
+                },
+                "status_text": {
+                    "type": "string",
+                    "required": True,
+                    "description": "中文一句话结果，含页数与 asset_id",
+                },
+            },
+        ),
+    ],
+}
+
 LOCAL_CHAT_SERVICE: dict[str, Any] = {
     "service_id": "local.chat",
     "display_name": "Local Chat",
@@ -1380,6 +1445,7 @@ _LAPTOP_SERVICE_ORDER = (
     LOCAL_SEARCH_SERVICE,
     LOCAL_CLOCK_SERVICE,
     LOCAL_MATH_SERVICE,
+    LOCAL_FILE_CONVERT_SERVICE,
     LOCAL_CHAT_SERVICE,
     LOCAL_ASSET_SERVICE,
     LOCAL_VOICE_SERVICE,
@@ -1531,6 +1597,10 @@ def default_services() -> list[dict[str, Any]]:
         services.append(dict(LOCAL_CLOCK_SERVICE))
     if _allow_service(LOCAL_MATH_SERVICE["service_id"], allowed_set):
         services.append(dict(LOCAL_MATH_SERVICE))
+    if _allow_service(LOCAL_FILE_CONVERT_SERVICE["service_id"], allowed_set):
+        # Pure-stdlib image→pdf: no extra availability dependency, always on laptop.
+        services.append(dict(LOCAL_FILE_CONVERT_SERVICE))
+        log.info("advertise local.file.convert (file.convert)")
     if _allow_service(LOCAL_CHAT_SERVICE["service_id"], allowed_set):
         services.append(dict(LOCAL_CHAT_SERVICE))
     if _allow_service(LOCAL_ASSET_SERVICE["service_id"], allowed_set):

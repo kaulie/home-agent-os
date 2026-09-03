@@ -461,6 +461,24 @@ ADS: dict[str, dict[str, Any]] = {
         typical_triggers=["打印这份 PDF", "把文档打出来", "打印一下", "打印这个文件"],
         do_not_dispatch=["配网", "切 SoftAP", "扫描", "投屏", "TTS", "知识问答"],
     ),
+    "file.convert": _ad(
+        kind="action",
+        role="文件格式转换器",
+        planner_recognize=(
+            "把本步已有的一张或多张 Image Asset 按顺序合并转成一个 PDF 文档 Asset。"
+            "入参 asset_refs（必填，type=image 数组，顺序即页码）、to_format=pdf"
+            "（可选 from_format=image）。本能力只产出 PDF，不打印、不 OCR、不识别内容"
+        ),
+        typical_triggers=[
+            "把这几张图转成 PDF",
+            "图片转 PDF",
+            "合成一个 PDF",
+            "把这几张照片合并成 PDF",
+            "转成 PDF 文件",
+            "把扫描件导成 PDF",
+        ],
+        do_not_dispatch=["打印", "OCR", "看图理解", "投屏", "拍照", "图片上传本身", "文字识别"],
+    ),
     "xiaodu.speak": _ad(
         kind="output",
         role="小度音箱播报器",
