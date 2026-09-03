@@ -26,6 +26,24 @@ STEP_RUNNING = 1
 STEP_SUCCEEDED = 2
 STEP_FAILED = 3
 
+# Brain rejections for queued events that can never be applied (the intent or
+# step has already moved past them — e.g. a stale RUNNING after the intent
+# became terminal). Such an event must not block the replay queue forever; it
+# is dropped and flushing continues (terminal success/fail events still carry
+# their outputs/msgs and are accepted by Brain even after the intent terminal).
+_OBSOLETE_REPLAY_MARKERS = (
+    "intent is terminal",
+    "cannot return to running",
+    "cannot regress",
+    "status already updated before",
+)
+
+
+def _is_obsolete_replay(text: str) -> bool:
+    lowered = str(text or "").lower()
+    return any(marker in lowered for marker in _OBSOLETE_REPLAY_MARKERS)
+
+
 _active: "LocalLedger | None" = None
 _active_lock = threading.Lock()
 
@@ -391,6 +409,16 @@ class LocalLedger:
                     msg=note,
                 )
             except BrainError as e:
+                if _is_obsolete_replay(str(e)):
+                    log.warning(
+                        "ledger: drop obsolete step %s/%s status=%s (Brain: %s)",
+                        iid,
+                        n,
+                        st,
+                        e,
+                    )
+                    self._discard_queued_event(iid, n)
+                    continue
                 log.warning(
                     "ledger: flush step %s/%s status=%s ts=%s failed: %s",
                     iid,
@@ -422,6 +450,15 @@ class LocalLedger:
                     message="ledger flush",
                 )
             except BrainError as e:
+                if _is_obsolete_replay(str(e)):
+                    log.warning(
+                        "ledger: drop obsolete intent %s status=%s (Brain: %s)",
+                        iid,
+                        wire,
+                        e,
+                    )
+                    self.mark_intent_synced(iid, status=wire)
+                    continue
                 log.warning("ledger: flush intent %s status=%s failed: %s", iid, wire, e)
                 return posted
             self.mark_intent_synced(iid, status=wire)
@@ -442,6 +479,32 @@ class LocalLedger:
                     n = int(step.get("step") or 0)
                     return iid, n, json.loads(json.dumps(q[0]))
         return None
+
+    def _discard_queued_event(self, intent_id: str, step_num: int) -> None:
+        """Drop the head sync event for a step Brain will never accept.
+
+        Called when Brain rejects the replay as obsolete (intent/step already
+        terminal). Keeping it would stall every later event's flush forever, so
+        remove it and let the queue keep draining (later terminal events still
+        carry outputs/msgs to Brain).
+        """
+        iid = str(intent_id).strip()
+        n = int(step_num)
+        with self._lock:
+            rec = self._intents.get(iid)
+            if rec is None:
+                return
+            for step in rec.get("execution_plan") or []:
+                if not isinstance(step, dict):
+                    continue
+                if int(step.get("step") or 0) != n:
+                    continue
+                q = step.get("sync_queue") or []
+                if isinstance(q, list) and q:
+                    q.pop(0)
+                step["synced"] = not bool(step.get("sync_queue") or [])
+                break
+            self._persist_unlocked()
 
 
 def _normalize_record(item: dict[str, Any], *, from_brain: bool = False) -> dict[str, Any]:

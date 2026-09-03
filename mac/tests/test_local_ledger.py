@@ -71,6 +71,35 @@ class _FakeBrain:
         self.intent_posts.append((str(intent_id), str(status), message))
 
 
+class _RejectRunningBrain(_FakeBrain):
+    """Brain that has already terminated the intent: rejects RUNNING replays."""
+
+    def post_step_status(
+        self,
+        intent_id,
+        step_num,
+        *,
+        step_status,
+        edge_node_id,
+        outputs=None,
+        ts_ms=None,
+        msg=None,
+    ):
+        if int(step_status) == 1:
+            raise BrainError(
+                "step_status: intent is terminal; step cannot return to running"
+            )
+        return super().post_step_status(
+            intent_id,
+            step_num,
+            step_status=step_status,
+            edge_node_id=edge_node_id,
+            outputs=outputs,
+            ts_ms=ts_ms,
+            msg=msg,
+        )
+
+
 class LocalLedgerTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -191,6 +220,42 @@ class LocalLedgerTests(unittest.TestCase):
         self.assertEqual(self.ledger.flush_to_brain(brain, EID), 1)  # type: ignore[arg-type]
         self.assertEqual(brain.step_posts[0][2], 1)
         self.assertEqual(brain.step_posts[0][4], 50)
+
+    def test_obsolete_running_dropped_then_terminal_event_flushed(self) -> None:
+        # A stale RUNNING replay that Brain rejects (intent already terminal)
+        # must be dropped so the later FAILED/SUCCESS events can flush.
+        self.ledger.ingest_peek([_waiting_intent()], EID)
+        self.ledger.set_step_status(IID, 1, 1, ts_ms=10)
+        self.ledger.set_step_status(IID, 1, 3, ts_ms=20, msg="too late")
+        brain = _RejectRunningBrain()
+        posted = self.ledger.flush_to_brain(brain, EID)  # type: ignore[arg-type]
+        self.assertEqual(posted, 1)
+        self.assertEqual([p[2] for p in brain.step_posts], [3])
+        self.assertEqual(brain.step_posts[0][5], "too late")
+        rec = self.ledger.get(IID)
+        assert rec is not None
+        self.assertTrue(rec["execution_plan"][0]["synced"])
+
+    def test_success_outputs_flush_past_stale_running(self) -> None:
+        # file.convert-style: step2 ran RUNNING then SUCCEEDED with outputs, but
+        # Brain already marked the intent terminal; the RUNNING replay is
+        # dropped and the SUCCESS event still delivers its outputs.
+        self.ledger.ingest_peek([_waiting_intent()], EID)
+        self.ledger.set_step_status(IID, 1, 1, ts_ms=10)
+        outputs = {
+            "asset_ref": {"asset_id": "asset_pdf", "type": "document"},
+            "page_count": 1,
+            "status_text": "已转成 PDF",
+        }
+        self.ledger.set_step_status(IID, 1, 2, outputs=outputs, ts_ms=20)
+        brain = _RejectRunningBrain()
+        posted = self.ledger.flush_to_brain(brain, EID)  # type: ignore[arg-type]
+        self.assertEqual(posted, 1)
+        self.assertEqual(brain.step_posts[0][2], 2)
+        self.assertEqual(brain.step_posts[0][3], outputs)
+        rec = self.ledger.get(IID)
+        assert rec is not None
+        self.assertTrue(rec["execution_plan"][0]["synced"])
 
     def test_flush_replays_full_offline_timeline(self) -> None:
         self.ledger.ingest_peek([_waiting_intent()], EID)
