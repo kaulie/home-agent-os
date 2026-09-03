@@ -219,3 +219,29 @@ class CapAsset:
             asset_type="image",
             filename=p.name or "upload.jpg",
         )
+
+    def upload_file(
+        self,
+        path: str | Path,
+        *,
+        producer: str,
+        mime_type: str = "application/octet-stream",
+        asset_type: str = "file",
+        filename: str | None = None,
+    ) -> AssetRef:
+        """Upload any local file (not just image) to the active Brain's
+        /api/v1/assets/upload and register it as an Asset of the given type.
+
+        Unlike ``upload_local_file`` (hard-coded image/jpeg + type=image), this
+        lets capabilities register document / pdf / audio outputs, e.g. the
+        ``file.convert`` producer storing a generated PDF.
+        """
+        p = Path(path)
+        return self.manager.upload_file(
+            p,
+            producer=producer,
+            intent_id=self.intent_id,
+            mime_type=mime_type,
+            asset_type=asset_type,
+            filename=filename or p.name,
+        )
