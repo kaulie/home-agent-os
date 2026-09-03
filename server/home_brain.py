@@ -5324,6 +5324,24 @@ def _img_server_upload_url() -> str:
     return _explicit_img_server_upload_url() or "http://127.0.0.1:8080/api/v1/photos/upload"
 
 
+def _img_server_internal_base() -> str:
+    """Host prefix of the img-server this Brain writes to (loopback by default).
+
+    Used when the Brain itself must fetch asset bytes (content proxy,
+    materialization). img-server is co-located, so this endpoint is reachable
+    regardless of the LAN IP — the LAN-facing `public_base` is DHCP-volatile
+    and is therefore never persisted; it is only resolved fresh when a direct
+    LAN URL is needed at use time.
+    """
+    try:
+        parsed = urllib.parse.urlsplit(_img_server_upload_url())
+        if parsed.netloc:
+            return "%s://%s" % ((parsed.scheme or "http"), parsed.netloc)
+    except Exception:
+        pass
+    return "http://127.0.0.1:8080"
+
+
 def _use_local_upload_store() -> bool:
     """Cloud Brain keeps bytes under gopropics/; it has no sidecar img-server :8080.
 
@@ -5547,9 +5565,9 @@ def upload_asset_with_intent():
         "key": saved_as,
         "saved_as": saved_as,
     }
-    public_base = str(stored.get("public_base") or "").strip()
-    if backend == "img_server" or public_base:
-        storage["public_base"] = public_base or stored.get("public_base") or ""
+    # `public_base` is deliberately NOT persisted: it is a DHCP-volatile runtime
+    # value, independent of the asset's storage address (backend+key). Consumers
+    # resolve the current public_base from img-server each time they need a URL.
     if edge_id:
         storage["edge_id"] = edge_id
     record = {
@@ -6794,9 +6812,8 @@ def admin_upload_dev_task_attachment():
         "key": saved_as,
         "saved_as": saved_as,
     }
-    public_base = str(stored.get("public_base") or "").strip()
-    if backend == "img_server" or public_base:
-        storage["public_base"] = public_base or stored.get("public_base") or ""
+    # `public_base` is deliberately NOT persisted (same rationale as
+    # /api/v1/assets/upload): it is resolved fresh from img-server at use time.
     record = {
         "asset_id": aid,
         "type": asset_type,
@@ -7105,7 +7122,14 @@ def _asset_representation_storage(storage: dict, representation: str) -> dict:
 
 
 def _asset_media_urls(storage: dict, request_url: str) -> list:
-    """Candidate HTTP URLs for an img_server locator (cloud first, then LAN)."""
+    """Candidate HTTP URLs the Brain can fetch img_server bytes from.
+
+    The Brain proxies bytes (it never hands out storage URLs), so it must reach
+    the img-server it itself uploads to — co-located loopback by default, which
+    is valid no matter what LAN IP DHCP assigns today. The LAN-facing
+    `public_base` is NOT read from storage: it is a volatile runtime value and
+    is not persisted with the asset (storage keeps only backend+key).
+    """
     urls = []
     seen = set()
 
@@ -7128,19 +7152,17 @@ def _asset_media_urls(storage: dict, request_url: str) -> list:
         path = k if k.startswith("/") else f"/{k}"
         add(b + path)
 
-    # Prefer cloud mirror so Intent Source / phone can load AssetRef off-LAN.
+    # Cloud mirror first so Intent Source / phone can load AssetRef off-LAN.
     add_base_key(storage.get("cloud_public_base"), storage.get("cloud_key") or storage.get("key"))
-    add_base_key(
-        storage.get("public_base"),
-        storage.get("key") or storage.get("saved_as"),
-    )
     key = str(storage.get("key") or storage.get("saved_as") or "").strip()
+    # Co-located img-server this Brain writes to (loopback default) — always
+    # current and reachable regardless of LAN re-IP.
     if key and not (key.startswith("http://") or key.startswith("https://")):
-        path = key if key.startswith("/") else f"/{key}"
+        add_base_key(_img_server_internal_base(), key)
         try:
             brain = urllib.parse.urlparse(request_url)
             if brain.hostname:
-                add("%s://%s:8080%s" % (brain.scheme or "http", brain.hostname, path))
+                add("%s://%s:8080/%s" % (brain.scheme or "http", brain.hostname, key.lstrip("/")))
         except Exception:
             pass
     return urls

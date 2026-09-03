@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -50,15 +51,37 @@ def _add_base_key(urls: list[str], seen: set[str], base: Any, key: Any) -> None:
     _add_url(urls, seen, b + path)
 
 
+def _img_server_local_base() -> str:
+    """Host prefix of the img-server this Brain writes to (loopback default).
+
+    Materialization runs inside the Brain, which is co-located with the
+    img-server it uploads to; that endpoint is reachable regardless of the LAN
+    IP. The LAN-facing `public_base` is DHCP-volatile and is never stored with
+    the asset, so it must not be the first thing we try here.
+    """
+    for key in ("BRAIN_IMG_UPLOAD_URL", "PHOTO_UPLOAD_URL"):
+        raw = (os.environ.get(key) or "").strip().rstrip("/")
+        if raw:
+            try:
+                parsed = urllib.parse.urlsplit(raw)
+                if parsed.netloc:
+                    return "%s://%s" % ((parsed.scheme or "http"), parsed.netloc)
+            except Exception:
+                pass
+    return "http://127.0.0.1:8080"
+
+
 def media_urls(storage: dict[str, Any]) -> list[str]:
     urls: list[str] = []
     seen: set[str] = set()
     _add_base_key(
         urls, seen, storage.get("cloud_public_base"), storage.get("cloud_key") or storage.get("key")
     )
-    _add_base_key(
-        urls, seen, storage.get("public_base"), storage.get("key") or storage.get("saved_as")
-    )
+    key = storage.get("key") or storage.get("saved_as")
+    # Co-located img-server (fresh, DHCP-independent) before any legacy field.
+    _add_base_key(urls, seen, _img_server_local_base(), key)
+    # Older rows may still carry a stored public_base; keep as a last resort.
+    _add_base_key(urls, seen, storage.get("public_base"), key)
     return urls
 
 

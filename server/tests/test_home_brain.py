@@ -3846,7 +3846,9 @@ class HomeBrainPersistTest(unittest.TestCase):
         storage = rec.get("storage") or {}
         self.assertEqual(storage.get("backend"), "img_server")
         self.assertEqual(storage.get("key"), "aabbccdd_scan.jpg")
-        self.assertEqual(storage.get("public_base"), "http://192.168.0.88:8080")
+        # public_base is DHCP-volatile and must NOT be persisted with the asset;
+        # it is resolved fresh from img-server each time a URL is needed.
+        self.assertNotIn("public_base", storage)
 
     def test_img_server_public_base_prefers_img_server_health(self) -> None:
         from unittest.mock import patch
@@ -3906,6 +3908,35 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertTrue(base.startswith("http://"))
         self.assertTrue(base.endswith(":8080"))
         self.assertNotIn("192.168.3.73", base)
+
+    def test_asset_media_urls_resolves_current_img_server_not_stored_base(self) -> None:
+        # A legacy/incorrect row may still carry a stale LAN public_base in the
+        # DB; the content proxy must ignore it and fetch the co-located img-server
+        # (loopback default) instead of the dead stored IP.
+        storage = {
+            "backend": "img_server",
+            "key": "x.png",
+            "public_base": "http://192.168.3.73:8080",
+        }
+        urls = hb._asset_media_urls(storage, "http://127.0.0.1:9527/api/v1/assets/a1/content")
+        self.assertIn("http://127.0.0.1:8080/x.png", urls)
+        self.assertNotIn("http://192.168.3.73:8080/x.png", urls)
+        # Explicit BRAIN_IMG_UPLOAD_URL (cloud sidecar etc.) is honored.
+        prev = os.environ.get("BRAIN_IMG_UPLOAD_URL")
+        os.environ["BRAIN_IMG_UPLOAD_URL"] = "http://127.0.0.1:18080/api/v1/photos/upload"
+        try:
+            urls2 = hb._asset_media_urls(storage, "http://127.0.0.1:9527/x")
+            self.assertIn("http://127.0.0.1:18080/x.png", urls2)
+        finally:
+            if prev is None:
+                os.environ.pop("BRAIN_IMG_UPLOAD_URL", None)
+            else:
+                os.environ["BRAIN_IMG_UPLOAD_URL"] = prev
+        # A cloud mirror is still preferred for off-LAN consumers.
+        storage["cloud_public_base"] = "http://115.190.153.53:8080"
+        storage["cloud_key"] = "x.png"
+        urls3 = hb._asset_media_urls(storage, "http://127.0.0.1:9527/x")
+        self.assertEqual(urls3[0], "http://115.190.153.53:8080/x.png")
 
     def test_assets_upload_fails_when_img_server_down(self) -> None:
         from io import BytesIO

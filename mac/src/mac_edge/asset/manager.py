@@ -53,7 +53,6 @@ class AssetManager:
         step_num: int | None = None,
         size_bytes: int | None = None,
         metadata: dict[str, Any] | None = None,
-        public_base: str | None = None,
         cloud_public_base: str | None = None,
         cloud_key: str | None = None,
     ) -> AssetRef:
@@ -63,8 +62,11 @@ class AssetManager:
             "key": key,
             "edge_id": self._edge_id,
         }
-        if public_base:
-            storage["public_base"] = public_base.rstrip("/")
+        # NOTE: the img_server `public_base` is deliberately NOT persisted in the
+        # Brain catalog. It is a DHCP-volatile runtime value of the img-server,
+        # independent of the asset's storage address (backend+key); consumers
+        # resolve it fresh at use time (default_lan_public_base / env) instead of
+        # reading a stale copy back from the DB.
         # Cloud mirror for Intent Source / Brain content proxy (Cast still uses LAN).
         cbase = (cloud_public_base or "").strip().rstrip("/")
         ckey = (cloud_key or "").strip()
