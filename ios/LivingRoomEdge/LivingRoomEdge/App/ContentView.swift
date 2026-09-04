@@ -599,8 +599,16 @@ private struct PresentationBubble: View {
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
-            case .text, .html, .audio:
+            case .text, .html:
                 if !presentation.text.isEmpty {
+                    Text(presentation.text)
+                        .font(.body)
+                        .textSelection(.enabled)
+                }
+            case .audio:
+                if !presentation.assetId.isEmpty {
+                    AudioBubblePlayer(presentation: presentation, intentId: intentId)
+                } else if !presentation.text.isEmpty {
                     Text(presentation.text)
                         .font(.body)
                         .textSelection(.enabled)
@@ -663,6 +671,101 @@ private struct PresentationBubble: View {
                 }
             }
         }
+    }
+}
+
+/// Audio presentation bubble. Plays the voice-memo/audio asset referenced by the
+/// presentation instead of (incorrectly) rendering it as an image.
+@MainActor
+private struct AudioBubblePlayer: View {
+    let presentation: IntentPresentation
+    let intentId: String
+
+    @ObservedObject private var audioPlayer = AppModel.shared.audioPlayer
+    @State private var fetching = false
+    @State private var lastError = ""
+
+    private var assetId: String { presentation.assetId }
+    private var isCurrent: Bool { !assetId.isEmpty && audioPlayer.playingAssetId == assetId }
+    private var isPlaying: Bool { isCurrent && !audioPlayer.isPaused }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: toggle) {
+                Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(EdgeTheme.sand)
+            }
+            .buttonStyle(.plain)
+            .disabled(fetching || assetId.isEmpty)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("语音文件")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                if fetching {
+                    Text("正在从 Brain 拉取…")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else if !lastError.isEmpty {
+                    Text(lastError)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                } else if isCurrent, audioPlayer.duration > 0 {
+                    Text("\(Self.timecode(audioPlayer.elapsed)) / \(Self.timecode(audioPlayer.duration))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("点按播放")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func toggle() {
+        guard !assetId.isEmpty else { return }
+        if audioPlayer.playingAssetId == assetId {
+            if audioPlayer.isPaused {
+                audioPlayer.resume()
+            } else {
+                audioPlayer.pause()
+            }
+            return
+        }
+        Task {
+            await play()
+        }
+    }
+
+    private func play() async {
+        lastError = ""
+        guard !assetId.isEmpty else { return }
+        if AudioPreviewStore.fileURL(for: assetId) == nil {
+            fetching = true
+            defer { fetching = false }
+            guard let data = await AppModel.shared.intentClient.fetchAssetData(
+                assetId: assetId,
+                intentId: intentId,
+                intentURL: AppModel.shared.intentServerURL,
+                representation: "original"
+            ), !data.isEmpty else {
+                lastError = "无法从 Brain 拉取录音。"
+                return
+            }
+            AudioPreviewStore.save(assetId: assetId, data: data)
+        }
+        if !audioPlayer.play(assetId: assetId) {
+            lastError = audioPlayer.lastError.isEmpty ? "无法播放录音。" : audioPlayer.lastError
+        }
+    }
+
+    private static func timecode(_ interval: TimeInterval) -> String {
+        let total = Int(interval.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 }
 

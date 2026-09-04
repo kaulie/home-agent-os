@@ -1469,6 +1469,58 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertEqual(pres["from"], "answer_text")
         self.assertEqual(pres["text"], "一共登记了 76 张照片。")
 
+    def test_assemble_presentation_audio_asset_is_audio_not_image(self) -> None:
+        """id=617: 「看一下最新的文件」选中一条录音，绝不能按 image 投屏。
+
+        asset.inventory 返回最新的 audio asset 时，呈现必须降为 audio 播放，
+        而不是把 audio bytes 当图片发给 image-only 的 iphone.display。
+        """
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        self._heartbeat("living-room-iphone-1")
+        intent = {
+            "text": "看一下最新的文件",
+            "source": "voice",
+            "edge_id": "living-room-iphone-1",
+            "execution_plan": [{"step": 1, "capability": "asset.inventory"}],
+            "presentation": {"type": "image", "from": "asset_ref"},
+            "ctx_param": {
+                "answer_text": "一共登记了 101 个资源。",
+                "asset_ref": {
+                    "asset_id": "asset_7745313f74241faed0649382",
+                    "type": "audio",
+                    "mime_type": "audio/mp4",
+                },
+            },
+        }
+        pres = hb.assemble_presentation(intent)
+        self.assertEqual(pres["type"], "audio")
+        self.assertEqual(pres["from"], "asset_ref")
+        self.assertEqual(pres["asset_ref"]["type"], "audio")
+
+    def test_assemble_presentation_image_asset_stays_image(self) -> None:
+        """回归：id=590「看一下最新的照片」仍是 image presentation，不被误判。"""
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        self._heartbeat("living-room-iphone-1")
+        intent = {
+            "text": "看一下最新的照片",
+            "source": "voice",
+            "edge_id": "living-room-iphone-1",
+            "execution_plan": [{"step": 1, "capability": "asset.inventory"}],
+            "presentation": {"type": "image", "from": "asset_ref"},
+            "ctx_param": {
+                "answer_text": "这是按登记顺序的第 1 张照片。",
+                "asset_ref": {
+                    "asset_id": "asset_27831fac7836c08db4c542cc",
+                    "type": "image",
+                    "mime_type": "image/png",
+                },
+            },
+        }
+        pres = hb.assemble_presentation(intent)
+        self.assertEqual(pres["type"], "image")
+        self.assertEqual(pres["from"], "asset_ref")
+        self.assertEqual(pres["asset_ref"]["type"], "image")
+
     def test_presentation_kind_infers_math_calculate(self) -> None:
         kind, field = hb._presentation_kind_from_plan(
             {"execution_plan": [{"step": 1, "capability": "math.calculate"}]}
