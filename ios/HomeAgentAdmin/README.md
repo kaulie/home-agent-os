@@ -34,7 +34,7 @@ open ios/HomeAgentAdmin/HomeAgentAdmin.xcodeproj
 
 ## API
 
-默认 Brain：局域网 `http://192.168.3.84:9527`。连接页可切到云 `http://115.190.153.53:9527` 或自填地址。
+默认 Brain：局域网身份 `http://brain.local:9527`（连接页自动发现 IPv4）。连接页可切到云 `http://115.190.153.53:9527` 或自填地址。
 
 - `GET /api/v1/admin/nodes`
 - `POST /api/v1/admin/policy` `{participant_id, target_kind, target_id, enabled}`

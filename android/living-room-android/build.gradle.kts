@@ -15,17 +15,17 @@ android {
         versionCode = 6
         versionName = "0.6.0-console"
         buildConfigField("String", "DEFAULT_EDGE_CLIENT_HINT", "\"living-room-android\"")
-        buildConfigField("String", "DEFAULT_BRAIN_BASE_URL", "\"http://192.168.3.84:9527\"")
+        buildConfigField("String", "DEFAULT_BRAIN_BASE_URL", "\"http://brain.local:9527\"")
         buildConfigField("String", "DEFAULT_CLOUD_BRAIN_BASE_URL", "\"http://115.190.153.53:9527\"")
         buildConfigField(
             "String",
             "DEFAULT_COMMANDS_PULL_URL",
-            "\"http://192.168.3.84:9527/api/v1/devices/living-room/intents\"",
+            "\"http://brain.local:9527/api/v1/devices/living-room/intents\"",
         )
         buildConfigField(
             "String",
             "DEFAULT_INTENT_URL",
-            "\"http://192.168.3.84:9527/api/v1/intent\"",
+            "\"http://brain.local:9527/api/v1/intent\"",
         )
         buildConfigField("long", "HEARTBEAT_INTERVAL_MS", "30000L")
     }

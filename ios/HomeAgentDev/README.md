@@ -32,7 +32,7 @@ open ios/HomeAgentDev/HomeAgentDev.xcodeproj
 
 `HomeAgentDevUITests` target；用例在 `HomeAgentDevUITests/`。稳定选择器见 `HomeAgentDev/DevAccessibilityID.swift`（由 `@ui` 维护）。
 
-**前提：** 模拟器/真机能访问 Dev Brain（默认 LAN `192.168.3.84:9527` 或云端）；本机 Brain / `home_brain.py` 已起。
+**前提：** 模拟器/真机能访问 Dev Brain（LAN 走 mDNS `brain.local` 或云端）；本机 Brain / `home_brain.py` 已起。
 
 ```bash
 cd ios/HomeAgentDev
@@ -57,7 +57,7 @@ xcodebuild test -scheme HomeAgentDev \
 | 连接方式 | 说明 |
 |----------|------|
 | 按网络自动 | 推荐 |
-| 锁定局域网 | 始终 `192.168.3.84:9527`（可改） |
+| 锁定局域网 | 始终走已发现的 LAN Brain IPv4（身份 `brain.local`） |
 | 锁定云端 | 始终 `115.190.153.53:9527`（可改） |
 
 - `GET /api/v1/admin/debug/issues`

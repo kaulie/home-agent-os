@@ -602,6 +602,7 @@ final class AppModel: ObservableObject {
 
         var brain: MdnsDiscovery.Endpoint?
         var gateway: MdnsDiscovery.Endpoint?
+        var imgServer: MdnsDiscovery.Endpoint?
 
         await withTaskGroup(of: (Int, MdnsDiscovery.Endpoint?).self) { group in
             group.addTask {
@@ -612,8 +613,13 @@ final class AppModel: ObservableObject {
                     (1, await MdnsDiscovery.resolveGatewayForAutoDiscover(mdnsTimeout: timeout))
                 }
             }
+            group.addTask {
+                (2, await MdnsDiscovery.resolve(MdnsDiscovery.imgServerType, timeout: min(timeout, 3)))
+            }
             for await (kind, ep) in group {
-                if kind == 0 { brain = ep } else { gateway = ep }
+                if kind == 0 { brain = ep }
+                else if kind == 1 { gateway = ep }
+                else { imgServer = ep }
             }
         }
 
@@ -631,8 +637,11 @@ final class AppModel: ObservableObject {
             outcome.gatewayMdns = gateway.mdnsBaseURL
             macIngestURL = gateway.baseURL
         }
+        if let imgServer, MdnsDiscovery.isUsableLanIPv4(imgServer.host) {
+            PhotoUploadDest.applyDiscovered(host: imgServer.host, port: imgServer.port)
+        }
         DiscoveryDebugLog.shared.log(
-            "refreshMdnsEndpoints outcome brain=\(outcome.brainFound ? outcome.brainURL : "—") gateway=\(outcome.gatewayFound ? outcome.gatewayURL : "—")",
+            "refreshMdnsEndpoints outcome brain=\(outcome.brainFound ? outcome.brainURL : "—") gateway=\(outcome.gatewayFound ? outcome.gatewayURL : "—") img=\(PhotoUploadDest.lanPublic.isEmpty ? "—" : PhotoUploadDest.lanPublic)",
             category: "connect"
         )
         return outcome

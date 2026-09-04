@@ -80,7 +80,7 @@ enum DevBrainEndpoint {
         set { UserDefaults.standard.set(normalizeBase(newValue), forKey: cloudKey) }
     }
 
-    /// Last octet host that successfully answered Brain ping (e.g. "84" or full "192.168.3.84").
+    /// Last IPv4 that successfully answered Brain ping (set by discovery, never a baked-in house IP).
     static var lastSuccessfulLanHost: String? {
         get {
             let raw = UserDefaults.standard.string(forKey: lastLanHostKey)?

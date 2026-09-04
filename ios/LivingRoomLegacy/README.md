@@ -12,7 +12,7 @@
 启动 → register + heartbeat → POST /api/v1/intent → 轮询 intent_detail
 ```
 
-- 默认连 **家里 WiFi** Brain（`192.168.3.84:9527`）；连不上会自动试 **外面**（云 `115.190.153.53:9527`）
+- 默认连 **家里 WiFi** Brain（身份 `brain.local`，自动发现 IPv4）；连不上会自动试 **外面**（云 `115.190.153.53:9527`）
 - 「家长」页用 **家里 / 外面** 切换 Brain，无需手填 URL
 
 ### 直播（P1，仅视频）
@@ -24,7 +24,7 @@
   → Stop → POST .../stop
 ```
 
-- **家长 → 更多** 填 **Mac ingest URL**（默认 `http://192.168.3.84:8790`），**不是** Brain `:9527`
+- **家长 → 更多** 填 **Mac ingest URL**（默认身份 `http://gateway.local:8790`，发现后用 IPv4），**不是** Brain `:9527`
 - P1 **无音频**；P2 预留 `includeAudio=false` 接口
 - 验收：`bytes_received` 增长 + `ffprobe` 见 `h264`（无 audio 也通过）
 

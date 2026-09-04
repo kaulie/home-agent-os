@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 from mac_edge.config import (
+    colocated_lan_brain_url,
     parse_brain_url_env,
     primary_brain_url,
     _resolve_brain_urls,
@@ -64,6 +65,26 @@ class ParseBrainUrlTests(unittest.TestCase):
             ("http://127.0.0.1:9527", "http://115.190.153.53:9527"),
         )
         self.assertEqual(by_domain, {})
+
+
+class ColocatedLanBrainTests(unittest.TestCase):
+    def test_brain_local_becomes_loopback(self) -> None:
+        self.assertEqual(
+            colocated_lan_brain_url("http://brain.local:9527"),
+            "http://127.0.0.1:9527",
+        )
+
+    def test_keeps_explicit_ipv4(self) -> None:
+        self.assertEqual(
+            colocated_lan_brain_url("http://192.168.1.20:9527"),
+            "http://192.168.1.20:9527",
+        )
+
+    def test_keeps_loopback(self) -> None:
+        self.assertEqual(
+            colocated_lan_brain_url("http://127.0.0.1:9527"),
+            "http://127.0.0.1:9527",
+        )
 
 
 if __name__ == "__main__":

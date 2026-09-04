@@ -1,11 +1,40 @@
 import Foundation
 
 /// Shared photo dest endpoints. img-server is infrastructure, not a capability.
+/// LAN identity is `img-server.local`; HTTP uses a discovered IPv4 only.
 enum PhotoUploadDest {
-    static let lanUpload = "http://192.168.3.84:8080/api/v1/photos/upload"
-    static let lanPublic = "http://192.168.3.84:8080"
+    static let lanIdentityPublic = "http://img-server.local:8080"
     static let cloudUpload = "http://115.190.153.53:9527/api/v1/photos/upload"
     static let cloudPublic = "http://115.190.153.53:8080"
+
+    private static let resolvedKey = "livingroom.img.lanResolvedBase"
+
+    /// Discovered IPv4 img-server base (`http://x.x.x.x:8080`). Empty until mDNS.
+    static var lanPublic: String {
+        get {
+            let saved = UserDefaults.standard.string(forKey: resolvedKey)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if let ip = ipv4PublicBase(from: saved) { return ip }
+            return ""
+        }
+        set {
+            if let ip = ipv4PublicBase(from: newValue) {
+                UserDefaults.standard.set(ip, forKey: resolvedKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: resolvedKey)
+            }
+        }
+    }
+
+    static var lanUpload: String {
+        let base = lanPublic
+        return base.isEmpty ? "" : base + "/api/v1/photos/upload"
+    }
+
+    static func applyDiscovered(host: String, port: Int) {
+        guard MdnsDiscovery.isUsableLanIPv4(host), port > 0 else { return }
+        lanPublic = "http://\(host):\(port)"
+    }
 
     static func parse(_ params: [String: Any]) -> String {
         let raw = (
@@ -20,7 +49,9 @@ enum PhotoUploadDest {
         if raw == "gdrive" || raw == "google_drive" || raw == "googledrive" {
             return "gdrive"
         }
-        if raw == "dropbox" { return "dropbox" }
+        if raw == "dropbox" {
+            return "dropbox"
+        }
         return "img_server"
     }
 
@@ -40,8 +71,7 @@ enum PhotoUploadDest {
         return "img_server"
     }
 
-    /// Img-server endpoints for a dest. `dest=img_server` follows the **primary Brain**:
-    /// cloud primary → cloud img-server, never LAN `192.168.3.84:8080`.
+    /// Img-server endpoints for a dest. LAN uses discovered IPv4, never `.local`.
     static func endpoints(
         _ dest: String,
         primaryIntentURL: String? = nil
@@ -59,7 +89,23 @@ enum PhotoUploadDest {
         if useCloud {
             return (cloudUpload, cloudPublic, "http://115.190.153.53:9527/")
         }
-        return (lanUpload, lanPublic, "http://192.168.3.84:8080/health")
+        let publicBase = lanPublic
+        guard !publicBase.isEmpty else {
+            throw destError("尚未发现局域网 img-server（img-server.local）。先自动发现再上传。")
+        }
+        return (publicBase + "/api/v1/photos/upload", publicBase, publicBase + "/health")
+    }
+
+    private static func ipv4PublicBase(from raw: String) -> String? {
+        let trimmed = BrainEndpoint.normalizeBase(raw)
+        guard let host = BrainEndpoint.ipv4Host(from: trimmed) else { return nil }
+        let port: Int
+        if let url = URL(string: trimmed), let urlPort = url.port {
+            port = urlPort
+        } else {
+            port = 8080
+        }
+        return "http://\(host):\(port)"
     }
 
     private static func hostsMatch(_ a: String, _ b: String) -> Bool {

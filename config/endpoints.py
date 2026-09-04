@@ -1,6 +1,10 @@
 """Load home LAN / cloud endpoint defaults from config/endpoints.json.
 
-Source of truth for Brain + Mac service addresses. Runtime overrides:
+LAN identity is well-known mDNS hostnames (brain.local / gateway.local /
+img-server.local), never a fixed RFC1918 address. IP is runtime state from
+discovery. Cloud and loopback stay as-is.
+
+Runtime overrides:
   - Mac: MAC_EDGE_BRAIN_URL / MAC_VOICE_BRAIN_URL / .env
   - Mobile: UserDefaults / SharedPreferences (after first save)
 """
@@ -21,7 +25,6 @@ def repo_root() -> Path:
     for parent in Path(__file__).resolve().parents:
         if (parent / "config" / "endpoints.json").is_file():
             return parent
-    # Fallback: config/ is next to expected layout
     return here.parent
 
 
@@ -40,7 +43,7 @@ def load_endpoints() -> dict[str, Any]:
 
 def brain_lan_base() -> str:
     brain = load_endpoints().get("brain") or {}
-    return str(brain.get("lan") or "").strip().rstrip("/")
+    return str(brain.get("lan") or "http://brain.local:9527").strip().rstrip("/")
 
 
 def brain_cloud_base() -> str:
@@ -49,7 +52,7 @@ def brain_cloud_base() -> str:
 
 
 def brain_url_json() -> str:
-    """MAC_EDGE_BRAIN_URL-compatible JSON object."""
+    """MAC_EDGE_BRAIN_URL-compatible JSON object (LAN identity, not loopback)."""
     return json.dumps(
         {"lan": brain_lan_base(), "cloud": brain_cloud_base()},
         ensure_ascii=False,
@@ -58,12 +61,17 @@ def brain_url_json() -> str:
 
 def mac_lan_host() -> str:
     mac = load_endpoints().get("mac") or {}
-    return str(mac.get("lan_host") or "").strip()
+    return str(mac.get("lan_host") or "gateway.local").strip()
+
+
+def mac_img_host() -> str:
+    mac = load_endpoints().get("mac") or {}
+    return str(mac.get("img_host") or "img-server.local").strip()
 
 
 def mac_service_url(port_key: str) -> str:
     mac = load_endpoints().get("mac") or {}
-    host = mac_lan_host()
+    host = mac_img_host() if port_key == "img_server_port" else mac_lan_host()
     port = int(mac.get(port_key) or 0)
     if not host or port <= 0:
         return ""

@@ -33,7 +33,7 @@ GET http://127.0.0.1:9095/endpoint/display?url={urlencoded_photo_url}
 - `POST {BRAIN}/api/v1/edge-heartbeat`
 - `GET  {BRAIN}/api/v1/devices/living-room/intents?edge_id=…&peek=1`
 
-默认 Brain：本机 `http://127.0.0.1:9527`（home-server 用局域网 `http://192.168.3.84:9527`，见 [`config/endpoints.json`](../config/endpoints.json)），空闲轮询默认 **3s**（`MAC_EDGE_INTERVAL_SEC`）。  
+默认 Brain：本机 `http://127.0.0.1:9527`（与 Brain 同机；见 [`config/endpoints.json`](../config/endpoints.json) 的 `brain.local` 身份），空闲轮询默认 **3s**（`MAC_EDGE_INTERVAL_SEC`）。  
 有 pending `execution_timing` 时改为 **deadline sleep**：`min(10s, 剩余时间/2)`，临近到点会越睡越短；`notify.speak` 在独立 worker 线程执行，不堵主循环。  
 `edge_id` 持久化在 `data/edge_id.json`（已 gitignore）。
 
@@ -74,7 +74,7 @@ Mac 广告 `local.clock` / `clock.now`。读本机时刻（可选 IANA `timezone
 3. gpControl 快门 → 下载最新静图到 `data/gopro/`  
 4. 切回家里 Wi‑Fi → `POST` 上传 → 返回 `photo_url` / `saved_as`
 
-可选入参 `upload_dest`：默认 **lan**（本机 img-server `http://192.168.3.84:8080`，Mac 上传走 `127.0.0.1:8080`）。投屏/电视必须 `lan`，禁止 `cloud`。仅用户明确要求公网时才填 `cloud`。未传时读 `MAC_EDGE_PHOTO_UPLOAD_DEST`。已有 Asset 再传到图床/云端用 `asset.upload`（`dest=img_server|cloud`）。
+可选入参 `upload_dest`：默认 **lan**（本机 img-server `img-server.local`，Mac 上传走 `127.0.0.1:8080`）。投屏/电视必须 `lan`，禁止 `cloud`。仅用户明确要求公网时才填 `cloud`。未传时读 `MAC_EDGE_PHOTO_UPLOAD_DEST`。已有 Asset 再传到图床/云端用 `asset.upload`（`dest=img_server|cloud`）。
 
 必填：`MAC_EDGE_GOPRO_SSID`、`MAC_EDGE_GOPRO_PASSWORD`。失败时尽量恢复家里网。
 

@@ -28,9 +28,9 @@ enum AssetTransportError: LocalizedError {
 
 /// Owns business-server HTTP details for digital assets (SDK-internal).
 enum AssetHTTPTransport {
-    /// LAN img-server base, refreshable via mDNS (`_ha-img-server._tcp`) so the
-    /// SDK does not depend on a fixed LAN IP. Fallback keeps the old default.
-    private static var lanBase = "http://192.168.3.73:8080"
+    /// LAN img-server base from mDNS (`_ha-img-server._tcp`). Empty until resolved;
+    /// never a hardcoded RFC1918 address.
+    private static var lanBase = ""
 
     static var uploadURL: String { lanBase + "/api/v1/photos/upload" }
     static var downloadLatestURL: String { lanBase + "/api/v1/photos/download_latest" }
@@ -63,6 +63,9 @@ enum AssetHTTPTransport {
     }
 
     static func uploadPhoto(data: Data, filename: String) async throws -> UploadResult {
+        if lanBase.isEmpty {
+            await refreshLanBaseFromMdns()
+        }
         let trimmed = uploadURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed), !trimmed.isEmpty else {
             throw AssetTransportError.invalidURL(trimmed)
@@ -117,6 +120,9 @@ enum AssetHTTPTransport {
     }
 
     static func downloadLatestPhoto() async throws -> DownloadResult {
+        if lanBase.isEmpty {
+            await refreshLanBaseFromMdns()
+        }
         let trimmed = downloadLatestURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard var components = URLComponents(string: trimmed), components.url != nil, !trimmed.isEmpty else {
             throw AssetTransportError.invalidURL(trimmed)

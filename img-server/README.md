@@ -28,4 +28,4 @@ curl -OJ http://<lan-ip>:8080/<saved_as>
 | `PHOTO_UPLOAD_DIR` | `img-server/img` | 落盘目录 |
 | `PHOTO_PUBLIC_BASE` | `http://<lan-ip>:8080` | 写入 JSON `url`、给电视/手机拉图。Mac 上传可用 `127.0.0.1`，对外必须是 LAN IP |
 
-旧 home-server `192.168.3.65:8080` 不再是默认；需要时把 Edge 的 `MAC_EDGE_LAN_PHOTO_*` 指回去。
+旧独立 home-server 图床不再是默认；本机 `img-server.local` + 自动探测 LAN IP。

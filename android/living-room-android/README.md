@@ -40,7 +40,7 @@ adb install -r living-room-android/build/outputs/apk/debug/living-room-android-d
     GET  /api/v1/intent_detail?intent_id=   （每 5s，直到 succeeded / failed）
 ```
 
-- Brain 两个地址槽：LAN 默认 `http://192.168.3.84:9527`，Cloud 默认 `http://115.190.153.53:9527`。节点页和设置里用 **按网络自动 / 锁定局域网 / 锁定云端**；点「更改连接方式」预览后再确认，不会一碰就改。对话顶栏显示当前环境。自动时家庭局域网且 `/api/v1/ping` 通 LAN 则走 LAN，否则走 Cloud。路径变化或回到前台才重新探测；发出意图前再确认一次。
+- Brain 两个地址槽：LAN 身份 `http://brain.local:9527`（HTTP 用发现到的 IPv4），Cloud 默认 `http://115.190.153.53:9527`。节点页和设置里用 **按网络自动 / 锁定局域网 / 锁定云端**；点「更改连接方式」预览后再确认，不会一碰就改。对话顶栏显示当前环境。自动时家庭局域网且 `/api/v1/ping` 通 LAN 则走 LAN，否则走 Cloud。路径变化或回到前台才重新探测；发出意图前再确认一次。
 - `client_hint` 本机稳定（`living-room-android-…`）；`participant_id` 来自登记回执。
 - 主界面底栏「互动 · 系统 · 能力 · 实体 · 节点」；互动顶部分段「对话 | 扫描 | 拍照 | 文件 | 录音」。
 - **Android Camera Runtime**：启动即进拍照页，申请相机权限，屏幕常亮。心跳广告 `android.camera` → `camera.capture`。**相机 / 麦克风默认关闭**，须点取景区中央大按钮分别开启后，远程 `camera.capture` 或语音发意图才可用。开启相机且保持本页前台时，CameraX 直接出 JPEG，写入 inbox `capture_ref`，再走 `asset.upload`（或复合 `camera.capture_and_upload`）。**不打开系统相机 App，不模拟点击快门。**

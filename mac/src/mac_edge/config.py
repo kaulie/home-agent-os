@@ -23,6 +23,31 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def colocated_lan_brain_url(url: str) -> str:
+    """Same-machine LAN Brain: HTTP uses loopback, never a `.local` hostname."""
+    text = (url or "").strip().rstrip("/")
+    if not text:
+        return text
+    host = ""
+    if "://" in text:
+        rest = text.split("://", 1)[1]
+        host = rest.split("/", 1)[0].split(":", 1)[0]
+    else:
+        host = text.split("/", 1)[0].split(":", 1)[0]
+    if host.lower() in ("brain.local", "localhost"):
+        port = 9527
+        if "://" in text:
+            after_host = text.split("://", 1)[1]
+            hostport = after_host.split("/", 1)[0]
+            if ":" in hostport:
+                try:
+                    port = int(hostport.rsplit(":", 1)[-1])
+                except ValueError:
+                    port = 9527
+        return f"http://127.0.0.1:{port}"
+    return text
+
+
 def _endpoints_brain_defaults() -> tuple[str, dict[str, str]]:
     """LAN/cloud Brain bases from config/endpoints.json (repo-wide defaults)."""
     try:
@@ -33,7 +58,7 @@ def _endpoints_brain_defaults() -> tuple[str, dict[str, str]]:
             sys.path.insert(0, str(root))
         from config.endpoints import brain_cloud_base, brain_lan_base
 
-        lan = brain_lan_base()
+        lan = colocated_lan_brain_url(brain_lan_base())
         cloud = brain_cloud_base()
     except Exception:
         return _DEFAULT_BRAIN_URL, {}
