@@ -1,17 +1,22 @@
-"""米家喷墨一体机：经本机 CUPS（lp/lpstat）打印 document Asset。
+"""米家喷墨一体机：经本机 CUPS 打印 document Asset（lp，失败时 IPP 直连兜底）。
 
 不切 SoftAP、不连打印机热点、不走米家云。仅使用家宽 Wi-Fi 上已配置的队列。
+当 /usr/bin/lp 客户端异常（CUPS 服务器/GUI 打印仍正常）时，自动改用 ipptool
+向本机 CUPS 服务器（ipp://127.0.0.1:631/printers/<队列>）提交 Print-Job。
 """
 
 from __future__ import annotations
 
+import getpass
 import logging
 import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import quote
 
 log = logging.getLogger("mac_edge.xiaomi_aio_printer")
 
@@ -19,6 +24,17 @@ DEFAULT_QUEUE_SUBSTRING = "Mi_All_in_One_Inkjet"
 DEFAULT_TIMEOUT_SEC = 60.0
 
 _RunFn = Callable[..., subprocess.CompletedProcess[str]]
+
+_MIME_BY_SUFFIX = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
+    ".txt": "text/plain",
+}
 
 
 class XiaomiPrinterError(Exception):
@@ -28,6 +44,31 @@ class XiaomiPrinterError(Exception):
 def cups_available() -> bool:
     """True when both lp and lpstat are on PATH."""
     return bool(shutil.which("lp") and shutil.which("lpstat"))
+
+
+def _ipptool_bin() -> str:
+    """System ipptool (direct IPP submit — works even when the lp CLI is broken)."""
+    found = shutil.which("ipptool")
+    if found:
+        return found
+    if Path("/usr/bin/ipptool").is_file():
+        return "/usr/bin/ipptool"
+    return ""
+
+
+def _queue_name_prefix(line: str) -> str:
+    """First ASCII CUPS destination-name token of an `lpstat -a` line.
+
+    CUPS queue names use ASCII ([A-Za-z0-9_.@%+:-]); localized locale prints the
+    status ("…正在接受请求…") right after the name with no separator, so stop at
+    the first non-ASCII character / whitespace to keep a clean queue name.
+    """
+    m = re.match(r"[A-Za-z0-9_][A-Za-z0-9_.@%+:\-]*", line or "")
+    return m.group(0) if m else ""
+
+
+def _mime_for_path(path: Path) -> str:
+    return _MIME_BY_SUFFIX.get((path.suffix or "").lower(), "application/octet-stream")
 
 
 def _run(
@@ -77,8 +118,9 @@ def list_cups_queues(*, run_fn: _RunFn | None = None) -> list[str]:
         line = line.strip()
         if not line:
             continue
-        # "QueueName accepting requests since ..."
-        name = line.split(None, 1)[0].strip()
+        # CUPS queue name may be followed directly by a localized status with no
+        # separator (zh: "Queue_正在接受请求…"); take only the clean ASCII name.
+        name = _queue_name_prefix(line)
         if name:
             names.append(name)
     return names
@@ -134,6 +176,88 @@ def parse_job_id(stdout: str, printer_name: str) -> str:
     raise XiaomiPrinterError(f"无法解析打印任务号：{text or '(空输出)'}")
 
 
+def _cups_queue_uri(printer_name: str) -> str:
+    """Local CUPS queue IPP URI (server/GUI printing path)."""
+    return "ipp://127.0.0.1:631/printers/" + quote(str(printer_name or ""), safe="")
+
+
+def _parse_ipp_job_id(stdout: str, printer_name: str) -> str:
+    """Parse `job-id (integer) = N` / `/jobs/N` from ipptool -tv output."""
+    text = (stdout or "").strip()
+    m = re.search(r"job-id\s*\(integer\)\s*=\s*(\d+)", text)
+    if m:
+        return f"{printer_name}-{int(m.group(1))}"
+    m2 = re.search(r"/jobs/(\d+)", text)
+    if m2:
+        return f"{printer_name}-{int(m2.group(1))}"
+    raise XiaomiPrinterError(f"无法从 IPP 响应解析任务号：{text[:300] or '(空输出)'}")
+
+
+def submit_print_ipp(
+    path: Path,
+    *,
+    printer_name: str,
+    copies: int = 1,
+    run_fn: _RunFn | None = None,
+    timeout_sec: float = DEFAULT_TIMEOUT_SEC,
+    mime_type: str | None = None,
+) -> str:
+    """Direct IPP Print-Job to the local CUPS server (bypasses the `lp` client).
+
+    macOS GUI/Preview printing reaches the printer through the local CUPS server,
+    so this path stays healthy even when `/usr/bin/lp` itself is broken
+    (e.g. returns `No such file or directory` for every job).
+    """
+    tool = _ipptool_bin()
+    if not tool:
+        raise XiaomiPrinterError("本机未找到 ipptool，无法走 IPP 直连提交")
+    uri = _cups_queue_uri(printer_name)
+    fmt = (mime_type or "").strip() or _mime_for_path(path)
+    user = getpass.getuser() or (os.environ.get("USER") or "")
+    job_name = (path.name or "print.pdf").replace("\\", "_").replace('"', "_")
+    doc = str(path.resolve())
+    req_lines = [
+        "{",
+        "  VERSION 2.0",
+        "  OPERATION Print-Job",
+        "  GROUP operation",
+        '  ATTR charset attributes-charset "utf-8"',
+        '  ATTR language attributes-natural-language "en"',
+        f'  ATTR uri printer-uri "{uri}"',
+        f'  ATTR name requesting-user-name "{user}"',
+        "  GROUP job",
+        f'  ATTR name job-name "{job_name}"',
+        f'  ATTR mimeMediaType document-format "{fmt}"',
+        f"  ATTR integer copies {int(copies)}",
+        f"  FILE {doc}",
+        "  STATUS successful-ok",
+        "}",
+        "",
+    ]
+    with tempfile.NamedTemporaryFile("w", suffix=".ipp", delete=False, encoding="utf-8") as fh:
+        fh.write("\n".join(req_lines))
+        req_path = fh.name
+    try:
+        argv = [tool, "-tv", uri, req_path]
+        log.info(
+            "printer.print ipptool %s copies=%s path=%s mime=%s",
+            printer_name,
+            copies,
+            path,
+            fmt,
+        )
+        proc = _run(argv, timeout_sec=timeout_sec, run_fn=run_fn)
+        if proc.returncode != 0:
+            err = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
+            raise XiaomiPrinterError(f"IPP 提交失败：{err}")
+        return _parse_ipp_job_id(proc.stdout or "", printer_name)
+    finally:
+        try:
+            Path(req_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def submit_print(
     path: Path,
     *,
@@ -141,22 +265,42 @@ def submit_print(
     copies: int = 1,
     run_fn: _RunFn | None = None,
     timeout_sec: float = DEFAULT_TIMEOUT_SEC,
+    mime_type: str | None = None,
 ) -> str:
-    """Run `lp -d <queue> [-n copies] <path>`; return job_id."""
-    lp_bin = shutil.which("lp")
-    if lp_bin is None and run_fn is None:
-        raise XiaomiPrinterError("本机未找到 lp 命令，无法打印")
-    lp = lp_bin or "lp"
-    argv = [lp, "-d", printer_name]
-    if copies != 1:
-        argv.extend(["-n", str(copies)])
-    argv.append(str(path))
-    log.info("printer.print lp %s copies=%s path=%s", printer_name, copies, path)
-    proc = _run(argv, timeout_sec=timeout_sec, run_fn=run_fn)
-    if proc.returncode != 0:
-        err = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
-        raise XiaomiPrinterError(f"提交打印失败：{err}")
-    return parse_job_id(proc.stdout or "", printer_name)
+    """Submit a print job; return job_id.
+
+    Tries `lp -d <queue> [-n copies] <path>` first; when the lp CLI is missing or
+    fails (macOS can leave /usr/bin/lp broken while the CUPS server / GUI printing
+    still works), falls back to a direct IPP Print-Job to the local CUPS server.
+    """
+    lp_bin = shutil.which("lp") if run_fn is None else "lp"
+    lp_err = ""
+    if lp_bin:
+        argv = [lp_bin, "-d", printer_name]
+        if copies != 1:
+            argv.extend(["-n", str(copies)])
+        argv.append(str(path))
+        log.info("printer.print lp %s copies=%s path=%s", printer_name, copies, path)
+        try:
+            proc = _run(argv, timeout_sec=timeout_sec, run_fn=run_fn)
+            if proc.returncode == 0:
+                return parse_job_id(proc.stdout or "", printer_name)
+            lp_err = (proc.stderr or proc.stdout or "").strip() or f"exit {proc.returncode}"
+        except XiaomiPrinterError as e:
+            lp_err = str(e)
+    else:
+        lp_err = "未找到 lp 命令"
+    try:
+        return submit_print_ipp(
+            path,
+            printer_name=printer_name,
+            copies=copies,
+            run_fn=run_fn,
+            timeout_sec=timeout_sec,
+            mime_type=mime_type,
+        )
+    except XiaomiPrinterError as e:
+        raise XiaomiPrinterError(f"提交打印失败：{lp_err}（IPP 兜底：{e}）") from e
 
 
 def print_from_params(
@@ -200,6 +344,7 @@ def print_from_params(
         copies=copies,
         run_fn=run_fn,
         timeout_sec=timeout_sec,
+        mime_type=str(getattr(ref, "mime_type", None) or "") or None,
     )
     status_text = f"已提交打印到 {printer_name}（任务 {job_id}，{copies} 份）"
     outputs = {

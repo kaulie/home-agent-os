@@ -14,6 +14,7 @@ from mac_edge.asset.types import AssetError, AssetRef
 from mac_edge.plugins.xiaomi_aio_printer import (
     XiaomiPrinterError,
     ensure_queue_accepting,
+    list_cups_queues,
     parse_job_id,
     print_from_params,
     resolve_printer_name,
@@ -79,6 +80,20 @@ class EnsureQueueTests(unittest.TestCase):
         msg = str(ctx.exception)
         self.assertIn("不可用", msg)
         self.assertNotIn("SoftAP", msg)
+
+    def test_list_cups_queues_strips_localized_status(self) -> None:
+        # zh locale prints "Queue_正在接受请求…" with no separator; names must stay clean.
+        def _run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            out = (
+                f"{QUEUE}正在接受请求，时间始于五  9/ 4 07:33:29 2026\n"
+                "HP_Some_Queue_正在接受请求，时间始于五  9/ 4 07:33:29 2026\n"
+            )
+            return subprocess.CompletedProcess(argv, 0, out, "")
+
+        queues = list_cups_queues(run_fn=_run)
+        self.assertIn(QUEUE, queues)
+        self.assertIn("HP_Some_Queue_", queues)
+        self.assertTrue(all("正在接受" not in q for q in queues))
 
 
 class PrintFromParamsTests(unittest.TestCase):
@@ -146,6 +161,63 @@ class PrintFromParamsTests(unittest.TestCase):
                 )
         self.assertIn("提交打印失败", str(ctx.exception))
         self.assertNotIn("SoftAP", str(ctx.exception))
+
+    def test_ipp_fallback_when_lp_broken(self) -> None:
+        # macOS can leave the `lp` CLI broken while the CUPS server / GUI printing
+        # still works; print_from_params must fall back to a direct IPP Print-Job.
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
+            fh.write(b"%PDF")
+            path = Path(fh.name)
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+
+        calls: list[list[str]] = []
+        doc_texts: list[str] = []
+
+        def _run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            calls.append(list(argv))
+            name = Path(argv[0]).name
+            if name == "lpstat":
+                return subprocess.CompletedProcess(
+                    argv, 0, f"{QUEUE} accepting requests since Sun Jan 1 00:00:00 2020\n", ""
+                )
+            if name == "lp":
+                return subprocess.CompletedProcess(argv, 1, "", "lp: broken")
+            if name == "ipptool":
+                req = Path(argv[-1])
+                if req.is_file():
+                    doc_texts.append(req.read_text(encoding="utf-8"))
+                return subprocess.CompletedProcess(
+                    argv,
+                    0,
+                    "status-code = successful-ok\n"
+                    "job-id (integer) = 77\n"
+                    "job-uri (uri) = ipp://localhost/jobs/77\n",
+                    "",
+                )
+            return subprocess.CompletedProcess(argv, 1, "", f"unexpected: {argv}")
+
+        asset = MagicMock()
+        asset.require_ref.return_value = AssetRef(
+            asset_id="a1", type="document", mime_type="application/pdf"
+        )
+        asset.materialize_file.return_value = path
+        with patch.dict(os.environ, {"MAC_EDGE_PRINTER_NAME": QUEUE}, clear=False):
+            msg, outputs = print_from_params(
+                {"asset_ref": {"asset_id": "a1", "type": "document"}},
+                asset=asset,
+                run_fn=_run,
+            )
+        self.assertIn("printer.print ok", msg)
+        self.assertEqual(outputs["job_id"], f"{QUEUE}-77")
+        self.assertEqual(outputs["printer_name"], QUEUE)
+        ipp = next(c for c in calls if Path(c[0]).name == "ipptool")
+        self.assertIn("-tv", ipp)
+        self.assertNotIn("-f", ipp)
+        self.assertIn(f"ipp://127.0.0.1:631/printers/{QUEUE}", ipp)
+        self.assertTrue(doc_texts)
+        req_text = doc_texts[0]
+        self.assertIn("OPERATION Print-Job", req_text)
+        self.assertIn(f"FILE {path.resolve()}", req_text)
 
 
 class AdvertisePrinterTests(unittest.TestCase):
