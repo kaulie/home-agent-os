@@ -330,7 +330,9 @@ struct IntentPresentation: Equatable {
         case .video:
             return videoURL != nil
         case .audio:
-            return videoURL != nil || !text.isEmpty
+            // Audio presentation can carry a playable asset (voice memo) instead
+            // of spoken text. Accept asset_id so the bubble offers playback.
+            return !assetId.isEmpty || videoURL != nil || !text.isEmpty
         case .text, .html:
             return !text.isEmpty
         }

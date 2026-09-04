@@ -373,6 +373,40 @@ final class IntentClient {
         return nil
     }
 
+    /// Raw asset bytes via Brain content endpoint (audio / video / document…).
+    /// Chat audio playback fetches the original so the console can play it locally.
+    func fetchAssetData(
+        assetId: String,
+        intentId: String,
+        intentURL: String? = nil,
+        representation: String = "original"
+    ) async -> Data? {
+        let aid = assetId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let iid = intentId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !aid.isEmpty, !iid.isEmpty else { return nil }
+        let base = (intentURL ?? lastServerURL).trimmingCharacters(in: .whitespacesAndNewlines)
+        let reps = representationCandidates(representation)
+        for attempt in 0 ..< 4 {
+            for rep in reps {
+                guard let content = Self.assetContentURL(
+                    fromIntentURL: base,
+                    assetId: aid,
+                    intentId: iid,
+                    representation: rep
+                ),
+                let bytes = await getOKData(content),
+                !bytes.isEmpty else {
+                    continue
+                }
+                return bytes
+            }
+            if attempt < 3 {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            }
+        }
+        return nil
+    }
+
     private func representationCandidates(_ preferred: String) -> [String] {
         let p = preferred.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if p.isEmpty || p == "preview" || p == "thumbnail" {

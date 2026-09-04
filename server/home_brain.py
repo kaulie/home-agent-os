@@ -1941,6 +1941,23 @@ def _as_asset_ref(raw):
     return out
 
 
+def _asset_media_family(ref) -> str:
+    """Best-effort media family of an AssetRef (image/audio/video/document/other)."""
+    if not isinstance(ref, dict):
+        return "other"
+    asset_type = str(ref.get("type") or "").strip().lower()
+    mime = str(ref.get("mime_type") or "").strip().lower()
+    if asset_type == "image" or mime.startswith("image/"):
+        return "image"
+    if asset_type == "audio" or mime.startswith("audio/"):
+        return "audio"
+    if asset_type == "video" or mime.startswith("video/"):
+        return "video"
+    if asset_type == "document" or mime.startswith(("application/", "text/")):
+        return "document"
+    return "other"
+
+
 def _enrich_asset_ref_from_catalog(ref):
     rec = brain_db.get_asset(ref["asset_id"])
     if not rec:
@@ -2053,6 +2070,13 @@ def assemble_presentation(intent):
     }
     ptype, src = _presentation_kind_from_plan(intent)
     ptype, src = _voice_symmetric_presentation_kind(intent, ptype, src or "")
+    # Audio assets must never be delivered as an image to an image-only endpoint.
+    # When the plan picked an audio asset (e.g. asset.inventory returned a just
+    # recorded voice memo — home-agent issue id=617), present it as audio so the
+    # runtime plays the recording instead of trying to render audio bytes as a photo.
+    if ptype == "image" and ref and _asset_media_family(ref) == "audio":
+        ptype = "audio"
+        src = src or "asset_ref"
     text_body = ""
     if src in ("time_text", "answer_text", "reply", "summary", "people", "state", "text") and fields.get(src):
         text_body = fields[src]
@@ -2069,7 +2093,17 @@ def assemble_presentation(intent):
     # If planner named a word field as `from`, that is the delivery product — do not
     # override with a capture artifact just because type was wrongly set to image.
     _word_from = src in _SPOKEN_PRESENTATION_FIELDS
-    if ptype == "image" and _word_from and text_body:
+    _audio_asset = (
+        ptype == "audio"
+        and not _word_from
+        and bool(ref)
+        and _asset_media_family(ref) == "audio"
+    )
+    if _audio_asset:
+        # Real audio file to hear: hand the asset_ref to the audio presentation so
+        # the console can play it, instead of speaking a summary or faking an image.
+        payload = {"asset_ref": ref}
+    elif ptype == "image" and _word_from and text_body:
         ptype, _ = _voice_symmetric_presentation_kind(intent, "text", src)
         payload = {"text": text_body}
     elif ptype == "image" and ref:
