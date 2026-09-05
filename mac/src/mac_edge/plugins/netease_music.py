@@ -37,6 +37,7 @@ from mac_edge.ncm_songs import (
     upsert_record,
 )
 from mac_edge.ncm_songs.store import data_dir as ncm_data_dir
+from mac_edge.plugins import ncm_play_record as play_rec
 
 log = logging.getLogger("mac_edge.netease_music")
 
@@ -639,6 +640,10 @@ def play_record(record: dict[str, Any]) -> str:
     if payload.get("success") is not True:
         msg = str(payload.get("message") or "").strip()
         raise NeteaseMusicError(msg or "网易云播放失败")
+    try:
+        play_rec.start_recording(record)
+    except Exception as e:  # noqa: BLE001 — recording must not fail play
+        log.warning("ncm play record start failed: %s", e)
     return str(payload.get("message") or "").strip() or f"已唤起云音乐播放歌曲 {original}"
 
 
@@ -927,6 +932,10 @@ def play_artist_queue(records: list[dict[str, Any]]) -> tuple[str, int]:
     )
     msg = play_playlist(encrypted_id=pl_enc, original_id=pl_oid)
     added = max(0, len(song_ids) - 1)
+    try:
+        play_rec.start_playlist_session(records)
+    except Exception as e:  # noqa: BLE001 — recording must not fail play
+        log.warning("ncm playlist record start failed: %s", e)
     log.info(
         "ncm artist playlist play id=%s songs=%s",
         pl_oid,
@@ -1378,8 +1387,20 @@ def run_from_params(
     if cap == "music.resume":
         return resume_from_params(params)
     msg = _control(cap)
-    if cap == "music.stop":
-        exit_music_mode(reason="music.stop")
+    try:
+        if cap == "music.stop":
+            play_rec.stop_recording(clear_playlist=True)
+            exit_music_mode(reason="music.stop")
+        elif cap == "music.pause":
+            play_rec.stop_recording(clear_playlist=True)
+        elif cap == "music.next":
+            play_rec.on_next()
+        elif cap == "music.previous":
+            play_rec.on_previous()
+    except Exception as e:  # noqa: BLE001 — recording must not fail transport
+        log.warning("ncm play record control hook failed cap=%s: %s", cap, e)
+        if cap == "music.stop":
+            exit_music_mode(reason="music.stop")
     return msg, {}
 
 

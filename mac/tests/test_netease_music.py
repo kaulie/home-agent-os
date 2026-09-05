@@ -137,7 +137,9 @@ class NeteaseMusicTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self._old_data_dir = os.environ.get("MAC_EDGE_DATA_DIR")
+        self._old_record = os.environ.get("MAC_EDGE_NCM_RECORD")
         os.environ["MAC_EDGE_DATA_DIR"] = self._tmp.name
+        os.environ["MAC_EDGE_NCM_RECORD"] = "0"
         ncm_store.reset(path=Path(self._tmp.name) / "ncm_songs.sqlite3")
 
     def tearDown(self) -> None:
@@ -146,6 +148,10 @@ class NeteaseMusicTests(unittest.TestCase):
             os.environ.pop("MAC_EDGE_DATA_DIR", None)
         else:
             os.environ["MAC_EDGE_DATA_DIR"] = self._old_data_dir
+        if self._old_record is None:
+            os.environ.pop("MAC_EDGE_NCM_RECORD", None)
+        else:
+            os.environ["MAC_EDGE_NCM_RECORD"] = self._old_record
         self._tmp.cleanup()
 
     def _with_issuer(self, params: dict) -> dict:

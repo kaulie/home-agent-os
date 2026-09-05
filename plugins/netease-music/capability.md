@@ -29,4 +29,5 @@ Planner 从自然语言拆出 `song`（歌名）和可选 `artist`（作者）�
 - **句首数量词**：`几首`/`几曲`/`一些`/`N首`（阿拉伯数字）不是歌手名的一部分。剥掉后再解析「xxx的歌」；`几首` 类默认连播 5 首，`N首` 按 N（1–20）截断。可选入参 `count` 覆盖上限。
 - **空参开播**：`song` 与 `artist` 皆空（如用户只说「播放音乐」）→ 先 `ncm-cli resume`；失败则 `recommend daily`（最多 20 首）走与歌手连播相同的云歌单 `play --playlist`。不依赖 `state`（云音乐模式下不可用）。
 - play 成功：单曲看 ncm-cli JSON `success: true`；`play --playlist` 在 orpheus 下可能只有 `[orpheus]` 行、无 JSON，仍视为成功。
+- **播放同步录音（默认开）**：`play --song` / 连播开播后用本机 `ffmpeg` 从 `none:BlackHole 2ch` 录到 `{MAC_EDGE_DATA_DIR}/ncm_recordings/`；按时长结束，`stop`/`pause`/`next`/`previous` 也会停。`MAC_EDGE_NCM_RECORD=0` 可关。
 - 控制：`pause` / `resume` / `stop` / `next` / `prev`；`stop` 后退出本机音乐联动。
