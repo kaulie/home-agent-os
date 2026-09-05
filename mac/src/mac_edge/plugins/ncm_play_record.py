@@ -24,7 +24,7 @@ log = logging.getLogger("mac_edge.ncm_play_record")
 
 DEFAULT_INPUT = "none:BlackHole 2ch"
 DEFAULT_DURATION_MS = 240_000
-GRACE_SEC = 2.0
+GRACE_SEC = 1.0
 BITRATE = "320k"
 STATE_FILE = "ncm_recording.json"
 RECORDINGS_DIRNAME = "ncm_recordings"
