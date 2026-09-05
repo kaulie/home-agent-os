@@ -65,7 +65,7 @@ _INVENTORY_INPUT = {
     "type": {
         "type": "string",
         "required": False,
-        "description": "asset 类型，如 image / video；问照片时填 image",
+        "description": "asset 类型：image / video / audio / document 等；问照片填 image，最新 PDF/文档填 document",
     },
     "day": {
         "type": "string",
@@ -105,12 +105,12 @@ _INVENTORY_INPUT = {
     "index": {
         "type": "number",
         "required": False,
-        "description": "1 起：按登记时间取第 N 张（默认 oldest_first）；看「第五张」填 5，并设 presentation type=image from=asset_ref",
+        "description": "1 起：按登记时间取第 N 条（默认 oldest_first）；看「第五张」填 5；最新一份配合 order=newest_first 填 1",
     },
     "order": {
         "type": "string",
         "required": False,
-        "description": "newest_first（默认列表）或 oldest_first（index 默认）",
+        "description": "newest_first（默认列表/取最新）或 oldest_first（index 默认）",
     },
     "include_refs": {
         "type": "string",

@@ -1024,11 +1024,24 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         'group': 'asset',
         'service_id': 'system.asset',
         'role': 'Asset 盘点查询器',
-        'planner_recognize': '查询 Brain 已登记 Asset 的数量或列表（按日/类型等）',
-        'typical_triggers': ['我今天拍了几张照片', '昨天拍了多少张照片', '最近有哪些图'],
-        'do_not_dispatch': ['拍照', '看图理解', '投屏', '手机系统相册'],
+        'planner_recognize': (
+            '查 Brain 已登记 Asset（image/video/audio/document 等）：数量、列表、第 N 条；'
+            '最新 PDF/文档用 type=document + order=newest_first + index=1，产出 asset_ref 可交给 printer.print'
+        ),
+        'typical_triggers': [
+            '我今天拍了几张照片',
+            '昨天拍了多少张照片',
+            '最近有哪些图',
+            '最新的PDF',
+            '把最新的文件打印出来',
+        ],
+        'do_not_dispatch': ['拍照', '看图理解', '投屏', '手机系统相册', '扫本机磁盘'],
         'input_schema': {
-            'type': {'type': 'string', 'required': False, 'description': 'asset 类型，如 image / video'},
+            'type': {
+                'type': 'string',
+                'required': False,
+                'description': 'asset 类型：image / video / audio / document 等；最新 PDF 填 document',
+            },
             'day': {'type': 'string', 'required': False, 'description': 'today / yesterday / YYYY-MM-DD；问昨天拍了几张填 yesterday'},
             'timezone': {'type': 'string', 'required': False, 'description': 'IANA 时区，默认 Asia/Shanghai'},
             'since': {'type': 'string', 'required': False, 'description': '起始时间 ISO 或 unix'},
@@ -1039,11 +1052,31 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
                 'description': '只统计该生产者产出的 Asset（可选过滤）',
             },
             'limit': {'type': 'number', 'required': False, 'description': '返回 asset_refs 上限，默认 50'},
+            'offset': {
+                'type': 'number',
+                'required': False,
+                'description': '跳过前 N 条（0 起）；与 index 二选一，优先 index',
+            },
+            'index': {
+                'type': 'number',
+                'required': False,
+                'description': '1 起取第 N 条；最新一份配合 order=newest_first 填 1',
+            },
+            'order': {
+                'type': 'string',
+                'required': False,
+                'description': 'newest_first（默认列表/取最新）或 oldest_first（index 默认）',
+            },
             'include_refs': {'type': 'string', 'required': False, 'description': 'true/false，是否产出 asset_refs'},
         },
         'output_schema': {
             'count': {'type': 'string', 'required': True, 'description': '匹配数量'},
             'answer_text': {'type': 'string', 'required': True, 'description': '中文盘点结果'},
+            'asset_ref': {
+                'type': 'string',
+                'required': False,
+                'description': '单条 AssetRef（index 或仅一条时）；打印可交给 printer.print',
+            },
             'asset_refs': {'type': 'string', 'required': False, 'description': 'AssetRef JSON 数组'},
         },
     },

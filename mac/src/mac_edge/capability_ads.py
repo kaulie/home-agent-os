@@ -305,7 +305,7 @@ ADS: dict[str, dict[str, Any]] = {
     "asset.inventory": _ad(
         kind="system",
         role="Asset 盘点查询器",
-        planner_recognize="查 Brain 已经登记过的照片/视频：今天拍了几张、昨天多少张、刚才那张、第几张。问数量用 day=today/yesterday；要看第 N 张用 index。不是去拍照，不是翻手机系统相册，不是看图理解",
+        planner_recognize="查 Brain 已登记 Asset（image/video/audio/document 等）：今天拍了几张、第几张照片、最新 PDF/文档。问数量用 day=today/yesterday；取第 N 条用 index；最新一份用 type=document（或目标类型）+ order=newest_first + index=1，产出 asset_ref 可交给 printer.print。不是去拍照，不是翻手机相册/本机文件系统，不是看图理解",
         typical_triggers=[
             "我今天拍了几张照片",
             "昨天拍了多少张照片",
@@ -313,8 +313,12 @@ ADS: dict[str, dict[str, Any]] = {
             "刚才的照片",
             "最后一张照片",
             "给我看第五张照片",
+            "最新的PDF",
+            "最新的文件",
+            "把最新的PDF打印出来",
+            "把最新的文件打印出来",
         ],
-        do_not_dispatch=["拍照", "看图理解", "投屏", "手机系统相册"],
+        do_not_dispatch=["拍照", "看图理解", "投屏", "手机系统相册", "扫本机磁盘"],
     ),
     "asset.upload": _ad(
         kind="action",
