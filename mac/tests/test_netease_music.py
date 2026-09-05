@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -46,7 +47,25 @@ PLAY_STDOUT = """[orpheus] orpheus://eyJjbWQiOiJwbGF5IiwidHlwZSI6InNvbmciLCJpZCI
 
 QUEUE_CLEAR_JSON = json.dumps({"success": True, "message": "cleared"})
 QUEUE_ADD_JSON = json.dumps({"success": True, "message": "added"})
-
+QUEUE_ADD_NOOP_JSON = json.dumps(
+    {"success": True, "message": "云音乐播放队列为空（或无法读取）"}
+)
+PLAYLIST_CREATE_JSON = json.dumps(
+    {
+        "code": 200,
+        "data": {
+            "originalId": 18355129161,
+            "id": "6F2F27DAB2DAF7F4DF9ACEFA18A5F212",
+        },
+    },
+    ensure_ascii=False,
+)
+PLAYLIST_TRACKS_EMPTY_JSON = json.dumps({"code": 200, "data": []}, ensure_ascii=False)
+PLAYLIST_ADD_OK_JSON = json.dumps({"code": 200, "data": ["x"]}, ensure_ascii=False)
+PLAYLIST_REMOVE_OK_JSON = json.dumps({"code": 200, "data": True}, ensure_ascii=False)
+PLAY_PLAYLIST_ORPHEUS = (
+    "[orpheus] orpheus://eyJjbWQiOiJwbGF5IiwidHlwZSI6InBsYXlsaXN0IiwiaWQiOiIxODM1NTEyOTE2MSJ9\n"
+)
 
 PLAY_ISSUER = "iphone-origin"
 
@@ -69,9 +88,27 @@ def _ncm_action(cmd: list[str]) -> str:
         return "recommend"
     if cmd[1] == "queue" and len(cmd) > 2:
         return cmd[2]
+    if cmd[1] == "playlist" and len(cmd) > 2:
+        return f"playlist_{cmd[2]}"
     if cmd[1] == "play":
         return "play"
     return cmd[1]
+
+
+def _playlist_play_response(cmd: list[str]) -> subprocess.CompletedProcess[str] | None:
+    """Handle playlist CRUD + play --playlist used by artist/daily continuous play."""
+    action = _ncm_action(cmd)
+    if action == "playlist_create":
+        return _completed(PLAYLIST_CREATE_JSON)
+    if action == "playlist_tracks":
+        return _completed(PLAYLIST_TRACKS_EMPTY_JSON)
+    if action == "playlist_remove":
+        return _completed(PLAYLIST_REMOVE_OK_JSON)
+    if action == "playlist_add":
+        return _completed(PLAYLIST_ADD_OK_JSON)
+    if action == "play" and "--playlist" in cmd:
+        return _completed(PLAY_PLAYLIST_ORPHEUS)
+    return None
 
 
 DAILY_JSON = json.dumps(
@@ -99,10 +136,16 @@ DAILY_JSON = json.dumps(
 class NeteaseMusicTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
+        self._old_data_dir = os.environ.get("MAC_EDGE_DATA_DIR")
+        os.environ["MAC_EDGE_DATA_DIR"] = self._tmp.name
         ncm_store.reset(path=Path(self._tmp.name) / "ncm_songs.sqlite3")
 
     def tearDown(self) -> None:
         ncm_store.reset()
+        if self._old_data_dir is None:
+            os.environ.pop("MAC_EDGE_DATA_DIR", None)
+        else:
+            os.environ["MAC_EDGE_DATA_DIR"] = self._old_data_dir
         self._tmp.cleanup()
 
     def _with_issuer(self, params: dict) -> dict:
@@ -181,12 +224,9 @@ class NeteaseMusicTests(unittest.TestCase):
                 )
             if action == "recommend":
                 return _completed(DAILY_JSON)
-            if action == "clear":
-                return _completed(QUEUE_CLEAR_JSON)
-            if action == "add":
-                return _completed(QUEUE_ADD_JSON)
-            if action == "play":
-                return _completed(PLAY_STDOUT)
+            pl = _playlist_play_response(cmd)
+            if pl is not None:
+                return pl
             self.fail(f"unexpected ncm-cli {cmd}")
 
         with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
@@ -195,14 +235,16 @@ class NeteaseMusicTests(unittest.TestCase):
                     msg, outputs = nm.play_from_params(
                         self._with_issuer({"user_input": "播放音乐"})
                     )
-        self.assertIn("66842", msg)  # PLAY_STDOUT message uses 66842 from play path
-        # play_record uses mocked PLAY_STDOUT; daily first song id differs but play stdout is fixed
+        self.assertIn("歌单", msg)
         self.assertEqual(outputs.get("bare_mode"), "daily")
         self.assertEqual(outputs.get("queue_count"), 2)
         self.assertEqual(outputs.get("queue_added"), 1)
         self.assertEqual(calls[0][1], "resume")
         self.assertEqual(calls[1][1:], ["recommend", "daily", "--limit", "20"])
-        self.assertIn("clear", [_ncm_action(c) for c in calls])
+        actions = [_ncm_action(c) for c in calls]
+        self.assertIn("playlist_create", actions)
+        self.assertIn("playlist_add", actions)
+        self.assertTrue(any("--playlist" in c for c in calls if c[1] == "play"))
         self.assertEqual(self._play_oids(), [4132379])
 
     def test_play_bare_fails_when_resume_and_daily_fail(self) -> None:
@@ -220,6 +262,23 @@ class NeteaseMusicTests(unittest.TestCase):
                 with self.assertRaises(nm.NeteaseMusicError) as ctx:
                     nm.play_from_params({})
         self.assertIn("无法开播", str(ctx.exception))
+
+    def test_queue_add_rejects_orpheus_noop(self) -> None:
+        def fake_run(cmd, **_kwargs):
+            if _ncm_action(cmd) == "add":
+                return _completed(QUEUE_ADD_NOOP_JSON)
+            self.fail(f"unexpected ncm-cli {cmd}")
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with self.assertRaises(nm.NeteaseMusicError) as ctx:
+                    nm.queue_add(
+                        {
+                            "id": "1B8FCF799FD5895F6F0586C7D19A0A3B",
+                            "originalId": 66842,
+                        }
+                    )
+        self.assertIn("无法读取", str(ctx.exception))
 
     def test_play_artist_only_artist_queue(self) -> None:
         records = [
@@ -249,11 +308,10 @@ class NeteaseMusicTests(unittest.TestCase):
             calls.append(list(cmd))
             if _ncm_action(cmd) == "search":
                 return _completed(payload)
-            if _ncm_action(cmd) == "clear":
-                return _completed(QUEUE_CLEAR_JSON)
-            if _ncm_action(cmd) == "add":
-                return _completed(QUEUE_ADD_JSON)
-            return _completed(PLAY_STDOUT)
+            pl = _playlist_play_response(cmd)
+            if pl is not None:
+                return pl
+            self.fail(f"unexpected ncm-cli {cmd}")
 
         with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
             with patch.object(nm.subprocess, "run", side_effect=fake_run):
@@ -264,13 +322,15 @@ class NeteaseMusicTests(unittest.TestCase):
         ]
         self.assertEqual(keywords, ["陈奕迅"])
         actions = [_ncm_action(c) for c in calls]
-        self.assertEqual(actions[:4], ["search", "clear", "play", "add"])
-        self.assertEqual(actions, ["search", "clear", "play", "add"])
+        self.assertEqual(actions[0], "search")
+        self.assertIn("playlist_create", actions)
+        self.assertIn("playlist_add", actions)
+        self.assertTrue(any("--playlist" in c for c in calls if c[1] == "play"))
+        self.assertNotIn("add", actions)  # desktop queue add unused
         self.assertEqual(outputs.get("queue_count"), 2)
         self.assertEqual(outputs.get("queue_added"), 1)
-        self.assertIn("66842", msg)
+        self.assertIn("歌单", msg)
         self.assertEqual(ncm_store.get_song(66842)["name"], "浮夸")
-
     def test_search_then_play_and_cache(self) -> None:
         calls: list[list[str]] = []
 
@@ -374,12 +434,9 @@ class NeteaseMusicTests(unittest.TestCase):
                 )
             if action == "recommend":
                 return _completed(DAILY_JSON)
-            if action == "clear":
-                return _completed(QUEUE_CLEAR_JSON)
-            if action == "add":
-                return _completed(QUEUE_ADD_JSON)
-            if action == "play":
-                return _completed(PLAY_STDOUT)
+            pl = _playlist_play_response(cmd)
+            if pl is not None:
+                return pl
             self.fail(f"unexpected ncm-cli {cmd}")
 
         with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
@@ -395,6 +452,7 @@ class NeteaseMusicTests(unittest.TestCase):
         self.assertEqual(outputs.get("queue_count"), 2)
         self.assertEqual(calls[0][1], "resume")
         self.assertEqual(calls[1][1:], ["recommend", "daily", "--limit", "20"])
+        self.assertTrue(any("--playlist" in c for c in calls if c[1] == "play"))
 
     def test_search_user_input_and_keyword_argv(self) -> None:
         calls: list[list[str]] = []
@@ -551,11 +609,10 @@ class NeteaseMusicTests(unittest.TestCase):
             calls.append(list(cmd))
             if _ncm_action(cmd) == "search":
                 return _completed(payload)
-            if _ncm_action(cmd) == "clear":
-                return _completed(QUEUE_CLEAR_JSON)
-            if _ncm_action(cmd) == "add":
-                return _completed(QUEUE_ADD_JSON)
-            return _completed(PLAY_STDOUT)
+            pl = _playlist_play_response(cmd)
+            if pl is not None:
+                return pl
+            self.fail(f"unexpected ncm-cli {cmd}")
 
         with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
             with patch.object(nm.subprocess, "run", side_effect=fake_run):
@@ -571,10 +628,12 @@ class NeteaseMusicTests(unittest.TestCase):
         self.assertEqual(outputs.get("queue_count"), 5)
         self.assertEqual(outputs.get("queue_added"), 4)
         search = next(c for c in calls if _ncm_action(c) == "search")
-        # keyword must be artist only (not 「几首周杰伦」)
+        # keyword must be artist only (not 「几首周杰伦」); no --userInput
         kw_idx = search.index("--keyword")
         self.assertEqual(search[kw_idx + 1], "周杰伦")
-        self.assertEqual(search[search.index("--limit") + 1], "5")
+        self.assertNotIn("--userInput", search)
+        self.assertEqual(search[search.index("--limit") + 1], "20")
+        self.assertTrue(any("--playlist" in c for c in calls if c[1] == "play"))
 
     def test_pick_search_record_by_artist_first_exact(self) -> None:
         records = [
@@ -613,12 +672,12 @@ class NeteaseMusicTests(unittest.TestCase):
                 kw = cmd[cmd.index("--keyword") + 1]
                 self.assertEqual(kw, "张三")
                 self.assertEqual(cmd[cmd.index("--limit") + 1], "20")
+                self.assertNotIn("--userInput", cmd)
                 return _completed(payload)
-            if action == "clear":
-                return _completed(QUEUE_CLEAR_JSON)
-            if action == "add":
-                return _completed(QUEUE_ADD_JSON)
-            return _completed(PLAY_STDOUT)
+            pl = _playlist_play_response(cmd)
+            if pl is not None:
+                return pl
+            self.fail(f"unexpected ncm-cli {cmd}")
 
         with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
             with patch.object(nm.subprocess, "run", side_effect=fake_run):
@@ -632,12 +691,12 @@ class NeteaseMusicTests(unittest.TestCase):
         self.assertEqual(len(search_calls), 1)
         actions = [_ncm_action(c) for c in calls]
         self.assertEqual(actions[0], "search")
-        self.assertEqual(actions[1], "clear")
-        self.assertEqual(actions[2], "play")
-        self.assertGreaterEqual(actions.count("add"), 1)
+        self.assertIn("playlist_create", actions)
+        self.assertIn("playlist_add", actions)
+        self.assertTrue(any("--playlist" in c for c in calls if c[1] == "play"))
         self.assertEqual(outputs.get("queue_count"), 9)
         self.assertEqual(outputs.get("queue_added"), 8)
-        self.assertIn("66842", msg)
+        self.assertIn("歌单", msg)
         self.assertEqual(ncm_store.get_song(200)["name"], "张三的歌谣0")
         self.assertEqual(self._play_oids(), [200])
 
@@ -660,6 +719,7 @@ class NeteaseMusicTests(unittest.TestCase):
         self.assertEqual(actions, ["search", "play"])
         self.assertNotIn("clear", actions)
         self.assertNotIn("add", actions)
+        self.assertFalse(any("--playlist" in c for c in calls))
 
     def test_play_xxx_de_ge_single_artist_match(self) -> None:
         artist_records = [
@@ -685,9 +745,9 @@ class NeteaseMusicTests(unittest.TestCase):
                 return _completed(artist_json)
             if action == "clear":
                 return _completed(QUEUE_CLEAR_JSON)
-            if action == "add":
-                return _completed(QUEUE_ADD_JSON)
-            return _completed(PLAY_STDOUT)
+            if action == "play" and "--song" in cmd:
+                return _completed(PLAY_STDOUT)
+            self.fail(f"unexpected ncm-cli {cmd}")
 
         with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
             with patch.object(nm.subprocess, "run", side_effect=fake_run):
@@ -699,6 +759,7 @@ class NeteaseMusicTests(unittest.TestCase):
         self.assertEqual(keywords, ["张三"])
         actions = [_ncm_action(c) for c in calls]
         self.assertEqual(actions, ["search", "clear", "play"])
+        self.assertFalse(any("--playlist" in c for c in calls))
         self.assertEqual(ncm_store.get_song(401)["name"], "艺人歌1")
         self.assertEqual(self._play_oids(), [401])
         self.assertIsNone(ncm_store.get_song(400)["played_at"])
@@ -827,12 +888,6 @@ class NeteaseMusicTests(unittest.TestCase):
         def fake_run(cmd, **_kwargs):
             calls.append(list(cmd))
             action = _ncm_action(cmd)
-            if action == "play":
-                return _completed(PLAY_STDOUT)
-            if action == "clear":
-                return _completed(QUEUE_CLEAR_JSON)
-            if action == "add":
-                return _completed(QUEUE_ADD_JSON)
             if action == "search":
                 kw = cmd[cmd.index("--keyword") + 1]
                 self.assertEqual(cmd[cmd.index("--limit") + 1], "20")
@@ -841,6 +896,9 @@ class NeteaseMusicTests(unittest.TestCase):
                 if kw == "刘德华":
                     return _completed(artist_json)
                 self.fail(f"unexpected keyword {kw}")
+            pl = _playlist_play_response(cmd)
+            if pl is not None:
+                return pl
             self.fail(f"unexpected ncm cmd {cmd}")
 
         with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
@@ -859,8 +917,9 @@ class NeteaseMusicTests(unittest.TestCase):
                         )
         search_calls = [c for c in calls if _ncm_action(c) == "search"]
         self.assertEqual(len(search_calls), 0)
-        self.assertTrue(any(_ncm_action(c) == "play" for c in calls))
-        self.assertTrue(any(_ncm_action(c) == "clear" for c in calls))
+        self.assertTrue(any("--playlist" in c for c in calls if c[1] == "play"))
+        self.assertIn("playlist_add", [_ncm_action(c) for c in calls])
+        self.assertEqual(outputs.get("queue_count"), 20)
         plays = ncm_store.list_recent_played()
         self.assertEqual(len(plays), 1)
         hit = int(plays[0]["song_original_id"])
