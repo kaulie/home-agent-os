@@ -3,10 +3,12 @@
 LLM extracts song/artist. This plugin only assembles ncm-cli argv and
 reads/writes ``mac_edge.ncm_songs``. Keyword is one argv value.
 
-「xxx的歌/歌曲」: exact title search first; if no same-name hit, search
-keyword=xxx and pick by ``artists`` (NetEase order).
+「xxx的歌/歌曲」or artist-only: build a reusable cloud playlist then
+``play --playlist`` (orpheus). Desktop ``queue add`` is a no-op under
+orpheus (success:true + 「队列为空或无法读取」).
 
-Empty song+artist (e.g. 「播放音乐」): try resume, else daily recommend queue.
+Empty song+artist (e.g. 「播放音乐」): try resume, else daily recommend
+via the same playlist path.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from mac_edge.ncm_songs import (
     record_play,
     upsert_record,
 )
+from mac_edge.ncm_songs.store import data_dir as ncm_data_dir
 
 log = logging.getLogger("mac_edge.netease_music")
 
@@ -51,12 +54,17 @@ CONTROL_TIMEOUT_SEC = 15.0
 
 NO_SONG_MSG = "目前只支持按歌曲播放，请说出歌名"
 BARE_PLAY_FAIL_MSG = "无法开播：没有可继续的播放，且每日推荐不可用"
+NOW_PLAYING_PLAYLIST_NAME = "home-agent-now-playing"
+NOW_PLAYING_META_FILE = "ncm_now_playing_playlist.json"
+# orpheus ``queue add`` returns success:true with this message and does nothing.
+_QUEUE_UNREADABLE_MARKERS = ("队列为空", "无法读取")
 
 # Longer first: 「的歌曲」 before 「的歌」. Not play-verb prefixes.
 _PLAYLIST_SUFFIXES = ("的歌曲", "的歌")
 _TRAILING_PUNCT = "。．.！!？?，,、；;：:…~～"
 # Leading quantity is not part of the artist/title (「几首周杰伦的歌」).
 _LEADING_QUANTITY = re.compile(r"^(?:几首|几曲|一些|(\d+)\s*首)\s*")
+_ORPHEUS_LINE = re.compile(r"\[orpheus\]\s*(orpheus://\S+)", re.IGNORECASE)
 
 _MUSIC_CAPS = frozenset(
     {
@@ -213,7 +221,24 @@ def _rate_limited(text: str) -> bool:
     return "请求总量超限" in (text or "")
 
 
-def _run_ncm(args: list[str], *, timeout_sec: float) -> dict[str, Any]:
+def _orpheus_uri(text: str) -> str | None:
+    matched = _ORPHEUS_LINE.search(str(text or ""))
+    if not matched:
+        return None
+    return matched.group(1).rstrip()
+
+
+def _queue_add_is_noop(payload: dict[str, Any]) -> bool:
+    msg = str(payload.get("message") or "")
+    return any(marker in msg for marker in _QUEUE_UNREADABLE_MARKERS)
+
+
+def _run_ncm(
+    args: list[str],
+    *,
+    timeout_sec: float,
+    allow_orpheus_only: bool = False,
+) -> dict[str, Any]:
     bin_path = ncm_cli_bin()
     if not bin_path:
         raise NeteaseMusicError("网易云不可用：本机找不到 ncm-cli")
@@ -237,12 +262,31 @@ def _run_ncm(args: list[str], *, timeout_sec: float) -> dict[str, Any]:
     try:
         payload = last_json_object(combined)
     except NeteaseMusicError:
+        uri = _orpheus_uri(combined) if allow_orpheus_only else None
+        if uri and proc.returncode == 0:
+            return {
+                "success": True,
+                "message": "已唤起云音乐",
+                "orpheus": uri,
+            }
         tail = combined.strip()[-400:] or "(empty)"
         raise NeteaseMusicError(f"ncm-cli 未返回 JSON：{tail}") from None
     if proc.returncode != 0 and payload.get("success") is not True:
         msg = str(payload.get("message") or "").strip()
         raise NeteaseMusicError(msg or f"ncm-cli 退出码 {proc.returncode}")
     return payload
+
+
+def _api_ok(payload: dict[str, Any]) -> bool:
+    if payload.get("success") is True:
+        return True
+    code = payload.get("code")
+    if code in (200, "200"):
+        return True
+    try:
+        return int(code) == 200
+    except (TypeError, ValueError):
+        return False
 
 
 def _str_param(params: dict[str, Any] | None, *keys: str) -> str:
@@ -605,25 +649,178 @@ def queue_clear() -> None:
         raise NeteaseMusicError(msg or "网易云清空队列失败")
 
 
-def queue_add(record: dict[str, Any]) -> None:
+def queue_add(record: dict[str, Any], *, next_: bool = False) -> None:
     encrypted = str(record.get("id") or "").strip()
     original = record.get("originalId")
     if not encrypted or original in (None, ""):
         raise NeteaseMusicError("队列追加缺少 encrypted-id / original-id")
-    payload = _run_ncm(
-        [
-            "queue",
-            "add",
-            "--encrypted-id",
-            encrypted,
-            "--original-id",
-            str(original),
-        ],
-        timeout_sec=CONTROL_TIMEOUT_SEC,
-    )
-    if payload.get("success") is not True:
+    argv = [
+        "queue",
+        "add",
+        "--encrypted-id",
+        encrypted,
+        "--original-id",
+        str(original),
+    ]
+    if next_:
+        argv.append("--next")
+    payload = _run_ncm(argv, timeout_sec=CONTROL_TIMEOUT_SEC)
+    if payload.get("success") is not True or _queue_add_is_noop(payload):
         msg = str(payload.get("message") or "").strip()
         raise NeteaseMusicError(msg or "网易云队列追加失败")
+
+
+def _now_playing_meta_path() -> Path:
+    return ncm_data_dir() / NOW_PLAYING_META_FILE
+
+
+def _load_now_playing_playlist() -> tuple[str, str] | None:
+    path = _now_playing_meta_path()
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    enc = str(raw.get("id") or "").strip()
+    oid = raw.get("originalId")
+    if not enc or oid in (None, ""):
+        return None
+    return enc, str(oid)
+
+
+def _save_now_playing_playlist(*, encrypted_id: str, original_id: str) -> None:
+    path = _now_playing_meta_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {"id": encrypted_id, "originalId": original_id, "name": NOW_PLAYING_PLAYLIST_NAME},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def ensure_now_playing_playlist() -> tuple[str, str]:
+    """Return (encrypted_id, original_id) for the reusable now-playing playlist."""
+    cached = _load_now_playing_playlist()
+    if cached:
+        return cached
+    payload = _run_ncm(
+        ["playlist", "create", "--playlistName", NOW_PLAYING_PLAYLIST_NAME],
+        timeout_sec=SEARCH_TIMEOUT_SEC,
+    )
+    if not _api_ok(payload):
+        msg = str(payload.get("message") or "").strip()
+        raise NeteaseMusicError(msg or "创建连播歌单失败")
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    enc = str((data or {}).get("id") or "").strip()
+    oid = (data or {}).get("originalId")
+    if not enc or oid in (None, ""):
+        raise NeteaseMusicError("创建连播歌单未返回 id")
+    _save_now_playing_playlist(encrypted_id=enc, original_id=str(oid))
+    return enc, str(oid)
+
+
+def _playlist_track_encrypted_ids(playlist_encrypted_id: str) -> list[str]:
+    payload = _run_ncm(
+        [
+            "playlist",
+            "tracks",
+            "--playlistId",
+            playlist_encrypted_id,
+            "--limit",
+            "500",
+            "--offset",
+            "0",
+        ],
+        timeout_sec=SEARCH_TIMEOUT_SEC,
+    )
+    if not _api_ok(payload):
+        return []
+    data = payload.get("data")
+    if not isinstance(data, list):
+        return []
+    out: list[str] = []
+    for rec in data:
+        if not isinstance(rec, dict):
+            continue
+        enc = str(rec.get("id") or "").strip()
+        if enc:
+            out.append(enc)
+    return out
+
+
+def replace_playlist_tracks(
+    *,
+    playlist_encrypted_id: str,
+    records: list[dict[str, Any]],
+) -> list[str]:
+    """Replace cloud playlist contents with ``records``. Returns encrypted song ids."""
+    song_ids: list[str] = []
+    for rec in records:
+        enc = str(rec.get("id") or "").strip()
+        if enc:
+            song_ids.append(enc)
+    if not song_ids:
+        raise NeteaseMusicError("连播列表缺少 encrypted-id")
+    existing = _playlist_track_encrypted_ids(playlist_encrypted_id)
+    if existing:
+        payload = _run_ncm(
+            [
+                "playlist",
+                "remove",
+                "--playlistId",
+                playlist_encrypted_id,
+                "--songIdList",
+                json.dumps(existing, ensure_ascii=False),
+            ],
+            timeout_sec=SEARCH_TIMEOUT_SEC,
+        )
+        if not _api_ok(payload):
+            msg = str(payload.get("message") or "").strip()
+            log.warning("playlist remove old tracks: %s", msg or payload)
+    payload = _run_ncm(
+        [
+            "playlist",
+            "add",
+            "--playlistId",
+            playlist_encrypted_id,
+            "--songIdList",
+            json.dumps(song_ids, ensure_ascii=False),
+        ],
+        timeout_sec=SEARCH_TIMEOUT_SEC,
+    )
+    if not _api_ok(payload):
+        msg = str(payload.get("message") or "").strip()
+        raise NeteaseMusicError(msg or "写入连播歌单失败")
+    return song_ids
+
+
+def play_playlist(*, encrypted_id: str, original_id: str) -> str:
+    payload = _run_ncm(
+        [
+            "play",
+            "--playlist",
+            "--encrypted-id",
+            encrypted_id,
+            "--original-id",
+            str(original_id),
+        ],
+        timeout_sec=PLAY_TIMEOUT_SEC,
+        allow_orpheus_only=True,
+    )
+    if payload.get("success") is not True and not _api_ok(payload):
+        msg = str(payload.get("message") or "").strip()
+        raise NeteaseMusicError(msg or "网易云歌单播放失败")
+    if payload.get("orpheus"):
+        return f"已唤起云音乐播放歌单 {original_id}"
+    return (
+        str(payload.get("message") or "").strip()
+        or f"已唤起云音乐播放歌单 {original_id}"
+    )
 
 
 def _record_matches_artist(record: dict[str, Any], artist: str) -> bool:
@@ -651,7 +848,13 @@ def collect_artist_queue_records(
     user_input: str | None = None,
     limit: int = ARTIST_QUEUE_MAX,
 ) -> list[dict[str, Any]]:
-    """Up to ``limit`` songs whose primary artist matches ``artist``."""
+    """Up to ``limit`` songs whose primary artist matches ``artist``.
+
+    Searches with keyword=artist only (ignores utterance ``user_input`` so
+    phrases like 「播放刘德华的歌」 do not skew ncm-cli ``--userInput``).
+    Pages until filled or search exhausted.
+    """
+    del user_input  # kept for call-site compat; must not bias artist search
     singer = str(artist or "").strip()
     if not singer:
         raise NeteaseMusicError(NO_SONG_MSG)
@@ -671,36 +874,64 @@ def collect_artist_queue_records(
         collected.append(rec)
         if len(collected) >= want:
             return collected
-    batch = search_records(
-        keyword=singer,
-        user_input=user_input,
-        limit=want,
-    )
-    for rec in filter_records_by_artist(batch, artist=singer):
-        oid = rec.get("originalId")
-        if oid in seen:
-            continue
-        seen.add(oid)
-        collected.append(rec)
+    offset = 0
+    page = CACHE_PAGE
+    while len(collected) < want:
+        batch = search_records(
+            keyword=singer,
+            user_input=None,
+            limit=page,
+            offset=offset,
+        )
+        if not batch:
+            break
+        before = len(collected)
+        for rec in filter_records_by_artist(batch, artist=singer):
+            oid = rec.get("originalId")
+            if oid in seen:
+                continue
+            seen.add(oid)
+            collected.append(rec)
+            if len(collected) >= want:
+                break
         if len(collected) >= want:
             break
+        if len(batch) < page or len(collected) == before:
+            break
+        offset += page
     if not collected:
         raise NeteaseMusicError(f"网易云未找到歌手「{singer}」的歌")
     return collected[:want]
 
 
 def play_artist_queue(records: list[dict[str, Any]]) -> tuple[str, int]:
-    """Clear desktop queue, play first song, enqueue the rest."""
+    """Play continuous list via cloud playlist (orpheus-safe).
+
+    Desktop ``queue add`` is unreliable under player=orpheus (fake success).
+    Multi-track: replace reusable playlist → ``play --playlist``.
+    Single track: ``play --song`` (same as title play).
+    """
     if not records:
         raise NeteaseMusicError("歌手连播列表为空")
-    queue_clear()
-    msg = play_record(records[0])
-    added = 0
-    for rec in records[1:]:
-        queue_add(rec)
-        added += 1
-    if added:
-        log.info("ncm artist queue play first + add %s more", added)
+    if len(records) == 1:
+        try:
+            queue_clear()
+        except NeteaseMusicError as e:
+            log.info("queue clear before single play skipped: %s", e)
+        return play_record(records[0]), 0
+
+    pl_enc, pl_oid = ensure_now_playing_playlist()
+    song_ids = replace_playlist_tracks(
+        playlist_encrypted_id=pl_enc,
+        records=records,
+    )
+    msg = play_playlist(encrypted_id=pl_enc, original_id=pl_oid)
+    added = max(0, len(song_ids) - 1)
+    log.info(
+        "ncm artist playlist play id=%s songs=%s",
+        pl_oid,
+        len(song_ids),
+    )
     return msg, added
 
 
