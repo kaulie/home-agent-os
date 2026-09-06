@@ -13,13 +13,14 @@ Brain 已登记 Asset 盘点（`asset-inventory`），group=`asset`，`kind=syst
 |------|-----|
 | kind | system |
 | role | Asset 盘点查询器 |
-| planner_recognize | 查询 Brain 已登记 Asset 的数量、列表，或按登记顺序取第 N 张（index） |
-| typical_triggers | `我今天拍了几张照片`、`昨天拍了多少张照片`、`最近有哪些图`、`给我看第五张照片` |
-| do_not_dispatch | 拍照、看图理解、投屏、手机系统相册 |
+| planner_recognize | 查询 Brain 已登记 Asset（含 image/video/audio/document）的数量、列表，或按登记顺序取第 N 条（index）；最新 PDF/文档用 type=document + order=newest_first + index=1 |
+| typical_triggers | `我今天拍了几张照片`、`昨天拍了多少张照片`、`最近有哪些图`、`给我看第五张照片`、`最新的PDF`、`把最新的文件打印出来` |
+| do_not_dispatch | 拍照、看图理解、投屏、手机系统相册、扫本机磁盘 |
 
 问「今天拍了几张」：`day=today` + `type=image`（可选 `producer_capability=camera.capture`）。  
 问「昨天拍了几张」：`day=yesterday` + `type=image`。不要先派时钟再拼假日期字符串。  
-问「第 N 张」：`type=image` + `index=N`；Presentation 用 `type=image` + `from=asset_ref`（不要用 `limit=N` 再自行下标）。
+问「第 N 张」：`type=image` + `index=N`；Presentation 用 `type=image` + `from=asset_ref`（不要用 `limit=N` 再自行下标）。  
+问「最新 PDF/文件」并打印：`type=document` + `order=newest_first` + `index=1`，再把产出 `asset_ref` 交给 `printer.print`。
 
 ## 标识
 
@@ -38,7 +39,7 @@ Brain 已登记 Asset 盘点（`asset-inventory`），group=`asset`，`kind=syst
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `type` | 否 | `image` / `video` / … |
+| `type` | 否 | `image` / `video` / `audio` / `document` / … |
 | `day` | 否 | `today` / `yesterday` / `YYYY-MM-DD` |
 | `timezone` | 否 | IANA，默认 `Asia/Shanghai` |
 | `since` / `until` | 否 | ISO 或 unix；有 `day` 时以 day 为准 |
