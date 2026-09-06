@@ -173,6 +173,11 @@ LOCAL_PRINTER_SERVICE: dict[str, Any] = {
                         "再否则匹配名含 Mi_All_in_One_Inkjet 的队列"
                     ),
                 },
+                "color_mode": {
+                    "type": "string",
+                    "required": False,
+                    "description": "bw（默认黑白）或 color（彩色）",
+                },
             },
             output_schema={
                 "status_text": {
@@ -189,6 +194,11 @@ LOCAL_PRINTER_SERVICE: dict[str, Any] = {
                     "type": "string",
                     "required": True,
                     "description": "实际使用的 CUPS 队列名",
+                },
+                "color_mode": {
+                    "type": "string",
+                    "required": False,
+                    "description": "实际色彩：bw 或 color",
                 },
             },
         ),

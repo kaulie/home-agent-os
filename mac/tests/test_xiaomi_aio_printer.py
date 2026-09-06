@@ -15,6 +15,7 @@ from mac_edge.plugins.xiaomi_aio_printer import (
     XiaomiPrinterError,
     ensure_queue_accepting,
     list_cups_queues,
+    parse_color_model,
     parse_job_id,
     print_from_params,
     resolve_printer_name,
@@ -24,8 +25,16 @@ from mac_edge.services import default_services
 QUEUE = "Mi_All_in_One_Inkjet_Printer__1EB808_"
 
 
-def _fake_run_factory(queues: list[str], *, lp_stdout: str = "", lp_code: int = 0):
+def _fake_run_factory(
+    queues: list[str],
+    *,
+    lp_stdout: str = "",
+    lp_code: int = 0,
+    calls: list[list[str]] | None = None,
+):
     def _run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if calls is not None:
+            calls.append(list(argv))
         cmd = argv[0] if argv else ""
         name = Path(cmd).name
         if name == "lpstat" or (len(argv) > 1 and argv[1] == "-a" and "lpstat" in cmd):
@@ -41,6 +50,22 @@ def _fake_run_factory(queues: list[str], *, lp_stdout: str = "", lp_code: int = 
         return subprocess.CompletedProcess(argv, 1, "", f"unexpected: {argv}")
 
     return _run
+
+
+class ParseColorModelTests(unittest.TestCase):
+    def test_default_bw(self) -> None:
+        with patch.dict(os.environ, {"MAC_EDGE_PRINTER_COLOR_MODEL": ""}, clear=False):
+            self.assertEqual(parse_color_model(None), "Gray")
+            self.assertEqual(parse_color_model(""), "Gray")
+
+    def test_color_override(self) -> None:
+        with patch.dict(os.environ, {"MAC_EDGE_PRINTER_COLOR_MODEL": ""}, clear=False):
+            self.assertEqual(parse_color_model("color"), "RGB")
+            self.assertEqual(parse_color_model("彩色"), "RGB")
+
+    def test_env_wins(self) -> None:
+        with patch.dict(os.environ, {"MAC_EDGE_PRINTER_COLOR_MODEL": "RGB"}, clear=False):
+            self.assertEqual(parse_color_model("bw"), "RGB")
 
 
 class ParseJobIdTests(unittest.TestCase):
@@ -129,8 +154,9 @@ class PrintFromParamsTests(unittest.TestCase):
         asset.materialize_file.return_value = path
 
         lp_out = f"request id is {QUEUE}-7 (1 file(s))"
-        run = _fake_run_factory([QUEUE], lp_stdout=lp_out)
-        with patch.dict(os.environ, {"MAC_EDGE_PRINTER_NAME": ""}, clear=False):
+        calls: list[list[str]] = []
+        run = _fake_run_factory([QUEUE], lp_stdout=lp_out, calls=calls)
+        with patch.dict(os.environ, {"MAC_EDGE_PRINTER_NAME": "", "MAC_EDGE_PRINTER_COLOR_MODEL": ""}, clear=False):
             msg, outputs = print_from_params(
                 {"asset_ref": {"asset_id": "a1", "type": "document"}, "copies": 2},
                 asset=asset,
@@ -139,8 +165,41 @@ class PrintFromParamsTests(unittest.TestCase):
         self.assertIn("printer.print ok", msg)
         self.assertEqual(outputs["job_id"], f"{QUEUE}-7")
         self.assertEqual(outputs["printer_name"], QUEUE)
-        self.assertIn("已提交打印", outputs["status_text"])
+        self.assertEqual(outputs["color_mode"], "bw")
+        self.assertIn("黑白", outputs["status_text"])
         self.assertNotIn("SoftAP", outputs["status_text"])
+        lp = next(c for c in calls if Path(c[0]).name == "lp")
+        self.assertIn("-o", lp)
+        self.assertIn("ColorModel=Gray", lp)
+
+    def test_color_mode_color(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
+            fh.write(b"%PDF-1.4 fake")
+            path = Path(fh.name)
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+
+        asset = MagicMock()
+        asset.require_ref.return_value = AssetRef(
+            asset_id="a1", type="document", mime_type="application/pdf"
+        )
+        asset.materialize_file.return_value = path
+
+        lp_out = f"request id is {QUEUE}-8 (1 file(s))"
+        calls: list[list[str]] = []
+        run = _fake_run_factory([QUEUE], lp_stdout=lp_out, calls=calls)
+        with patch.dict(os.environ, {"MAC_EDGE_PRINTER_NAME": QUEUE, "MAC_EDGE_PRINTER_COLOR_MODEL": ""}, clear=False):
+            _, outputs = print_from_params(
+                {
+                    "asset_ref": {"asset_id": "a1", "type": "document"},
+                    "color_mode": "color",
+                },
+                asset=asset,
+                run_fn=run,
+            )
+        self.assertEqual(outputs["color_mode"], "color")
+        self.assertIn("彩色", outputs["status_text"])
+        lp = next(c for c in calls if Path(c[0]).name == "lp")
+        self.assertIn("ColorModel=RGB", lp)
 
     def test_lp_failure_chinese(self) -> None:
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
@@ -218,6 +277,8 @@ class PrintFromParamsTests(unittest.TestCase):
         req_text = doc_texts[0]
         self.assertIn("OPERATION Print-Job", req_text)
         self.assertIn(f"FILE {path.resolve()}", req_text)
+        self.assertIn('ATTR keyword print-color-mode "monochrome"', req_text)
+        self.assertIn('ATTR keyword ColorModel "Gray"', req_text)
 
 
 class AdvertisePrinterTests(unittest.TestCase):

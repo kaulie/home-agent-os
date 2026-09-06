@@ -12,7 +12,7 @@
 | 字段 | 值 |
 |------|-----|
 | role | 文档打印机 |
-| planner_recognize | 把本步已有的 PDF/document Asset 经本机 CUPS 队列打出纸 |
+| planner_recognize | 把本步已有的 PDF/document Asset 经本机 CUPS 队列打出纸（默认黑白；彩打传 color_mode=color） |
 | typical_triggers | `打印这份 PDF`、`把文档打出来`、`打印一下` |
 | do_not_dispatch | 配网、切 SoftAP、扫描、投屏、TTS、知识问答 |
 
@@ -31,13 +31,14 @@
 
 | 方向 | 内容 |
 |------|------|
-| **输入** | `asset_ref`（必填，AssetRef，`type=document`）；`copies`（可选正整数）；`printer_name`（可选 CUPS 队列名） |
-| **输出** | `status_text`（必填）；`job_id`；`printer_name` |
+| **输入** | `asset_ref`（必填，AssetRef，`type=document`）；`copies`（可选正整数）；`printer_name`（可选 CUPS 队列名）；`color_mode`（可选，`bw`/`color`，**默认黑白**） |
+| **输出** | `status_text`（必填）；`job_id`；`printer_name`；`color_mode`（`bw` 或 `color`） |
 
 本能力 **只看本步入参**。缺 `asset_ref`、非 `document`、本机无 `lp`、或 CUPS 队列不可用 → **明确中文失败**（文案不提示连接 SoftAP）。
 
 队列解析优先级：入参 `printer_name` → 环境变量 `MAC_EDGE_PRINTER_NAME` → `lpstat` 中名称含 `Mi_All_in_One_Inkjet` 的队列。
 
+色彩：**默认 `ColorModel=Gray`（黑白）**；用户明确要彩打时传 `color_mode=color`。也可用环境变量 `MAC_EDGE_PRINTER_COLOR_MODEL` 强制 CUPS 值（如 `Gray` / `RGB`）。
 ## 网络前提
 
 - Mac 与打印机同在家宽 Wi‑Fi
