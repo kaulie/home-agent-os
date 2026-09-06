@@ -420,7 +420,7 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         'group': 'printer',
         'service_id': 'local.printer',
         'role': '文档打印机',
-        'planner_recognize': '把本步已有的 PDF/document Asset 经本机 CUPS 队列打出纸',
+        'planner_recognize': '把本步已有的 PDF/document Asset 经本机 CUPS 队列打出纸（默认黑白）',
         'typical_triggers': ['打印这份 PDF', '把文档打出来', '打印一下'],
         'do_not_dispatch': ['配网', '切 SoftAP', '扫描', '投屏', 'TTS', '知识问答'],
         'input_schema': {
@@ -446,6 +446,11 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
                     '再否则匹配名含 Mi_All_in_One_Inkjet 的队列'
                 ),
             },
+            'color_mode': {
+                'type': 'string',
+                'required': False,
+                'description': 'bw（默认黑白）或 color（彩色）；也可用 color 同义字段',
+            },
         },
         'output_schema': {
             'status_text': {
@@ -462,6 +467,11 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
                 'type': 'string',
                 'required': True,
                 'description': '实际使用的 CUPS 队列名',
+            },
+            'color_mode': {
+                'type': 'string',
+                'required': False,
+                'description': '实际色彩：bw 或 color',
             },
         },
     },

@@ -22,6 +22,9 @@ log = logging.getLogger("mac_edge.xiaomi_aio_printer")
 
 DEFAULT_QUEUE_SUBSTRING = "Mi_All_in_One_Inkjet"
 DEFAULT_TIMEOUT_SEC = 60.0
+# CUPS ColorModel for this Mi inkjet queue (lpoptions -l); Gray = 黑白/灰度。
+DEFAULT_COLOR_MODEL = "Gray"
+COLOR_MODEL_COLOR = "RGB"
 
 _RunFn = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -104,6 +107,40 @@ def _parse_copies(raw: Any) -> int:
     if n > 99:
         raise XiaomiPrinterError(f"copies 过大（最多 99）：{n}")
     return n
+
+
+def parse_color_model(raw: Any = None) -> str:
+    """Resolve CUPS ColorModel; default grayscale (黑白).
+
+    Optional capability input ``color_mode`` / ``color``:
+    bw|gray|grayscale|mono|black → Gray；color|rgb|colour → RGB。
+    Env ``MAC_EDGE_PRINTER_COLOR_MODEL`` can force a CUPS value (e.g. Gray / RGB).
+    """
+    env = (os.environ.get("MAC_EDGE_PRINTER_COLOR_MODEL") or "").strip()
+    if env:
+        return env
+    text = str(raw or "").strip().lower()
+    if not text:
+        return DEFAULT_COLOR_MODEL
+    if text in (
+        "bw",
+        "b/w",
+        "gray",
+        "grey",
+        "grayscale",
+        "greyscale",
+        "mono",
+        "monochrome",
+        "black",
+        "黑白",
+        "灰度",
+    ):
+        return DEFAULT_COLOR_MODEL
+    if text in ("color", "colour", "rgb", "彩色", "彩打"):
+        return COLOR_MODEL_COLOR
+    raise XiaomiPrinterError(
+        f"color_mode 无法识别：{raw!r}（可用 bw / color，默认黑白）"
+    )
 
 
 def list_cups_queues(*, run_fn: _RunFn | None = None) -> list[str]:
@@ -198,6 +235,7 @@ def submit_print_ipp(
     *,
     printer_name: str,
     copies: int = 1,
+    color_model: str = DEFAULT_COLOR_MODEL,
     run_fn: _RunFn | None = None,
     timeout_sec: float = DEFAULT_TIMEOUT_SEC,
     mime_type: str | None = None,
@@ -216,6 +254,9 @@ def submit_print_ipp(
     user = getpass.getuser() or (os.environ.get("USER") or "")
     job_name = (path.name or "print.pdf").replace("\\", "_").replace('"', "_")
     doc = str(path.resolve())
+    cm = (color_model or DEFAULT_COLOR_MODEL).strip() or DEFAULT_COLOR_MODEL
+    # CUPS maps ColorModel + print-color-mode; monochrome ≈ Gray for this queue.
+    print_color_mode = "monochrome" if cm != COLOR_MODEL_COLOR else "color"
     req_lines = [
         "{",
         "  VERSION 2.0",
@@ -229,6 +270,8 @@ def submit_print_ipp(
         f'  ATTR name job-name "{job_name}"',
         f'  ATTR mimeMediaType document-format "{fmt}"',
         f"  ATTR integer copies {int(copies)}",
+        f'  ATTR keyword print-color-mode "{print_color_mode}"',
+        f'  ATTR keyword ColorModel "{cm}"',
         f"  FILE {doc}",
         "  STATUS successful-ok",
         "}",
@@ -240,9 +283,10 @@ def submit_print_ipp(
     try:
         argv = [tool, "-tv", uri, req_path]
         log.info(
-            "printer.print ipptool %s copies=%s path=%s mime=%s",
+            "printer.print ipptool %s copies=%s color=%s path=%s mime=%s",
             printer_name,
             copies,
+            cm,
             path,
             fmt,
         )
@@ -263,24 +307,34 @@ def submit_print(
     *,
     printer_name: str,
     copies: int = 1,
+    color_model: str = DEFAULT_COLOR_MODEL,
     run_fn: _RunFn | None = None,
     timeout_sec: float = DEFAULT_TIMEOUT_SEC,
     mime_type: str | None = None,
 ) -> str:
     """Submit a print job; return job_id.
 
-    Tries `lp -d <queue> [-n copies] <path>` first; when the lp CLI is missing or
-    fails (macOS can leave /usr/bin/lp broken while the CUPS server / GUI printing
-    still works), falls back to a direct IPP Print-Job to the local CUPS server.
+    Tries `lp -d <queue> [-n copies] -o ColorModel=… <path>` first; when the lp
+    CLI is missing or fails (macOS can leave /usr/bin/lp broken while the CUPS
+    server / GUI printing still works), falls back to a direct IPP Print-Job to
+    the local CUPS server. Default ColorModel is Gray (黑白).
     """
+    cm = (color_model or DEFAULT_COLOR_MODEL).strip() or DEFAULT_COLOR_MODEL
     lp_bin = shutil.which("lp") if run_fn is None else "lp"
     lp_err = ""
     if lp_bin:
         argv = [lp_bin, "-d", printer_name]
         if copies != 1:
             argv.extend(["-n", str(copies)])
+        argv.extend(["-o", f"ColorModel={cm}"])
         argv.append(str(path))
-        log.info("printer.print lp %s copies=%s path=%s", printer_name, copies, path)
+        log.info(
+            "printer.print lp %s copies=%s color=%s path=%s",
+            printer_name,
+            copies,
+            cm,
+            path,
+        )
         try:
             proc = _run(argv, timeout_sec=timeout_sec, run_fn=run_fn)
             if proc.returncode == 0:
@@ -295,6 +349,7 @@ def submit_print(
             path,
             printer_name=printer_name,
             copies=copies,
+            color_model=cm,
             run_fn=run_fn,
             timeout_sec=timeout_sec,
             mime_type=mime_type,
@@ -310,7 +365,7 @@ def print_from_params(
     run_fn: _RunFn | None = None,
     timeout_sec: float = DEFAULT_TIMEOUT_SEC,
 ) -> tuple[str, dict[str, Any]]:
-    """Capability entry: materialize document Asset → lp."""
+    """Capability entry: materialize document Asset → lp (default 黑白)."""
     from mac_edge.asset.types import AssetError
 
     if asset is None or not hasattr(asset, "require_ref") or not hasattr(asset, "materialize_file"):
@@ -336,20 +391,25 @@ def print_from_params(
         raise XiaomiPrinterError(f"待打印文件不存在：{path}")
 
     copies = _parse_copies(params.get("copies"))
+    color_raw = params.get("color_mode", params.get("color"))
+    color_model = parse_color_model(color_raw)
     printer_name = resolve_printer_name(params, run_fn=run_fn)
     ensure_queue_accepting(printer_name, run_fn=run_fn)
     job_id = submit_print(
         path,
         printer_name=printer_name,
         copies=copies,
+        color_model=color_model,
         run_fn=run_fn,
         timeout_sec=timeout_sec,
         mime_type=str(getattr(ref, "mime_type", None) or "") or None,
     )
-    status_text = f"已提交打印到 {printer_name}（任务 {job_id}，{copies} 份）"
+    tone = "黑白" if color_model != COLOR_MODEL_COLOR else "彩色"
+    status_text = f"已提交打印到 {printer_name}（任务 {job_id}，{copies} 份，{tone}）"
     outputs = {
         "status_text": status_text,
         "job_id": job_id,
         "printer_name": printer_name,
+        "color_mode": "color" if color_model == COLOR_MODEL_COLOR else "bw",
     }
     return f"printer.print ok job_id={job_id}", outputs
