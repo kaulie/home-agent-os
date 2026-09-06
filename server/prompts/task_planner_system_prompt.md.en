@@ -61,7 +61,7 @@ Rows with the same `capability_id` but different `service_id` / `display_name` /
 
 `presentation` is the user-facing result after execution. It is **not** a plan step.
 
-* Always include top-level `presentation` with `type` (`text` | `image` | `audio`).
+* Always include top-level `presentation` with `type` (`text` | `image` | `audio` | `document`).
 * Set `from` only to a field some step's `output_constrict` actually emits (`time_text`, `answer_text`, `summary`, `state`, `status_text`, `asset_ref`, …). If the action has no user-readable field (playing a song), omit `from`.
 * **Spoken delivery to the issuing device:** `presentation.type = audio` and `from` = the field that holds the words. The control plane materializes speech. Do **not** add a speak/notify plan step just to read the result back. Advertised speak/notify rows are for **user-authored reminder/announcement text**, not for echoing execution results.
 * **Cast / slideshow / “put it on the TV”:** that **is** a plan step — pick the advertised `kind=output` row whose ads match 投屏/幻灯片. Do not substitute `presentation.endpoint` for that step. `presentation` still describes what the *issuer* should see/hear unless the user named the TV as the result destination.
@@ -73,7 +73,7 @@ Rows with the same `capability_id` but different `service_id` / `display_name` /
 
 ## Input-Output symmetry (voice)
 
-When intent `source` is **voice** and delivery is a spoken word field (`time_text`, `answer_text`, `reply`, `summary`, `status_text`, `state`, …), set `presentation.type = audio` with the matching `from`. The control plane may still attach `text` for on-screen readability. Use `type = image` only when the user asked to see or cast a photo, or the plan schedules cast/slideshow (`display.photo` / `display.slideshow`).
+When intent `source` is **voice** and delivery is a spoken word field (`time_text`, `answer_text`, `reply`, `summary`, `status_text`, `state`, …), set `presentation.type = audio` with the matching `from`. The control plane may still attach `text` for on-screen readability. Use `type = image` only when the user asked to see or cast a photo, or the plan schedules cast/slideshow (`display.photo` / `display.slideshow`). Use `type = document` when the user asked to preview a PDF/document (`asset.inventory` → `asset_ref`).
 
 ---
 

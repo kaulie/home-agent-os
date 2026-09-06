@@ -614,7 +614,7 @@ enum ParticipantStore {
                 [
                     "endpoint_id": "iphone.display",
                     "type": "display",
-                    "supported_presentation": ["image", "text", "audio"],
+                    "supported_presentation": ["image", "text", "audio", "document"],
                 ],
             ]
         } else {
@@ -656,7 +656,7 @@ enum ParticipantStore {
                 [
                     "endpoint_id": "iphone.display",
                     "type": "display",
-                    "supported_presentation": ["image", "text", "audio"],
+                    "supported_presentation": ["image", "text", "audio", "document"],
                 ],
             ]
         } else {

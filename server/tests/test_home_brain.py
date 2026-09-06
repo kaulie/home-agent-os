@@ -1521,6 +1521,51 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertEqual(pres["from"], "asset_ref")
         self.assertEqual(pres["asset_ref"]["type"], "image")
 
+    def test_assemble_presentation_document_asset_is_document_preview(self) -> None:
+        """id=637: 「看下最新的pdf文档」应 document 预览，不是 answer_text。"""
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        self._heartbeat("living-room-iphone-1")
+        intent = {
+            "text": "看下最新的pdf文档",
+            "source": "text",
+            "edge_id": "living-room-iphone-1",
+            "execution_plan": [{"step": 1, "capability": "asset.inventory"}],
+            "presentation": {"type": "text", "from": "answer_text"},
+            "ctx_param": {
+                "answer_text": "这是按登记顺序的第 1 张document。",
+                "asset_ref": {
+                    "asset_id": "asset_05563d7eb33dbf460a0be521",
+                    "type": "document",
+                    "mime_type": "application/pdf",
+                },
+            },
+        }
+        pres = hb.assemble_presentation(intent)
+        self.assertEqual(pres["type"], "document")
+        self.assertEqual(pres["from"], "asset_ref")
+        self.assertEqual(pres["asset_ref"]["type"], "document")
+        self.assertEqual(pres["asset_ref"]["asset_id"], "asset_05563d7eb33dbf460a0be521")
+
+    def test_assemble_presentation_inventory_count_stays_text(self) -> None:
+        """盘点数量不问「看」，仍走 answer_text，不升 document。"""
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        self._heartbeat("living-room-iphone-1")
+        intent = {
+            "text": "今天拍了几张照片",
+            "source": "text",
+            "edge_id": "living-room-iphone-1",
+            "execution_plan": [{"step": 1, "capability": "asset.inventory"}],
+            "presentation": {"type": "text", "from": "answer_text"},
+            "ctx_param": {
+                "answer_text": "一共登记了 3 张照片。",
+                "count": "3",
+            },
+        }
+        pres = hb.assemble_presentation(intent)
+        self.assertEqual(pres["type"], "text")
+        self.assertEqual(pres["from"], "answer_text")
+        self.assertNotIn("asset_ref", pres)
+
     def test_presentation_kind_infers_math_calculate(self) -> None:
         kind, field = hb._presentation_kind_from_plan(
             {"execution_plan": [{"step": 1, "capability": "math.calculate"}]}
