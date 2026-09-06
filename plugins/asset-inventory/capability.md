@@ -20,6 +20,7 @@ Brain 已登记 Asset 盘点（`asset-inventory`），group=`asset`，`kind=syst
 问「今天拍了几张」：`day=today` + `type=image`（可选 `producer_capability=camera.capture`）。  
 问「昨天拍了几张」：`day=yesterday` + `type=image`。不要先派时钟再拼假日期字符串。  
 问「第 N 张」：`type=image` + `index=N`；Presentation 用 `type=image` + `from=asset_ref`（不要用 `limit=N` 再自行下标）。  
+问「看下最新 PDF/文档」：`type=document` + `order=newest_first` + `index=1`；Presentation 用 `type=document` + `from=asset_ref`（手机预览，不是打印）。  
 问「最新 PDF/文件」并打印：`type=document` + `order=newest_first` + `index=1`，再把产出 `asset_ref` 交给 `printer.print`。
 
 ## 标识

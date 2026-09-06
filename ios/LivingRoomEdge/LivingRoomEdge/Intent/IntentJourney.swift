@@ -311,6 +311,7 @@ struct IntentPresentation: Equatable {
         case video
         case html
         case audio
+        case document
     }
 
     let type: Kind
@@ -325,7 +326,7 @@ struct IntentPresentation: Equatable {
 
     var hasContent: Bool {
         switch type {
-        case .image:
+        case .image, .document:
             return !assetId.isEmpty
         case .video:
             return videoURL != nil
@@ -357,6 +358,7 @@ struct IntentPresentation: Equatable {
             case "video": return .video
             case "html": return .html
             case "audio": return .audio
+            case "document": return .document
             default: return .text
             }
         }()

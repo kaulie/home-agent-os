@@ -493,9 +493,22 @@ def _user_asked_see_photo(text) -> bool:
     raw = str(text or "")
     if _user_asked_photo_count(raw):
         return False
-    view_keys = ("看一下", "给我看", "看看", "显示", "瞧")
+    view_keys = ("看一下", "看下", "给我看", "看看", "显示", "瞧")
     photo_keys = ("照片", "图片", "那张", "这张")
     return any(v in raw for v in view_keys) and any(p in raw for p in photo_keys)
+
+
+def _user_asked_see_document(text) -> bool:
+    """User asked to preview a PDF/document (not a photo count question)."""
+    raw = str(text or "")
+    if _user_asked_photo_count(raw):
+        return False
+    # Pure photo view stays image; do not steal 「看一下那张照片」.
+    if _user_asked_see_photo(raw):
+        return False
+    view_keys = ("看一下", "看下", "给我看", "看看", "显示", "瞧", "预览", "打开")
+    doc_keys = ("pdf", "PDF", "文档", "文件", "document")
+    return any(v in raw for v in view_keys) and any(d in raw for d in doc_keys)
 
 
 def _plan_wants_image_presentation(intent) -> bool:
@@ -511,6 +524,14 @@ def _plan_wants_image_presentation(intent) -> bool:
     if _user_asked_see_photo(text):
         return True
     return False
+
+
+def _plan_wants_document_presentation(intent) -> bool:
+    raw = intent.get("presentation")
+    if isinstance(raw, dict) and str(raw.get("type") or "").strip().lower() == "document":
+        return True
+    text = str((intent or {}).get("text") or "")
+    return _user_asked_see_document(text)
 
 
 def _voice_symmetric_presentation_kind(intent, kind: str, from_key: str) -> tuple[str, str]:
@@ -1287,6 +1308,13 @@ def _match_endpoint_participant(intent, pres_type=None):
             rec, "text"
         ):
             return True
+        # PDF/document preview rides a display Endpoint (image/text capable).
+        if str(pres_type or "").lower() == "document" and rec and (
+            _endpoint_supports_type(rec, "image")
+            or _endpoint_supports_type(rec, "text")
+            or _endpoint_supports_type(rec, "document")
+        ):
+            return True
         return False
 
     explicit = _explicit_response_participant(intent)
@@ -1871,6 +1899,8 @@ def _presentation_kind_from_plan(intent):
     if "chat.smalltalk" in caps:
         return _voice_symmetric_presentation_kind(intent, "text", "reply")
     if "asset.inventory" in caps:
+        if _plan_wants_document_presentation(intent):
+            return "document", "asset_ref"
         if _plan_wants_image_presentation(intent):
             return "image", "asset_ref"
         return _voice_symmetric_presentation_kind(intent, "text", "answer_text")
@@ -2070,12 +2100,32 @@ def assemble_presentation(intent):
     }
     ptype, src = _presentation_kind_from_plan(intent)
     ptype, src = _voice_symmetric_presentation_kind(intent, ptype, src or "")
+    family = _asset_media_family(ref) if ref else ""
     # Audio assets must never be delivered as an image to an image-only endpoint.
     # When the plan picked an audio asset (e.g. asset.inventory returned a just
     # recorded voice memo — home-agent issue id=617), present it as audio so the
     # runtime plays the recording instead of trying to render audio bytes as a photo.
-    if ptype == "image" and ref and _asset_media_family(ref) == "audio":
+    if ptype == "image" and family == "audio":
         ptype = "audio"
+        src = src or "asset_ref"
+    # PDF/document must never be delivered as an image either.
+    if ptype == "image" and family == "document":
+        ptype = "document"
+        src = src or "asset_ref"
+    # 「看下最新的pdf/文件」：planner 常给 text；有 document asset_ref 时升为预览。
+    if (
+        ptype in ("text", "audio")
+        and family == "document"
+        and _user_asked_see_document(str((intent or {}).get("text") or ""))
+    ):
+        ptype = "document"
+        src = "asset_ref"
+    # 「看一下最新的文件」若实际命中 audio/image，不要钉死 document。
+    if ptype == "document" and family == "audio":
+        ptype = "audio"
+        src = src or "asset_ref"
+    if ptype == "document" and family == "image":
+        ptype = "image"
         src = src or "asset_ref"
     text_body = ""
     if src in ("time_text", "answer_text", "reply", "summary", "people", "state", "text") and fields.get(src):
@@ -2097,12 +2147,15 @@ def assemble_presentation(intent):
         ptype == "audio"
         and not _word_from
         and bool(ref)
-        and _asset_media_family(ref) == "audio"
+        and family == "audio"
     )
     if _audio_asset:
         # Real audio file to hear: hand the asset_ref to the audio presentation so
         # the console can play it, instead of speaking a summary or faking an image.
         payload = {"asset_ref": ref}
+    elif ptype == "document" and ref:
+        payload = {"asset_ref": ref}
+        src = src or "asset_ref"
     elif ptype == "image" and _word_from and text_body:
         ptype, _ = _voice_symmetric_presentation_kind(intent, "text", src)
         payload = {"text": text_body}
@@ -2137,7 +2190,9 @@ def assemble_presentation(intent):
         ptype, _ = _voice_symmetric_presentation_kind(intent, "text", src or "")
         payload = {"text": text_body}
     elif ref:
-        ptype = "image"
+        ptype = "image" if family != "document" else "document"
+        if family == "audio":
+            ptype = "audio"
         payload = {"asset_ref": ref}
         src = src or "asset_ref"
     else:
@@ -2149,6 +2204,10 @@ def assemble_presentation(intent):
     endpoint_id = _match_endpoint_participant(intent, ptype)
     if not endpoint_id and ptype == "audio":
         endpoint_id = _match_endpoint_participant(intent, "text")
+    if not endpoint_id and ptype == "document":
+        endpoint_id = _match_endpoint_participant(intent, "image") or _match_endpoint_participant(
+            intent, "text"
+        )
     assembled = {
         "type": ptype,
         "channel": _channel_for_participant(endpoint_id, intent),

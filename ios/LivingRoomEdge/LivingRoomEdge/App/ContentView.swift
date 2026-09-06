@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PDFKit
 
 struct ContentView: View {
     private enum ChatPane: String, Hashable {
@@ -613,6 +614,13 @@ private struct PresentationBubble: View {
                         .font(.body)
                         .textSelection(.enabled)
                 }
+            case .document:
+                DocumentBubblePreview(presentation: presentation, intentId: intentId)
+                if !presentation.text.isEmpty {
+                    Text(presentation.text)
+                        .font(.body)
+                        .textSelection(.enabled)
+                }
             }
             if stillRunning {
                 HStack(spacing: 6) {
@@ -766,6 +774,154 @@ private struct AudioBubblePlayer: View {
     private static func timecode(_ interval: TimeInterval) -> String {
         let total = Int(interval.rounded())
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// PDF/document presentation bubble. Fetches original bytes via Brain and previews with PDFKit.
+@MainActor
+private struct DocumentBubblePreview: View {
+    let presentation: IntentPresentation
+    let intentId: String
+
+    @State private var pdfDocument: PDFDocument?
+    @State private var fetching = false
+    @State private var failed = false
+    @State private var showFull = false
+
+    private var assetId: String { presentation.assetId }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let pdfDocument {
+                PDFKitRepresentedView(document: pdfDocument)
+                    .frame(maxWidth: .infinity, minHeight: 220, maxHeight: 280)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .onTapGesture { showFull = true }
+                HStack {
+                    Label("PDF 文档", systemImage: "doc.richtext")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("全屏预览") { showFull = true }
+                        .font(.caption.weight(.medium))
+                }
+            } else if failed {
+                Text("无法用 asset_ref 取到 PDF")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if !assetId.isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("正在经 Brain 拉取文档…")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 80, alignment: .leading)
+            } else {
+                Text("缺少 asset_ref")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task(id: "\(assetId)|\(intentId)") {
+            await load()
+        }
+        .fullScreenCover(isPresented: $showFull) {
+            NavigationStack {
+                Group {
+                    if let pdfDocument {
+                        PDFKitRepresentedView(document: pdfDocument)
+                            .ignoresSafeArea(edges: .bottom)
+                    } else {
+                        Text("无法预览")
+                    }
+                }
+                .navigationTitle("PDF 预览")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("完成") { showFull = false }
+                    }
+                }
+            }
+        }
+    }
+
+    private func load() async {
+        guard !assetId.isEmpty, pdfDocument == nil, !fetching else { return }
+        fetching = true
+        defer { fetching = false }
+        if let cached = DocumentPreviewStore.fileURL(for: assetId),
+           let doc = PDFDocument(url: cached) {
+            pdfDocument = doc
+            failed = false
+            return
+        }
+        guard let data = await AppModel.shared.intentClient.fetchAssetData(
+            assetId: assetId,
+            intentId: intentId,
+            intentURL: AppModel.shared.intentServerURL,
+            representation: "original"
+        ), !data.isEmpty else {
+            failed = true
+            return
+        }
+        _ = DocumentPreviewStore.save(assetId: assetId, data: data)
+        if let cached = DocumentPreviewStore.fileURL(for: assetId),
+           let doc = PDFDocument(url: cached) {
+            pdfDocument = doc
+            failed = false
+        } else if let doc = PDFDocument(data: data) {
+            pdfDocument = doc
+            failed = false
+        } else {
+            failed = true
+        }
+    }
+}
+
+private enum DocumentPreviewStore {
+    private static var root: URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        let dir = base.appendingPathComponent("document-preview", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    static func fileURL(for assetId: String) -> URL? {
+        let url = root.appendingPathComponent("\(assetId).pdf")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
+    @discardableResult
+    static func save(assetId: String, data: Data) -> URL? {
+        let url = root.appendingPathComponent("\(assetId).pdf")
+        do {
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
+    }
+}
+
+private struct PDFKitRepresentedView: UIViewRepresentable {
+    let document: PDFDocument
+
+    func makeUIView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.displayMode = .singlePageContinuous
+        view.displayDirection = .vertical
+        view.backgroundColor = .secondarySystemBackground
+        view.document = document
+        return view
+    }
+
+    func updateUIView(_ uiView: PDFView, context: Context) {
+        if uiView.document !== document {
+            uiView.document = document
+        }
     }
 }
 
