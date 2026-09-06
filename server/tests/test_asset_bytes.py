@@ -62,3 +62,17 @@ class AssetBytesMediaUrlsTests(unittest.TestCase):
         )
         self.assertEqual(urls[0], "http://115.190.153.53:8080/a.png")
         self.assertIn("http://127.0.0.1:8080/a.png", urls)
+
+    def test_media_urls_percent_encodes_non_ascii_keys(self) -> None:
+        """id=639: Chinese PDF filenames must be percent-encoded for urllib."""
+        _clear_upload_env()
+        key = "f1103a10_当前Agent编排平台现状分析和创业空间.pdf"
+        urls = media_urls({"backend": "img_server", "key": key})
+        self.assertTrue(urls)
+        self.assertIn("%E5%BD%93%E5%89%8D", urls[0])
+        self.assertNotIn("当前", urls[0])
+        self.assertTrue(urls[0].startswith("http://127.0.0.1:8080/f1103a10_"))
+
+
+if __name__ == "__main__":
+    unittest.main()

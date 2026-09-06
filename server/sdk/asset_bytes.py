@@ -47,7 +47,10 @@ def _add_base_key(urls: list[str], seen: set[str], base: Any, key: Any) -> None:
         return
     if not b:
         return
-    path = k if k.startswith("/") else f"/{k}"
+    # Percent-encode each segment so non-ASCII filenames (e.g. Chinese PDF names)
+    # are valid HTTP request-targets for urllib.
+    parts = [p for p in k.lstrip("/").split("/") if p]
+    path = "/" + "/".join(urllib.parse.quote(p, safe="") for p in parts)
     _add_url(urls, seen, b + path)
 
 
