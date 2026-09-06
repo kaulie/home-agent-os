@@ -4035,6 +4035,18 @@ class HomeBrainPersistTest(unittest.TestCase):
         urls3 = hb._asset_media_urls(storage, "http://127.0.0.1:9527/x")
         self.assertEqual(urls3[0], "http://115.190.153.53:8080/x.png")
 
+    def test_asset_media_urls_percent_encodes_chinese_keys(self) -> None:
+        """id=639: content proxy must quote non-ASCII storage keys."""
+        key = "f1103a10_当前Agent编排平台现状分析和创业空间.pdf"
+        urls = hb._asset_media_urls(
+            {"backend": "img_server", "key": key},
+            "http://127.0.0.1:9527/api/v1/assets/a1/content",
+        )
+        self.assertTrue(urls)
+        for u in urls:
+            self.assertNotIn("当前", u)
+            self.assertIn("%E5%BD%93%E5%89%8D", u)
+
     def test_assets_upload_fails_when_img_server_down(self) -> None:
         from io import BytesIO
         from unittest.mock import patch

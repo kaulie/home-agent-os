@@ -7244,7 +7244,9 @@ def _asset_media_urls(storage: dict, request_url: str) -> list:
             return
         if not b:
             return
-        path = k if k.startswith("/") else f"/{k}"
+        # Percent-encode path segments (Chinese / non-ASCII storage keys).
+        parts = [p for p in k.lstrip("/").split("/") if p]
+        path = "/" + "/".join(urllib.parse.quote(p, safe="") for p in parts)
         add(b + path)
 
     # Cloud mirror first so Intent Source / phone can load AssetRef off-LAN.
@@ -7257,7 +7259,9 @@ def _asset_media_urls(storage: dict, request_url: str) -> list:
         try:
             brain = urllib.parse.urlparse(request_url)
             if brain.hostname:
-                add("%s://%s:8080/%s" % (brain.scheme or "http", brain.hostname, key.lstrip("/")))
+                parts = [p for p in key.lstrip("/").split("/") if p]
+                path = "/" + "/".join(urllib.parse.quote(p, safe="") for p in parts)
+                add("%s://%s:8080%s" % (brain.scheme or "http", brain.hostname, path))
         except Exception:
             pass
     return urls
