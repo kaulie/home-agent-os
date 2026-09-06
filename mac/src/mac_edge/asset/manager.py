@@ -275,6 +275,10 @@ class AssetManager:
             req = urllib.request.Request(url, method="GET")
             with urllib.request.urlopen(req, timeout=60.0) as resp:
                 dest.write_bytes(resp.read())
+        except UnicodeEncodeError as e:
+            raise AssetStorageError(
+                f"asset {aid} download failed: URL has non-ASCII path ({e})"
+            ) from e
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             raise AssetStorageError(
                 f"asset {aid} download failed: {e}"

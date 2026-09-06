@@ -6,7 +6,7 @@ import os
 import re
 import socket
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from mac_edge.asset.types import AssetStorageError, HttpUrlRepresentation
 
@@ -158,6 +158,12 @@ def _locator_candidates(storage: dict[str, Any]) -> list[tuple[str, str]]:
     return out
 
 
+def _url_path_for_storage_key(key: str) -> str:
+    """Percent-encode path segments so non-ASCII filenames are valid HTTP URLs."""
+    parts = [p for p in str(key or "").strip().lstrip("/").split("/") if p]
+    return "/" + "/".join(quote(p, safe="") for p in parts)
+
+
 def http_url_from_storage(storage: dict[str, Any]) -> HttpUrlRepresentation:
     backend = str(storage.get("backend") or storage.get("provider") or "").strip()
     if backend and backend not in ("img_server", "local", "lan"):
@@ -166,7 +172,11 @@ def http_url_from_storage(storage: dict[str, Any]) -> HttpUrlRepresentation:
     if not candidates:
         raise AssetStorageError("img_server storage missing key")
     base, key = candidates[0]
-    url = f"{base}/{key.lstrip('/')}"
+    k = str(key or "").strip()
+    if k.startswith("http://") or k.startswith("https://"):
+        url = k
+    else:
+        url = f"{base.rstrip('/')}{_url_path_for_storage_key(k)}"
     if not url.startswith("http://") and not url.startswith("https://"):
         raise AssetStorageError(f"refusing non-http url: {url}")
     return HttpUrlRepresentation(url=url, expires_at_ms=None)
