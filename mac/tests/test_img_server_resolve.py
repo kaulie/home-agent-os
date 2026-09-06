@@ -65,6 +65,24 @@ class ImgServerResolveTests(unittest.TestCase):
             http_url_from_storage({"backend": "img_server", "public_base": "http://x"})
         self.assertIn("missing key", str(ctx.exception))
 
+    def test_percent_encodes_non_ascii_keys(self) -> None:
+        """id=641: Chinese PDF keys must be quoted for urllib on Mac Edge."""
+        with patch.dict(
+            os.environ,
+            {"MAC_EDGE_LAN_PUBLIC_BASE": "http://192.168.3.96:8080"},
+            clear=False,
+        ):
+            rep = http_url_from_storage(
+                {
+                    "backend": "img_server",
+                    "key": "f1103a10_当前Agent编排平台现状分析和创业空间.pdf",
+                    "public_base": "http://192.168.3.65:8080",
+                }
+            )
+        self.assertIn("%E5%BD%93%E5%89%8D", rep.url)
+        self.assertNotIn("当前", rep.url)
+        self.assertTrue(rep.url.startswith("http://192.168.3.96:8080/f1103a10_"))
+
     def test_lan_facing_brain_rewrites_loopback(self) -> None:
         with patch.dict(
             os.environ,
