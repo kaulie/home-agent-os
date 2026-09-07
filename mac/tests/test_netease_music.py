@@ -1009,6 +1009,62 @@ class NeteaseMusicTests(unittest.TestCase):
         self.assertEqual([r["originalId"] for r in got], [11, 10])
         self.assertTrue(nm.is_solo_for_artist(got[0], artist="王力宏"))
 
+    def test_collect_artist_queue_pages_until_full_max_5(self) -> None:
+        """Sparse per-page matches → keep paging; cap at 5 pages; rank by count."""
+
+        def page_records(page_i: int) -> list[dict[str, Any]]:
+            # Each search page has 20 hits; only 3 match 王力宏 (mix of solo/duet).
+            out: list[dict[str, Any]] = []
+            for j in range(20):
+                oid = page_i * 100 + j
+                if j < 3:
+                    artists: list[dict[str, str]] = [{"name": "王力宏"}]
+                    if j == 0:
+                        artists.append({"name": "合唱"})
+                    out.append(
+                        {
+                            "originalId": oid,
+                            "id": f"e{oid}",
+                            "name": f"歌{oid}",
+                            "artists": artists,
+                        }
+                    )
+                else:
+                    out.append(
+                        {
+                            "originalId": oid,
+                            "id": f"x{oid}",
+                            "name": f"其他{oid}",
+                            "artists": [{"name": "路人"}],
+                        }
+                    )
+            return out
+
+        offsets: list[int] = []
+
+        def fake_run(cmd, **_kwargs):
+            if _ncm_action(cmd) != "search":
+                self.fail(f"unexpected {cmd}")
+            off = int(cmd[cmd.index("--offset") + 1]) if "--offset" in cmd else 0
+            offsets.append(off)
+            page_i = off // 20
+            payload = json.dumps(
+                {"code": 200, "data": {"records": page_records(page_i)}},
+                ensure_ascii=False,
+            )
+            return _completed(payload)
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                got = nm.collect_artist_queue_records(artist="王力宏", limit=20)
+        # 3 matches/page → need 7 pages for 20, but cap is 5 → 15 songs
+        self.assertEqual(len(offsets), 5)
+        self.assertEqual(offsets, [0, 20, 40, 60, 80])
+        self.assertEqual(len(got), 15)
+        # solos (j=1,2 per page) before duets (j=0)
+        self.assertTrue(all(nm.is_solo_for_artist(r, artist="王力宏") for r in got[:10]))
+        self.assertFalse(nm.is_solo_for_artist(got[10], artist="王力宏"))
+
 
 if __name__ == "__main__":
     unittest.main()
