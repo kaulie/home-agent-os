@@ -5,7 +5,10 @@ reads/writes ``mac_edge.ncm_songs``. Keyword is one argv value.
 
 「xxx的歌/歌曲」or artist-only: build a reusable cloud playlist then
 ``play --playlist`` (orpheus). Desktop ``queue add`` is a no-op under
-orpheus (success:true + 「队列为空或无法读取」).
+orpheus (success:true + 「队列为空或无法读取」). Default queue order is
+``solo_first`` (single-artist tracks before collabs); override with
+``MAC_EDGE_NCM_ARTIST_QUEUE_STRATEGY=api_order`` or param
+``artist_queue_strategy``.
 
 Empty song+artist (e.g. 「播放音乐」): try resume, else daily recommend
 via the same playlist path.
@@ -31,6 +34,7 @@ from mac_edge.ncm_songs import (
     NcmSongsError,
     find_by_name_artist,
     find_index_by_name_artist,
+    get_song,
     init_db,
     normalize_text,
     record_play,
@@ -44,6 +48,9 @@ log = logging.getLogger("mac_edge.netease_music")
 SEARCH_TIMEOUT_SEC = 30.0
 SEARCH_LIMIT = 10
 ARTIST_QUEUE_MAX = 20
+# Artist-queue order: solo_first (default) | api_order
+ARTIST_QUEUE_STRATEGY_SOLO_FIRST = "solo_first"
+ARTIST_QUEUE_STRATEGY_API_ORDER = "api_order"
 DAILY_RECOMMEND_LIMIT = 20
 FEW_SONGS_DEFAULT = 5
 CACHE_PAGE = 20
@@ -325,6 +332,15 @@ def _record_from_index(row: dict[str, Any]) -> dict[str, Any] | None:
     oid = row.get("song_original_id")
     if not enc or oid in (None, ""):
         return None
+    # Prefer full backup record (full artists[]) so solo/collab ranking is accurate.
+    try:
+        backed = get_song(int(oid))
+    except (TypeError, ValueError, NcmSongsError):
+        backed = None
+    if isinstance(backed, dict):
+        full = backed.get("record")
+        if isinstance(full, dict) and full.get("id") and full.get("originalId") is not None:
+            return full
     rec: dict[str, Any] = {
         "id": enc,
         "originalId": oid,
@@ -835,6 +851,71 @@ def _record_matches_artist(record: dict[str, Any], artist: str) -> bool:
     return any(_names_equal(name, singer) for name in _artist_names(record))
 
 
+def is_solo_for_artist(record: dict[str, Any], *, artist: str) -> bool:
+    """True when the track credits exactly one artist and that artist matches."""
+    singer = str(artist or "").strip()
+    if not singer:
+        return False
+    names = _artist_names(record)
+    return len(names) == 1 and _names_equal(names[0], singer)
+
+
+def resolve_artist_queue_strategy(raw: Any = None) -> str:
+    """solo_first (default) or api_order. Param overrides env."""
+    candidates = (
+        raw,
+        os.environ.get("MAC_EDGE_NCM_ARTIST_QUEUE_STRATEGY"),
+    )
+    for item in candidates:
+        text = str(item or "").strip().lower().replace("-", "_")
+        if not text:
+            continue
+        if text in (
+            ARTIST_QUEUE_STRATEGY_SOLO_FIRST,
+            "solo",
+            "single",
+            "single_first",
+        ):
+            return ARTIST_QUEUE_STRATEGY_SOLO_FIRST
+        if text in (
+            ARTIST_QUEUE_STRATEGY_API_ORDER,
+            "api",
+            "none",
+            "off",
+            "default",
+        ):
+            return ARTIST_QUEUE_STRATEGY_API_ORDER
+    return ARTIST_QUEUE_STRATEGY_SOLO_FIRST
+
+
+def apply_artist_queue_strategy(
+    records: list[dict[str, Any]],
+    *,
+    artist: str,
+    strategy: str | None = None,
+) -> list[dict[str, Any]]:
+    """Reorder artist-queue candidates. Default: solo tracks before collabs."""
+    mode = resolve_artist_queue_strategy(strategy)
+    if mode != ARTIST_QUEUE_STRATEGY_SOLO_FIRST:
+        return list(records)
+    solo: list[dict[str, Any]] = []
+    collab: list[dict[str, Any]] = []
+    for rec in records:
+        if is_solo_for_artist(rec, artist=artist):
+            solo.append(rec)
+        else:
+            collab.append(rec)
+    if solo and collab:
+        log.info(
+            "artist queue strategy=%s solo=%s collab=%s artist=%s",
+            mode,
+            len(solo),
+            len(collab),
+            artist,
+        )
+    return solo + collab
+
+
 def filter_records_by_artist(
     records: list[Any],
     *,
@@ -852,22 +933,40 @@ def collect_artist_queue_records(
     artist: str,
     user_input: str | None = None,
     limit: int = ARTIST_QUEUE_MAX,
+    strategy: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Up to ``limit`` songs whose primary artist matches ``artist``.
+    """Up to ``limit`` songs whose artist matches ``artist``.
 
     Searches with keyword=artist only (ignores utterance ``user_input`` so
     phrases like 「播放刘德华的歌」 do not skew ncm-cli ``--userInput``).
     Pages until filled or search exhausted.
+
+    Default strategy ``solo_first`` puts single-artist tracks ahead of collabs.
     """
     del user_input  # kept for call-site compat; must not bias artist search
     singer = str(artist or "").strip()
     if not singer:
         raise NeteaseMusicError(NO_SONG_MSG)
     want = max(1, min(int(limit), ARTIST_QUEUE_MAX))
+    mode = resolve_artist_queue_strategy(strategy)
+    # Over-fetch under solo_first so ranking still fills ``want`` with solos.
+    fetch_cap = want
+    if mode == ARTIST_QUEUE_STRATEGY_SOLO_FIRST:
+        fetch_cap = min(ARTIST_QUEUE_MAX * 3, max(want * 3, want))
     init_db()
     collected: list[dict[str, Any]] = []
     seen: set[Any] = set()
-    indexed = find_index_by_name_artist(name="", artist=singer, limit=want)
+
+    def _enough() -> bool:
+        if mode == ARTIST_QUEUE_STRATEGY_SOLO_FIRST:
+            solos = sum(1 for r in collected if is_solo_for_artist(r, artist=singer))
+            if solos >= want:
+                return True
+        elif len(collected) >= want:
+            return True
+        return len(collected) >= fetch_cap
+
+    indexed = find_index_by_name_artist(name="", artist=singer, limit=fetch_cap)
     for row in indexed:
         rec = _record_from_index(row)
         if rec is None or not _record_matches_artist(rec, singer):
@@ -877,11 +976,11 @@ def collect_artist_queue_records(
             continue
         seen.add(oid)
         collected.append(rec)
-        if len(collected) >= want:
-            return collected
+        if _enough():
+            break
     offset = 0
     page = CACHE_PAGE
-    while len(collected) < want:
+    while not _enough():
         batch = search_records(
             keyword=singer,
             user_input=None,
@@ -897,16 +996,21 @@ def collect_artist_queue_records(
                 continue
             seen.add(oid)
             collected.append(rec)
-            if len(collected) >= want:
+            if _enough():
                 break
-        if len(collected) >= want:
+        if _enough():
             break
         if len(batch) < page or len(collected) == before:
             break
         offset += page
     if not collected:
         raise NeteaseMusicError(f"网易云未找到歌手「{singer}」的歌")
-    return collected[:want]
+    ranked = apply_artist_queue_strategy(
+        collected,
+        artist=singer,
+        strategy=mode,
+    )
+    return ranked[:want]
 
 
 def play_artist_queue(records: list[dict[str, Any]]) -> tuple[str, int]:
@@ -1187,6 +1291,8 @@ def play_from_params(params: dict[str, Any] | None = None) -> tuple[str, dict[st
             artist=queue_artist,
             user_input=user_input or None,
             limit=queue_limit,
+            strategy=raw.get("artist_queue_strategy")
+            or raw.get("queue_strategy"),
         )
         search_ms = int(round((time.perf_counter() - t_search) * 1000))
         cache_label = "artist-queue"
