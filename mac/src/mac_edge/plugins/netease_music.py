@@ -6,7 +6,7 @@ reads/writes ``mac_edge.ncm_songs``. Keyword is one argv value.
 「xxx的歌/歌曲」or artist-only: build a reusable cloud playlist then
 ``play --playlist`` (orpheus). Desktop ``queue add`` is a no-op under
 orpheus (success:true + 「队列为空或无法读取」). Default queue order is
-``solo_first`` (single-artist tracks before collabs); override with
+``solo_first`` (fewer credited artists first: 1 before 2 before 3…); override with
 ``MAC_EDGE_NCM_ARTIST_QUEUE_STRATEGY=api_order`` or param
 ``artist_queue_strategy``.
 
@@ -894,26 +894,32 @@ def apply_artist_queue_strategy(
     artist: str,
     strategy: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Reorder artist-queue candidates. Default: solo tracks before collabs."""
+    """Reorder artist-queue candidates.
+
+    Default ``solo_first``: fewer credited artists first (1 before 2 before 3…),
+    stable within the same count. ``artist`` kept for call-site compat / logging.
+    """
+    del artist  # ranking key is artist count only
     mode = resolve_artist_queue_strategy(strategy)
     if mode != ARTIST_QUEUE_STRATEGY_SOLO_FIRST:
         return list(records)
-    solo: list[dict[str, Any]] = []
-    collab: list[dict[str, Any]] = []
-    for rec in records:
-        if is_solo_for_artist(rec, artist=artist):
-            solo.append(rec)
-        else:
-            collab.append(rec)
-    if solo and collab:
+    indexed = list(enumerate(records))
+
+    def _count_key(item: tuple[int, dict[str, Any]]) -> tuple[int, int]:
+        n = len(_artist_names(item[1]))
+        # Missing artists[] → push last (unknown), not ahead of solos.
+        return (n if n > 0 else 10**9, item[0])
+
+    indexed.sort(key=_count_key)
+    ranked = [rec for _, rec in indexed]
+    counts = [len(_artist_names(r)) for r in ranked]
+    if counts and (min(counts) != max(counts)):
         log.info(
-            "artist queue strategy=%s solo=%s collab=%s artist=%s",
+            "artist queue strategy=%s by artist_count order=%s",
             mode,
-            len(solo),
-            len(collab),
-            artist,
+            counts[:12],
         )
-    return solo + collab
+    return ranked
 
 
 def filter_records_by_artist(
@@ -941,7 +947,8 @@ def collect_artist_queue_records(
     phrases like 「播放刘德华的歌」 do not skew ncm-cli ``--userInput``).
     Pages until filled or search exhausted.
 
-    Default strategy ``solo_first`` puts single-artist tracks ahead of collabs.
+    Default strategy ``solo_first`` ranks by credited artist count ascending
+    (solo before duet before trio…).
     """
     del user_input  # kept for call-site compat; must not bias artist search
     singer = str(artist or "").strip()
