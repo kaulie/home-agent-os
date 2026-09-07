@@ -194,6 +194,32 @@ class RunSessionTests(unittest.TestCase):
         self.assertEqual(out["answer_text"], SILENT_MSG)
         self.assertEqual(calls, [])
 
+    def test_keep_wav_writes_attempt_and_session(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wav_dir = Path(tmp) / "wav"
+            cfg = make_cfg(keep_wav=True, wav_dir=wav_dir, max_sec=12.0)
+
+            def provider(wav: bytes) -> SongMatch | None:
+                return None
+
+            out = run_session(
+                cfg,
+                iter_pcm=chunk_iter(tone_pcm(12.5)),
+                provider=provider,
+                session_tag="intent647",
+            )
+            self.assertFalse(out["matched"])
+            paths = out.get("kept_wav_paths") or []
+            self.assertTrue(paths)
+            written = sorted(wav_dir.glob("*.wav"))
+            self.assertTrue(written)
+            self.assertTrue(any(p.name.startswith("intent647_attempt") for p in written))
+            self.assertTrue(any(p.name == "intent647_session.wav" for p in written))
+            for p in written:
+                self.assertGreater(p.stat().st_size, 44)
+
     def test_run_from_params_requires_provider(self) -> None:
         from mac_edge.plugins.music_recognize import run_from_params
 
