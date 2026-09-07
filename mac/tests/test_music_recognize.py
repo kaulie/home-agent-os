@@ -149,6 +149,48 @@ class ProviderTests(unittest.TestCase):
         sig = acr_signature("ak", "sk", "1700000000")
         self.assertEqual(sig, acr_signature("ak", "sk", "1700000000"))
         self.assertNotEqual(sig, acr_signature("ak", "sk2", "1700000000"))
+        # Official protocol v1 string_to_sign (not the old buggy layout).
+        self.assertEqual(sig, "KkjhsUc/r8rmyukgTnjY/xbpti8=")
+
+    def test_acr_success_code_zero_not_treated_as_missing(self) -> None:
+        """Regression: `status.code or -1` wrongly turns success (0) into -1."""
+        from unittest.mock import MagicMock, patch
+
+        from mac_edge.plugins.music_recognize.providers import recognize_acrcloud
+
+        body = {
+            "status": {"msg": "Success", "code": 0, "version": "1.0"},
+            "metadata": {
+                "music": [
+                    {
+                        "title": "十年",
+                        "artists": [{"name": "陈奕迅"}],
+                        "album": {"name": "黑白灰"},
+                        "score": 100,
+                    }
+                ]
+            },
+        }
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = body
+        mock_client = MagicMock()
+        mock_client.__enter__.return_value = mock_client
+        mock_client.post.return_value = mock_resp
+        with patch(
+            "mac_edge.plugins.music_recognize.providers._import_httpx"
+        ) as httpx_mod:
+            httpx_mod.return_value.Client.return_value = mock_client
+            match = recognize_acrcloud(
+                b"RIFF" + b"\x00" * 100,
+                access_key="ak",
+                access_secret="sk",
+                host="identify-ap-southeast-1.acrcloud.com",
+                timeout_sec=5.0,
+            )
+        self.assertIsNotNone(match)
+        self.assertEqual(match.title, "十年")
+        self.assertEqual(match.artist, "陈奕迅")
 
 
 class RunSessionTests(unittest.TestCase):

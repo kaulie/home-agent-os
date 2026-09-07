@@ -121,10 +121,16 @@ def recognize_audd(
 
 
 def acr_signature(access_key: str, access_secret: str, timestamp: str) -> str:
-    """ACRCloud v2 identify request signature (HMAC-SHA1, base64)."""
+    """ACRCloud Identify Protocol v1 signature (HMAC-SHA1, base64).
+
+    string_to_sign =
+      POST\\n/v1/identify\\n{access_key}\\n{data_type}\\n{signature_version}\\n{timestamp}
+    """
+    data_type = "audio"
+    signature_version = "1"
     message = (
         f"POST\n/v1/identify\n{access_key}\n"
-        f"data_type=audio\n{timestamp}\nsig_version=1"
+        f"{data_type}\n{signature_version}\n{timestamp}"
     )
     digest = hmac.new(
         access_secret.encode("utf-8"),
@@ -147,14 +153,17 @@ def recognize_acrcloud(
     httpx = _import_httpx()
     ts = str(int(time.time()))
     signature = acr_signature(access_key, access_secret, ts)
-    endpoint = f"https://{host.rstrip('/')}/v1/identify"
+    host_clean = (
+        str(host or "").strip().removeprefix("https://").removeprefix("http://").rstrip("/")
+    )
+    endpoint = f"https://{host_clean}/v1/identify"
     data = {
         "access_key": access_key,
         "data_type": "audio",
         "signature": signature,
         "sample_bytes": str(len(wav_bytes)),
         "timestamp": ts,
-        "sig_version": "1",
+        "signature_version": "1",
     }
     files = {"sample": ("sample.wav", wav_bytes, "audio/wav")}
     try:
@@ -169,8 +178,18 @@ def recognize_acrcloud(
         raise ProviderError(f"ACRCloud 识别请求失败：{type(e).__name__}: {e}") from e
 
     status = body.get("status") if isinstance(body, dict) else None
-    if not isinstance(status, dict) or int(status.get("code") or -1) != 0:
-        msg = str((status or {}).get("msg") or body) or "ACRCloud 返回异常"
+    if not isinstance(status, dict):
+        raise ProviderError(f"ACRCloud 返回异常：{body}")
+    # Do not use `or -1` — code 0 (success) is falsy in Python.
+    try:
+        code = int(status["code"])
+    except (KeyError, TypeError, ValueError):
+        code = -1
+    # 0 = hit; 1001 = no result (continue / timeout path); others = hard fail
+    if code == 1001:
+        return None
+    if code != 0:
+        msg = str(status.get("msg") or body) or "ACRCloud 返回异常"
         raise ProviderError(f"ACRCloud 识别失败：{msg}")
     metadata = body.get("metadata") or {}
     music = metadata.get("music") if isinstance(metadata, dict) else None
