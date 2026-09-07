@@ -113,6 +113,13 @@ class ConfigTests(unittest.TestCase):
         os.environ["MAC_EDGE_MUSIC_RECOGNIZE_AUDD_TOKEN"] = "tok"
         self.assertTrue(provider_selected())
 
+    def test_load_config_defaults_faster_first_window(self) -> None:
+        self._clear_env()
+        os.environ["MAC_EDGE_MUSIC_RECOGNIZE_PROVIDER"] = "mock"
+        cfg = load_config()
+        self.assertEqual(cfg.min_sec, 5.0)
+        self.assertEqual(cfg.retry_every_sec, 3.0)
+
     def test_load_config_clamps_and_derives_device(self) -> None:
         self._clear_env()
         os.environ["MAC_EDGE_MUSIC_RECOGNIZE_PROVIDER"] = "mock"
@@ -149,6 +156,48 @@ class ProviderTests(unittest.TestCase):
         sig = acr_signature("ak", "sk", "1700000000")
         self.assertEqual(sig, acr_signature("ak", "sk", "1700000000"))
         self.assertNotEqual(sig, acr_signature("ak", "sk2", "1700000000"))
+        # Official protocol v1 string_to_sign (not the old buggy layout).
+        self.assertEqual(sig, "KkjhsUc/r8rmyukgTnjY/xbpti8=")
+
+    def test_acr_success_code_zero_not_treated_as_missing(self) -> None:
+        """Regression: `status.code or -1` wrongly turns success (0) into -1."""
+        from unittest.mock import MagicMock, patch
+
+        from mac_edge.plugins.music_recognize.providers import recognize_acrcloud
+
+        body = {
+            "status": {"msg": "Success", "code": 0, "version": "1.0"},
+            "metadata": {
+                "music": [
+                    {
+                        "title": "十年",
+                        "artists": [{"name": "陈奕迅"}],
+                        "album": {"name": "黑白灰"},
+                        "score": 100,
+                    }
+                ]
+            },
+        }
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = body
+        mock_client = MagicMock()
+        mock_client.__enter__.return_value = mock_client
+        mock_client.post.return_value = mock_resp
+        with patch(
+            "mac_edge.plugins.music_recognize.providers._import_httpx"
+        ) as httpx_mod:
+            httpx_mod.return_value.Client.return_value = mock_client
+            match = recognize_acrcloud(
+                b"RIFF" + b"\x00" * 100,
+                access_key="ak",
+                access_secret="sk",
+                host="identify-ap-southeast-1.acrcloud.com",
+                timeout_sec=5.0,
+            )
+        self.assertIsNotNone(match)
+        self.assertEqual(match.title, "十年")
+        self.assertEqual(match.artist, "陈奕迅")
 
 
 class RunSessionTests(unittest.TestCase):
@@ -193,6 +242,47 @@ class RunSessionTests(unittest.TestCase):
         self.assertFalse(out["matched"])
         self.assertEqual(out["answer_text"], SILENT_MSG)
         self.assertEqual(calls, [])
+
+    def test_keep_wav_writes_attempt_and_session(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            wav_dir = Path(tmp) / "wav"
+            cfg = make_cfg(keep_wav=True, wav_dir=wav_dir, max_sec=12.0)
+
+            def provider(wav: bytes) -> SongMatch | None:
+                return None
+
+            out = run_session(
+                cfg,
+                iter_pcm=chunk_iter(tone_pcm(12.5)),
+                provider=provider,
+                session_tag="intent647",
+            )
+            self.assertFalse(out["matched"])
+            self.assertNotIn("kept_wav_paths", out)
+            written = sorted(wav_dir.glob("*.wav"))
+            self.assertTrue(written)
+            self.assertTrue(any(p.name.startswith("intent647_attempt") for p in written))
+            self.assertTrue(any(p.name == "intent647_session.wav" for p in written))
+            for p in written:
+                self.assertGreater(p.stat().st_size, 44)
+
+    def test_matches_at_faster_default_window(self) -> None:
+        """DEFAULT_MIN_SEC=5: first provider call around 5s, not 10s."""
+        cfg = make_cfg(min_sec=5.0, max_sec=12.0, retry_every_sec=3.0)
+        calls: list[float] = []
+
+        def provider(wav: bytes) -> SongMatch | None:
+            # window length ≈ min_sec of PCM
+            calls.append(len(wav))
+            return SongMatch(title="十年", artist="陈奕迅")
+
+        out = run_session(cfg, iter_pcm=chunk_iter(tone_pcm(6.0)), provider=provider)
+        self.assertTrue(out["matched"])
+        self.assertGreaterEqual(out["captured_sec"], 5.0)
+        self.assertLess(out["captured_sec"], 8.0)
+        self.assertTrue(calls)
 
     def test_run_from_params_requires_provider(self) -> None:
         from mac_edge.plugins.music_recognize import run_from_params

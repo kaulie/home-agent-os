@@ -1639,7 +1639,10 @@ def _execute_capability(
             return False, f"{type(e).__name__}: {e}", {}
     if cap == "music.recognize":
         try:
-            msg, outputs = music_recognize_from_params(params)
+            msg, outputs = music_recognize_from_params(
+                params,
+                session_tag=str(asset.intent_id or "").strip() or None,
+            )
             return True, msg, outputs
         except MusicRecognizeError as e:
             return False, str(e), {}

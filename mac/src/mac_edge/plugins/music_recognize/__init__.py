@@ -51,6 +51,7 @@ def run_from_params(
     iter_pcm: Iterable[bytes] | None = None,
     provider: Callable[[bytes], Any] | None = None,
     pcm_to_wav_fn: Callable[[bytes], bytes] | None = None,
+    session_tag: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Execute one recognition session; returns (msg, outputs)."""
     _ = params or {}
@@ -77,6 +78,7 @@ def run_from_params(
         iter_pcm=stream,
         provider=provider,
         pcm_to_wav_fn=wav_fn,
+        session_tag=session_tag,
     )
     msg = str(outputs.get("answer_text") or "").strip() or "识曲完成"
     return msg, outputs

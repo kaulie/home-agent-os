@@ -10,12 +10,13 @@ deterministic in tests by injecting `iter_pcm` / `provider` / `pcm_to_wav`.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Callable, Iterable
 
 from mac_edge.plugins.music_recognize.config import BYTES_PER_SEC, MusicRecognizeConfig
 from mac_edge.plugins.music_recognize.errors import MusicRecognizeError
 from mac_edge.plugins.music_recognize.providers import ProviderError, SongMatch
-from mac_edge.plugins.music_recognize.wav import has_signal, pcm_to_wav
+from mac_edge.plugins.music_recognize.wav import has_signal, maybe_keep_wav, pcm_to_wav
 
 log = logging.getLogger("mac_edge.music_recognize.orchestrate")
 
@@ -64,6 +65,7 @@ def run_session(
     provider: Callable[[bytes], SongMatch | None],
     pcm_to_wav_fn: Callable[[bytes], bytes] = pcm_to_wav,
     signal_fn: Callable[[bytes], bool] | None = None,
+    session_tag: str | None = None,
 ) -> dict:
     """Capture & recognize; returns output dict (always matches the wire schema).
 
@@ -72,6 +74,7 @@ def run_session(
     """
     threshold = cfg.signal_threshold
     has_audio = signal_fn or (lambda pcm: has_signal(pcm, threshold))
+    tag = (session_tag or "").strip() or time.strftime("%Y%m%d_%H%M%S")
 
     collected = bytearray()
     total_sec = 0.0
@@ -80,6 +83,34 @@ def run_session(
     heard_signal = False
     attempts = 0
     next_attempt_sec = cfg.min_sec
+    kept_paths: list[str] = []
+
+    def _try_provider(window: bytes, attempt_label: str) -> SongMatch | None:
+        wav = pcm_to_wav_fn(window)
+        kept = maybe_keep_wav(cfg, f"{tag}_{attempt_label}", wav)
+        if kept is not None:
+            kept_paths.append(str(kept))
+        return _safe_provider_call(provider, wav)
+
+    def _finish(outputs: dict) -> dict:
+        if collected and cfg.keep_wav:
+            try:
+                session_wav = pcm_to_wav_fn(bytes(collected))
+            except ValueError:
+                session_wav = b""
+            kept = maybe_keep_wav(cfg, f"{tag}_session", session_wav)
+            if kept is not None:
+                kept_paths.append(str(kept))
+        if kept_paths:
+            # Debug-only on disk + logs — never ship local paths to Brain outputs.
+            log.info(
+                "music.recognize session=%s kept %s wav file(s) under %s: %s",
+                tag,
+                len(kept_paths),
+                cfg.wav_dir,
+                ",".join(kept_paths),
+            )
+        return outputs
 
     iterable = iter(iter_pcm)
     try:
@@ -109,10 +140,10 @@ def run_session(
                     total_sec,
                     len(window) / BYTES_PER_SEC,
                 )
-                match = _safe_provider_call(provider, pcm_to_wav_fn(window))
+                match = _try_provider(window, f"attempt{attempts}")
                 if match is not None:
                     log.info("music.recognize matched title=%r artist=%r", match.title, match.artist)
-                    return build_match_outputs(match, total_sec)
+                    return _finish(build_match_outputs(match, total_sec))
             next_attempt_sec = total_sec + cfg.retry_every_sec
     finally:
         close = getattr(iterable, "close", None)
@@ -129,11 +160,11 @@ def run_session(
         if has_audio(window):
             heard_signal = True
             log.info("music.recognize final attempt captured_sec=%.1f", total_sec)
-            match = _safe_provider_call(provider, pcm_to_wav_fn(window))
+            match = _try_provider(window, f"attempt{attempts}_final")
             if match is not None:
-                return build_match_outputs(match, total_sec)
+                return _finish(build_match_outputs(match, total_sec))
     log.info("music.recognize no match after %.1fs attempts=%s", total_sec, attempts)
-    return build_failure_outputs(total_sec, heard_signal=heard_signal)
+    return _finish(build_failure_outputs(total_sec, heard_signal=heard_signal))
 
 
 def _safe_provider_call(
