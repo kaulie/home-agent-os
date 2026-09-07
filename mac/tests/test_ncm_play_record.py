@@ -103,6 +103,10 @@ class NcmPlayRecordTests(unittest.TestCase):
         path.write_bytes(b"ID3fake")
         ncm_store.upsert_recording_started(song, path)
         ncm_store.mark_recording_complete(42)
+        row = ncm_store.get_recording(42)
+        self.assertEqual(row["filename"], path.name)
+        self.assertEqual(row["path"], str(path.parent))
+        self.assertEqual(row["file_path"], str(path))
         with patch.object(rec.subprocess, "Popen") as popen:
             self.assertTrue(rec.start_recording(song))
             popen.assert_not_called()

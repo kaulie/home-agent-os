@@ -1,6 +1,6 @@
 # Mac Edge `ncm_songs` SQLite（网易云本地歌曲库）
 
-**范围：** Mac Edge 本机独立库，**不进** Brain `brain.sqlite3`。实现：`mac/sql/001_ncm_songs.sql`（+ `002` 若曾应用旧 001）+ `mac/sql/003_ncm_song_index.sql` + `mac/sql/004_ncm_timestamps.sql` + `mac/sql/005_ncm_surrogate_pk.sql` + `mac/sql/006_ncm_plays.sql` + `mac/sql/007_ncm_recordings.sql` + `mac/src/mac_edge/ncm_songs/store.py`。
+**范围：** Mac Edge 本机独立库，**不进** Brain `brain.sqlite3`。实现：`mac/sql/001_ncm_songs.sql`（+ `002` 若曾应用旧 001）+ `mac/sql/003_ncm_song_index.sql` + `mac/sql/004_ncm_timestamps.sql` + `mac/sql/005_ncm_surrogate_pk.sql` + `mac/sql/006_ncm_plays.sql` + `mac/sql/007_ncm_recordings.sql` + `mac/sql/008_ncm_recordings_path_filename.sql` + `mac/src/mac_edge/ncm_songs/store.py`。
 
 ## 路径
 
@@ -132,6 +132,8 @@ CREATE TABLE ncm_plays (
 
 `music.play` 旁路录音（`ncm_play_record`）的索引。按 `song_original_id` 唯一；**录完整不再重录**，未完整可覆盖同路径 mp3。
 
+`path` = 目录，`filename` = 文件名；完整文件 = `path`/`filename`。目录以后可搬迁，文件名保持稳定。
+
 ```sql
 CREATE TABLE ncm_recordings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,11 +145,18 @@ CREATE TABLE ncm_recordings (
   artist_norm TEXT NOT NULL DEFAULT '',
   duration_ms INTEGER,
   path TEXT NOT NULL,
+  filename TEXT,
   status TEXT NOT NULL CHECK(status IN ('recording', 'complete', 'incomplete')),
   create_time REAL,
   update_time REAL
 );
 ```
+
+| 列 | 含义 |
+|----|------|
+| `song_original_id` / `song_encrypted_id` | 网易云 id（与目录表同义） |
+| `path` | 录音所在**目录** |
+| `filename` | 录音**文件名**（不含目录） |
 
 | status | 含义 | 再播 |
 |--------|------|------|

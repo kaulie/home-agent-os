@@ -314,10 +314,11 @@ def _spawn_locked(record: dict[str, Any], *, playlist_index: int | None = None) 
     if oid is not None:
         try:
             if ncm_store.recording_is_complete(oid):
+                existing = ncm_store.get_recording(oid) or {}
                 log.info(
                     "ncm record skip complete original_id=%s path=%s",
                     oid,
-                    (ncm_store.get_recording(oid) or {}).get("path"),
+                    existing.get("file_path") or existing.get("path"),
                 )
                 if playlist_index is not None:
                     _playlist_index = playlist_index

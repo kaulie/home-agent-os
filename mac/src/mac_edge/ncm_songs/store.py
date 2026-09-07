@@ -614,7 +614,31 @@ STATUS_COMPLETE = "complete"
 STATUS_INCOMPLETE = "incomplete"
 
 
+def _recording_file_path(row: sqlite3.Row | dict[str, Any]) -> Path:
+    """Join stored directory ``path`` + ``filename`` (legacy full path still works)."""
+    if isinstance(row, sqlite3.Row):
+        directory = str(row["path"] or "")
+        name = ""
+        try:
+            name = str(row["filename"] or "")
+        except (KeyError, IndexError):
+            name = ""
+    else:
+        directory = str(row.get("path") or "")
+        name = str(row.get("filename") or "")
+    if name:
+        return Path(directory) / name
+    return Path(directory)
+
+
 def _recording_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    filename = ""
+    try:
+        filename = str(row["filename"] or "")
+    except (KeyError, IndexError):
+        filename = ""
+    directory = str(row["path"] or "")
+    full = _recording_file_path(row)
     return {
         "id": _row_int(row, "id"),
         "song_original_id": int(row["song_original_id"]),
@@ -624,7 +648,9 @@ def _recording_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "artist": str(row["artist"] or ""),
         "artist_norm": str(row["artist_norm"] or ""),
         "duration_ms": _row_int(row, "duration_ms"),
-        "path": str(row["path"]),
+        "path": directory,
+        "filename": filename,
+        "file_path": str(full),
         "status": str(row["status"]),
         "create_time": row["create_time"],
         "update_time": row["update_time"],
@@ -649,16 +675,19 @@ def get_recording(song_original_id: int) -> dict[str, Any] | None:
 
 
 def recording_is_complete(song_original_id: int) -> bool:
-    """True when status=complete and the mp3 path still exists."""
+    """True when status=complete and the mp3 file still exists."""
     row = get_recording(song_original_id)
     if not row or row.get("status") != STATUS_COMPLETE:
         return False
-    path = Path(str(row.get("path") or ""))
+    path = Path(str(row.get("file_path") or ""))
     return path.is_file() and path.stat().st_size > 0
 
 
 def upsert_recording_started(record: dict[str, Any], path: str | Path) -> int | None:
-    """Insert/update a row as recording. Returns original_id or None if unkeyed."""
+    """Insert/update a row as recording. Returns original_id or None if unkeyed.
+
+    ``path`` is the full output file; stored as directory ``path`` + ``filename``.
+    """
     oid = _try_original_id(record)
     if oid is None:
         return None
@@ -670,15 +699,18 @@ def upsert_recording_started(record: dict[str, Any], path: str | Path) -> int | 
         enc = None
     duration = _duration_ms(record)
     now = _now()
-    path_s = str(path)
+    full = Path(path)
+    dir_s = str(full.parent)
+    file_s = full.name
     with _lock:
         init_db()
         _connect().execute(
             """
             INSERT INTO ncm_recordings (
               song_original_id, song_encrypted_id, song_name, song_name_norm,
-              artist, artist_norm, duration_ms, path, status, create_time, update_time
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              artist, artist_norm, duration_ms, path, filename, status,
+              create_time, update_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(song_original_id) DO UPDATE SET
               song_encrypted_id = excluded.song_encrypted_id,
               song_name = excluded.song_name,
@@ -687,6 +719,7 @@ def upsert_recording_started(record: dict[str, Any], path: str | Path) -> int | 
               artist_norm = excluded.artist_norm,
               duration_ms = excluded.duration_ms,
               path = excluded.path,
+              filename = excluded.filename,
               status = excluded.status,
               update_time = excluded.update_time
             """,
@@ -698,7 +731,8 @@ def upsert_recording_started(record: dict[str, Any], path: str | Path) -> int | 
                 artist or None,
                 normalize_text(artist),
                 duration,
-                path_s,
+                dir_s,
+                file_s,
                 STATUS_RECORDING,
                 now,
                 now,
