@@ -934,6 +934,70 @@ class NeteaseMusicTests(unittest.TestCase):
         self.assertIsNone(ncm_store.get_song(hit)["played_at"])
         self.assertIsNone(ncm_store.get_song(7000)["played_at"])
 
+    def test_solo_first_ranks_collabs_after_solos(self) -> None:
+        records = [
+            {
+                "originalId": 1,
+                "id": "c1",
+                "name": "合唱A",
+                "artists": [{"name": "王力宏"}, {"name": "谭维维"}],
+            },
+            {
+                "originalId": 2,
+                "id": "s1",
+                "name": "单曲A",
+                "artists": [{"name": "王力宏"}],
+            },
+            {
+                "originalId": 3,
+                "id": "c2",
+                "name": "合唱B",
+                "artists": [{"name": "李荣浩"}, {"name": "王力宏"}],
+            },
+            {
+                "originalId": 4,
+                "id": "s2",
+                "name": "单曲B",
+                "artists": [{"name": "王力宏"}],
+            },
+        ]
+        ranked = nm.apply_artist_queue_strategy(
+            records, artist="王力宏", strategy="solo_first"
+        )
+        self.assertEqual([r["originalId"] for r in ranked], [2, 4, 1, 3])
+        api = nm.apply_artist_queue_strategy(
+            records, artist="王力宏", strategy="api_order"
+        )
+        self.assertEqual([r["originalId"] for r in api], [1, 2, 3, 4])
+
+    def test_collect_artist_queue_solo_first_default(self) -> None:
+        page = [
+            {
+                "originalId": 10,
+                "id": "c",
+                "name": "合唱",
+                "artists": [{"name": "王力宏"}, {"name": "某人"}],
+            },
+            {
+                "originalId": 11,
+                "id": "s",
+                "name": "单人",
+                "artists": [{"name": "王力宏"}],
+            },
+        ]
+        payload = json.dumps({"code": 200, "data": {"records": page}}, ensure_ascii=False)
+
+        def fake_run(cmd, **_kwargs):
+            if _ncm_action(cmd) == "search":
+                return _completed(payload)
+            self.fail(f"unexpected {cmd}")
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                got = nm.collect_artist_queue_records(artist="王力宏", limit=2)
+        self.assertEqual([r["originalId"] for r in got], [11, 10])
+        self.assertTrue(nm.is_solo_for_artist(got[0], artist="王力宏"))
+
 
 if __name__ == "__main__":
     unittest.main()
