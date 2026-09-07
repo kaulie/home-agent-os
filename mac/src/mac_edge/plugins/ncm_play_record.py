@@ -18,13 +18,14 @@ import time
 from pathlib import Path
 from typing import Any
 
+from mac_edge.ncm_songs import store as ncm_store
 from mac_edge.ncm_songs.store import data_dir as ncm_data_dir
 
 log = logging.getLogger("mac_edge.ncm_play_record")
 
 DEFAULT_INPUT = "none:BlackHole 2ch"
 DEFAULT_DURATION_MS = 240_000
-GRACE_SEC = 1.0
+GRACE_SEC = 0.0
 BITRATE = "320k"
 STATE_FILE = "ncm_recording.json"
 RECORDINGS_DIRNAME = "ncm_recordings"
@@ -38,6 +39,7 @@ _out_path: Path | None = None
 _playlist: list[dict[str, Any]] = []
 _playlist_index: int = -1
 _generation: int = 0
+_active_original_id: int | None = None
 
 
 def _env_enabled() -> bool:
@@ -165,6 +167,44 @@ def _cancel_timer_locked() -> None:
         _timer = None
 
 
+def _try_original_id(record: dict[str, Any]) -> int | None:
+    raw = record.get("originalId")
+    if raw is None:
+        raw = record.get("original_id")
+    if raw in (None, ""):
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _mark_active_complete_locked() -> None:
+    global _active_original_id
+    oid = _active_original_id
+    _active_original_id = None
+    if oid is None:
+        return
+    try:
+        ncm_store.mark_recording_complete(oid)
+        log.info("ncm record marked complete original_id=%s", oid)
+    except Exception as e:  # noqa: BLE001
+        log.warning("ncm record mark complete failed original_id=%s: %s", oid, e)
+
+
+def _mark_active_incomplete_locked() -> None:
+    global _active_original_id
+    oid = _active_original_id
+    _active_original_id = None
+    if oid is None:
+        return
+    try:
+        ncm_store.mark_recording_incomplete(oid)
+        log.info("ncm record marked incomplete original_id=%s", oid)
+    except Exception as e:  # noqa: BLE001
+        log.warning("ncm record mark incomplete failed original_id=%s: %s", oid, e)
+
+
 def _stop_proc_locked() -> Path | None:
     global _proc, _out_path
     path = _out_path
@@ -195,6 +235,7 @@ def stop_recording(*, clear_playlist: bool = True) -> Path | None:
     global _generation
     with _lock:
         _cancel_timer_locked()
+        _mark_active_incomplete_locked()
         path = _stop_proc_locked()
         if clear_playlist:
             _clear_playlist_locked()
@@ -206,6 +247,12 @@ def stop_recording(*, clear_playlist: bool = True) -> Path | None:
 
 def cleanup_orphans() -> None:
     """Best-effort kill of a previous Edge process's recorder."""
+    try:
+        n = ncm_store.abandon_stale_recordings()
+        if n:
+            log.info("ncm record abandoned %s stale recording row(s)", n)
+    except Exception as e:  # noqa: BLE001
+        log.warning("ncm record abandon stale failed: %s", e)
     path = _state_path()
     if not path.is_file():
         return
@@ -238,6 +285,7 @@ def _schedule_stop_locked(duration_ms: int, generation: int) -> None:
             if generation != _generation:
                 return
             _cancel_timer_locked()
+            _mark_active_complete_locked()
             _stop_proc_locked()
             if _playlist and 0 <= _playlist_index < len(_playlist) - 1:
                 _start_index_locked(_playlist_index + 1)
@@ -256,9 +304,28 @@ def _start_index_locked(index: int) -> bool:
 
 
 def _spawn_locked(record: dict[str, Any], *, playlist_index: int | None = None) -> bool:
-    global _proc, _out_path, _playlist_index, _generation
+    global _proc, _out_path, _playlist_index, _generation, _active_original_id
+    if _active_original_id is not None:
+        _mark_active_incomplete_locked()
     _cancel_timer_locked()
     _stop_proc_locked()
+
+    oid = _try_original_id(record)
+    if oid is not None:
+        try:
+            if ncm_store.recording_is_complete(oid):
+                log.info(
+                    "ncm record skip complete original_id=%s path=%s",
+                    oid,
+                    (ncm_store.get_recording(oid) or {}).get("path"),
+                )
+                if playlist_index is not None:
+                    _playlist_index = playlist_index
+                    if playlist_index < len(_playlist) - 1:
+                        return _start_index_locked(playlist_index + 1)
+                return True
+        except Exception as e:  # noqa: BLE001
+            log.warning("ncm record complete check failed: %s", e)
 
     bin_path = _ffmpeg_bin()
     if not bin_path:
@@ -310,6 +377,15 @@ def _spawn_locked(record: dict[str, Any], *, playlist_index: int | None = None) 
         _playlist_index = playlist_index
     _generation += 1
     gen = _generation
+    if oid is not None:
+        try:
+            ncm_store.upsert_recording_started(record, out)
+            _active_original_id = oid
+        except Exception as e:  # noqa: BLE001
+            log.warning("ncm record upsert started failed: %s", e)
+            _active_original_id = None
+    else:
+        _active_original_id = None
     _write_state(
         {
             "pid": proc.pid,
@@ -362,6 +438,7 @@ def on_next() -> bool:
     with _lock:
         if not _playlist:
             _cancel_timer_locked()
+            _mark_active_incomplete_locked()
             path = _stop_proc_locked()
             _generation += 1
             if path:
@@ -371,6 +448,7 @@ def on_next() -> bool:
         if nxt >= len(_playlist):
             _clear_playlist_locked()
             _cancel_timer_locked()
+            _mark_active_incomplete_locked()
             path = _stop_proc_locked()
             _generation += 1
             if path:
@@ -385,6 +463,7 @@ def on_previous() -> bool:
     with _lock:
         if not _playlist:
             _cancel_timer_locked()
+            _mark_active_incomplete_locked()
             path = _stop_proc_locked()
             _generation += 1
             if path:
@@ -394,6 +473,7 @@ def on_previous() -> bool:
         if prev < 0:
             _clear_playlist_locked()
             _cancel_timer_locked()
+            _mark_active_incomplete_locked()
             path = _stop_proc_locked()
             _generation += 1
             if path:

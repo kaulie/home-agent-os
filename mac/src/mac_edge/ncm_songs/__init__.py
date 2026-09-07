@@ -2,6 +2,7 @@
 
 from mac_edge.ncm_songs.store import (
     NcmSongsError,
+    abandon_stale_recordings,
     connect,
     db_path,
     find_by_name_artist,
@@ -9,17 +10,23 @@ from mac_edge.ncm_songs.store import (
     find_index_by_name_artist,
     find_index_by_norm,
     get_index_song,
+    get_recording,
     get_song,
     init_db,
     list_library,
     list_recent_played,
+    mark_recording_complete,
+    mark_recording_incomplete,
     normalize_text,
     record_play,
+    recording_is_complete,
     upsert_record,
+    upsert_recording_started,
 )
 
 __all__ = [
     "NcmSongsError",
+    "abandon_stale_recordings",
     "connect",
     "db_path",
     "find_by_name_artist",
@@ -27,11 +34,16 @@ __all__ = [
     "find_index_by_name_artist",
     "find_index_by_norm",
     "get_index_song",
+    "get_recording",
     "get_song",
     "init_db",
     "list_library",
     "list_recent_played",
+    "mark_recording_complete",
+    "mark_recording_incomplete",
     "normalize_text",
     "record_play",
+    "recording_is_complete",
     "upsert_record",
+    "upsert_recording_started",
 ]
