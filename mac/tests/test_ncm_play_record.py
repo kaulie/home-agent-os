@@ -20,6 +20,8 @@ class NcmPlayRecordTests(unittest.TestCase):
         os.environ["MAC_EDGE_DATA_DIR"] = self._tmp.name
         os.environ["MAC_EDGE_NCM_RECORD"] = "1"
         ncm_store.reset(path=Path(self._tmp.name) / "ncm_songs.sqlite3")
+        ncm_store.init_db()
+        rec._active_original_id = None
         rec.stop_recording(clear_playlist=True)
 
     def tearDown(self) -> None:
@@ -93,6 +95,50 @@ class NcmPlayRecordTests(unittest.TestCase):
     def test_duration_default_when_missing(self) -> None:
         song = {"originalId": 9, "id": "x", "name": "无时长"}
         self.assertEqual(rec._duration_ms(song), rec.DEFAULT_DURATION_MS)
+
+    def test_complete_skips_rerecord(self) -> None:
+        song = self._song(42)
+        path = rec._output_path(song)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"ID3fake")
+        ncm_store.upsert_recording_started(song, path)
+        ncm_store.mark_recording_complete(42)
+        with patch.object(rec.subprocess, "Popen") as popen:
+            self.assertTrue(rec.start_recording(song))
+            popen.assert_not_called()
+        row = ncm_store.get_recording(42)
+        self.assertEqual(row["status"], "complete")
+
+    def test_incomplete_allows_overwrite(self) -> None:
+        song = self._song(7)
+        path = rec._output_path(song)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"old")
+        ncm_store.upsert_recording_started(song, path)
+        ncm_store.mark_recording_incomplete(7)
+        fake = MagicMock()
+        fake.pid = 99
+        fake.poll.return_value = None
+        with patch.object(rec, "_ffmpeg_bin", return_value="/usr/bin/ffmpeg"):
+            with patch.object(rec.subprocess, "Popen", return_value=fake) as popen:
+                with patch.object(rec, "_schedule_stop_locked"):
+                    self.assertTrue(rec.start_recording(song))
+                    popen.assert_called_once()
+        row = ncm_store.get_recording(7)
+        self.assertEqual(row["status"], "recording")
+
+    def test_stop_marks_incomplete(self) -> None:
+        fake = MagicMock()
+        fake.pid = 55
+        fake.poll.return_value = None
+        with patch.object(rec, "_ffmpeg_bin", return_value="/usr/bin/ffmpeg"):
+            with patch.object(rec.subprocess, "Popen", return_value=fake):
+                with patch.object(rec.os, "killpg"):
+                    with patch.object(rec, "_schedule_stop_locked"):
+                        rec.start_recording(self._song(3))
+                        rec.stop_recording()
+        row = ncm_store.get_recording(3)
+        self.assertEqual(row["status"], "incomplete")
 
 
 if __name__ == "__main__":

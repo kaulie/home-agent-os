@@ -607,6 +607,144 @@ def list_recent_played(*, limit: int = 20) -> list[dict[str, Any]]:
     return [_play_row_to_dict(row) for row in rows]
 
 
+# --- ncm_recordings (BlackHole capture catalog) ---
+
+STATUS_RECORDING = "recording"
+STATUS_COMPLETE = "complete"
+STATUS_INCOMPLETE = "incomplete"
+
+
+def _recording_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": _row_int(row, "id"),
+        "song_original_id": int(row["song_original_id"]),
+        "song_encrypted_id": _optional_text(row["song_encrypted_id"]),
+        "song_name": str(row["song_name"]),
+        "song_name_norm": str(row["song_name_norm"]),
+        "artist": str(row["artist"] or ""),
+        "artist_norm": str(row["artist_norm"] or ""),
+        "duration_ms": _row_int(row, "duration_ms"),
+        "path": str(row["path"]),
+        "status": str(row["status"]),
+        "create_time": row["create_time"],
+        "update_time": row["update_time"],
+    }
+
+
+def _try_original_id(record: dict[str, Any]) -> int | None:
+    try:
+        return _original_id(record)
+    except NcmSongsError:
+        return None
+
+
+def get_recording(song_original_id: int) -> dict[str, Any] | None:
+    with _lock:
+        init_db()
+        row = _connect().execute(
+            "SELECT * FROM ncm_recordings WHERE song_original_id = ?",
+            (int(song_original_id),),
+        ).fetchone()
+    return _recording_row_to_dict(row) if row is not None else None
+
+
+def recording_is_complete(song_original_id: int) -> bool:
+    """True when status=complete and the mp3 path still exists."""
+    row = get_recording(song_original_id)
+    if not row or row.get("status") != STATUS_COMPLETE:
+        return False
+    path = Path(str(row.get("path") or ""))
+    return path.is_file() and path.stat().st_size > 0
+
+
+def upsert_recording_started(record: dict[str, Any], path: str | Path) -> int | None:
+    """Insert/update a row as recording. Returns original_id or None if unkeyed."""
+    oid = _try_original_id(record)
+    if oid is None:
+        return None
+    name = _song_name(record)
+    artist = _artist_name(record)
+    try:
+        enc = _encrypted_id(record)
+    except NcmSongsError:
+        enc = None
+    duration = _duration_ms(record)
+    now = _now()
+    path_s = str(path)
+    with _lock:
+        init_db()
+        _connect().execute(
+            """
+            INSERT INTO ncm_recordings (
+              song_original_id, song_encrypted_id, song_name, song_name_norm,
+              artist, artist_norm, duration_ms, path, status, create_time, update_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(song_original_id) DO UPDATE SET
+              song_encrypted_id = excluded.song_encrypted_id,
+              song_name = excluded.song_name,
+              song_name_norm = excluded.song_name_norm,
+              artist = excluded.artist,
+              artist_norm = excluded.artist_norm,
+              duration_ms = excluded.duration_ms,
+              path = excluded.path,
+              status = excluded.status,
+              update_time = excluded.update_time
+            """,
+            (
+                oid,
+                enc,
+                name,
+                normalize_text(name),
+                artist or None,
+                normalize_text(artist),
+                duration,
+                path_s,
+                STATUS_RECORDING,
+                now,
+                now,
+            ),
+        )
+    return oid
+
+
+def mark_recording_status(song_original_id: int, status: str) -> None:
+    if status not in (STATUS_RECORDING, STATUS_COMPLETE, STATUS_INCOMPLETE):
+        raise NcmSongsError(f"invalid recording status: {status!r}")
+    with _lock:
+        init_db()
+        _connect().execute(
+            """
+            UPDATE ncm_recordings
+            SET status = ?, update_time = ?
+            WHERE song_original_id = ?
+            """,
+            (status, _now(), int(song_original_id)),
+        )
+
+
+def mark_recording_complete(song_original_id: int) -> None:
+    mark_recording_status(song_original_id, STATUS_COMPLETE)
+
+
+def mark_recording_incomplete(song_original_id: int) -> None:
+    mark_recording_status(song_original_id, STATUS_INCOMPLETE)
+
+
+def abandon_stale_recordings() -> int:
+    """Mark leftover ``recording`` rows as incomplete (Edge crash / orphan)."""
+    with _lock:
+        init_db()
+        cur = _connect().execute(
+            """
+            UPDATE ncm_recordings
+            SET status = ?, update_time = ?
+            WHERE status = ?
+            """,
+            (STATUS_INCOMPLETE, _now(), STATUS_RECORDING),
+        )
+        return int(cur.rowcount or 0)
+
+
 def main() -> None:
     import argparse
 

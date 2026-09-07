@@ -1,6 +1,6 @@
 # Mac Edge `ncm_songs` SQLite（网易云本地歌曲库）
 
-**范围：** Mac Edge 本机独立库，**不进** Brain `brain.sqlite3`。实现：`mac/sql/001_ncm_songs.sql`（+ `002` 若曾应用旧 001）+ `mac/sql/003_ncm_song_index.sql` + `mac/sql/004_ncm_timestamps.sql` + `mac/sql/005_ncm_surrogate_pk.sql` + `mac/sql/006_ncm_plays.sql` + `mac/src/mac_edge/ncm_songs/store.py`。
+**范围：** Mac Edge 本机独立库，**不进** Brain `brain.sqlite3`。实现：`mac/sql/001_ncm_songs.sql`（+ `002` 若曾应用旧 001）+ `mac/sql/003_ncm_song_index.sql` + `mac/sql/004_ncm_timestamps.sql` + `mac/sql/005_ncm_surrogate_pk.sql` + `mac/sql/006_ncm_plays.sql` + `mac/sql/007_ncm_recordings.sql` + `mac/src/mac_edge/ncm_songs/store.py`。
 
 ## 路径
 
@@ -10,7 +10,7 @@
 | 默认目录 | `mac/data/` |
 | 库文件 | `{MAC_EDGE_DATA_DIR}/ncm_songs.sqlite3` |
 
-同一 sqlite 文件里三张表：**`ncm_songs`**（完整 dump）+ **`ncm_song_index`**（精确索引）+ **`ncm_plays`**（意图播放日志）。不另开第二个库文件。
+同一 sqlite 文件里四张表：**`ncm_songs`**（完整 dump）+ **`ncm_song_index`**（精确索引）+ **`ncm_plays`**（意图播放日志）+ **`ncm_recordings`**（BlackHole 录音目录）。不另开第二个库文件。
 
 打开库：
 
@@ -128,6 +128,33 @@ CREATE TABLE ncm_plays (
 | `intent_id` | Brain intent id（可选） |
 | `played_at` | 本条 play 成功时刻，Unix **秒** |
 
+## 表：`ncm_recordings`（BlackHole 录音目录）
+
+`music.play` 旁路录音（`ncm_play_record`）的索引。按 `song_original_id` 唯一；**录完整不再重录**，未完整可覆盖同路径 mp3。
+
+```sql
+CREATE TABLE ncm_recordings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  song_original_id INTEGER NOT NULL UNIQUE,
+  song_encrypted_id TEXT,
+  song_name TEXT NOT NULL,
+  song_name_norm TEXT NOT NULL,
+  artist TEXT,
+  artist_norm TEXT NOT NULL DEFAULT '',
+  duration_ms INTEGER,
+  path TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('recording', 'complete', 'incomplete')),
+  create_time REAL,
+  update_time REAL
+);
+```
+
+| status | 含义 | 再播 |
+|--------|------|------|
+| `complete` | 按时长定时器正常结束 | 跳过（文件仍在） |
+| `incomplete` | stop / next / prev 提前停 | 可覆盖重录 |
+| `recording` | 进行中或崩溃残留 | 可覆盖；启动时 `abandon_stale_recordings` 标成 incomplete |
+
 ## 读写（`@capability`）
 
 仅通过 `mac_edge.ncm_songs`，禁止 plugin 自开 path / 自写 SQL。
@@ -142,6 +169,8 @@ CREATE TABLE ncm_plays (
 | `find_index_by_name_artist` / `find_index_by_norm` | 只查索引表（cache hit 优先） |
 | `record_play(original_id, participant_id, intent_id=, at=)` | `music.play` 成功后追加 `ncm_plays`；目录行不变 |
 | `list_recent_played(limit=20)` | 最近意图播放（`ncm_plays`，新→旧） |
+| `get_recording` / `recording_is_complete` / `upsert_recording_started` / `mark_recording_*` | 录音表读写与状态 |
+| `abandon_stale_recordings()` | 把残留 `recording` 标成 `incomplete` |
 
 ### 流程
 
