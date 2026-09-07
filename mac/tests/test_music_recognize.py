@@ -113,6 +113,13 @@ class ConfigTests(unittest.TestCase):
         os.environ["MAC_EDGE_MUSIC_RECOGNIZE_AUDD_TOKEN"] = "tok"
         self.assertTrue(provider_selected())
 
+    def test_load_config_defaults_faster_first_window(self) -> None:
+        self._clear_env()
+        os.environ["MAC_EDGE_MUSIC_RECOGNIZE_PROVIDER"] = "mock"
+        cfg = load_config()
+        self.assertEqual(cfg.min_sec, 5.0)
+        self.assertEqual(cfg.retry_every_sec, 3.0)
+
     def test_load_config_clamps_and_derives_device(self) -> None:
         self._clear_env()
         os.environ["MAC_EDGE_MUSIC_RECOGNIZE_PROVIDER"] = "mock"
@@ -253,14 +260,29 @@ class RunSessionTests(unittest.TestCase):
                 session_tag="intent647",
             )
             self.assertFalse(out["matched"])
-            paths = out.get("kept_wav_paths") or []
-            self.assertTrue(paths)
+            self.assertNotIn("kept_wav_paths", out)
             written = sorted(wav_dir.glob("*.wav"))
             self.assertTrue(written)
             self.assertTrue(any(p.name.startswith("intent647_attempt") for p in written))
             self.assertTrue(any(p.name == "intent647_session.wav" for p in written))
             for p in written:
                 self.assertGreater(p.stat().st_size, 44)
+
+    def test_matches_at_faster_default_window(self) -> None:
+        """DEFAULT_MIN_SEC=5: first provider call around 5s, not 10s."""
+        cfg = make_cfg(min_sec=5.0, max_sec=12.0, retry_every_sec=3.0)
+        calls: list[float] = []
+
+        def provider(wav: bytes) -> SongMatch | None:
+            # window length ≈ min_sec of PCM
+            calls.append(len(wav))
+            return SongMatch(title="十年", artist="陈奕迅")
+
+        out = run_session(cfg, iter_pcm=chunk_iter(tone_pcm(6.0)), provider=provider)
+        self.assertTrue(out["matched"])
+        self.assertGreaterEqual(out["captured_sec"], 5.0)
+        self.assertLess(out["captured_sec"], 8.0)
+        self.assertTrue(calls)
 
     def test_run_from_params_requires_provider(self) -> None:
         from mac_edge.plugins.music_recognize import run_from_params

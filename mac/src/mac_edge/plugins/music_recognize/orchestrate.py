@@ -102,14 +102,13 @@ def run_session(
             if kept is not None:
                 kept_paths.append(str(kept))
         if kept_paths:
-            # Debug-only; not part of the wire schema / presentation.
-            outputs = dict(outputs)
-            outputs["kept_wav_paths"] = kept_paths
+            # Debug-only on disk + logs — never ship local paths to Brain outputs.
             log.info(
-                "music.recognize session=%s kept %s wav file(s) under %s",
+                "music.recognize session=%s kept %s wav file(s) under %s: %s",
                 tag,
                 len(kept_paths),
                 cfg.wav_dir,
+                ",".join(kept_paths),
             )
         return outputs
 
