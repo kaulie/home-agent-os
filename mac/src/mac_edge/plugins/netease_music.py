@@ -48,6 +48,7 @@ log = logging.getLogger("mac_edge.netease_music")
 SEARCH_TIMEOUT_SEC = 30.0
 SEARCH_LIMIT = 10
 ARTIST_QUEUE_MAX = 20
+ARTIST_QUEUE_MAX_PAGES = 5
 # Artist-queue order: solo_first (default) | api_order
 ARTIST_QUEUE_STRATEGY_SOLO_FIRST = "solo_first"
 ARTIST_QUEUE_STRATEGY_API_ORDER = "api_order"
@@ -945,10 +946,11 @@ def collect_artist_queue_records(
 
     Searches with keyword=artist only (ignores utterance ``user_input`` so
     phrases like 「播放刘德华的歌」 do not skew ncm-cli ``--userInput``).
-    Pages until filled or search exhausted.
 
-    Default strategy ``solo_first`` ranks by credited artist count ascending
-    (solo before duet before trio…).
+    Paging: keep fetching search pages until ``limit`` matches are collected,
+    at most ``ARTIST_QUEUE_MAX_PAGES`` pages. Then rank (default: fewer
+    credited artists first) and return the first ``limit`` tracks—even when
+    fewer than ``limit`` were found.
     """
     del user_input  # kept for call-site compat; must not bias artist search
     singer = str(artist or "").strip()
@@ -956,24 +958,11 @@ def collect_artist_queue_records(
         raise NeteaseMusicError(NO_SONG_MSG)
     want = max(1, min(int(limit), ARTIST_QUEUE_MAX))
     mode = resolve_artist_queue_strategy(strategy)
-    # Over-fetch under solo_first so ranking still fills ``want`` with solos.
-    fetch_cap = want
-    if mode == ARTIST_QUEUE_STRATEGY_SOLO_FIRST:
-        fetch_cap = min(ARTIST_QUEUE_MAX * 3, max(want * 3, want))
     init_db()
     collected: list[dict[str, Any]] = []
     seen: set[Any] = set()
 
-    def _enough() -> bool:
-        if mode == ARTIST_QUEUE_STRATEGY_SOLO_FIRST:
-            solos = sum(1 for r in collected if is_solo_for_artist(r, artist=singer))
-            if solos >= want:
-                return True
-        elif len(collected) >= want:
-            return True
-        return len(collected) >= fetch_cap
-
-    indexed = find_index_by_name_artist(name="", artist=singer, limit=fetch_cap)
+    indexed = find_index_by_name_artist(name="", artist=singer, limit=want)
     for row in indexed:
         rec = _record_from_index(row)
         if rec is None or not _record_matches_artist(rec, singer):
@@ -983,11 +972,15 @@ def collect_artist_queue_records(
             continue
         seen.add(oid)
         collected.append(rec)
-        if _enough():
+        if len(collected) >= want:
             break
-    offset = 0
+
     page = CACHE_PAGE
-    while not _enough():
+    max_pages = max(1, int(ARTIST_QUEUE_MAX_PAGES))
+    for page_i in range(max_pages):
+        if len(collected) >= want:
+            break
+        offset = page_i * page
         batch = search_records(
             keyword=singer,
             user_input=None,
@@ -996,26 +989,31 @@ def collect_artist_queue_records(
         )
         if not batch:
             break
-        before = len(collected)
         for rec in filter_records_by_artist(batch, artist=singer):
             oid = rec.get("originalId")
             if oid in seen:
                 continue
             seen.add(oid)
             collected.append(rec)
-            if _enough():
+            if len(collected) >= want:
                 break
-        if _enough():
+        if len(batch) < page:
             break
-        if len(batch) < page or len(collected) == before:
-            break
-        offset += page
+
     if not collected:
         raise NeteaseMusicError(f"网易云未找到歌手「{singer}」的歌")
     ranked = apply_artist_queue_strategy(
         collected,
         artist=singer,
         strategy=mode,
+    )
+    log.info(
+        "artist queue collect artist=%s matched=%s pages_cap=%s want=%s strategy=%s",
+        singer,
+        len(collected),
+        max_pages,
+        want,
+        mode,
     )
     return ranked[:want]
 
