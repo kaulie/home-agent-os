@@ -20,6 +20,7 @@ from mac_edge.ncm_songs.store import (
     normalize_text,
     record_play,
     recording_is_complete,
+    update_recording_silence,
     upsert_record,
     upsert_recording_started,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "normalize_text",
     "record_play",
     "recording_is_complete",
+    "update_recording_silence",
     "upsert_record",
     "upsert_recording_started",
 ]

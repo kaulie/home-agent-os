@@ -639,6 +639,27 @@ def _recording_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         filename = ""
     directory = str(row["path"] or "")
     full = _recording_file_path(row)
+    silence_spans: list[Any] = []
+    silence_raw = ""
+    try:
+        silence_raw = str(row["silence_spans_json"] or "")
+    except (KeyError, IndexError):
+        silence_raw = ""
+    if silence_raw:
+        try:
+            parsed = json.loads(silence_raw)
+            if isinstance(parsed, list):
+                silence_spans = parsed
+        except json.JSONDecodeError:
+            silence_spans = []
+    try:
+        silence_total = row["silence_total_sec"]
+    except (KeyError, IndexError):
+        silence_total = None
+    try:
+        has_long = int(row["has_long_silence"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        has_long = 0
     return {
         "id": _row_int(row, "id"),
         "song_original_id": int(row["song_original_id"]),
@@ -652,6 +673,9 @@ def _recording_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "filename": filename,
         "file_path": str(full),
         "status": str(row["status"]),
+        "silence_spans": silence_spans,
+        "silence_total_sec": float(silence_total) if silence_total is not None else None,
+        "has_long_silence": bool(has_long),
         "create_time": row["create_time"],
         "update_time": row["update_time"],
     }
@@ -721,6 +745,9 @@ def upsert_recording_started(record: dict[str, Any], path: str | Path) -> int | 
               path = excluded.path,
               filename = excluded.filename,
               status = excluded.status,
+              silence_spans_json = NULL,
+              silence_total_sec = NULL,
+              has_long_silence = 0,
               update_time = excluded.update_time
             """,
             (
@@ -762,6 +789,36 @@ def mark_recording_complete(song_original_id: int) -> None:
 
 def mark_recording_incomplete(song_original_id: int) -> None:
     mark_recording_status(song_original_id, STATUS_INCOMPLETE)
+
+
+def update_recording_silence(
+    song_original_id: int,
+    *,
+    spans: list[dict[str, Any]] | None,
+    total_sec: float | None,
+    has_long_silence: bool,
+) -> None:
+    """Attach post-record silence marks; does not change status."""
+    payload = json.dumps(spans or [], ensure_ascii=False)
+    with _lock:
+        init_db()
+        _connect().execute(
+            """
+            UPDATE ncm_recordings
+            SET silence_spans_json = ?,
+                silence_total_sec = ?,
+                has_long_silence = ?,
+                update_time = ?
+            WHERE song_original_id = ?
+            """,
+            (
+                payload,
+                None if total_sec is None else float(total_sec),
+                1 if has_long_silence else 0,
+                _now(),
+                int(song_original_id),
+            ),
+        )
 
 
 def abandon_stale_recordings() -> int:
