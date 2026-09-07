@@ -951,8 +951,12 @@ class NeteaseMusicTests(unittest.TestCase):
             {
                 "originalId": 3,
                 "id": "c2",
-                "name": "合唱B",
-                "artists": [{"name": "李荣浩"}, {"name": "王力宏"}],
+                "name": "三人",
+                "artists": [
+                    {"name": "李荣浩"},
+                    {"name": "王力宏"},
+                    {"name": "某人"},
+                ],
             },
             {
                 "originalId": 4,
@@ -960,15 +964,22 @@ class NeteaseMusicTests(unittest.TestCase):
                 "name": "单曲B",
                 "artists": [{"name": "王力宏"}],
             },
+            {
+                "originalId": 5,
+                "id": "d2",
+                "name": "合唱B",
+                "artists": [{"name": "王力宏"}, {"name": "某人"}],
+            },
         ]
         ranked = nm.apply_artist_queue_strategy(
             records, artist="王力宏", strategy="solo_first"
         )
-        self.assertEqual([r["originalId"] for r in ranked], [2, 4, 1, 3])
+        # fewer artists first; stable within same count → 2,4 then 1,5 then 3
+        self.assertEqual([r["originalId"] for r in ranked], [2, 4, 1, 5, 3])
         api = nm.apply_artist_queue_strategy(
             records, artist="王力宏", strategy="api_order"
         )
-        self.assertEqual([r["originalId"] for r in api], [1, 2, 3, 4])
+        self.assertEqual([r["originalId"] for r in api], [1, 2, 3, 4, 5])
 
     def test_collect_artist_queue_solo_first_default(self) -> None:
         page = [
