@@ -63,6 +63,10 @@ from mac_edge.plugins.file_convert import (
     FileConvertError,
     convert_from_params as file_convert_from_params,
 )
+from mac_edge.plugins.pdf_rotate import (
+    PdfRotateError,
+    rotate_from_params as pdf_rotate_from_params,
+)
 from mac_edge.plugins.xiaomi_lock import (
     XiaomiLockError,
     status_from_params as lock_status_from_params,
@@ -1537,6 +1541,14 @@ def _execute_capability(
             msg, outputs = file_convert_from_params(params, asset=asset)
             return True, msg, outputs
         except (FileConvertError, AssetError) as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "pdf.rotate":
+        try:
+            msg, outputs = pdf_rotate_from_params(params, asset=asset)
+            return True, msg, outputs
+        except (PdfRotateError, AssetError) as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}

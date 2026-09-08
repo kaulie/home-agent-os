@@ -1,0 +1,21 @@
+id: pdf-rotate
+service_id: local.pdf.rotate
+group: convert
+version: "0.1.0"
+display_name: PDF 旋转器（横版/竖版）
+description: >
+  基于 pypdf 把已有 document(PDF) Asset 整份在横版/竖版之间切换：先读 MediaBox +
+  /Rotate 判断当前方向，方向不对的页顺时针转 90°，产物登记为新 document(PDF) Asset，
+  可交给 printer.print / 其它流程；无需旋转时复用原 asset。
+
+capabilities:
+  - capability_id: pdf.rotate
+    description: >
+      能：把本步已有的 document(PDF) Asset 整份转成横版或竖版，返回新的 document
+      Asset；能判断当前是横版/竖版/横竖混合/方形。
+      不能：打印、OCR、识别内容、扫描、PDF 合成/转图片、按任意角度/逐页指定旋转；
+      缺 asset_ref / 非 document / 文件读不了则明确中文失败。
+
+entry:
+  mac: mac/src/mac_edge/plugins/pdf_rotate.py
+config: []

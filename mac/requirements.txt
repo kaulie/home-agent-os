@@ -8,3 +8,5 @@ aiohttp>=3.9.0,<4
 # continuous mic (same as Desktop save_sound.py)
 sounddevice>=0.4.6
 numpy>=1.24.0
+# pdf.rotate — PDF 横版/竖版整份旋转（document Asset 页方向切换）
+pypdf>=4.0,<7

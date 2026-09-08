@@ -1029,6 +1029,80 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             },
         },
     },
+    'pdf.rotate': {
+        'kind': 'action',
+        'group': 'convert',
+        'service_id': 'local.pdf.rotate',
+        'role': 'PDF 旋转器（横版/竖版）',
+        'planner_recognize': (
+            '把本步已有的 PDF/document Asset 整份转成横版或竖版（先判断当前是横版还是'
+            '竖版，需要旋转的页转 90°）。入参 asset_ref（必填，type=document）、'
+            'orientation（必填，portrait=竖版 / landscape=横版，可写中文）。产出新的'
+            'document Asset 或无需旋转时复用原 asset_ref。转完通常交给 printer.print 打印'
+        ),
+        'typical_triggers': [
+            '把这个 PDF 转成横版',
+            '把这个 PDF 转成竖版',
+            '横着打这份 PDF',
+            '竖着打这份 PDF',
+            '把 PDF 旋转成横版',
+            'PDF 横竖切换',
+        ],
+        'do_not_dispatch': ['打印', 'OCR', '看图理解', '扫描', '识别内容', 'PDF 合成/转图片', '配网'],
+        'input_schema': {
+            'asset_ref': {
+                'type': 'object',
+                'required': True,
+                'description': (
+                    '必填 AssetRef JSON，type=document（PDF）。'
+                    '例 {"asset_id":"asset_…","type":"document"}。'
+                    '禁止 path / 永久 URL；缺则本能力无效。'
+                ),
+            },
+            'orientation': {
+                'type': 'string',
+                'required': True,
+                'description': '目标方向：portrait=竖版 / landscape=横版；也接受 竖版/横版/竖向/横向 等中文别名。',
+            },
+            'name': {
+                'type': 'string',
+                'required': False,
+                'description': '可选生成的 PDF 展示名（不含或自动补 .pdf）；不传则用 pdf-rotate-<时间戳>-<横版|竖版>.pdf。',
+            },
+        },
+        'output_schema': {
+            'asset_ref': {
+                'type': 'object',
+                'required': True,
+                'description': '旋转后新登记 document AssetRef；无需旋转时为原 asset_ref',
+            },
+            'page_count': {
+                'type': 'number',
+                'required': True,
+                'description': 'PDF 页数',
+            },
+            'source_orientation': {
+                'type': 'string',
+                'required': True,
+                'description': '整份判出的原始方向：portrait / landscape / mixed / square',
+            },
+            'target_orientation': {
+                'type': 'string',
+                'required': True,
+                'description': '请求的目标方向：portrait / landscape',
+            },
+            'rotated_pages': {
+                'type': 'number',
+                'required': True,
+                'description': '实际旋转 90° 的页数（0=无需旋转，复用原 asset）',
+            },
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话结果，含页数、方向与 asset_id',
+            },
+        },
+    },
     'asset.inventory': {
         'kind': 'system',
         'group': 'asset',

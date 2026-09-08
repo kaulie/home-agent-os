@@ -614,6 +614,77 @@ LOCAL_FILE_CONVERT_SERVICE: dict[str, Any] = {
     ],
 }
 
+LOCAL_PDF_ROTATE_SERVICE: dict[str, Any] = {
+    "service_id": "local.pdf.rotate",
+    "display_name": "PDF 旋转器",
+    "version": "0.1.0",
+    "group": "convert",
+    "capabilities": [
+        attach(
+            "pdf.rotate",
+            input_schema={
+                "asset_ref": {
+                    "type": "object",
+                    "required": True,
+                    "description": (
+                        "必填 AssetRef JSON，type=document（PDF）。"
+                        "例 {\"asset_id\":\"asset_…\",\"type\":\"document\"}。"
+                        "禁止 path / 永久 URL；缺则本能力无效。"
+                    ),
+                },
+                "orientation": {
+                    "type": "string",
+                    "required": True,
+                    "description": (
+                        "目标方向：portrait=竖版 / landscape=横版；"
+                        "也接受 竖版/横版/竖向/横向 等中文别名。"
+                    ),
+                },
+                "name": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "可选生成的 PDF 展示名（不含或自动补 .pdf）；"
+                        "不传则用 pdf-rotate-<时间戳>-<横版|竖版>.pdf。"
+                    ),
+                },
+            },
+            output_schema={
+                "asset_ref": {
+                    "type": "object",
+                    "required": True,
+                    "description": "旋转后新登记 document AssetRef；无需旋转时为原 asset_ref",
+                },
+                "page_count": {
+                    "type": "number",
+                    "required": True,
+                    "description": "PDF 页数",
+                },
+                "source_orientation": {
+                    "type": "string",
+                    "required": True,
+                    "description": "整份判出的原始方向：portrait / landscape / mixed / square",
+                },
+                "target_orientation": {
+                    "type": "string",
+                    "required": True,
+                    "description": "请求的目标方向：portrait / landscape",
+                },
+                "rotated_pages": {
+                    "type": "number",
+                    "required": True,
+                    "description": "实际旋转 90° 的页数（0=无需旋转，复用原 asset）",
+                },
+                "status_text": {
+                    "type": "string",
+                    "required": True,
+                    "description": "中文一句话结果，含页数、方向与 asset_id",
+                },
+            },
+        ),
+    ],
+}
+
 LOCAL_CHAT_SERVICE: dict[str, Any] = {
     "service_id": "local.chat",
     "display_name": "Local Chat",
@@ -1508,6 +1579,7 @@ _LAPTOP_SERVICE_ORDER = (
     LOCAL_CLOCK_SERVICE,
     LOCAL_MATH_SERVICE,
     LOCAL_FILE_CONVERT_SERVICE,
+    LOCAL_PDF_ROTATE_SERVICE,
     LOCAL_CHAT_SERVICE,
     LOCAL_ASSET_SERVICE,
     LOCAL_VOICE_SERVICE,
@@ -1675,6 +1747,14 @@ def default_services() -> list[dict[str, Any]]:
         # Pure-stdlib image→pdf: no extra availability dependency, always on laptop.
         services.append(dict(LOCAL_FILE_CONVERT_SERVICE))
         log.info("advertise local.file.convert (file.convert)")
+    if _allow_service(LOCAL_PDF_ROTATE_SERVICE["service_id"], allowed_set):
+        from mac_edge.plugins.pdf_rotate import pypdf_available
+
+        if pypdf_available():
+            services.append(dict(LOCAL_PDF_ROTATE_SERVICE))
+            log.info("advertise local.pdf.rotate (pdf.rotate)")
+        else:
+            log.info("skip local.pdf.rotate — pypdf not installed")
     if _allow_service(LOCAL_CHAT_SERVICE["service_id"], allowed_set):
         services.append(dict(LOCAL_CHAT_SERVICE))
     if _allow_service(LOCAL_ASSET_SERVICE["service_id"], allowed_set):
