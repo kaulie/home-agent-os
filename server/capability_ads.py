@@ -484,6 +484,25 @@ ADS: dict[str, dict[str, Any]] = {
         ],
         do_not_dispatch=["打印", "OCR", "看图理解", "投屏", "拍照", "图片上传本身", "文字识别"],
     ),
+    "pdf.rotate": _ad(
+        kind="action",
+        role="PDF 旋转器（横版/竖版）",
+        planner_recognize=(
+            "把本步已有的 PDF/document Asset 整份转成横版或竖版（先判断当前是横版还是"
+            "竖版，需要旋转的页转 90°）。入参 asset_ref（必填，type=document）、"
+            "orientation（必填，portrait=竖版 / landscape=横版，可写中文）。产出新的"
+            "document Asset 或无需旋转时复用原 asset_ref。转完通常交给 printer.print 打印"
+        ),
+        typical_triggers=[
+            "把这个 PDF 转成横版",
+            "把这个 PDF 转成竖版",
+            "横着打这份 PDF",
+            "竖着打这份 PDF",
+            "把 PDF 旋转成横版",
+            "PDF 横竖切换",
+        ],
+        do_not_dispatch=["打印", "OCR", "看图理解", "扫描", "识别内容", "PDF 合成/转图片", "配网"],
+    ),
     "xiaodu.speak": _ad(
         kind="output",
         role="小度音箱播报器",
