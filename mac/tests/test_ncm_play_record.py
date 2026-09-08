@@ -139,10 +139,66 @@ class NcmPlayRecordTests(unittest.TestCase):
             with patch.object(rec.subprocess, "Popen", return_value=fake):
                 with patch.object(rec.os, "killpg"):
                     with patch.object(rec, "_schedule_stop_locked"):
-                        rec.start_recording(self._song(3))
-                        rec.stop_recording()
+                        with patch.object(rec, "_analyze_silence_best_effort"):
+                            rec.start_recording(self._song(3))
+                            rec.stop_recording()
         row = ncm_store.get_recording(3)
         self.assertEqual(row["status"], "incomplete")
+
+    def test_parse_silencedetect_log(self) -> None:
+        blob = (
+            "[silencedetect @ 0x1] silence_start: 12.5\n"
+            "[silencedetect @ 0x1] silence_end: 18.25 | silence_duration: 5.75\n"
+            "[silencedetect @ 0x1] silence_start: 40\n"
+            "[silencedetect @ 0x1] silence_end: 42.1 | silence_duration: 2.1\n"
+        )
+        spans = rec.parse_silencedetect_log(blob)
+        self.assertEqual(len(spans), 2)
+        self.assertEqual(spans[0]["start_sec"], 12.5)
+        self.assertEqual(spans[0]["end_sec"], 18.25)
+        self.assertEqual(spans[0]["duration_sec"], 5.75)
+        self.assertEqual(spans[1]["duration_sec"], 2.1)
+
+    def test_stop_writes_silence_marks(self) -> None:
+        fake = MagicMock()
+        fake.pid = 77
+        fake.poll.return_value = None
+        spans = [{"start_sec": 10.0, "end_sec": 15.0, "duration_sec": 5.0}]
+        with patch.object(rec, "_ffmpeg_bin", return_value="/usr/bin/ffmpeg"):
+            with patch.object(rec.subprocess, "Popen", return_value=fake):
+                with patch.object(rec.os, "killpg"):
+                    with patch.object(rec, "_schedule_stop_locked"):
+                        with patch.object(rec, "detect_silence_spans", return_value=spans):
+                            rec.start_recording(self._song(11))
+                            # Ensure file exists so finalize keeps the path.
+                            out = rec._out_path
+                            self.assertIsNotNone(out)
+                            assert out is not None
+                            out.write_bytes(b"ID3fake")
+                            rec.stop_recording()
+        row = ncm_store.get_recording(11)
+        self.assertEqual(row["status"], "incomplete")
+        self.assertTrue(row["has_long_silence"])
+        self.assertEqual(row["silence_total_sec"], 5.0)
+        self.assertEqual(row["silence_spans"][0]["start_sec"], 10.0)
+
+    def test_update_recording_silence_roundtrip(self) -> None:
+        song = self._song(99)
+        path = rec._output_path(song)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        ncm_store.upsert_recording_started(song, path)
+        ncm_store.mark_recording_complete(99)
+        ncm_store.update_recording_silence(
+            99,
+            spans=[{"start_sec": 1.0, "end_sec": 3.5, "duration_sec": 2.5}],
+            total_sec=2.5,
+            has_long_silence=True,
+        )
+        row = ncm_store.get_recording(99)
+        self.assertTrue(row["has_long_silence"])
+        self.assertEqual(row["silence_total_sec"], 2.5)
+        self.assertEqual(len(row["silence_spans"]), 1)
 
 
 if __name__ == "__main__":

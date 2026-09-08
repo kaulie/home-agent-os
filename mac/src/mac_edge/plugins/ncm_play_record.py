@@ -29,8 +29,14 @@ GRACE_SEC = 0.0
 BITRATE = "320k"
 STATE_FILE = "ncm_recording.json"
 RECORDINGS_DIRNAME = "ncm_recordings"
+DEFAULT_SILENCE_NOISE_DB = -50.0
+DEFAULT_SILENCE_MIN_SEC = 2.0
 
 _SAFE_NAME = re.compile(r"[^\w\u4e00-\u9fff\-]+", re.UNICODE)
+_SILENCE_START = re.compile(r"silence_start:\s*([0-9.]+)")
+_SILENCE_END = re.compile(
+    r"silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)"
+)
 
 _lock = threading.RLock()
 _proc: subprocess.Popen[str] | None = None
@@ -47,6 +53,33 @@ def _env_enabled() -> bool:
     if not raw:
         return True
     return raw not in ("0", "false", "no", "off", "disabled")
+
+
+def _silence_detect_enabled() -> bool:
+    raw = (os.environ.get("MAC_EDGE_NCM_SILENCE_DETECT") or "").strip().lower()
+    if not raw:
+        return True
+    return raw not in ("0", "false", "no", "off", "disabled")
+
+
+def _silence_noise_db() -> float:
+    raw = (os.environ.get("MAC_EDGE_NCM_SILENCE_NOISE_DB") or "").strip()
+    if not raw:
+        return DEFAULT_SILENCE_NOISE_DB
+    try:
+        return float(raw)
+    except ValueError:
+        return DEFAULT_SILENCE_NOISE_DB
+
+
+def _silence_min_sec() -> float:
+    raw = (os.environ.get("MAC_EDGE_NCM_SILENCE_MIN_SEC") or "").strip()
+    if not raw:
+        return DEFAULT_SILENCE_MIN_SEC
+    try:
+        return max(0.1, float(raw))
+    except ValueError:
+        return DEFAULT_SILENCE_MIN_SEC
 
 
 def _record_input() -> str:
@@ -179,30 +212,127 @@ def _try_original_id(record: dict[str, Any]) -> int | None:
         return None
 
 
-def _mark_active_complete_locked() -> None:
+def parse_silencedetect_log(text: str) -> list[dict[str, float]]:
+    """Parse ffmpeg silencedetect stderr into start/end/duration spans."""
+    spans: list[dict[str, float]] = []
+    pending_start: float | None = None
+    for line in str(text or "").splitlines():
+        m_start = _SILENCE_START.search(line)
+        if m_start:
+            try:
+                pending_start = float(m_start.group(1))
+            except ValueError:
+                pending_start = None
+            continue
+        m_end = _SILENCE_END.search(line)
+        if not m_end:
+            continue
+        try:
+            end = float(m_end.group(1))
+            duration = float(m_end.group(2))
+        except ValueError:
+            pending_start = None
+            continue
+        start = pending_start if pending_start is not None else max(0.0, end - duration)
+        spans.append(
+            {
+                "start_sec": round(start, 3),
+                "end_sec": round(end, 3),
+                "duration_sec": round(duration, 3),
+            }
+        )
+        pending_start = None
+    return spans
+
+
+def detect_silence_spans(path: Path | str) -> list[dict[str, float]]:
+    """Run ffmpeg silencedetect on a finished capture file (mark only, no trim)."""
+    if not _silence_detect_enabled():
+        return []
+    file_path = Path(path)
+    if not file_path.is_file() or file_path.stat().st_size <= 0:
+        return []
+    bin_path = _ffmpeg_bin()
+    if not bin_path:
+        return []
+    noise = _silence_noise_db()
+    min_sec = _silence_min_sec()
+    af = f"silencedetect=noise={noise}dB:d={min_sec}"
+    try:
+        proc = subprocess.run(
+            [
+                bin_path,
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                str(file_path),
+                "-af",
+                af,
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        log.warning("ncm silence detect failed path=%s: %s", file_path, e)
+        return []
+    blob = (proc.stderr or "") + "\n" + (proc.stdout or "")
+    return parse_silencedetect_log(blob)
+
+
+def _analyze_silence_best_effort(oid: int, path: Path | str) -> None:
+    try:
+        spans = detect_silence_spans(path)
+        total = round(sum(float(s.get("duration_sec") or 0.0) for s in spans), 3)
+        has_long = bool(spans)
+        ncm_store.update_recording_silence(
+            oid,
+            spans=spans,
+            total_sec=total,
+            has_long_silence=has_long,
+        )
+        if has_long:
+            log.info(
+                "ncm record silence marked original_id=%s spans=%s total_sec=%s",
+                oid,
+                len(spans),
+                total,
+            )
+    except Exception as e:  # noqa: BLE001
+        log.warning("ncm record silence mark failed original_id=%s: %s", oid, e)
+
+
+def _finalize_active_locked(*, complete: bool) -> Path | None:
+    """Stop ffmpeg, mark status, then attach silence spans for the finished file."""
     global _active_original_id
     oid = _active_original_id
     _active_original_id = None
-    if oid is None:
-        return
-    try:
-        ncm_store.mark_recording_complete(oid)
-        log.info("ncm record marked complete original_id=%s", oid)
-    except Exception as e:  # noqa: BLE001
-        log.warning("ncm record mark complete failed original_id=%s: %s", oid, e)
-
-
-def _mark_active_incomplete_locked() -> None:
-    global _active_original_id
-    oid = _active_original_id
-    _active_original_id = None
-    if oid is None:
-        return
-    try:
-        ncm_store.mark_recording_incomplete(oid)
-        log.info("ncm record marked incomplete original_id=%s", oid)
-    except Exception as e:  # noqa: BLE001
-        log.warning("ncm record mark incomplete failed original_id=%s: %s", oid, e)
+    path = _stop_proc_locked()
+    if oid is not None:
+        try:
+            if complete:
+                ncm_store.mark_recording_complete(oid)
+            else:
+                ncm_store.mark_recording_incomplete(oid)
+            log.info(
+                "ncm record marked %s original_id=%s",
+                "complete" if complete else "incomplete",
+                oid,
+            )
+        except Exception as e:  # noqa: BLE001
+            log.warning(
+                "ncm record mark %s failed original_id=%s: %s",
+                "complete" if complete else "incomplete",
+                oid,
+                e,
+            )
+        if path is not None:
+            _analyze_silence_best_effort(oid, path)
+    return path
 
 
 def _stop_proc_locked() -> Path | None:
@@ -235,8 +365,7 @@ def stop_recording(*, clear_playlist: bool = True) -> Path | None:
     global _generation
     with _lock:
         _cancel_timer_locked()
-        _mark_active_incomplete_locked()
-        path = _stop_proc_locked()
+        path = _finalize_active_locked(complete=False)
         if clear_playlist:
             _clear_playlist_locked()
         _generation += 1
@@ -285,8 +414,7 @@ def _schedule_stop_locked(duration_ms: int, generation: int) -> None:
             if generation != _generation:
                 return
             _cancel_timer_locked()
-            _mark_active_complete_locked()
-            _stop_proc_locked()
+            _finalize_active_locked(complete=True)
             if _playlist and 0 <= _playlist_index < len(_playlist) - 1:
                 _start_index_locked(_playlist_index + 1)
 
@@ -305,10 +433,8 @@ def _start_index_locked(index: int) -> bool:
 
 def _spawn_locked(record: dict[str, Any], *, playlist_index: int | None = None) -> bool:
     global _proc, _out_path, _playlist_index, _generation, _active_original_id
-    if _active_original_id is not None:
-        _mark_active_incomplete_locked()
     _cancel_timer_locked()
-    _stop_proc_locked()
+    _finalize_active_locked(complete=False)
 
     oid = _try_original_id(record)
     if oid is not None:
@@ -439,8 +565,7 @@ def on_next() -> bool:
     with _lock:
         if not _playlist:
             _cancel_timer_locked()
-            _mark_active_incomplete_locked()
-            path = _stop_proc_locked()
+            path = _finalize_active_locked(complete=False)
             _generation += 1
             if path:
                 log.info("ncm record stopped path=%s", path)
@@ -449,8 +574,7 @@ def on_next() -> bool:
         if nxt >= len(_playlist):
             _clear_playlist_locked()
             _cancel_timer_locked()
-            _mark_active_incomplete_locked()
-            path = _stop_proc_locked()
+            path = _finalize_active_locked(complete=False)
             _generation += 1
             if path:
                 log.info("ncm record stopped path=%s", path)
@@ -464,8 +588,7 @@ def on_previous() -> bool:
     with _lock:
         if not _playlist:
             _cancel_timer_locked()
-            _mark_active_incomplete_locked()
-            path = _stop_proc_locked()
+            path = _finalize_active_locked(complete=False)
             _generation += 1
             if path:
                 log.info("ncm record stopped path=%s", path)
@@ -474,8 +597,7 @@ def on_previous() -> bool:
         if prev < 0:
             _clear_playlist_locked()
             _cancel_timer_locked()
-            _mark_active_incomplete_locked()
-            path = _stop_proc_locked()
+            path = _finalize_active_locked(complete=False)
             _generation += 1
             if path:
                 log.info("ncm record stopped path=%s", path)
