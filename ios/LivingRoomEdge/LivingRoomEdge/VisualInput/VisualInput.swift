@@ -9,6 +9,7 @@ enum VisualInput {
     static let uploadIntentDocumentScan = "document.scan"
     static let uploadIntentIPhonePhoto = "iphone.photo"
     static let uploadIntentIPhoneFile = "iphone.file"
+    static let uploadIntentIPhoneURL = "iphone.url"
     static let uploadIntentIPhoneAudio = "iphone.audio"
     static let uploadIntentFeedbackAttachment = "feedback.attachment"
 
@@ -25,6 +26,13 @@ enum VisualInput {
         let mimeType: String
         let type: String
         let localImage: UIImage?
+    }
+
+    struct UrlResult {
+        let assetId: String
+        let assetRef: [String: Any]
+        let url: String
+        let title: String
     }
 
     enum InputError: LocalizedError {
@@ -337,6 +345,95 @@ enum VisualInput {
             type: returnedType,
             localImage: assetType == "image" ? UIImage(data: data) : nil
         )
+    }
+
+    /// 文件页「保存链接」→ `POST /api/v1/assets/register`：把 URL 登记成 Brain url 资产。
+    static func registerURLAsset(
+        url rawURL: String,
+        title: String,
+        intentURL: String,
+        intentId: String? = nil
+    ) async throws -> UrlResult {
+        let trimmedURL = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let components = URLComponents(string: trimmedURL),
+              let scheme = components.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https"),
+              components.host != nil
+        else {
+            throw InputError.message("保存失败：只支持 http/https 链接。")
+        }
+        guard let url = IntentClient.assetsRegisterURL(fromIntentURL: intentURL) else {
+            throw InputError.message("保存失败：assets/register 地址无效。")
+        }
+        var payload: [String: Any] = [
+            "type": "url",
+            "url": trimmedURL,
+            "producer": uploadIntentIPhoneURL,
+        ]
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanTitle.isEmpty {
+            payload["title"] = cleanTitle
+        }
+        let pid = ParticipantStore.participantId
+        if !pid.isEmpty {
+            payload["edge_id"] = pid
+            payload["participant_id"] = pid
+        }
+        let iid = (intentId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !iid.isEmpty {
+            payload["intent_id"] = iid
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        request.timeoutInterval = 30
+
+        let (respData, response): (Data, URLResponse)
+        do {
+            (respData, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw uploadFailure(error)
+        }
+        let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200 ..< 300).contains(code),
+              let obj = try JSONSerialization.jsonObject(with: respData) as? [String: Any]
+        else {
+            let text = String(data: respData, encoding: .utf8) ?? ""
+            throw InputError.message("保存失败：HTTP \\(code)：\\(text.prefix(200))")
+        }
+        let aid = (obj["asset_id"] as? String)
+            ?? ((obj["asset"] as? [String: Any])?["asset_id"] as? String)
+            ?? ((obj["asset_ref"] as? [String: Any])?["asset_id"] as? String)
+            ?? ""
+        let trimmed = aid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw InputError.message("保存失败：响应未返回 asset_id。")
+        }
+        let link = (obj["url"] as? String ?? "").ifEmpty(trimmedURL)
+        let ref: [String: Any]
+        if let r = obj["asset_ref"] as? [String: Any], !(r["asset_id"] as? String ?? "").isEmpty {
+            ref = r
+        } else {
+            ref = ["asset_id": trimmed, "type": "url", "mime_type": "text/uri-list"]
+        }
+        return UrlResult(
+            assetId: trimmed,
+            assetRef: ref,
+            url: link,
+            title: cleanTitle.ifEmpty(VisualInput.hostName(of: link))
+        )
+    }
+
+    /// 「文件页保存链接」的默认展示名：取 host（无 scheme）。
+    static func hostName(of rawURL: String) -> String {
+        guard let components = URLComponents(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let host = components.host
+        else {
+            return rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return host
     }
 
     static func inferAssetType(mimeType: String, filename: String) -> String {

@@ -52,6 +52,7 @@ Asset
 ├── audio
 ├── document
 ├── text
+├── url   （内容=目标 http(s) 链接；经 POST /api/v1/assets/register 无字节登记）
 └── other
 不能把 Asset 定义成：
 Asset = File

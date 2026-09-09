@@ -1107,19 +1107,21 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         'kind': 'action',
         'group': 'convert',
         'service_id': 'local.web.scraper',
-        'role': '网页抓取器（URL → 核心正文/整页 → PDF/文本）',
+        'role': '网页抓取器（URL / url 资产 → 核心正文/整页 → PDF/文本）',
         'planner_recognize': (
-            '用户给一个 http(s) 网址、要求把网页抓下来存成 PDF 或文本时用本步。'
-            '入参 url（必填，http/https）；mode=article 抓核心正文（默认，剔除广告/'
-            '导航）/ page 抓忠实整页；format=pdf（默认）/ text；renderer=auto/'
-            'weasyprint/chrome（仅 pdf，本机自动挑可用引擎）。产出登记为新 document '
-            'Asset，可交给 printer.print 打印或后续流程。本步只抓网页转文档，不打印、'
-            '不问答'
+            '用户给一个 http(s) 网址、或引用已登记的 Brain url 资产（type=url），'
+            '要求把网页抓下来存成 PDF 或文本时用本步。入参 url（http/https）与 '
+            'asset_ref（type=url 的 Brain url 资产）二选一；mode=article '
+            '抓核心正文（默认，剔除广告/导航）/ page 抓忠实整页；format=pdf（默认）/ '
+            'text；renderer=auto/weasyprint/chrome（仅 pdf，本机自动挑可用引擎）。'
+            '产出登记为新 document Asset，可交给 printer.print 打印或后续流程。本步只'
+            '抓网页转文档，不打印、不问答'
         ),
         'typical_triggers': [
             '把这个网页存成 PDF',
             '把网址 http… 的文章转成 PDF',
             '抓取这篇文章转成 PDF',
+            '把我存的链接转成 PDF',
             '把网页正文导出成文本',
             '保存这个网页',
             '网页转 PDF',
@@ -1129,7 +1131,12 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             'url': {
                 'type': 'string',
                 'required': True,
-                'description': '必填网页地址，仅 http/https（禁止 file:// 等本地协议）',
+                'description': '网页地址（http/https），与 asset_ref 二选一；给了 asset_ref(type=url) 时可省',
+            },
+            'asset_ref': {
+                'type': 'object',
+                'required': False,
+                'description': '已登记的 Brain url 资产（type=url）AssetRef；与 url 二选一，填了就抓该链接',
             },
             'mode': {
                 'type': 'string',
@@ -1206,8 +1213,9 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         'service_id': 'system.asset',
         'role': 'Asset 盘点查询器',
         'planner_recognize': (
-            '查 Brain 已登记 Asset（image/video/audio/document 等）：数量、列表、第 N 条；'
-            '最新 PDF/文档用 type=document + order=newest_first + index=1，产出 asset_ref 可交给 printer.print'
+            '查 Brain 已登记 Asset（image/video/audio/document/url 等）：数量、列表、第 N 条；'
+            '最新 PDF/文档用 type=document + order=newest_first + index=1，产出 asset_ref 可交给 printer.print；'
+            '最近保存的链接用 type=url，asset_ref 可交给 web.scraper 抓取'
         ),
         'typical_triggers': [
             '我今天拍了几张照片',
@@ -1221,7 +1229,7 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             'type': {
                 'type': 'string',
                 'required': False,
-                'description': 'asset 类型：image / video / audio / document 等；最新 PDF 填 document',
+                'description': 'asset 类型：image / video / audio / document / url 等；最新 PDF 填 document、保存的链接填 url',
             },
             'day': {'type': 'string', 'required': False, 'description': 'today / yesterday / YYYY-MM-DD；问昨天拍了几张填 yesterday'},
             'timezone': {'type': 'string', 'required': False, 'description': 'IANA 时区，默认 Asia/Shanghai'},

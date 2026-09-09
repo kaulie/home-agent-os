@@ -6,6 +6,7 @@ display_name: 网页抓取器（URL → 核心正文/整页 → PDF/文本）
 description: >
   给定一个 http(s) 网页 URL，抓取网页并把内容转成 PDF 文档 Asset（或纯文本 Asset）。
   mode=article 抽核心正文（剔除导航/广告/页脚）；mode=page 忠实还原整页。
+  入参支持直接给 http(s) url，或引用已登记的 Brain url 资产（type=url）。
   PDF 渲染支持双引擎：weasyprint（纯 Python，需系统 Pango）与 本机 Chrome/Edge
   headless；auto 时 article 优先 weasyprint、page 优先 chrome，缺一自动回退。
 

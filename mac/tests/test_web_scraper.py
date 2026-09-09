@@ -423,6 +423,58 @@ class ScrapeFromParamsTests(WebScraperTestCase):
         self.assertIn("text_asset", msg)
         self.assertEqual(outputs["mode"], "page")
 
+    @patch("mac_edge.plugins.web_scraper.fetch_html")
+    def test_pdf_article_via_url_asset_ref(self, fetch: MagicMock) -> None:
+        # 消费 Brain url 资产：url 缺省、asset_ref(type=url) → http_url(content) → 抓目标页
+        fetch.return_value = (
+            _article_bytes(),
+            "https://target.example/article",
+            "text/html; charset=utf-8",
+            "utf-8",
+        )
+        asset = MagicMock()
+        asset.require_ref.return_value = AssetRef(
+            asset_id="asset_url1", type="url", mime_type="text/uri-list"
+        )
+
+        class _Rep:
+            url = "http://127.0.0.1:9527/api/v1/assets/asset_url1/content?intent_id=9"
+
+        asset.http_url.return_value = _Rep()
+        asset.upload_file.return_value = AssetRef(
+            asset_id="asset_ws_10", type="document", mime_type="application/pdf"
+        )
+
+        def _fake_render(html_text: str, base_url: str, dst: Path, renderer: str) -> None:  # noqa: ANN001
+            Path(dst).write_bytes(_make_pdf_bytes(pages=1))
+
+        with patch("mac_edge.plugins.web_scraper.resolve_renderer", return_value="weasyprint"):
+            with patch("mac_edge.plugins.web_scraper.render_pdf_to_file", side_effect=_fake_render):
+                msg, outputs = w.scrape_from_params(
+                    {"asset_ref": {"asset_id": "asset_url1", "type": "url"}},
+                    asset=asset,
+                    now=TS,
+                )
+        asset.require_ref.assert_called_once()
+        asset.http_url.assert_called_once()
+        self.assertEqual(outputs["url"], "https://target.example/article")
+        self.assertEqual(outputs["format"], "pdf")
+        self.assertIn("pdf_asset=asset_ws_10", msg)
+
+    def test_url_asset_ref_wrong_type_fails(self) -> None:
+        asset = MagicMock()
+        asset.require_ref.return_value = AssetRef(
+            asset_id="asset_doc1", type="document", mime_type="application/pdf"
+        )
+        with self.assertRaises(w.WebScraperError) as ctx:
+            w.scrape_from_params(
+                {"asset_ref": {"asset_id": "asset_doc1", "type": "document"}},
+                asset=asset,
+                now=TS,
+            )
+        self.assertIn("type=url", str(ctx.exception))
+        asset.http_url.assert_not_called()
+
 
 class CapabilityRegistrationTests(WebScraperTestCase):
     def _caps(self, services: list[dict[str, Any]]) -> list[dict[str, Any]]:

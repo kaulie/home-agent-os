@@ -935,7 +935,34 @@ def scrape_from_params(
 
     raw = params if isinstance(params, dict) else {}
 
-    url = validate_url(raw.get("url"))
+    url_text = str(raw.get("url") or "").strip()
+    if not url_text:
+        # 消费 Brain url 资产：经 CapAsset 取授权 /content（302 到目标站）再抓取。
+        if not (hasattr(asset, "require_ref") and hasattr(asset, "http_url")):
+            raise WebScraperError("web.scraper 使用 asset_ref(type=url) 需要 CapAsset（Runtime SDK）")
+        from mac_edge.asset.types import AssetError
+
+        try:
+            ref = asset.require_ref(raw, "asset_ref")
+        except AssetError as e:
+            raise WebScraperError(f"web.scraper asset_ref 无效：{e}") from e
+        if str(getattr(ref, "type", "") or "").strip() != "url":
+            raise WebScraperError(
+                "web.scraper 只接受 type=url 的 asset_ref（当前为 "
+                f"{getattr(ref, 'type', '')!r}）"
+            )
+        try:
+            rep = asset.http_url(ref)
+        except Exception as e:
+            raise WebScraperError(
+                f"无法解析 url 资产 content（{getattr(ref, 'asset_id', '')}）："
+                f"{type(e).__name__}: {e}"
+            ) from e
+        url_text = str(getattr(rep, "url", "") or "").strip()
+        if not url_text:
+            raise WebScraperError("url 资产解析出的 content URL 为空")
+
+    url = validate_url(url_text)
     mode = _normalize_choice(raw.get("mode"), _MODE_ALIASES, "mode", MODE_ARTICLE, SUPPORTED_MODES)
     fmt = _normalize_choice(raw.get("format"), _FORMAT_ALIASES, "format", FORMAT_PDF, SUPPORTED_FORMATS)
     if fmt == FORMAT_PDF:

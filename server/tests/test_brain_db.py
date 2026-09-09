@@ -1128,5 +1128,42 @@ class CloudApiCallsTest(unittest.TestCase):
             brain_db.record_cloud_call("ark.planner", 1, "laptop")
 
 
+class UrlAssetDbTests(unittest.TestCase):
+    """url 资产类型：归一化保留 url，metadata.url_target 持久化（非剥离键）。"""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self._tmp.name) / "brain.sqlite3"
+        brain_db.reset(path=self.path)
+        brain_db.init_db()
+
+    def tearDown(self) -> None:
+        brain_db.reset()
+        self._tmp.cleanup()
+
+    def test_type_url_is_kept(self) -> None:
+        self.assertEqual(brain_db._norm_asset_type("url"), "url")
+
+    def test_url_asset_round_trip_keeps_url_target(self) -> None:
+        target = "https://example.com/article?a=1&b=2"
+        aid = brain_db.put_asset(
+            {
+                "asset_id": "asset_urltest01",
+                "type": "url",
+                "mime_type": "text/uri-list",
+                "status": "ready",
+                "metadata": {"url_target": target, "title": "示例"},
+                "storage": None,
+            }
+        )
+        got = brain_db.get_asset(aid)
+        self.assertEqual(got["type"], "url")
+        self.assertEqual(got["metadata"]["url_target"], target)
+        self.assertEqual(got["metadata"]["title"], "示例")
+
+    def test_unknown_type_still_falls_back_to_other(self) -> None:
+        self.assertEqual(brain_db._norm_asset_type("whatever"), "other")
+
+
 if __name__ == "__main__":
     unittest.main()

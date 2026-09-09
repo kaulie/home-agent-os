@@ -1192,6 +1192,22 @@ final class IntentClient {
         return components.url
     }
 
+    /// `…/api/v1/intent` → `…/api/v1/assets/register` (JSON, url 资产注册)
+    static func assetsRegisterURL(fromIntentURL intentURL: String) -> URL? {
+        guard var components = URLComponents(string: intentURL) else { return nil }
+        var path = components.path
+        if path.hasSuffix("/intent") {
+            path = String(path.dropLast("intent".count)) + "assets/register"
+        } else if let range = path.range(of: "/api/v1/") {
+            path = String(path[..<range.upperBound]) + "assets/register"
+        } else {
+            path = "/api/v1/assets/register"
+        }
+        components.path = path
+        components.query = nil
+        return components.url
+    }
+
     static func feedbackURL(fromIntentURL intentURL: String) -> URL? {
         guard var components = URLComponents(string: intentURL) else { return nil }
         var path = components.path

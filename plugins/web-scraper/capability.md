@@ -1,8 +1,8 @@
 # Service: local.web.scraper
 
-网页抓取插件（`web-scraper`），group=`convert`。给定一个 **http(s) 网页 URL**，抓取
-网页并把内容转成 **PDF 文档 Asset**（或**纯文本** Asset），产物可交给 `printer.print`
-打印或其它流程继续消费。
+网页抓取插件（`web-scraper`），group=`convert`。给定一个 **http(s) 网页 URL**（或引用已登记的
+Brain **url 资产**，`type=url`），抓取网页并把内容转成 **PDF 文档 Asset**（或**纯文本** Asset），
+产物可交给 `printer.print` 打印或其它流程继续消费。
 
 **Brain 不执行**；只通过心跳看到 `web.scraper`，再把 plan 派到具备该能力的 Edge
 （Mac Edge laptop，`mac_edge.plugins.web_scraper`）。本机有可用 PDF 渲染引擎
@@ -12,9 +12,9 @@
 
 | 字段 | 值 |
 |------|-----|
-| role | 网页抓取器（URL → 核心正文/整页 → PDF/文本） |
-| planner_recognize | 用户给一个 http(s) 网址、要求把网页抓下来存成 PDF 或文本时用本步。入参 url（必填，http/https）；mode=article 抓核心正文（默认，剔除广告/导航）/ page 抓忠实整页；format=pdf（默认）/ text；renderer=auto/weasyprint/chrome（仅 pdf，本机自动挑可用引擎）。产出登记为新 document Asset，可交给 printer.print 打印或后续流程。本步只抓网页转文档，不打印、不问答 |
-| typical_triggers | `把这个网页存成 PDF`、`把网址 http… 的文章转成 PDF`、`抓取这篇文章转成 PDF`、`把网页正文导出成文本`、`保存这个网页`、`网页转 PDF` |
+| role | 网页抓取器（URL / url 资产 → 核心正文/整页 → PDF/文本） |
+| planner_recognize | 用户给一个 http(s) 网址、或引用已登记的 Brain url 资产（type=url），要求把网页抓下来存成 PDF 或文本时用本步。入参 url（http/https）与 asset_ref（type=url 的 Brain url 资产）二选一；mode=article 抓核心正文（默认，剔除广告/导航）/ page 抓忠实整页；format=pdf（默认）/ text；renderer=auto/weasyprint/chrome（仅 pdf，本机自动挑可用引擎）。产出登记为新 document Asset，可交给 printer.print 打印或后续流程。本步只抓网页转文档，不打印、不问答 |
+| typical_triggers | `把这个网页存成 PDF`、`把网址 http… 的文章转成 PDF`、`抓取这篇文章转成 PDF`、`把我存的链接转成 PDF`、`把网页正文导出成文本`、`保存这个网页`、`网页转 PDF` |
 | do_not_dispatch | 打印、OCR、翻译、整页截图、下载图片、看图理解、投屏、配网、浏览网页问答 |
 
 ## 标识
@@ -32,7 +32,7 @@
 
 | 方向 | 内容 |
 |------|------|
-| **输入** | `url`（必填，http/https）；`mode`（默认 `article`=核心正文 / `page`=忠实整页）；`format`（默认 `pdf` / `text`）；`renderer`（默认 `auto` / `weasyprint` / `chrome`，仅 pdf 生效）；`name`（可选展示名） |
+| **输入** | `url`（http/https）与 `asset_ref`（可选，type=url 的 Brain url 资产）二选一；`mode`（默认 `article`=核心正文 / `page`=忠实整页）；`format`（默认 `pdf` / `text`）；`renderer`（默认 `auto` / `weasyprint` / `chrome`，仅 pdf 生效）；`name`（可选展示名） |
 | **输出** | `asset_ref`（新 document AssetRef）；`title`；`url`（最终 URL）；`mode`；`format`；`renderer`（pdf 时）；`page_count`（pdf 时）；`char_count`；`status_text`（中文一句话） |
 
 缺 `url` / 非 http(s) / 抓取失败 / 解码失败 / 抽不到正文（article） / pdf 但没有
@@ -72,6 +72,8 @@
 
 - **抓取**：httpx GET（桌面 UA、跟随重定向、25s 超时、8 MiB 上限）→ 解码
   （BOM → HTTP charset → `<meta charset>` → UTF-8 兜底）。
+- **url 资产消费**：入参给 `asset_ref(type=url)` 时，经 CapAsset 取 Brain `/content`
+  （带本 intent grant，302 到目标链接），httpx 跟随重定向直达原网页再走同一抓取管线。
 - **正文抽取**：自研 DOM-lite（无 lxml/无网络解析器依赖）；打分 + 噪音剔除。
 - **PDF**：weasyprint（`HTML(string=…).write_pdf`）或 Chrome headless
   （`--headless=new --print-to-pdf`，临时 user-data-dir + 轮询产物 + 超时强杀回收）。
@@ -83,7 +85,8 @@
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
-| `url` | 是 | http/https 网页地址（禁止 file:// 等本地协议） |
+| `url` | 否* | http/https 网页地址；与 asset_ref 二选一（*至少给一个） |
+| `asset_ref` | 否* | 已登记的 Brain url 资产（`type=url`）AssetRef；与 url 二选一，填了就抓该链接 |
 | `mode` | 否 | `article`=核心正文（默认）/ `page`=忠实整页；接受 正文/整页 等中文 |
 | `format` | 否 | `pdf`（默认）/ `text`；接受 文本 |
 | `renderer` | 否 | `auto`（默认）/ `weasyprint` / `chrome`（仅 pdf 生效） |

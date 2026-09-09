@@ -698,8 +698,16 @@ LOCAL_WEB_SCRAPER_SERVICE: dict[str, Any] = {
                     "type": "string",
                     "required": True,
                     "description": (
-                        "必填网页地址，仅 http/https（禁止 file:// 等本地协议）。"
-                        "例 https://example.com/article"
+                        "网页地址（http/https），与 asset_ref 二选一；"
+                        "给了 asset_ref(type=url) 时可省。"
+                    ),
+                },
+                "asset_ref": {
+                    "type": "object",
+                    "required": False,
+                    "description": (
+                        "已登记的 Brain url 资产（type=url）AssetRef；与 url 二选一，"
+                        "填了就抓该链接。例 {\"asset_id\":\"asset_…\",\"type\":\"url\"}。"
                     ),
                 },
                 "mode": {

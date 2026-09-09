@@ -5684,6 +5684,77 @@ class HomeBrainPersistTest(unittest.TestCase):
             self.assertIn("asset_stuaudio01", aids)
 
 
+@unittest.skipUnless(flask is not None and hb is not None, "flask not installed")
+class UrlAssetApiTests(unittest.TestCase):
+    """POST /api/v1/assets/register：url 资产注册 / 授权读取 / content 302。"""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self._tmp.name) / "brain.sqlite3"
+        brain_db.reset(path=self.path)
+        brain_db.init_db()
+        hb._REGISTERED_edges = brain_db.registration_ids()
+        hb.rebuild_capability_maps()
+        hb.mock_cache.clear()
+        self._qwen_flag = os.environ.get("QWEN_PLANNER")
+        os.environ["QWEN_PLANNER"] = "0"
+
+    def tearDown(self) -> None:
+        if self._qwen_flag is None:
+            os.environ.pop("QWEN_PLANNER", None)
+        else:
+            os.environ["QWEN_PLANNER"] = self._qwen_flag
+        brain_db.reset()
+        self._tmp.cleanup()
+
+    def test_register_url_asset_and_content_redirect(self) -> None:
+        client = hb.app.test_client()
+        resp = client.post(
+            "/api/v1/assets/register",
+            json={
+                "type": "url",
+                "url": "https://example.com/page?x=1",
+                "title": "示例",
+                "intent_id": "1001",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["ok"])
+        aid = data["asset_id"]
+        self.assertEqual(data["type"], "url")
+        self.assertEqual(data["url"], "https://example.com/page?x=1")
+
+        rec = brain_db.get_asset(aid)
+        self.assertEqual(rec["type"], "url")
+        self.assertIn("url_target", rec.get("metadata", {}))
+
+        # 授权 intent 取 /content → 302 到目标链接
+        content = client.get(f"/api/v1/assets/{aid}/content?intent_id=1001")
+        self.assertEqual(content.status_code, 302)
+        self.assertEqual(content.headers.get("Location"), "https://example.com/page?x=1")
+
+        # 非授权 public 视图：type=url 但隐藏 url_target
+        view = client.get(f"/api/v1/assets/{aid}")
+        self.assertEqual(view.status_code, 200)
+        asset = view.get_json()["asset"]
+        self.assertEqual(asset["type"], "url")
+        self.assertNotIn("url_target", asset.get("metadata", {}))
+        self.assertNotIn("url", asset)
+
+    def test_register_rejects_bad_url_and_type(self) -> None:
+        client = hb.app.test_client()
+        bad = client.post(
+            "/api/v1/assets/register", json={"type": "url", "url": "file:///etc/passwd"}
+        )
+        self.assertEqual(bad.status_code, 400)
+        wrong_type = client.post(
+            "/api/v1/assets/register",
+            json={"type": "document", "url": "https://example.com/x"},
+        )
+        self.assertEqual(wrong_type.status_code, 400)
+
+
 if __name__ == "__main__":
     unittest.main()
 

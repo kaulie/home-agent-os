@@ -12,7 +12,10 @@ struct FileWorkspaceView: View {
     @State private var showFilePicker = false
     @State private var photoItem: PhotosPickerItem?
     @State private var showPhotoPicker = false
+    @State private var showURLAlert = false
+    @State private var urlInput = ""
     @State private var notice = ""
+    @StateObject private var urlStore = SavedUrlAssetStore()
 
     var body: some View {
         ZStack {
@@ -27,6 +30,8 @@ struct FileWorkspaceView: View {
 
                     pickCard
 
+                    saveURLCard
+
                     if !model.fileHint.isEmpty {
                         Text(model.fileHint)
                             .font(.system(size: 13, weight: .medium, design: .rounded))
@@ -40,6 +45,8 @@ struct FileWorkspaceView: View {
                     }
 
                     recentSection
+
+                    savedLinksSection
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 36)
@@ -70,6 +77,26 @@ struct FileWorkspaceView: View {
             allowsMultipleSelection: false
         ) { result in
             handlePick(result)
+        }
+        .alert("保存链接", isPresented: $showURLAlert) {
+            TextField("网址，如 https://…", text: $urlInput)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+                .autocorrectionDisabled()
+            Button("保存") {
+                let trimmed = urlInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                urlInput = ""
+                guard !trimmed.isEmpty else {
+                    notice = "网址不能为空。"
+                    return
+                }
+                Task { await saveURL(trimmed) }
+            }
+            Button("取消", role: .cancel) {
+                urlInput = ""
+            }
+        } message: {
+            Text("粘贴一个网页链接，登记为 Brain 的 url 资产（不转文档）。")
         }
     }
 
@@ -121,6 +148,61 @@ struct FileWorkspaceView: View {
         .accessibilityHint("可从相册或系统文件选择器选取")
     }
 
+    private var saveURLCard: some View {
+        Button {
+            guard clicks.tryTap(cooldown: 0.8) else { return }
+            beginSaveURL()
+        } label: {
+            VStack(spacing: 12) {
+                Image(systemName: "link.badge.plus")
+                    .font(.system(size: 38, weight: .light))
+                Text("保存链接")
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                Text("粘贴/输入网址，登记为 Brain 的 url 资产（不转文档）。存好后可让助手把它抓成 PDF / 文本。")
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
+                    .foregroundStyle(EdgeTheme.mist)
+                    .multilineTextAlignment(.center)
+            }
+            .foregroundStyle(EdgeTheme.sand)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
+            .padding(.horizontal, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(EdgeTheme.panel)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(model.fileBusy)
+        .accessibilityLabel("保存链接")
+    }
+
+    @ViewBuilder
+    private var savedLinksSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            EdgeTheme.sectionLabel("已存链接")
+            if urlStore.items.isEmpty {
+                Text("还没有保存过链接。点上方「保存链接」，粘贴一条网址即可。")
+                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                    .foregroundStyle(EdgeTheme.dim)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(urlStore.items) { item in
+                        SavedUrlRow(
+                            item: item,
+                            onDelete: { id in
+                                urlStore.remove(id: id)
+                            },
+                            onNotice: { message in
+                                notice = message
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private var recentSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -152,6 +234,61 @@ struct FileWorkspaceView: View {
         }
         model.setFileHint("")
         showSourceMenu = true
+    }
+
+    private func beginSaveURL() {
+        notice = ""
+        let server = model.intentServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !server.isEmpty else {
+            model.setFileHint("请先在设置里填写 Brain URL")
+            showSettings = true
+            return
+        }
+        model.setFileHint("")
+        urlInput = ""
+        showURLAlert = true
+    }
+
+    private func saveURL(_ raw: String) async {
+        let server = model.intentServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !server.isEmpty else {
+            await MainActor.run {
+                model.setFileHint("请先在设置里填写 Brain URL")
+                showSettings = true
+            }
+            return
+        }
+        let normalized = Self.normalizedLink(raw)
+        do {
+            let result = try await VisualInput.registerURLAsset(
+                url: normalized,
+                title: "",
+                intentURL: server
+            )
+            await MainActor.run {
+                urlStore.add(
+                    SavedUrlAsset(
+                        id: UUID(),
+                        assetId: result.assetId,
+                        url: result.url,
+                        title: result.title,
+                        createdAt: Date()
+                    )
+                )
+                notice = "已保存链接 · \(result.assetId)"
+            }
+        } catch let e as VisualInput.InputError {
+            await MainActor.run { notice = e.localizedDescription }
+        } catch {
+            await MainActor.run { notice = error.localizedDescription }
+        }
+    }
+
+    /// 没写协议时补 https://，避免用户只粘域名。
+    private static func normalizedLink(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains("://") { return trimmed }
+        return "https://" + trimmed
     }
 
     private func handlePick(_ result: Result<[URL], Error>) {
@@ -221,6 +358,91 @@ struct FileWorkspaceView: View {
     }
 }
 
+/// 文件页「已存链接」行：点按用系统浏览器打开；左滑删除本机记录（不删 Brain 资产）。
+private struct SavedUrlRow: View {
+    let item: SavedUrlAsset
+    var onDelete: (UUID) -> Void
+    var onNotice: (String) -> Void
+
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Button {
+            open()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(EdgeTheme.ink.opacity(0.55))
+                    Image(systemName: "link")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(EdgeTheme.sand)
+                }
+                .frame(width: 44, height: 44)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title.isEmpty ? item.url : item.title)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.white.opacity(0.92))
+                        .lineLimit(1)
+                    Text("\(Self.timeLabel(item.createdAt)) · \(item.url)")
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundStyle(EdgeTheme.dim)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "safari")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(EdgeTheme.dim)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(EdgeTheme.panel)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(EdgeTheme.panelStroke, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                onDelete(item.id)
+            } label: {
+                Label("删除", systemImage: "trash")
+            }
+        }
+    }
+
+    private func open() {
+        guard let url = URL(string: item.url) else {
+            onNotice("链接无效，无法打开。")
+            return
+        }
+        openURL(url)
+    }
+
+    private static let todayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MM/dd HH:mm"
+        return f
+    }()
+
+    private static func timeLabel(_ date: Date) -> String {
+        if Calendar.current.isDateInToday(date) {
+            return todayFormatter.string(from: date)
+        }
+        return dayFormatter.string(from: date)
+    }
+}
 private struct FileInboxRow: View {
     let turn: ChatTurn
     var onNotice: (String) -> Void
