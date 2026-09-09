@@ -305,10 +305,18 @@ class RendererAvailabilityTests(WebScraperTestCase):
         with patch("mac_edge.plugins.web_scraper.Path.is_file", return_value=True):
             self.assertEqual(w.resolve_renderer("auto", "page"), "chrome")
 
-    def test_resolve_auto_article_prefers_weasyprint(self) -> None:
+    def test_resolve_auto_article_prefers_chrome(self) -> None:
+        # #671：weasyprint 70 字形偏移乱码 → auto 一律 Chrome 优先
         w._weasyprint_state["usable"] = True
         w._chrome_state["path"] = "/fake/chrome"
-        self.assertEqual(w.resolve_renderer("auto", "article"), "weasyprint")
+        self.assertEqual(w.resolve_renderer("auto", "article"), "chrome")
+
+    def test_resolve_auto_falls_back_to_weasyprint(self) -> None:
+        w._weasyprint_state["usable"] = True
+        w._chrome_state["path"] = None
+        with patch.dict(os.environ, {"WEB_SCRAPER_BROWSER_PATH": "/nonexistent/chrome"}, clear=False):
+            with patch("mac_edge.plugins.web_scraper.Path.is_file", return_value=False):
+                self.assertEqual(w.resolve_renderer("auto", "article"), "weasyprint")
 
     def test_resolve_explicit_unavailable(self) -> None:
         w._weasyprint_state["usable"] = False

@@ -736,17 +736,13 @@ def resolve_renderer(requested: str, mode: str) -> str:
             "renderer=chrome 不可用：本机没找到 Chrome/Edge；"
             "可用 WEB_SCRAPER_BROWSER_PATH 指定，或改 renderer=weasyprint"
         )
-    # auto：article 优先 weasyprint（纯 Python），page 优先 chrome（整页保真）
-    if mode == MODE_PAGE:
-        if chrome_available():
-            return RENDERER_CHROME
-        if weasyprint_available():
-            return RENDERER_WEASYPRINT
-    else:
-        if weasyprint_available():
-            return RENDERER_WEASYPRINT
-        if chrome_available():
-            return RENDERER_CHROME
+    # auto：默认 Chrome 优先（weasyprint 70 + Pango 在本机用苹方等 TTC 子集化时会
+    # 出“字形偏移乱码” —— 文字层正常但显示错位，见 #671）。weasyprint 保留，
+    # 可用 renderer=weasyprint 显式选择做对比。
+    if chrome_available():
+        return RENDERER_CHROME
+    if weasyprint_available():
+        return RENDERER_WEASYPRINT
     raise WebScraperError(
         "没有可用的 PDF 渲染引擎：weasyprint（需 Pango）与 Chrome/Edge 都不可用；"
         "text 格式不需要渲染引擎"

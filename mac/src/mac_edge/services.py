@@ -727,8 +727,8 @@ LOCAL_WEB_SCRAPER_SERVICE: dict[str, Any] = {
                     "type": "string",
                     "required": False,
                     "description": (
-                        "pdf 时生效：auto=自动（默认，article 优先 weasyprint、"
-                        "page 优先 chrome，缺一自动回退）/ weasyprint / chrome。"
+                        "pdf 时生效：auto=自动（默认，Chrome 优先；weasyprint 有字形"
+                        "渲染问题见 #671，可显式选它做对比）/ weasyprint / chrome。"
                     ),
                 },
                 "name": {
