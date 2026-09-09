@@ -76,6 +76,17 @@ class MultiBrainClient:
     def base_urls(self) -> list[str]:
         return list(self._base_urls)
 
+    @property
+    def config(self) -> Any:
+        """Base Config shared by all Brain clients (mirrors BrainClient.config).
+
+        Consumers that resolve assets to Brain URLs read ``brain.config``;
+        without this surface a dual-Brain executor run looked like it had no
+        Brain base (MultiBrainClient only stored ``_config``) and url /
+        local_upload assets failed with "Brain URL is missing".
+        """
+        return self._config
+
     def __enter__(self) -> "MultiBrainClient":
         self._open()
         return self

@@ -83,6 +83,62 @@ class AssetManagerTests(unittest.TestCase):
             "?intent_id=168&representation=original",
         )
 
+    def test_resolve_url_asset_via_multi_brain_client_uses_shared_config(self) -> None:
+        """Dual-Brain executor passes a MultiBrainClient into AssetManager.
+
+        MultiBrainClient must expose ``config`` (like BrainClient) so url-type
+        assets can build the Brain /content URL. Regression for intent 675:
+        "asset ... is url type but Brain URL is missing".
+        """
+        from dataclasses import replace
+
+        from mac_edge.config import Config
+        from mac_edge.multi_brain import MultiBrainClient
+
+        cfg = replace(
+            Config(brain_base_url="http://127.0.0.1:9527"),
+            brain_base_urls=(
+                "http://127.0.0.1:9527",
+                "http://115.190.153.53:9527",
+            ),
+        )
+        primary = MagicMock()
+        primary.fetch_asset.return_value = {
+            "asset_id": "asset_url1",
+            "type": "url",
+            "mime_type": "text/uri-list",
+            "storage": {"backend": "url"},
+        }
+        cloud = MagicMock()
+        with patch.object(MultiBrainClient, "_open", lambda self: None):
+            brain = MultiBrainClient(list(cfg.brain_base_urls), config=cfg)
+            brain._clients = [primary, cloud]
+            brain._by_url = {
+                cfg.brain_base_urls[0]: primary,
+                cfg.brain_base_urls[1]: cloud,
+            }
+            mgr = AssetManager(brain=brain, edge_id="edge-mac")
+            with patch.dict(
+                os.environ,
+                {"MAC_EDGE_LAN_PUBLIC_BASE": "http://192.168.3.96:8080"},
+                clear=False,
+            ):
+                rep = mgr.resolve_for_capability(
+                    AssetRef(
+                        asset_id="asset_url1",
+                        type="url",
+                        mime_type="text/uri-list",
+                    ),
+                    intent_id="675",
+                    need="http_url",
+                )
+        self.assertEqual(
+            rep.url,
+            "http://192.168.3.96:9527/api/v1/assets/asset_url1/content"
+            "?intent_id=675&representation=original",
+        )
+        primary.fetch_asset.assert_called_once()
+
     def test_upload_file_posts_to_brain(self) -> None:
         import tempfile
         from pathlib import Path
