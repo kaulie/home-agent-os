@@ -1103,6 +1103,103 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             },
         },
     },
+    'web.scraper': {
+        'kind': 'action',
+        'group': 'convert',
+        'service_id': 'local.web.scraper',
+        'role': '网页抓取器（URL → 核心正文/整页 → PDF/文本）',
+        'planner_recognize': (
+            '用户给一个 http(s) 网址、要求把网页抓下来存成 PDF 或文本时用本步。'
+            '入参 url（必填，http/https）；mode=article 抓核心正文（默认，剔除广告/'
+            '导航）/ page 抓忠实整页；format=pdf（默认）/ text；renderer=auto/'
+            'weasyprint/chrome（仅 pdf，本机自动挑可用引擎）。产出登记为新 document '
+            'Asset，可交给 printer.print 打印或后续流程。本步只抓网页转文档，不打印、'
+            '不问答'
+        ),
+        'typical_triggers': [
+            '把这个网页存成 PDF',
+            '把网址 http… 的文章转成 PDF',
+            '抓取这篇文章转成 PDF',
+            '把网页正文导出成文本',
+            '保存这个网页',
+            '网页转 PDF',
+        ],
+        'do_not_dispatch': ['打印', 'OCR', '翻译', '整页截图', '下载图片', '看图理解', '投屏', '配网', '浏览网页问答'],
+        'input_schema': {
+            'url': {
+                'type': 'string',
+                'required': True,
+                'description': '必填网页地址，仅 http/https（禁止 file:// 等本地协议）',
+            },
+            'mode': {
+                'type': 'string',
+                'required': False,
+                'description': 'article=抓核心正文（默认，剔除广告导航）/ page=忠实整页；也接受 正文/整页 等中文',
+            },
+            'format': {
+                'type': 'string',
+                'required': False,
+                'description': 'pdf=PDF 文档（默认）/ text=纯文本；也接受 文本',
+            },
+            'renderer': {
+                'type': 'string',
+                'required': False,
+                'description': 'pdf 时生效：auto=自动（默认）/ weasyprint / chrome',
+            },
+            'name': {
+                'type': 'string',
+                'required': False,
+                'description': '可选产物展示名（自动补 .pdf/.txt）；不传则 web-scraper-<时间戳>-<mode>.*',
+            },
+        },
+        'output_schema': {
+            'asset_ref': {
+                'type': 'object',
+                'required': True,
+                'description': '抓取产物 document AssetRef（PDF application/pdf 或文本 text/plain）',
+            },
+            'title': {
+                'type': 'string',
+                'required': True,
+                'description': '网页标题',
+            },
+            'url': {
+                'type': 'string',
+                'required': True,
+                'description': '抓取到的最终 URL（跟随重定向后）',
+            },
+            'mode': {
+                'type': 'string',
+                'required': True,
+                'description': 'article / page',
+            },
+            'format': {
+                'type': 'string',
+                'required': True,
+                'description': 'pdf / text',
+            },
+            'renderer': {
+                'type': 'string',
+                'required': False,
+                'description': '实际使用的渲染引擎（pdf 时）：weasyprint / chrome',
+            },
+            'page_count': {
+                'type': 'number',
+                'required': False,
+                'description': 'PDF 页数（pdf 时）',
+            },
+            'char_count': {
+                'type': 'number',
+                'required': False,
+                'description': '导出文本字符数（article 为核心正文；page 为整页文本）',
+            },
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话结果，含页数/字数、引擎与 asset_id',
+            },
+        },
+    },
     'asset.inventory': {
         'kind': 'system',
         'group': 'asset',
