@@ -71,6 +71,19 @@ class MultiBrainOriginTests(unittest.TestCase):
                 "http://115.190.153.53:9527",
             )
 
+    def test_config_property_exposes_shared_config(self) -> None:
+        cfg = replace(
+            Config(brain_base_url="http://127.0.0.1:9527"),
+            brain_base_urls=(
+                "http://127.0.0.1:9527",
+                "http://115.190.153.53:9527",
+            ),
+        )
+        with patch.object(MultiBrainClient, "_open", lambda self: None):
+            client = MultiBrainClient(list(cfg.brain_base_urls), config=cfg)
+        self.assertIs(client.config, cfg)
+        self.assertEqual(client.config.brain_base_url, "http://127.0.0.1:9527")
+
     def test_routed_post_probes_cloud_after_lan_404(self) -> None:
         from mac_edge.brain_client import BrainError
 
