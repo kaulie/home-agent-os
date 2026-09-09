@@ -685,6 +685,104 @@ LOCAL_PDF_ROTATE_SERVICE: dict[str, Any] = {
     ],
 }
 
+LOCAL_WEB_SCRAPER_SERVICE: dict[str, Any] = {
+    "service_id": "local.web.scraper",
+    "display_name": "网页抓取器",
+    "version": "0.1.0",
+    "group": "convert",
+    "capabilities": [
+        attach(
+            "web.scraper",
+            input_schema={
+                "url": {
+                    "type": "string",
+                    "required": True,
+                    "description": (
+                        "必填网页地址，仅 http/https（禁止 file:// 等本地协议）。"
+                        "例 https://example.com/article"
+                    ),
+                },
+                "mode": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "article=抓核心正文（默认，剔除广告/导航）/ page=忠实整页；"
+                        "也接受 正文/整页 等中文。"
+                    ),
+                },
+                "format": {
+                    "type": "string",
+                    "required": False,
+                    "description": "pdf=PDF 文档（默认）/ text=纯文本；也接受 文本。",
+                },
+                "renderer": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "pdf 时生效：auto=自动（默认，article 优先 weasyprint、"
+                        "page 优先 chrome，缺一自动回退）/ weasyprint / chrome。"
+                    ),
+                },
+                "name": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "可选产物展示名（自动补 .pdf/.txt）；"
+                        "不传则 web-scraper-<时间戳>-<mode>.*。"
+                    ),
+                },
+            },
+            output_schema={
+                "asset_ref": {
+                    "type": "object",
+                    "required": True,
+                    "description": "抓取产物 document AssetRef（PDF application/pdf 或文本 text/plain）",
+                },
+                "title": {
+                    "type": "string",
+                    "required": True,
+                    "description": "网页标题",
+                },
+                "url": {
+                    "type": "string",
+                    "required": True,
+                    "description": "抓取到的最终 URL（跟随重定向后）",
+                },
+                "mode": {
+                    "type": "string",
+                    "required": True,
+                    "description": "article / page",
+                },
+                "format": {
+                    "type": "string",
+                    "required": True,
+                    "description": "pdf / text",
+                },
+                "renderer": {
+                    "type": "string",
+                    "required": False,
+                    "description": "实际使用的渲染引擎（pdf 时）：weasyprint / chrome",
+                },
+                "page_count": {
+                    "type": "number",
+                    "required": False,
+                    "description": "PDF 页数（pdf 时）",
+                },
+                "char_count": {
+                    "type": "number",
+                    "required": False,
+                    "description": "导出文本字符数",
+                },
+                "status_text": {
+                    "type": "string",
+                    "required": True,
+                    "description": "中文一句话结果，含页数/字数、引擎与 asset_id",
+                },
+            },
+        ),
+    ],
+}
+
 LOCAL_CHAT_SERVICE: dict[str, Any] = {
     "service_id": "local.chat",
     "display_name": "Local Chat",
@@ -1580,6 +1678,7 @@ _LAPTOP_SERVICE_ORDER = (
     LOCAL_MATH_SERVICE,
     LOCAL_FILE_CONVERT_SERVICE,
     LOCAL_PDF_ROTATE_SERVICE,
+    LOCAL_WEB_SCRAPER_SERVICE,
     LOCAL_CHAT_SERVICE,
     LOCAL_ASSET_SERVICE,
     LOCAL_VOICE_SERVICE,
@@ -1755,6 +1854,16 @@ def default_services() -> list[dict[str, Any]]:
             log.info("advertise local.pdf.rotate (pdf.rotate)")
         else:
             log.info("skip local.pdf.rotate — pypdf not installed")
+    if _allow_service(LOCAL_WEB_SCRAPER_SERVICE["service_id"], allowed_set):
+        from mac_edge.plugins.web_scraper import any_renderer_available
+
+        if any_renderer_available():
+            services.append(dict(LOCAL_WEB_SCRAPER_SERVICE))
+            log.info("advertise local.web.scraper (web.scraper)")
+        else:
+            log.info(
+                "skip local.web.scraper — no pdf renderer (weasyprint/pango or chrome/edge) available"
+            )
     if _allow_service(LOCAL_CHAT_SERVICE["service_id"], allowed_set):
         services.append(dict(LOCAL_CHAT_SERVICE))
     if _allow_service(LOCAL_ASSET_SERVICE["service_id"], allowed_set):

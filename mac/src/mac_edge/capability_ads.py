@@ -476,6 +476,27 @@ ADS: dict[str, dict[str, Any]] = {
         ],
         do_not_dispatch=["打印", "OCR", "看图理解", "扫描", "识别内容", "PDF 合成/转图片", "配网"],
     ),
+    "web.scraper": _ad(
+        kind="action",
+        role="网页抓取器（URL → 核心正文/整页 → PDF/文本）",
+        planner_recognize=(
+            "用户给一个 http(s) 网址、要求把网页抓下来存成 PDF 或文本时用本步。"
+            "入参 url（必填，http/https）；mode=article 抓核心正文（默认，剔除广告/"
+            "导航）/ page 抓忠实整页；format=pdf（默认）/ text；renderer=auto/"
+            "weasyprint/chrome（仅 pdf，本机自动挑可用引擎）。产出登记为新 document "
+            "Asset，可交给 printer.print 打印或后续流程。本步只抓网页转文档，不打印、"
+            "不问答"
+        ),
+        typical_triggers=[
+            "把这个网页存成 PDF",
+            "把网址 http… 的文章转成 PDF",
+            "抓取这篇文章转成 PDF",
+            "把网页正文导出成文本",
+            "保存这个网页",
+            "网页转 PDF",
+        ],
+        do_not_dispatch=["打印", "OCR", "翻译", "整页截图", "下载图片", "看图理解", "投屏", "配网", "浏览网页问答"],
+    ),
     "xiaodu.speak": _ad(
         kind="output",
         role="小度音箱播报器",

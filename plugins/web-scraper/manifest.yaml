@@ -1,0 +1,25 @@
+id: web-scraper
+service_id: local.web.scraper
+group: convert
+version: "0.1.0"
+display_name: 网页抓取器（URL → 核心正文/整页 → PDF/文本）
+description: >
+  给定一个 http(s) 网页 URL，抓取网页并把内容转成 PDF 文档 Asset（或纯文本 Asset）。
+  mode=article 抽核心正文（剔除导航/广告/页脚）；mode=page 忠实还原整页。
+  PDF 渲染支持双引擎：weasyprint（纯 Python，需系统 Pango）与 本机 Chrome/Edge
+  headless；auto 时 article 优先 weasyprint、page 优先 chrome，缺一自动回退。
+
+capabilities:
+  - capability_id: web.scraper
+    description: >
+      能：给定 http(s) URL，抓取网页并把「核心正文」或「忠实整页」转成 PDF/文本
+      document Asset（可交给 printer.print / 后续流程）。
+      不能：打印、OCR、翻译、整页截图、下载图片、网页内容问答；非 http(s)、抓不到、
+      解码失败、抽不到正文、无可用的 PDF 渲染引擎 → 明确中文失败。
+
+entry:
+  mac: mac/src/mac_edge/plugins/web_scraper.py
+config:
+  - name: WEB_SCRAPER_BROWSER_PATH
+    default: ""
+    description: Chrome/Edge 可执行文件路径（可选；不配则自动探测 /Applications/… 与 ~/Applications/…）
