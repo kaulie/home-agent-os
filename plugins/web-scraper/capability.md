@@ -56,17 +56,20 @@ Brain **url 资产**，`type=url`），抓取网页并把内容转成 **PDF 文�
 
 | 引擎 | 依赖 | 特点 | auto 策略 |
 |------|------|------|-----------|
-| `weasyprint` | pip 装 weasyprint + 系统 **Pango ≥ 1.44**（macOS：`brew install pango`） | 纯 Python 排版、页内可控、不跑页面 JS | `article` 优先 |
-| `chrome` | 本机 Chrome/Edge/Chromium（`WEB_SCRAPER_BROWSER_PATH` 可指定） | 真浏览器排版、执行 JS、整页还原度高 | `page` 优先 |
+| `weasyprint` | pip 装 weasyprint + 系统 **Pango ≥ 1.44**（macOS：`brew install pango`） | 纯 Python 排版、页内可控、不跑页面 JS | 仅显式 `renderer=weasyprint` 选择 |
+| `chrome` | 本机 Chrome/Edge/Chromium（`WEB_SCRAPER_BROWSER_PATH` 可指定） | 真浏览器排版、执行 JS、整页还原度高 | **`auto` 默认优先（所有 mode）** |
 
-- `renderer=auto`（默认）：`article` 优先 weasyprint（缺 Pango/库则自动回退 chrome）；
-  `page` 优先 chrome（保真），缺浏览器则回退 weasyprint。两者都不可用 → 中文失败。
+- `renderer=auto`（默认）：**Chrome 优先**（缺浏览器才回退 weasyprint）。两者都不可用 → 中文失败。
 - 可显式 `renderer=weasyprint|chrome` 强制指定以便**对比效果**。
 - 探测（weasyprint=import+极小渲染 / chrome=找可执行文件）结果在进程内缓存，
   `services.py` 广告 `local.web.scraper` 前先 `any_renderer_available()`。
 
-> **效果对比建议**：复杂页面（重 CSS/JS、图文混排）Chrome 还原更接近网页原貌；
-> 纯文本/规整文章两者差异不大，weasyprint 输出体积更小且不依赖 GUI 应用。
+> **已知问题 #671**：weasyprint 70 + Pango 在本机把苹方等 TTC 子集化时会出现
+> “字形偏移乱码”（PDF 文字层/ToUnicode 正常，但渲染出来每个字符错位、肉眼不可读）。
+> 因此 `auto` 一律走 **Chrome**；weasyprint 仍保留给后续修复/对比。
+>
+> > **效果对比建议**：复杂页面（重 CSS/JS、图文混排）Chrome 还原更接近网页原貌；
+> > 纯文本/规整文章两者差异不大，weasyprint 输出体积更小且不依赖 GUI 应用。
 
 ## 技术实现
 

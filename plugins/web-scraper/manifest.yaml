@@ -8,7 +8,7 @@ description: >
   mode=article 抽核心正文（剔除导航/广告/页脚）；mode=page 忠实还原整页。
   入参支持直接给 http(s) url，或引用已登记的 Brain url 资产（type=url）。
   PDF 渲染支持双引擎：weasyprint（纯 Python，需系统 Pango）与 本机 Chrome/Edge
-  headless；auto 时 article 优先 weasyprint、page 优先 chrome，缺一自动回退。
+  headless；auto 时默认 Chrome 优先（weasyprint 字形渲染问题见 #671，可显式选用）。
 
 capabilities:
   - capability_id: web.scraper
