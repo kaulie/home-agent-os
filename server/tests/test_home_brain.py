@@ -333,6 +333,45 @@ class HomeBrainPersistTest(unittest.TestCase):
             "没有匹配能力",
         )
 
+    def test_ark_http_error_msg_account_overdue_surfaces_real_cause(self) -> None:
+        # No HTTP error -> fall back to original empty-plan diagnostics.
+        self.assertIsNone(hb._ark_http_error_msg(None))
+        self.assertIsNone(hb._ark_http_error_msg({}))
+        self.assertIsNone(hb._ark_http_error_msg({"http_status": 200}))
+        self.assertIsNone(hb._ark_http_error_msg({"http_status": 0}))
+        self.assertEqual(
+            hb._ark_http_error_msg(
+                {"http_status": 401, "error": {"code": "AuthenticationError"}}
+            ),
+            "规划服务 401，检查 ARK_API_KEY",
+        )
+        msg = hb._ark_http_error_msg(
+            {
+                "http_status": 403,
+                "error": {
+                    "code": "AccountOverdueError",
+                    "message": "The request failed because your account has an overdue balance.",
+                    "type": "Forbidden",
+                },
+            }
+        )
+        self.assertIn("403", msg)
+        self.assertIn("AccountOverdueError", msg)
+        self.assertIn("欠费", msg)
+
+    def test_ark_http_error_msg_unknown_code_includes_message_and_caps(self) -> None:
+        long_msg = "rate limited " * 200
+        msg = hb._ark_http_error_msg(
+            {
+                "http_status": 429,
+                "error": {"code": "TooManyRequests", "message": long_msg},
+            }
+        )
+        self.assertIn("429", msg)
+        self.assertIn("TooManyRequests", msg)
+        self.assertIn("rate limited", msg)
+        self.assertLessEqual(len(msg), hb._ARK_HTTP_MSG_MAX)
+
     def test_apply_failure_presentation_fills_text(self) -> None:
         intent = {
             "text": "拍照",
@@ -4763,6 +4802,54 @@ class HomeBrainPersistTest(unittest.TestCase):
         admin = hb._admin_intent_view(hb.get_intent(iid))
         self.assertEqual(admin["planner_cost_ms"], 1234)
         self.assertTrue(admin["planner_has_request_payload"])
+
+    def test_process_llm_task_http_403_marks_failed_with_provider_msg(self) -> None:
+        from unittest.mock import patch
+
+        iid = hb.new_intent(
+            {
+                "status": "intent_received",
+                "text": "把链接 http://example.com/a 转为PDF",
+                "source": "text",
+                "status_log": [],
+            }
+        )
+        ark = {
+            "ans": "",
+            "cost_ms": 150,
+            "request_payload": {"model": "ep-test", "messages": []},
+            "response_json": {
+                "http_status": 403,
+                "error": {
+                    "code": "AccountOverdueError",
+                    "message": "The request failed because your account has an overdue balance.",
+                    "type": "Forbidden",
+                },
+            },
+            "cache_hit": False,
+        }
+        with patch.object(hb, "call_ark", return_value=ark):
+            hb._process_llm_task(
+                {
+                    "question": "把链接 http://example.com/a 转为PDF",
+                    "session_id": "sess-a",
+                    "user_id": "u1",
+                    "intent_id": iid,
+                    "source": "text",
+                    "edge_id": "phone-1",
+                }
+            )
+        job = hb.get_intent(iid)
+        self.assertEqual(job["status"], "failed")
+        self.assertIn("403", job["msg"])
+        self.assertIn("AccountOverdueError", job["msg"])
+        self.assertIn("欠费", job["msg"])
+        self.assertEqual(
+            job["presentation"]["text"], job["msg"]
+        )
+        rows = brain_db.list_intent_reviews(iid)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["response_json"]["http_status"], 403)
 
     def test_process_llm_task_exception_records_cost_and_payload(self) -> None:
         from unittest.mock import patch

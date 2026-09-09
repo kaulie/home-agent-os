@@ -3469,6 +3469,49 @@ def _empty_plan_failure_msg(notes=None, llm_out=None):
     return _EMPTY_PLAN_MSG
 
 
+_ARK_HTTP_MSG_MAX = 240
+
+
+def _ark_http_error_msg(response_json):
+    """User-facing failure when the ARK planner call itself returned HTTP >= 400.
+
+    ``call_ark`` already parses provider HTTP errors into ``response_json``
+    (``http_status`` + ``error.code/message`` via ``_ark_http_error_json``).
+    Returns None when there is no HTTP error, so a genuinely empty LLM plan still
+    falls through to ``_empty_plan_failure_msg`` with its original diagnostics.
+    """
+    if not isinstance(response_json, dict):
+        return None
+    try:
+        status = int(response_json.get("http_status") or 0)
+    except (TypeError, ValueError):
+        status = 0
+    if status < 400:
+        return None
+    if status == 401:
+        return "规划服务 401，检查 ARK_API_KEY"
+    code = ""
+    message = ""
+    err = response_json.get("error")
+    if isinstance(err, dict):
+        code = str(err.get("code") or "").strip()
+        message = str(err.get("message") or "").strip()
+    if not message:
+        raw_body = response_json.get("body")
+        if isinstance(raw_body, str) and raw_body.strip():
+            message = raw_body.strip()
+    code_part = f"（{code}）" if code else ""
+    if code == "AccountOverdueError":
+        text = f"规划服务 HTTP {status}{code_part}：火山方舟 ARK 账号欠费，请充值后重试"
+    else:
+        text = f"规划服务 HTTP {status}{code_part}：请稍后重试"
+        if message:
+            text += f"；{message}"
+    if len(text) > _ARK_HTTP_MSG_MAX:
+        text = text[:_ARK_HTTP_MSG_MAX - 3] + "..."
+    return text
+
+
 def _apply_failure_presentation(intent, msg):
     text = str(msg or "").strip()
     if not intent or not text:
@@ -3856,7 +3899,9 @@ def _process_llm_task(task):
                 if str(ans).strip() == "__ARK_HTTP_401__":
                     fail_msg = "规划服务 401，检查 ARK_API_KEY"
                 else:
-                    fail_msg = _empty_plan_failure_msg(notes, llm_out)
+                    fail_msg = _ark_http_error_msg(fields.get("response_json"))
+                    if not fail_msg:
+                        fail_msg = _empty_plan_failure_msg(notes, llm_out)
                 mark_intent_failed(intent_id, fail_msg)
                 stored = get_intent(intent_id)
                 _apply_failure_presentation(stored, fail_msg)
