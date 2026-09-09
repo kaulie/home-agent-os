@@ -207,6 +207,22 @@ class AssetManager:
         )
         if record is None:
             raise AssetNotFoundError(ref.asset_id)
+        asset_type = str(record.get("type") or "").strip().lower()
+        if need == "http_url" and asset_type == "url":
+            # url 资产：内容就是目标链接；经 Brain /content（带本 intent grant）302
+            # 到目标，由调用方跟随重定向拿原网页（或直接跳转）。
+            brain_base = str(
+                getattr(getattr(self._brain, "config", None), "brain_base_url", "")
+                or ""
+            ).strip()
+            if not brain_base:
+                raise AssetStorageError(
+                    f"asset {ref.asset_id} is url type but Brain URL is missing"
+                )
+            return HttpUrlRepresentation(
+                url=brain_content_http_url(brain_base, ref.asset_id, iid),
+                expires_at_ms=None,
+            )
         storage = record.get("storage")
         if not isinstance(storage, dict):
             raise AssetStorageError(f"asset {ref.asset_id} has no storage locator")

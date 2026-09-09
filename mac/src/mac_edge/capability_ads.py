@@ -305,7 +305,7 @@ ADS: dict[str, dict[str, Any]] = {
     "asset.inventory": _ad(
         kind="system",
         role="Asset 盘点查询器",
-        planner_recognize="查 Brain 已登记 Asset（image/video/audio/document 等）：今天拍了几张、第几张照片、最新 PDF/文档。问数量用 day=today/yesterday；取第 N 条用 index；最新一份用 type=document（或目标类型）+ order=newest_first + index=1，产出 asset_ref 可交给 printer.print。不是去拍照，不是翻手机相册/本机文件系统，不是看图理解",
+        planner_recognize="查 Brain 已登记 Asset（image/video/audio/document/url 等）：今天拍了几张、第几张照片、最新 PDF/文档、最近保存的链接。问数量用 day=today/yesterday；取第 N 条用 index；最新一份用 type=document（或目标类型：链接用 type=url）+ order=newest_first + index=1，产出 asset_ref 可交给 printer.print / web.scraper 等。不是去拍照，不是翻手机相册/本机文件系统，不是看图理解",
         typical_triggers=[
             "我今天拍了几张照片",
             "昨天拍了多少张照片",
@@ -478,19 +478,21 @@ ADS: dict[str, dict[str, Any]] = {
     ),
     "web.scraper": _ad(
         kind="action",
-        role="网页抓取器（URL → 核心正文/整页 → PDF/文本）",
+        role="网页抓取器（URL / url 资产 → 核心正文/整页 → PDF/文本）",
         planner_recognize=(
-            "用户给一个 http(s) 网址、要求把网页抓下来存成 PDF 或文本时用本步。"
-            "入参 url（必填，http/https）；mode=article 抓核心正文（默认，剔除广告/"
-            "导航）/ page 抓忠实整页；format=pdf（默认）/ text；renderer=auto/"
-            "weasyprint/chrome（仅 pdf，本机自动挑可用引擎）。产出登记为新 document "
-            "Asset，可交给 printer.print 打印或后续流程。本步只抓网页转文档，不打印、"
-            "不问答"
+            "用户给一个 http(s) 网址、或引用已登记的 Brain url 资产（type=url），"
+            "要求把网页抓下来存成 PDF 或文本时用本步。入参 url（必填其一，http/https）"
+            "与 asset_ref（可选，type=url 的 Brain url 资产，二选一）；mode=article "
+            "抓核心正文（默认，剔除广告/导航）/ page 抓忠实整页；format=pdf（默认）/ "
+            "text；renderer=auto/weasyprint/chrome（仅 pdf，本机自动挑可用引擎）。"
+            "产出登记为新 document Asset，可交给 printer.print 打印或后续流程。本步只"
+            "抓网页转文档，不打印、不问答"
         ),
         typical_triggers=[
             "把这个网页存成 PDF",
             "把网址 http… 的文章转成 PDF",
             "抓取这篇文章转成 PDF",
+            "把我存的链接转成 PDF",
             "把网页正文导出成文本",
             "保存这个网页",
             "网页转 PDF",

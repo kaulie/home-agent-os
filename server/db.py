@@ -1620,7 +1620,7 @@ def heartbeat_count() -> int:
         return int(row["n"])
 
 
-_ASSET_TYPES = ("image", "video", "audio", "document", "text", "other")
+_ASSET_TYPES = ("image", "video", "audio", "document", "text", "url", "other")
 _ASSET_STATUSES = ("available", "pending", "expired", "deleted")
 _ASSET_URL_KEYS = {
     "url",

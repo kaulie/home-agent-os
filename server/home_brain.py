@@ -28,7 +28,7 @@ import mimetypes
 from copy import deepcopy
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from flask import Flask, request, Blueprint, jsonify, send_file, Response, stream_with_context
+from flask import Flask, request, Blueprint, jsonify, send_file, Response, stream_with_context, redirect
 
 try:
     import db as brain_db
@@ -5729,6 +5729,107 @@ def upload_asset_with_intent():
     )
 
 
+@app.route("/api/v1/assets/register", methods=["POST"])
+def register_url_asset():
+    """Register a URL as a first-class `url` Asset (no file bytes).
+
+    url asset 的“内容”就是目标链接本身（metadata.url_target）。只接受 type=url；
+    需要真实字节的资产仍走 POST /api/v1/assets/upload。
+    """
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error="JSON object required"), 400
+    asset_type = str(data.get("type") or "url").strip().lower()
+    if asset_type != "url":
+        return jsonify(
+            ok=False,
+            error="register 仅支持 type=url；字节资产请走 /api/v1/assets/upload",
+        ), 400
+    raw_url = str(data.get("url") or "").strip()
+    if not raw_url:
+        return jsonify(ok=False, error="url 必填"), 400
+    try:
+        parsed = urllib.parse.urlparse(raw_url)
+    except Exception:
+        parsed = None
+    if parsed is None or parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return jsonify(ok=False, error="url 仅支持 http/https 链接"), 400
+    url = urllib.parse.urlunsplit(
+        (parsed.scheme, parsed.netloc, parsed.path or "", parsed.query, "")
+    )
+    title = str(data.get("title") or "").strip()
+    if not title:
+        title = parsed.netloc
+    if len(title) > 120:
+        title = title[:120]
+    producer = str(
+        data.get("producer")
+        or data.get("producer_capability")
+        or "iphone.url"
+    ).strip() or "iphone.url"
+    edge_id = str(
+        data.get("edge_id")
+        or data.get("participant_id")
+        or data.get("producer_edge_id")
+        or ""
+    ).strip()
+    intent_id = str(data.get("intent_id") or "").strip()
+    put = getattr(brain_db, "put_asset", None)
+    if not callable(put):
+        return jsonify(ok=False, error="assets catalog not available"), 503
+
+    aid = "asset_" + secrets.token_hex(12)
+    record = {
+        "asset_id": aid,
+        "type": "url",
+        "mime_type": "text/uri-list",
+        "status": "ready",
+        "producer_capability": producer,
+        "producer_edge_id": edge_id or None,
+        "size_bytes": len(url.encode("utf-8")),
+        "metadata": {"url_target": url, "title": title},
+        "storage": None,
+    }
+    if intent_id:
+        record["intent_id"] = intent_id
+        record["origin_intent_id"] = intent_id
+    try:
+        put(record)
+    except ValueError as e:
+        return jsonify(ok=False, error=str(e)), 400
+    except Exception:
+        log.exception("assets/register put_asset failed")
+        return jsonify(ok=False, error="register_asset failed"), 500
+    if intent_id:
+        _grant_asset_read(aid, intent_id)
+
+    getter = getattr(brain_db, "get_asset", None)
+    rec = getter(aid) if callable(getter) else None
+    rec = rec or {
+        "asset_id": aid,
+        "type": "url",
+        "mime_type": "text/uri-list",
+        "metadata": {"url_target": url, "title": title},
+    }
+    if intent_id and _asset_client_may_read(rec, intent_id):
+        asset = _asset_endpoint_view(rec, intent_id)
+    elif edge_id and _asset_producer_may_read(rec, edge_id):
+        asset = _asset_runtime_view(rec)
+    else:
+        asset = _asset_public_view(rec)
+    if "url" not in asset:
+        asset = dict(asset)
+        asset["url"] = url
+    return jsonify(
+        ok=True,
+        asset_id=aid,
+        asset=asset,
+        type="url",
+        url=url,
+        asset_ref={"asset_id": aid, "type": "url", "mime_type": "text/uri-list"},
+    )
+
+
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif"}
 def _latest_image(directory: Path):
     if not directory.is_dir():
@@ -7301,6 +7402,20 @@ def _asset_stream_href(asset_id: str, intent_id: str, *, representation: str = "
     return "/api/v1/assets/%s/content?%s" % (urllib.parse.quote(str(asset_id), safe=""), qs)
 
 
+def _url_asset_target(record: dict) -> str:
+    """url 资产的授权目标链接（metadata.url_target，仅 type=url 携带）。"""
+    meta = (record or {}).get("metadata")
+    meta = meta if isinstance(meta, dict) else {}
+    raw = str(meta.get("url_target") or "").strip()
+    try:
+        parsed = urllib.parse.urlparse(raw)
+    except Exception:
+        return ""
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return raw
+    return ""
+
+
 def _asset_runtime_storage(storage: dict) -> dict:
     if not isinstance(storage, dict):
         return {}
@@ -7309,6 +7424,10 @@ def _asset_runtime_storage(storage: dict) -> dict:
 
 def _asset_endpoint_view(record: dict, intent_id: str) -> dict:
     out = _asset_metadata_only(record)
+    if str((record or {}).get("type") or "").strip().lower() == "url":
+        target = _url_asset_target(record)
+        if target:
+            out["url"] = target
     aid = str((record or {}).get("asset_id") or "").strip()
     iid = str(intent_id or "").strip()
     if aid and iid:
@@ -7329,6 +7448,10 @@ def _asset_endpoint_view(record: dict, intent_id: str) -> dict:
 
 def _asset_runtime_view(record: dict) -> dict:
     out = _asset_metadata_only(record)
+    if str((record or {}).get("type") or "").strip().lower() == "url":
+        target = _url_asset_target(record)
+        if target:
+            out["url"] = target
     storage = _asset_runtime_storage((record or {}).get("storage"))
     if storage:
         out["storage"] = storage
@@ -7336,8 +7459,13 @@ def _asset_runtime_view(record: dict) -> dict:
 
 
 def _asset_public_view(record: dict, *, include_storage: bool = False) -> dict:
-    """Metadata-only snapshot (no storage URLs). Legacy include_storage ignored."""
-    return _asset_metadata_only(record)
+    """Metadata-only snapshot (no storage URLs / no url-asset target). Legacy
+    include_storage ignored: storage URLs are never handed to the public."""
+    out = _asset_metadata_only(record)
+    meta = out.get("metadata")
+    if isinstance(meta, dict) and "url_target" in meta:
+        out["metadata"] = {k: v for k, v in meta.items() if k != "url_target"}
+    return out
 
 
 def _caller_is_runtime(edge_id: str) -> bool:
@@ -7881,6 +8009,12 @@ def _get_asset_content_handler(asset_id):
         or _admin_request_ok()
     ):
         return jsonify(ok=False, error="asset_ref grant required"), 403
+    if str(rec.get("type") or "").strip().lower() == "url":
+        # url asset 没有字节：/content 302 到目标链接（授权调用方可跟随到原网页）。
+        target = _url_asset_target(rec)
+        if not target:
+            return jsonify(ok=False, error="url asset has no valid url_target"), 502
+        return redirect(target, code=302)
     representation = str(request.args.get("representation") or "original").strip().lower()
     body, err = _serve_asset_bytes(
         rec,

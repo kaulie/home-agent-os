@@ -30,7 +30,7 @@ iPhone App 是 **Intent Source + Endpoint**，并预装 **Runtime：GoPro `camer
 - 预装 Runtime：`gopro.camera` / `camera.capture`（iPhone **不切网、不填热点 SSID**，直接打相机 HTTP；Mac 切网实现不要混用）；`livingroom.ceiling_light` / `light.set`（本机 TTS：小书小书 → 等 2 秒 → 开灯/关灯）
 - `client_hint` 本机稳定（`living-room-iphone-…`）；`participant_id` 来自登记回执
 - 登记后立刻心跳，之后约 45 秒一次；发出前心跳失败则不出单
-- 主界面底栏「互动」；顶部分段「对话 | 扫描 | 拍照 | 文件 | 录音 | 直播」。对话是聊天窗；扫描页打开系统文档扫描仪（VisionKit）；拍照页后置实时预览，点快门即拍——成片立刻写入本地列表（本机留存 `Documents/local-photos/`），上传在后台自动进行、不阻塞下一次拍摄；上传失败只标记该照片的上传状态（列表行内可重试），不会报成「拍照失败」。文件页从系统文件选择器上传。录音页可暂停（暂停不上传），点停止后 POST `/api/v1/assets/upload`（`upload_intent=iphone.audio`），最近列表可改名、播放本机缓存。直播页全屏取景，Start Stream 把 H.264 MPEG-TS 推到 Mac ingest（不经 Planner）。扫描/拍照/文件/录音完成后 POST `/api/v1/assets/upload`。物流时间线挂在用户气泡下的「进度」浮窗里
+- 主界面底栏「互动」；顶部分段「对话 | 扫描 | 拍照 | 文件 | 录音 | 直播」。对话是聊天窗；扫描页打开系统文档扫描仪（VisionKit）；拍照页后置实时预览，点快门即拍——成片立刻写入本地列表（本机留存 `Documents/local-photos/`），上传在后台自动进行、不阻塞下一次拍摄；上传失败只标记该照片的上传状态（列表行内可重试），不会报成「拍照失败」。文件页从系统文件选择器上传，也可点「保存链接」把一条 URL 登记成 Brain 的 **url 资产**（文件页「已存链接」列表可见、点开用浏览器打开；存好后可让 Mac 用 `web.scraper` 抓取/转 PDF/文本）。录音页可暂停（暂停不上传），点停止后 POST `/api/v1/assets/upload`（`upload_intent=iphone.audio`），最近列表可改名、播放本机缓存。直播页全屏取景，Start Stream 把 H.264 MPEG-TS 推到 Mac ingest（不经 Planner）。扫描/拍照/文件/录音完成后 POST `/api/v1/assets/upload`。物流时间线挂在用户气泡下的「进度」浮窗里
 - 图结果只认 `presentation.asset_ref`：Endpoint **只**走 `GET /api/v1/assets/{id}/content?intent_id=`（聊天默认 `representation=preview` 缩略图，点大图再拉 `original`）。`camera.capture` **先**登记 preview、标 succeeded，原图蜂窝后台补传后再 PATCH 同一 `asset_id`。
 - 下拉刷新：`GET /api/v1/intents?participant_id=&before_id=&limit=`，每次最多 **5** 条本机历史
 - 语音在本机转成中文后再 POST
