@@ -338,7 +338,7 @@ _PRESENTATION_SCHEMA = {
 
 # Planner-facing presentation fields (must match OUTPUT_SCHEMA; no extra keys).
 _PLANNER_PRESENTATION_SCHEMA = {
-    "type": "text | image | audio",
+    "type": "text | image | audio | document",
     "from": "optional execution field some plan step emits: time_text | answer_text | summary | state | status_text | asset_ref | …",
     "endpoint": "optional; only when the user explicitly names a destination; omit for Input Source Affinity",
 }
@@ -421,7 +421,7 @@ _PLANNER_OUTPUT_SCHEMA = {
             "required": ["type"],
             "additionalProperties": False,
             "properties": {
-                "type": {"type": "string", "enum": ["text", "image", "audio"]},
+                "type": {"type": "string", "enum": ["text", "image", "audio", "document"]},
                 "from": {"type": "string"},
                 "endpoint": {"type": "string"},
             },
@@ -1832,7 +1832,7 @@ def _normalize_presentation_plan(raw):
     if not isinstance(raw, dict):
         return {}
     ptype = str(raw.get("type") or "").strip().lower()
-    if ptype not in ("text", "image", "audio"):
+    if ptype not in ("text", "image", "audio", "document"):
         return {}
     src = str(raw.get("from") or raw.get("payload_from") or "").strip()
     out = {"type": ptype}
@@ -1988,6 +1988,35 @@ def _asset_media_family(ref) -> str:
     return "other"
 
 
+def _is_previewable_document_ref(ref) -> bool:
+    """A document preview needs a real document artifact.
+
+    `asset.inventory` often hands back a `type=url` asset (mime `text/uri-list`) while the
+    step that produces the real PDF is still running. Previewing that link would make the
+    client try to render a URL as a document, so it is not previewable (#677).
+    """
+    if not isinstance(ref, dict):
+        return False
+    if str(ref.get("type") or "").strip().lower() == "url":
+        return False
+    return _asset_media_family(ref) == "document"
+
+
+def _asset_produced_by_intent(ref, intent) -> bool:
+    """True when this intent's execution registered the asset (`assets.origin_intent_id`)."""
+    if not isinstance(ref, dict):
+        return False
+    aid = str(ref.get("asset_id") or "").strip()
+    iid = str((intent or {}).get("intent_id") or (intent or {}).get("id") or "").strip()
+    if not aid or not iid:
+        return False
+    rec = brain_db.get_asset(aid)
+    if not rec:
+        return False
+    origin = str(rec.get("origin_intent_id") or "").strip()
+    return bool(origin) and origin == iid
+
+
 def _enrich_asset_ref_from_catalog(ref):
     rec = brain_db.get_asset(ref["asset_id"])
     if not rec:
@@ -2117,6 +2146,25 @@ def assemble_presentation(intent):
         ptype in ("text", "audio")
         and family == "document"
         and _user_asked_see_document(str((intent or {}).get("text") or ""))
+    ):
+        ptype = "document"
+        src = "asset_ref"
+    # document 预览必须有可预览的文档产物：inventory 先交出 type=url 资产时这一帧保持文字，
+    # 绝不把 url 资产当 PDF 推给客户端（#677），等真正的 document 就绪再升（见下一段）。
+    # 若命中的其实是 audio/image 资产，保留下面既有的「降级为 audio/image」行为，不在此拦。
+    if (
+        ptype == "document"
+        and not _is_previewable_document_ref(ref)
+        and family not in ("audio", "image")
+    ):
+        ptype, src = _voice_symmetric_presentation_kind(intent, "text", "answer_text")
+    # 本次 intent 自己产出的文档就是用户要的结果 → 在发起端预览（#677：URL→PDF 曾只提示
+    # 成功、不展示 PDF）。voice 发起保持「念一句」的对称交付，不抢成静态文档。
+    if (
+        ptype in ("text", "audio")
+        and not _intent_source_voice(intent)
+        and _is_previewable_document_ref(ref)
+        and _asset_produced_by_intent(ref, intent)
     ):
         ptype = "document"
         src = "asset_ref"
