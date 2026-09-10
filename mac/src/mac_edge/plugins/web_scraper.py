@@ -954,7 +954,12 @@ def scrape_from_params(
                 f"无法解析 url 资产 content（{getattr(ref, 'asset_id', '')}）："
                 f"{type(e).__name__}: {e}"
             ) from e
-        url_text = str(getattr(rep, "url", "") or "").strip()
+        # CapAsset.http_url returns the content URL as a plain string; also accept
+        # an object exposing .url so callers with either contract keep working.
+        if isinstance(rep, str):
+            url_text = rep.strip()
+        else:
+            url_text = str(getattr(rep, "url", "") or "").strip()
         if not url_text:
             raise WebScraperError("url 资产解析出的 content URL 为空")
 

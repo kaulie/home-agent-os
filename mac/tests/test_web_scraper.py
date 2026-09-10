@@ -445,10 +445,12 @@ class ScrapeFromParamsTests(WebScraperTestCase):
             asset_id="asset_url1", type="url", mime_type="text/uri-list"
         )
 
-        class _Rep:
-            url = "http://127.0.0.1:9527/api/v1/assets/asset_url1/content?intent_id=9"
-
-        asset.http_url.return_value = _Rep()
+        content_url = (
+            "http://127.0.0.1:9527/api/v1/assets/asset_url1"
+            "/content?intent_id=9&representation=original"
+        )
+        # Real CapAsset.http_url returns a URL string (not an object with .url).
+        asset.http_url.return_value = content_url
         asset.upload_file.return_value = AssetRef(
             asset_id="asset_ws_10", type="document", mime_type="application/pdf"
         )
@@ -465,6 +467,7 @@ class ScrapeFromParamsTests(WebScraperTestCase):
                 )
         asset.require_ref.assert_called_once()
         asset.http_url.assert_called_once()
+        self.assertEqual(fetch.call_args.args[0], content_url)
         self.assertEqual(outputs["url"], "https://target.example/article")
         self.assertEqual(outputs["format"], "pdf")
         self.assertIn("pdf_asset=asset_ws_10", msg)
