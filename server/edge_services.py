@@ -1113,7 +1113,10 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             '要求把网页抓下来存成 PDF 或文本时用本步。入参 url（http/https）与 '
             'asset_ref（type=url 的 Brain url 资产）二选一；mode=article '
             '抓核心正文（默认，剔除广告/导航）/ page 抓忠实整页；format=pdf（默认）/ '
-            'text；renderer=auto/weasyprint/chrome（仅 pdf，本机自动挑可用引擎）。'
+            'text；renderer=auto/weasyprint/chrome（仅 pdf，本机自动挑可用引擎）；'
+            'page_numbers 默认 true（每页页脚加页码，page_number_style=cn 中文「第 N 页 / '
+            '共 M 页」/ numeric 数字「N / M」；native_header_footer=true 改用 Chrome '
+            '原生页脚）。'
             '产出登记为新 document Asset，可交给 printer.print 打印或后续流程。本步只'
             '抓网页转文档，不打印、不问答'
         ),
@@ -1152,6 +1155,24 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
                 'type': 'string',
                 'required': False,
                 'description': 'pdf 时生效：auto=自动（默认）/ weasyprint / chrome',
+            },
+            'page_numbers': {
+                'type': 'boolean',
+                'required': False,
+                'description': 'pdf 时：是否加页码，默认 true。false=完全不加',
+            },
+            'page_number_style': {
+                'type': 'string',
+                'required': False,
+                'description': '页脚样式：cn=「第 N 页 / 共 M 页」（默认）/ numeric=「N / M」',
+            },
+            'native_header_footer': {
+                'type': 'boolean',
+                'required': False,
+                'description': (
+                    'pdf 时：默认 false。true=改用 Chrome 原生页眉页脚'
+                    '（带日期与 URL，自带 N/M 页码），不再叠加页码层'
+                ),
             },
             'name': {
                 'type': 'string',
@@ -1194,6 +1215,21 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
                 'type': 'number',
                 'required': False,
                 'description': 'PDF 页数（pdf 时）',
+            },
+            'page_numbers': {
+                'type': 'boolean',
+                'required': False,
+                'description': 'pdf 时：页码是否真的生效（false=已关闭或本机无 Chrome 降级）',
+            },
+            'page_number_style': {
+                'type': 'string',
+                'required': False,
+                'description': '实际页码样式：cn / numeric（pdf 时）',
+            },
+            'native_header_footer': {
+                'type': 'boolean',
+                'required': False,
+                'description': '是否走了 Chrome 原生页脚（pdf 时）',
             },
             'char_count': {
                 'type': 'number',

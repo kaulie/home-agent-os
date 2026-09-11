@@ -12,8 +12,13 @@ Pipeline:
    相对链接补全绝对 URL，产出干净 HTML 与纯文本。
 4. **mode=page**：保留整页 HTML，注入 ``<base href=final_url>`` 与 ``@page`` 打印 CSS。
 5. **format=pdf**：交给渲染引擎转 PDF —— ``weasyprint``（进程内，需 Pango）或本机
-   Chrome/Edge headless。``renderer=auto`` 时 article 优先 weasyprint、page 优先
-   chrome，缺一自动回退另一；都不可用则明确中文失败。产物经 pypdf 读页数。
+   Chrome/Edge headless。``renderer=auto`` 时**默认优先 Chrome**（weasyprint 在本机
+   用苹方等 TTC 子集化会出字形错位，见 #671），缺一自动回退另一；都不可用则明确
+   中文失败。产物经 pypdf 读页数。
+5b. **页码**（默认开）：渲染完用 pypdf 逐页叠加一条页脚（``第 N 页 / 共 M 页`` 或
+   ``N / M``）。页码层**必须用 Chrome 渲染** —— weasyprint 的字形错位会把页码渲成
+   乱码；本机没有 Chrome 时降级为「不加页码」而不是让整次抓取失败。
+   ``native_header_footer=true`` 时改用 Chrome 原生页脚（带日期+URL）并跳过叠加。
 6. **format=text**：无需渲染引擎，直接产出 ``.txt``。
 7. 产物统一经 ``asset.upload_file(producer="web.scraper", ...)`` 登记为 document
    Asset（PDF ``application/pdf`` / 文本 ``text/plain``），返回新 ``asset_ref``。
@@ -53,6 +58,11 @@ RENDERER_WEASYPRINT = "weasyprint"
 RENDERER_CHROME = "chrome"
 SUPPORTED_RENDERERS = frozenset({RENDERER_AUTO, RENDERER_WEASYPRINT, RENDERER_CHROME})
 
+# 页码样式（仅 format=pdf）。
+PAGE_NUM_STYLE_CN = "cn"           # 第 N 页 / 共 M 页（默认）
+PAGE_NUM_STYLE_NUMERIC = "numeric"  # N / M
+SUPPORTED_PAGE_NUM_STYLES = frozenset({PAGE_NUM_STYLE_CN, PAGE_NUM_STYLE_NUMERIC})
+
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -89,6 +99,16 @@ _RENDERER_ALIASES = {
     "chromium": RENDERER_CHROME,
     "edge": RENDERER_CHROME,
     "浏览器": RENDERER_CHROME,
+}
+_PAGE_NUM_STYLE_ALIASES = {
+    "cn": PAGE_NUM_STYLE_CN,
+    "chinese": PAGE_NUM_STYLE_CN,
+    "中文": PAGE_NUM_STYLE_CN,
+    "汉字": PAGE_NUM_STYLE_CN,
+    "numeric": PAGE_NUM_STYLE_NUMERIC,
+    "num": PAGE_NUM_STYLE_NUMERIC,
+    "number": PAGE_NUM_STYLE_NUMERIC,
+    "数字": PAGE_NUM_STYLE_NUMERIC,
 }
 
 _HINT_RE = re.compile(
@@ -199,6 +219,22 @@ def _normalize_choice(raw: Any, aliases: dict[str, str], label: str, default: st
 
 def _mode_label(mode: str) -> str:
     return "核心正文" if mode == MODE_ARTICLE else "忠实整页"
+
+
+def _as_bool(value: Any, *, default: bool, label: str) -> bool:
+    """宽松布尔解析（对齐 query_content._as_bool 的取值约定）。"""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    raw = str(value).strip().lower()
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off", ""):
+        return False
+    raise WebScraperError(f"{label} 需要布尔值（true/false），收到 {value!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -758,8 +794,12 @@ def _render_weasyprint(html_text: str, base_url: str, dst: Path) -> None:
         raise WebScraperError("weasyprint 渲染产出为空 PDF")
 
 
-def _render_chrome(html_file: Path, dst: Path) -> None:
+def _render_chrome(html_file: Path, dst: Path, *, header_footer: bool = False) -> None:
     """用本机 Chrome/Edge headless 把本地 HTML 打印成 PDF。
+
+    ``header_footer=False``（默认）传 ``--no-pdf-header-footer``：干净 PDF，页脚由
+    调用方自行叠加（见 ``stamp_page_numbers``）。``header_footer=True`` 改走 Chrome
+    原生页眉页脚（含日期、URL 与 ``N/M`` 页码），此时不要再叠加以免重复。
 
     实测 Chrome headless 出完 PDF 后进程可能不退出，因此这里 Popen + 轮询产物 +
     超时强杀，并清理临时 user-data-dir。
@@ -779,7 +819,10 @@ def _render_chrome(html_file: Path, dst: Path) -> None:
         "--no-default-browser-check",
         "--disable-extensions",
         f"--user-data-dir={profile}",
-        "--no-pdf-header-footer",
+    ]
+    if not header_footer:
+        cmd.append("--no-pdf-header-footer")
+    cmd += [
         f"--print-to-pdf={dst}",
         html_uri,
     ]
@@ -858,8 +901,14 @@ def render_pdf_to_file(
     base_url: str,
     dst: Path,
     renderer: str,
+    *,
+    header_footer: bool = False,
 ) -> None:
-    """按已解析的 renderer 渲染 HTML → PDF 文件。"""
+    """按已解析的 renderer 渲染 HTML → PDF 文件。
+
+    ``header_footer`` 仅在 chrome 下有意义：True → 用 Chrome 原生页眉页脚。
+    weasyprint 没有等价能力，忽略该参数。
+    """
     if renderer == RENDERER_WEASYPRINT:
         _render_weasyprint(html_text, base_url, dst)
         return
@@ -869,7 +918,7 @@ def render_pdf_to_file(
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 fh.write(html_text)
-            _render_chrome(tmp_html, dst)
+            _render_chrome(tmp_html, dst, header_footer=header_footer)
         finally:
             tmp_html.unlink(missing_ok=True)
         return
@@ -886,6 +935,102 @@ def pdf_page_count(path: Path) -> int:
         return len(PdfReader(str(path)).pages)
     except Exception as e:
         raise WebScraperError(f"读取生成的 PDF 失败：{e}") from e
+
+
+# ---------------------------------------------------------------------------
+# 页码（pypdf 叠加；overlay 必须由 Chrome 渲染）
+# ---------------------------------------------------------------------------
+
+def page_number_text(index: int, total: int, style: str) -> str:
+    """第 index 页（1 起）的页脚文案。"""
+    if style == PAGE_NUM_STYLE_NUMERIC:
+        return f"{index} / {total}"
+    return f"第 {index} 页 / 共 {total} 页"
+
+
+def build_page_number_overlay_html(total: int, style: str) -> str:
+    """构造 total 页的「透明页码层」HTML：每页只有一条居中页脚，不画任何背景。
+
+    每页一个 ``.pg`` 撑满 A4（29.5cm < 29.7cm，避免溢出多出一页），页脚绝对定位在
+    底部；因为不设背景，Chrome 打印出的 PDF 没有整页填充矩形 → 叠加时不遮挡正文。
+    """
+    if total <= 0:
+        raise WebScraperError(f"页码层页数无效：{total}")
+    rows = "".join(
+        f'<div class="pg{" last" if i == total else ""}">'
+        f'<div class="f">{_html_escape(page_number_text(i, total, style))}</div></div>'
+        for i in range(1, total + 1)
+    )
+    return (
+        '<!doctype html><html><head><meta charset="utf-8"><style>'
+        "@page { size: A4; margin: 0; }"
+        "body { margin: 0; }"
+        ".pg { height: 29.5cm; position: relative; page-break-after: always; }"
+        ".pg.last { page-break-after: auto; }"
+        ".f { position: absolute; bottom: 1.0cm; left: 0; right: 0; text-align: center;"
+        " font-family: 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;"
+        " font-size: 10pt; color: #333; }"
+        f"</style></head><body>{rows}</body></html>"
+    )
+
+
+def _render_overlay_pdf(html_text: str, dst: Path) -> None:
+    """页码层固定用 Chrome 渲染（weasyprint 的 CJK 字形错位会把页码渲成乱码）。"""
+    fd, tmp_name = tempfile.mkstemp(prefix="web-scraper-pagenum-", suffix=".html")
+    tmp_html = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(html_text)
+        _render_chrome(tmp_html, dst)
+    finally:
+        tmp_html.unlink(missing_ok=True)
+
+
+def stamp_page_numbers(src: Path, total: int, style: str) -> None:
+    """就地把页码叠加到 ``src`` 的每一页上（pypdf merge_page）。
+
+    透明页码层由 Chrome 渲染；页数必须与正文一致，否则明确失败（宁可不加，也不
+    错位盖章）。
+    """
+    if total <= 0:
+        return
+    try:
+        from pypdf import PdfReader, PdfWriter
+    except Exception as e:  # pragma: no cover - 缺依赖
+        raise WebScraperError(f"web.scraper 依赖 pypdf 缺失：{e}") from e
+
+    fd, tmp_name = tempfile.mkstemp(prefix="web-scraper-pagenum-", suffix=".pdf")
+    os.close(fd)
+    overlay_path = Path(tmp_name)
+    try:
+        _render_overlay_pdf(build_page_number_overlay_html(total, style), overlay_path)
+        if not (overlay_path.exists() and overlay_path.stat().st_size > 0):
+            raise WebScraperError("页码层渲染产出为空")
+        reader = PdfReader(str(src))
+        overlay = PdfReader(str(overlay_path))
+        if len(overlay.pages) != total:
+            raise WebScraperError(
+                f"页码层页数与正文不一致（正文 {total} 页，页码层 {len(overlay.pages)} 页）"
+            )
+        writer = PdfWriter()
+        for page in reader.pages:
+            writer.add_page(page)
+        # 必须对「已归入 writer 的页」做 merge；对游离页 merge 在 pypdf 已弃用
+        # （replace_contents 不保证可靠，7.0 会移除）。
+        for i, page in enumerate(writer.pages):
+            page.merge_page(overlay.pages[i])
+        # 落临时文件再原子替换，避免 reader 还指着 src 时就地覆写。
+        fd_out, out_name = tempfile.mkstemp(prefix="web-scraper-stamped-", suffix=".pdf")
+        os.close(fd_out)
+        out_path = Path(out_name)
+        try:
+            with out_path.open("wb") as fh:
+                writer.write(fh)
+            os.replace(out_path, src)
+        finally:
+            out_path.unlink(missing_ok=True)
+    finally:
+        overlay_path.unlink(missing_ok=True)
 
 
 def _find_body(root: _Node) -> _Node:
@@ -968,8 +1113,20 @@ def scrape_from_params(
     fmt = _normalize_choice(raw.get("format"), _FORMAT_ALIASES, "format", FORMAT_PDF, SUPPORTED_FORMATS)
     if fmt == FORMAT_PDF:
         renderer = _normalize_choice(raw.get("renderer"), _RENDERER_ALIASES, "renderer", RENDERER_AUTO, SUPPORTED_RENDERERS)
+        # 页码默认开（仅 pdf）；原生页脚默认关。
+        page_numbers = _as_bool(raw.get("page_numbers"), default=True, label="page_numbers")
+        page_num_style = _normalize_choice(
+            raw.get("page_number_style"), _PAGE_NUM_STYLE_ALIASES, "page_number_style",
+            PAGE_NUM_STYLE_CN, SUPPORTED_PAGE_NUM_STYLES,
+        )
+        native_header_footer = _as_bool(
+            raw.get("native_header_footer"), default=False, label="native_header_footer"
+        )
     else:
         renderer = RENDERER_AUTO
+        page_numbers = False
+        page_num_style = PAGE_NUM_STYLE_CN
+        native_header_footer = False
     ts = now or datetime.now()
 
     # 1. 抓取 + 解码
@@ -1036,6 +1193,9 @@ def scrape_from_params(
 
     # format == pdf
     actual_renderer = resolve_renderer(renderer, mode)
+    # 原生页眉页脚只有 chrome 有实现；weasyprint 下该开关视为不可用 → 回退到叠加，
+    # 不静默丢页码。
+    use_native_header_footer = native_header_footer and actual_renderer == RENDERER_CHROME
     if mode == MODE_ARTICLE:
         doc_html = make_article_html(title, fragment, final_url)
     else:
@@ -1047,12 +1207,38 @@ def scrape_from_params(
         with os.fdopen(fd, "wb") as _fh:  # 占位空文件，渲染会覆盖
             pass
         try:
-            render_pdf_to_file(doc_html, final_url, tmp, actual_renderer)
+            render_pdf_to_file(
+                doc_html, final_url, tmp, actual_renderer,
+                header_footer=use_native_header_footer,
+            )
         except WebScraperError:
             raise
         except Exception as e:
             raise WebScraperError(f"HTML 转 PDF 失败（{actual_renderer}）：{type(e).__name__}: {e}") from e
         page_count = pdf_page_count(tmp)
+
+        # 页码（默认开）。原生页脚已含 N/M → 跳过叠加；否则用 Chrome 渲的透明页码层叠加。
+        page_numbers_applied = False
+        page_numbers_note = ""
+        if page_numbers:
+            if use_native_header_footer:
+                page_numbers_applied = True
+                page_numbers_note = "native"
+            elif chrome_available():
+                try:
+                    stamp_page_numbers(tmp, page_count, page_num_style)
+                except WebScraperError:
+                    raise
+                except Exception as e:
+                    raise WebScraperError(
+                        f"页码叠加失败（{type(e).__name__}: {e}）"
+                    ) from e
+                page_numbers_applied = True
+            else:
+                # 页码层必须由 Chrome 渲染；本机没有就降级，不让整次抓取失败。
+                page_numbers_note = "no-chrome"
+                log.warning("web.scraper 跳过页码：本机没有可用的 Chrome/Edge")
+
         try:
             out_ref = asset.upload_file(
                 tmp,
@@ -1066,9 +1252,15 @@ def scrape_from_params(
     finally:
         tmp.unlink(missing_ok=True)
 
+    if page_numbers_applied:
+        pn_suffix = "，带页码"
+    elif page_numbers:
+        pn_suffix = "，页码已跳过（本机没有可用的 Chrome）"
+    else:
+        pn_suffix = ""
     status_text = (
         f"已从 {url} 抓取{mode_cn}并转成 PDF"
-        f"（{page_count} 页，{actual_renderer} 渲染），"
+        f"（{page_count} 页，{actual_renderer} 渲染{pn_suffix}），"
         f"已登记为 document Asset {out_ref.asset_id}"
     )
     outputs = {
@@ -1079,16 +1271,21 @@ def scrape_from_params(
         "format": FORMAT_PDF,
         "renderer": actual_renderer,
         "page_count": page_count,
+        "page_numbers": page_numbers_applied,
+        "page_number_style": page_num_style,
+        "native_header_footer": native_header_footer,
         "char_count": char_count,
         "status_text": status_text,
     }
     log.info(
-        "web.scraper ok mode=%s renderer=%s pages=%s asset=%s url=%s",
-        mode, actual_renderer, page_count, out_ref.asset_id, final_url,
+        "web.scraper ok mode=%s renderer=%s pages=%s pagenum=%s(%s) asset=%s url=%s",
+        mode, actual_renderer, page_count, page_numbers_applied,
+        page_numbers_note or page_num_style, out_ref.asset_id, final_url,
     )
     return (
         f"web.scraper ok pdf_asset={out_ref.asset_id} mode={mode} "
-        f"renderer={actual_renderer} pages={page_count}",
+        f"renderer={actual_renderer} pages={page_count} "
+        f"page_numbers={page_numbers_applied}",
         outputs,
     )
 
