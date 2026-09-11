@@ -419,6 +419,75 @@ class ResolveInputDeviceTests(unittest.TestCase):
             catalog = src._input_catalog(None)
         self.assertEqual(catalog, [(0, "reSpeaker XVF3800 4-Mic Array")])
 
+    # --- USB mic plugged in after startup -------------------------------------
+
+    _STALE = (
+        {"name": "BlackHole 2ch", "max_input_channels": 2},
+        {"name": "MacBook Pro麦克风", "max_input_channels": 1},
+    )
+    _FRESH = (
+        {"name": "reSpeaker XVF3800 4-Mic Array", "max_input_channels": 2},
+        {"name": "BlackHole 2ch", "max_input_channels": 2},
+    )
+
+    def _patch_queries(self, *catalogs, reinit_ok: bool = True):
+        """Patch _query_devices to hand back the given snapshots in order."""
+        from mac_voice.audio import source as src
+
+        seq = list(catalogs)
+        calls = {"query": 0, "reinit": 0}
+
+        def _query():
+            i = min(calls["query"], len(seq) - 1)
+            calls["query"] += 1
+            return [dict(d) for d in seq[i]]
+
+        def _reinit():
+            calls["reinit"] += 1
+            return reinit_ok
+
+        return (
+            patch.object(src, "_query_devices", side_effect=_query),
+            patch.object(src, "_reinit_host_api", side_effect=_reinit),
+            calls,
+        )
+
+    def test_plugged_in_later_is_found_after_rescan(self) -> None:
+        from mac_voice.audio.source import resolve_input_device
+
+        p_query, p_reinit, calls = self._patch_queries(self._STALE, self._FRESH)
+        with p_query, p_reinit:
+            self.assertEqual(resolve_input_device("reSpeaker XVF3800 4-Mic Array"), 0)
+        self.assertEqual(calls["reinit"], 1)
+
+    def test_rescan_runs_once_then_raises(self) -> None:
+        from mac_voice.audio.source import resolve_input_device
+
+        p_query, p_reinit, calls = self._patch_queries(self._STALE, self._STALE)
+        with p_query, p_reinit:
+            with self.assertRaises(ValueError):
+                resolve_input_device("reSpeaker XVF3800 4-Mic Array")
+        self.assertEqual(calls["reinit"], 1)
+
+    def test_reinit_failure_surfaces_original_error(self) -> None:
+        from mac_voice.audio.source import resolve_input_device
+
+        p_query, p_reinit, calls = self._patch_queries(self._STALE, reinit_ok=False)
+        with p_query, p_reinit:
+            with self.assertRaises(ValueError) as ctx:
+                resolve_input_device("reSpeaker XVF3800 4-Mic Array")
+        self.assertIn("BlackHole 2ch", str(ctx.exception))
+        self.assertEqual(calls["reinit"], 1)
+
+    def test_explicit_devices_never_rescans(self) -> None:
+        from mac_voice.audio import source as src
+        from mac_voice.audio.source import resolve_input_device
+
+        with patch.object(src, "_reinit_host_api") as reinit:
+            with self.assertRaises(ValueError):
+                resolve_input_device("Ghost Mic", devices=list(self._devs))
+        reinit.assert_not_called()
+
 
 class MicLockTests(unittest.TestCase):
     def test_second_waiter_runs_after_release(self) -> None:
