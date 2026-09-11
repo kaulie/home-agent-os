@@ -731,6 +731,29 @@ LOCAL_WEB_SCRAPER_SERVICE: dict[str, Any] = {
                         "渲染问题见 #671，可显式选它做对比）/ weasyprint / chrome。"
                     ),
                 },
+                "page_numbers": {
+                    "type": "boolean",
+                    "required": False,
+                    "description": (
+                        "pdf 时生效：是否加页码，默认 true。false=完全不加（保持旧行为）。"
+                    ),
+                },
+                "page_number_style": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "页脚样式：cn=「第 N 页 / 共 M 页」（默认）/ numeric=「N / M」；"
+                        "也接受 中文/数字。"
+                    ),
+                },
+                "native_header_footer": {
+                    "type": "boolean",
+                    "required": False,
+                    "description": (
+                        "pdf 时生效：默认 false。true=改用 Chrome 原生页眉页脚（带日期与 "
+                        "URL，自带 N/M 页码），此时不再叠加页码层。"
+                    ),
+                },
                 "name": {
                     "type": "string",
                     "required": False,
@@ -775,6 +798,24 @@ LOCAL_WEB_SCRAPER_SERVICE: dict[str, Any] = {
                     "type": "number",
                     "required": False,
                     "description": "PDF 页数（pdf 时）",
+                },
+                "page_numbers": {
+                    "type": "boolean",
+                    "required": False,
+                    "description": (
+                        "pdf 时：页码是否真的生效（true=已叠加或用了原生页脚；"
+                        "false=已关闭或本机无 Chrome 降级）"
+                    ),
+                },
+                "page_number_style": {
+                    "type": "string",
+                    "required": False,
+                    "description": "实际页码样式：cn / numeric（pdf 时）",
+                },
+                "native_header_footer": {
+                    "type": "boolean",
+                    "required": False,
+                    "description": "是否走了 Chrome 原生页脚（pdf 时）",
                 },
                 "char_count": {
                     "type": "number",

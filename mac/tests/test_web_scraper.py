@@ -395,22 +395,32 @@ class ScrapeFromParamsTests(WebScraperTestCase):
     def test_pdf_article_output(self, fetch: MagicMock) -> None:
         fetch.return_value = (_article_bytes(), "https://example.com/news/1", "text/html; charset=utf-8", "utf-8")
         asset = _asset()
+        stamped: list[tuple[int, str]] = []
 
-        def _fake_render(html_text: str, base_url: str, dst: Path, renderer: str) -> None:  # noqa: ANN001
+        def _fake_render(html_text: str, base_url: str, dst: Path, renderer: str, **kwargs: Any) -> None:  # noqa: ANN001
             Path(dst).write_bytes(_make_pdf_bytes(pages=2))
 
+        def _fake_stamp(src: Path, total: int, style: str) -> None:  # noqa: ANN001
+            stamped.append((total, style))
+
         with patch("mac_edge.plugins.web_scraper.resolve_renderer", return_value="weasyprint"):
-            with patch("mac_edge.plugins.web_scraper.render_pdf_to_file", side_effect=_fake_render):
-                msg, outputs = w.scrape_from_params(
-                    {"url": "https://example.com/news/1"},
-                    asset=asset,
-                    now=TS,
-                )
+            with patch("mac_edge.plugins.web_scraper.chrome_available", return_value=True):
+                with patch("mac_edge.plugins.web_scraper.render_pdf_to_file", side_effect=_fake_render):
+                    with patch("mac_edge.plugins.web_scraper.stamp_page_numbers", side_effect=_fake_stamp):
+                        msg, outputs = w.scrape_from_params(
+                            {"url": "https://example.com/news/1"},
+                            asset=asset,
+                            now=TS,
+                        )
         self.assertIn("pdf_asset=asset_ws_9", msg)
         self.assertEqual(outputs["format"], "pdf")
         self.assertEqual(outputs["renderer"], "weasyprint")
         self.assertEqual(outputs["page_count"], 2)
         self.assertEqual(outputs["mode"], "article")
+        # 页码默认开：默认样式 cn，叠加到全部 2 页
+        self.assertIs(outputs["page_numbers"], True)
+        self.assertEqual(outputs["page_number_style"], "cn")
+        self.assertEqual(stamped, [(2, "cn")])
         call_kwargs = asset.upload_file.call_args.kwargs
         self.assertEqual(call_kwargs["mime_type"], "application/pdf")
         self.assertEqual(call_kwargs["asset_type"], "document")
@@ -455,16 +465,18 @@ class ScrapeFromParamsTests(WebScraperTestCase):
             asset_id="asset_ws_10", type="document", mime_type="application/pdf"
         )
 
-        def _fake_render(html_text: str, base_url: str, dst: Path, renderer: str) -> None:  # noqa: ANN001
+        def _fake_render(html_text: str, base_url: str, dst: Path, renderer: str, **kwargs: Any) -> None:  # noqa: ANN001
             Path(dst).write_bytes(_make_pdf_bytes(pages=1))
 
         with patch("mac_edge.plugins.web_scraper.resolve_renderer", return_value="weasyprint"):
-            with patch("mac_edge.plugins.web_scraper.render_pdf_to_file", side_effect=_fake_render):
-                msg, outputs = w.scrape_from_params(
-                    {"asset_ref": {"asset_id": "asset_url1", "type": "url"}},
-                    asset=asset,
-                    now=TS,
-                )
+            with patch("mac_edge.plugins.web_scraper.chrome_available", return_value=True):
+                with patch("mac_edge.plugins.web_scraper.render_pdf_to_file", side_effect=_fake_render):
+                    with patch("mac_edge.plugins.web_scraper.stamp_page_numbers"):
+                        msg, outputs = w.scrape_from_params(
+                            {"asset_ref": {"asset_id": "asset_url1", "type": "url"}},
+                            asset=asset,
+                            now=TS,
+                        )
         asset.require_ref.assert_called_once()
         asset.http_url.assert_called_once()
         self.assertEqual(fetch.call_args.args[0], content_url)
@@ -485,6 +497,218 @@ class ScrapeFromParamsTests(WebScraperTestCase):
             )
         self.assertIn("type=url", str(ctx.exception))
         asset.http_url.assert_not_called()
+
+
+class PageNumberTextTests(WebScraperTestCase):
+    def test_cn_text(self) -> None:
+        self.assertEqual(w.page_number_text(3, 7, w.PAGE_NUM_STYLE_CN), "第 3 页 / 共 7 页")
+
+    def test_numeric_text(self) -> None:
+        self.assertEqual(w.page_number_text(3, 7, w.PAGE_NUM_STYLE_NUMERIC), "3 / 7")
+
+
+class PageNumberOverlayTests(WebScraperTestCase):
+    def test_overlay_has_one_footer_per_page(self) -> None:
+        html = w.build_page_number_overlay_html(3, w.PAGE_NUM_STYLE_CN)
+        self.assertEqual(html.count('class="pg'), 3)
+        self.assertIn("第 1 页 / 共 3 页", html)
+        self.assertIn("第 3 页 / 共 3 页", html)
+        self.assertNotIn("第 4 页", html)
+
+    def test_overlay_breaks_after_every_page_but_last(self) -> None:
+        html = w.build_page_number_overlay_html(2, w.PAGE_NUM_STYLE_NUMERIC)
+        self.assertEqual(html.count('class="pg last"'), 1)
+        self.assertIn("1 / 2", html)
+        self.assertIn("2 / 2", html)
+
+    def test_overlay_invalid_total_fails(self) -> None:
+        with self.assertRaises(w.WebScraperError):
+            w.build_page_number_overlay_html(0, w.PAGE_NUM_STYLE_CN)
+
+
+class PageNumberStampTests(WebScraperTestCase):
+    def test_stamp_merges_every_page(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "doc.pdf"
+            src.write_bytes(_make_pdf_bytes(pages=3))
+            seen: list[str] = []
+
+            def _fake_overlay(html_text: str, dst: Path) -> None:  # noqa: ANN001
+                seen.append(html_text)
+                Path(dst).write_bytes(_make_pdf_bytes(pages=3))
+
+            with patch("mac_edge.plugins.web_scraper._render_overlay_pdf", side_effect=_fake_overlay):
+                w.stamp_page_numbers(src, 3, w.PAGE_NUM_STYLE_CN)
+            self.assertIn("第 1 页 / 共 3 页", seen[0])
+            self.assertEqual(w.pdf_page_count(src), 3)
+
+    def test_stamp_page_count_mismatch_fails_and_leaves_doc_intact(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "doc.pdf"
+            src.write_bytes(_make_pdf_bytes(pages=3))
+            before = src.read_bytes()
+
+            def _fake_overlay(html_text: str, dst: Path) -> None:  # noqa: ANN001
+                Path(dst).write_bytes(_make_pdf_bytes(pages=2))  # 故意少一页
+
+            with patch("mac_edge.plugins.web_scraper._render_overlay_pdf", side_effect=_fake_overlay):
+                with self.assertRaises(w.WebScraperError) as ctx:
+                    w.stamp_page_numbers(src, 3, w.PAGE_NUM_STYLE_CN)
+            self.assertIn("页码层页数与正文不一致", str(ctx.exception))
+            self.assertEqual(src.read_bytes(), before)
+
+
+class ChromeHeaderFooterTests(WebScraperTestCase):
+    def _render_and_capture(self, header_footer: bool) -> list[str]:
+        captured: list[list[str]] = []
+        with tempfile.TemporaryDirectory() as td:
+            dst = Path(td) / "o.pdf"
+
+            def _fake_popen(cmd, **kwargs):  # noqa: ANN001
+                captured.append(list(cmd))
+                proc = MagicMock()
+                proc.poll.return_value = None
+                proc.pid = os.getpid()
+                proc.stderr = io.BytesIO(b"")
+                dst.write_bytes(_make_pdf_bytes())
+                return proc
+
+            with patch("mac_edge.plugins.web_scraper.chrome_path", return_value="/fake/chrome"):
+                with patch("mac_edge.plugins.web_scraper.subprocess.Popen", side_effect=_fake_popen):
+                    with patch("mac_edge.plugins.web_scraper._rmtree_quiet"):
+                        with patch("mac_edge.plugins.web_scraper.os.killpg"):
+                            w._render_chrome(
+                                Path(td) / "in.html", dst, header_footer=header_footer
+                            )
+        return captured[0]
+
+    def test_default_suppresses_native_header_footer(self) -> None:
+        self.assertIn("--no-pdf-header-footer", self._render_and_capture(False))
+
+    def test_native_header_footer_drops_the_suppression_flag(self) -> None:
+        self.assertNotIn("--no-pdf-header-footer", self._render_and_capture(True))
+
+
+class PageNumbersInScrapeTests(WebScraperTestCase):
+    def _run(
+        self,
+        params: dict[str, Any],
+        *,
+        chrome: bool,
+        renderer: str = "chrome",
+    ) -> tuple[str, dict[str, Any], dict[str, Any]]:
+        fetch_ret = (
+            _article_bytes(),
+            "https://example.com/news/1",
+            "text/html; charset=utf-8",
+            "utf-8",
+        )
+        asset = _asset()
+        calls: dict[str, Any] = {"stamp": [], "render_kwargs": []}
+
+        def _fake_render(html_text, base_url, dst, renderer_, **kwargs):  # noqa: ANN001
+            calls["render_kwargs"].append(kwargs)
+            Path(dst).write_bytes(_make_pdf_bytes(pages=3))
+
+        def _fake_stamp(src, total, style):  # noqa: ANN001
+            calls["stamp"].append((total, style))
+
+        p_fetch = patch("mac_edge.plugins.web_scraper.fetch_html", return_value=fetch_ret)
+        p_renderer = patch("mac_edge.plugins.web_scraper.resolve_renderer", return_value=renderer)
+        p_chrome = patch("mac_edge.plugins.web_scraper.chrome_available", return_value=chrome)
+        p_render = patch("mac_edge.plugins.web_scraper.render_pdf_to_file", side_effect=_fake_render)
+        p_stamp = patch("mac_edge.plugins.web_scraper.stamp_page_numbers", side_effect=_fake_stamp)
+        with p_fetch, p_renderer, p_chrome, p_render, p_stamp:
+            msg, outputs = w.scrape_from_params(params, asset=asset, now=TS)
+        return msg, outputs, calls
+
+    def test_default_on_with_cn_style(self) -> None:
+        msg, outputs, calls = self._run({"url": "https://example.com/news/1"}, chrome=True)
+        self.assertIs(outputs["page_numbers"], True)
+        self.assertEqual(outputs["page_number_style"], "cn")
+        self.assertIs(outputs["native_header_footer"], False)
+        self.assertEqual(calls["stamp"], [(3, "cn")])
+        self.assertEqual(calls["render_kwargs"], [{"header_footer": False}])
+        self.assertIn("带页码", outputs["status_text"])
+        self.assertIn("page_numbers=True", msg)
+
+    def test_style_alias_numeric(self) -> None:
+        _, outputs, calls = self._run(
+            {"url": "https://example.com/news/1", "page_number_style": "数字"}, chrome=True
+        )
+        self.assertEqual(outputs["page_number_style"], "numeric")
+        self.assertEqual(calls["stamp"], [(3, "numeric")])
+
+    def test_disabled_skips_stamp(self) -> None:
+        _, outputs, calls = self._run(
+            {"url": "https://example.com/news/1", "page_numbers": False}, chrome=True
+        )
+        self.assertIs(outputs["page_numbers"], False)
+        self.assertEqual(calls["stamp"], [])
+        self.assertNotIn("带页码", outputs["status_text"])
+
+    def test_native_header_footer_skips_stamp(self) -> None:
+        _, outputs, calls = self._run(
+            {"url": "https://example.com/news/1", "native_header_footer": True}, chrome=True
+        )
+        self.assertIs(outputs["native_header_footer"], True)
+        self.assertIs(outputs["page_numbers"], True)
+        self.assertEqual(calls["render_kwargs"], [{"header_footer": True}])
+        # 原生页脚已含 N/M → 不再叠加，避免重复
+        self.assertEqual(calls["stamp"], [])
+
+    def test_native_with_weasyprint_falls_back_to_stamp(self) -> None:
+        _, outputs, calls = self._run(
+            {"url": "https://example.com/news/1", "native_header_footer": True},
+            chrome=True,
+            renderer="weasyprint",
+        )
+        # weasyprint 没有原生页脚 → 传 False 并回退到叠加，不静默丢页码
+        self.assertEqual(calls["render_kwargs"], [{"header_footer": False}])
+        self.assertEqual(calls["stamp"], [(3, "cn")])
+        self.assertIs(outputs["page_numbers"], True)
+
+    def test_no_chrome_degrades_without_failing(self) -> None:
+        msg, outputs, calls = self._run({"url": "https://example.com/news/1"}, chrome=False)
+        self.assertIs(outputs["page_numbers"], False)
+        self.assertEqual(calls["stamp"], [])
+        self.assertIn("页码已跳过", outputs["status_text"])
+        self.assertIn("pdf_asset=asset_ws_9", msg)
+
+    def test_invalid_style_fails(self) -> None:
+        with self.assertRaises(w.WebScraperError) as ctx:
+            w.scrape_from_params(
+                {"url": "https://e.com/a", "page_number_style": "roman"},
+                asset=_asset(),
+                now=TS,
+            )
+        self.assertIn("page_number_style", str(ctx.exception))
+
+    def test_invalid_bool_fails(self) -> None:
+        with self.assertRaises(w.WebScraperError) as ctx:
+            w.scrape_from_params(
+                {"url": "https://e.com/a", "page_numbers": "maybe"},
+                asset=_asset(),
+                now=TS,
+            )
+        self.assertIn("page_numbers", str(ctx.exception))
+
+    def test_text_format_unaffected(self) -> None:
+        fetch_ret = (
+            _article_bytes(),
+            "https://example.com/news/1",
+            "text/html; charset=utf-8",
+            "utf-8",
+        )
+        with patch("mac_edge.plugins.web_scraper.fetch_html", return_value=fetch_ret):
+            with patch("mac_edge.plugins.web_scraper.stamp_page_numbers") as stamp:
+                _, outputs = w.scrape_from_params(
+                    {"url": "https://example.com/news/1", "format": "text"},
+                    asset=_asset(),
+                    now=TS,
+                )
+        stamp.assert_not_called()
+        self.assertNotIn("page_numbers", outputs)
 
 
 class CapabilityRegistrationTests(WebScraperTestCase):

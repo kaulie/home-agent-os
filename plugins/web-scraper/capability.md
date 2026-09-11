@@ -13,7 +13,7 @@ Brain **url 资产**，`type=url`），抓取网页并把内容转成 **PDF 文�
 | 字段 | 值 |
 |------|-----|
 | role | 网页抓取器（URL / url 资产 → 核心正文/整页 → PDF/文本） |
-| planner_recognize | 用户给一个 http(s) 网址、或引用已登记的 Brain url 资产（type=url），要求把网页抓下来存成 PDF 或文本时用本步。入参 url（http/https）与 asset_ref（type=url 的 Brain url 资产）二选一；mode=article 抓核心正文（默认，剔除广告/导航）/ page 抓忠实整页；format=pdf（默认）/ text；renderer=auto/weasyprint/chrome（仅 pdf，本机自动挑可用引擎）。产出登记为新 document Asset，可交给 printer.print 打印或后续流程。本步只抓网页转文档，不打印、不问答 |
+| planner_recognize | 用户给一个 http(s) 网址、或引用已登记的 Brain url 资产（type=url），要求把网页抓下来存成 PDF 或文本时用本步。入参 url（http/https）与 asset_ref（type=url 的 Brain url 资产）二选一；mode=article 抓核心正文（默认，剔除广告/导航）/ page 抓忠实整页；format=pdf（默认）/ text；renderer=auto/weasyprint/chrome（仅 pdf，本机自动挑可用引擎）；page_numbers 默认 true（每页页脚加页码，样式 page_number_style=cn 中文「第 N 页 / 共 M 页」/ numeric 数字「N / M」；native_header_footer=true 改用 Chrome 原生页脚）。产出登记为新 document Asset，可交给 printer.print 打印或后续流程。本步只抓网页转文档，不打印、不问答 |
 | typical_triggers | `把这个网页存成 PDF`、`把网址 http… 的文章转成 PDF`、`抓取这篇文章转成 PDF`、`把我存的链接转成 PDF`、`把网页正文导出成文本`、`保存这个网页`、`网页转 PDF` |
 | do_not_dispatch | 打印、OCR、翻译、整页截图、下载图片、看图理解、投屏、配网、浏览网页问答 |
 
@@ -32,8 +32,8 @@ Brain **url 资产**，`type=url`），抓取网页并把内容转成 **PDF 文�
 
 | 方向 | 内容 |
 |------|------|
-| **输入** | `url`（http/https）与 `asset_ref`（可选，type=url 的 Brain url 资产）二选一；`mode`（默认 `article`=核心正文 / `page`=忠实整页）；`format`（默认 `pdf` / `text`）；`renderer`（默认 `auto` / `weasyprint` / `chrome`，仅 pdf 生效）；`name`（可选展示名） |
-| **输出** | `asset_ref`（新 document AssetRef）；`title`；`url`（最终 URL）；`mode`；`format`；`renderer`（pdf 时）；`page_count`（pdf 时）；`char_count`；`status_text`（中文一句话） |
+| **输入** | `url`（http/https）与 `asset_ref`（可选，type=url 的 Brain url 资产）二选一；`mode`（默认 `article`=核心正文 / `page`=忠实整页）；`format`（默认 `pdf` / `text`）；`renderer`（默认 `auto` / `weasyprint` / `chrome`，仅 pdf 生效）；`page_numbers`（默认 `true`）；`page_number_style`（默认 `cn` / `numeric`）；`native_header_footer`（默认 `false`）；`name`（可选展示名） |
+| **输出** | `asset_ref`（新 document AssetRef）；`title`；`url`（最终 URL）；`mode`；`format`；`renderer`（pdf 时）；`page_count`（pdf 时）；`page_numbers`（pdf 时，页码是否真的生效）；`page_number_style`；`native_header_footer`；`char_count`；`status_text`（中文一句话） |
 
 缺 `url` / 非 http(s) / 抓取失败 / 解码失败 / 抽不到正文（article） / pdf 但没有
 可用渲染引擎 / 上传失败 → **明确中文失败**，不产生脏 Asset。
@@ -71,6 +71,30 @@ Brain **url 资产**，`type=url`），抓取网页并把内容转成 **PDF 文�
 > > **效果对比建议**：复杂页面（重 CSS/JS、图文混排）Chrome 还原更接近网页原貌；
 > > 纯文本/规整文章两者差异不大，weasyprint 输出体积更小且不依赖 GUI 应用。
 
+## 页码（默认开）
+
+渲染完 PDF 后，用 pypdf 给每一页叠加一条**透明页码层**（overlay）。
+
+| 参数 | 默认 | 说明 |
+|------|------|------|
+| `page_numbers` | `true` | 关掉（`false`）则完全保持「不加页码」的旧行为 |
+| `page_number_style` | `cn` | `cn`=`第 N 页 / 共 M 页`；`numeric`=`N / M` |
+| `native_header_footer` | `false` | `true` → 去掉 `--no-pdf-header-footer`，改用 Chrome 原生页脚（含日期+URL+`N/M`），**并跳过叠加**避免重复 |
+
+规则：
+
+- **全部页都编号**，不跳过首页/封面；位置固定**页脚居中**（`bottom: 1.0cm`）。
+- **页码层必须用 Chrome 渲染**，与正文用的 `renderer` 无关 —— weasyprint 在本机的
+  字形错位会把页码渲成乱码（见下 #671）；实测同段文字 Chrome 渲染 OCR 得到
+  `第1页/共3页`，weasyprint 得到 `3` / `1`。
+- 页码层**只画文字、不画背景**，因此叠加后不会遮挡正文（实测产物无整页填充矩形）。
+- **本机没有 Chrome → 降级**：跳过页码，输出 `page_numbers=false` 并在
+  `status_text` 里说明，**不让整次抓取失败**（页码默认开，不能反过来搞挂抓取）。
+- 页码层页数与正文不一致 → **明确失败**（宁可不盖，也不错位盖章）。
+- `native_header_footer=true` 但 `renderer=weasyprint`：weasyprint 无原生页脚 →
+  视作不可用，**回退到叠加**，不静默丢页码。
+- `format=text` 与页码无关。
+
 ## 技术实现
 
 - **抓取**：httpx GET（桌面 UA、跟随重定向、25s 超时、8 MiB 上限）→ 解码
@@ -80,6 +104,9 @@ Brain **url 资产**，`type=url`），抓取网页并把内容转成 **PDF 文�
 - **正文抽取**：自研 DOM-lite（无 lxml/无网络解析器依赖）；打分 + 噪音剔除。
 - **PDF**：weasyprint（`HTML(string=…).write_pdf`）或 Chrome headless
   （`--headless=new --print-to-pdf`，临时 user-data-dir + 轮询产物 + 超时强杀回收）。
+- **页码**：渲染后用 pypdf 逐页 `merge_page` 叠加透明页码层；页码层**由 Chrome 渲染**
+  成 M 页 A4（`@page{margin:0}` + 29.5cm 页高 + 绝对定位页脚），拼好后落临时文件再
+  `os.replace` 原子替换，避免就地把 `PdfReader` 指着的文件覆写。
 - **text**：无需渲染引擎，直接产出 `.txt`（UTF-8，`text/plain`）。
 - **上传**：经 `asset.upload_file(producer="web.scraper", …)` 登记 document Asset
   （PDF `application/pdf` / 文本 `text/plain`）；页数用 pypdf 读。
@@ -93,6 +120,9 @@ Brain **url 资产**，`type=url`），抓取网页并把内容转成 **PDF 文�
 | `mode` | 否 | `article`=核心正文（默认）/ `page`=忠实整页；接受 正文/整页 等中文 |
 | `format` | 否 | `pdf`（默认）/ `text`；接受 文本 |
 | `renderer` | 否 | `auto`（默认）/ `weasyprint` / `chrome`（仅 pdf 生效） |
+| `page_numbers` | 否 | 是否加页码（仅 pdf）；默认 `true` （关掉用 `false`） |
+| `page_number_style` | 否 | `cn`（默认，`第 N 页 / 共 M 页`）/ `numeric`（`N / M`）；接受 中文/数字 |
+| `native_header_footer` | 否 | 默认 `false`。`true` → 用 **Chrome 原生页眉页脚**（带日期与 URL，且自带 `N/M` 页码），此时**不再叠加**页码层 |
 | `name` | 否 | 产物展示名；不传则 `web-scraper-<时间戳>-<mode>.*` |
 
 ## 输出 schema
@@ -106,6 +136,9 @@ Brain **url 资产**，`type=url`），抓取网页并把内容转成 **PDF 文�
 | `format` | `pdf` / `text` |
 | `renderer` | pdf 时的实际引擎：`weasyprint` / `chrome` |
 | `page_count` | pdf 页数 |
+| `page_numbers` | pdf 时：页码**是否真的生效**（`true`=已叠加或用了原生页脚；`false`=关闭或无 Chrome 降级） |
+| `page_number_style` | 实际样式：`cn` / `numeric` |
+| `native_header_footer` | 回传入参（`true` 表示走的是 Chrome 原生页脚） |
 | `char_count` | 导出文本字符数 |
 | `status_text` | 中文一句话结果 |
 
