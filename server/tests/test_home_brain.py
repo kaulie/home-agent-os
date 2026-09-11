@@ -1585,6 +1585,205 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertEqual(pres["asset_ref"]["type"], "document")
         self.assertEqual(pres["asset_ref"]["asset_id"], "asset_05563d7eb33dbf460a0be521")
 
+    def test_normalize_presentation_plan_keeps_document(self) -> None:
+        """#677: planner 的 document 骨架不能被归一化丢掉（prompt/schema 都列了 document）。"""
+        planned = hb._normalize_presentation_plan({"type": "document", "from": "asset_ref"})
+        self.assertEqual(planned.get("type"), "document")
+        self.assertEqual(planned.get("from"), "asset_ref")
+
+    def test_extract_llm_presentation_keeps_document_type(self) -> None:
+        planned = hb.extract_llm_presentation(
+            json.dumps(
+                {
+                    "goal": "把最新的URL转成PDF",
+                    "presentation": {"type": "document", "from": "asset_ref"},
+                }
+            )
+        )
+        self.assertEqual(planned.get("type"), "document")
+
+    def test_presentation_kind_url_to_pdf_keeps_document(self) -> None:
+        """#677: planner 明确要 document 预览时，asset.inventory 分支不得改回 answer_text。"""
+        kind, field = hb._presentation_kind_from_plan(
+            {
+                "text": "把最新的URL转成PDF",
+                "source": "text",
+                "presentation": {"type": "document", "from": "asset_ref"},
+                "execution_plan": [
+                    {
+                        "step": 1,
+                        "capability": "asset.inventory",
+                        "output_constrict": {"asset_ref": {"type": "object"}},
+                    },
+                    {
+                        "step": 2,
+                        "capability": "web.scraper",
+                        "output_constrict": {"asset_ref": {"type": "object"}},
+                    },
+                ],
+            }
+        )
+        self.assertEqual(kind, "document")
+        self.assertEqual(field, "asset_ref")
+
+    def test_assemble_presentation_url_asset_is_not_document_preview(self) -> None:
+        """#677: inventory 交出的 type=url 资产不能被当 PDF 预览。"""
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        self._heartbeat("living-room-iphone-1")
+        intent = {
+            "intent_id": 677,
+            "text": "把最新的URL转成PDF",
+            "source": "text",
+            "edge_id": "living-room-iphone-1",
+            "presentation": {"type": "document", "from": "asset_ref"},
+            "execution_plan": [{"step": 1, "capability": "asset.inventory"}],
+            "ctx_param": {
+                "answer_text": "这是按登记顺序的第 1 张url。",
+                "asset_ref": {
+                    "asset_id": "asset_url_link_1",
+                    "type": "url",
+                    "mime_type": "text/uri-list",
+                },
+            },
+        }
+        pres = hb.assemble_presentation(intent)
+        self.assertEqual(pres["type"], "text")
+        self.assertEqual(pres["text"], "这是按登记顺序的第 1 张url。")
+        self.assertNotIn("asset_ref", pres)
+
+    def test_assemble_presentation_document_type_image_asset_still_shows_image(self) -> None:
+        """planner 说 document 但命中 image（如「看一下最新的文件」最新是照片）→ 仍展示图片，不因 #677 守卫退成文字。"""
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        self._heartbeat("living-room-iphone-1")
+        intent = {
+            "intent_id": 680,
+            "text": "看一下最新的文件",
+            "source": "text",
+            "edge_id": "living-room-iphone-1",
+            "presentation": {"type": "document", "from": "asset_ref"},
+            "execution_plan": [{"step": 1, "capability": "asset.inventory"}],
+            "ctx_param": {
+                "answer_text": "这是按登记顺序的第 1 张image。",
+                "asset_ref": {
+                    "asset_id": "asset_img_680",
+                    "type": "image",
+                    "mime_type": "image/jpeg",
+                },
+            },
+        }
+        pres = hb.assemble_presentation(intent)
+        self.assertEqual(pres["type"], "image")
+        self.assertEqual(pres["asset_ref"]["asset_id"], "asset_img_680")
+
+    def test_assemble_presentation_intent_document_is_previewed(self) -> None:
+        """#677: 本 intent 新产出的 PDF 必须在发起端预览，而不是只回 inventory 文案。"""
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        self._heartbeat("living-room-iphone-1")
+        brain_db.put_asset(
+            {
+                "asset_id": "asset_pdf_677",
+                "type": "document",
+                "mime_type": "application/pdf",
+                "status": "available",
+                "producer_capability": "web.scraper",
+                "origin_intent_id": "677",
+            }
+        )
+        intent = {
+            "intent_id": 677,
+            "text": "把最新的URL转成PDF",
+            "source": "text",
+            "edge_id": "living-room-iphone-1",
+            "execution_plan": [
+                {"step": 1, "capability": "asset.inventory"},
+                {"step": 2, "capability": "web.scraper"},
+            ],
+            "ctx_param": {
+                "answer_text": "这是按登记顺序的第 1 张url。",
+                "asset_ref": {
+                    "asset_id": "asset_pdf_677",
+                    "type": "document",
+                    "mime_type": "application/pdf",
+                },
+            },
+        }
+        pres = hb.assemble_presentation(intent)
+        self.assertEqual(pres["type"], "document")
+        self.assertEqual(pres["from"], "asset_ref")
+        self.assertEqual(pres["asset_ref"]["asset_id"], "asset_pdf_677")
+        self.assertEqual(pres["endpoint"], "living-room-iphone-1")
+
+    def test_assemble_presentation_voice_intent_document_stays_spoken(self) -> None:
+        """voice 发起「转成PDF」保持「念一句」的对称交付，不抢成静态文档。"""
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        self._heartbeat("living-room-iphone-1")
+        brain_db.put_asset(
+            {
+                "asset_id": "asset_pdf_678",
+                "type": "document",
+                "mime_type": "application/pdf",
+                "status": "available",
+                "producer_capability": "web.scraper",
+                "origin_intent_id": "678",
+            }
+        )
+        intent = {
+            "intent_id": 678,
+            "text": "把最新的URL转成PDF",
+            "source": "voice",
+            "edge_id": "living-room-iphone-1",
+            "execution_plan": [
+                {"step": 1, "capability": "asset.inventory"},
+                {"step": 2, "capability": "web.scraper"},
+            ],
+            "ctx_param": {
+                "answer_text": "已从最新链接抓取正文并转成 PDF。",
+                "asset_ref": {
+                    "asset_id": "asset_pdf_678",
+                    "type": "document",
+                    "mime_type": "application/pdf",
+                },
+            },
+        }
+        pres = hb.assemble_presentation(intent)
+        self.assertEqual(pres["type"], "audio")
+        self.assertEqual(pres["from"], "answer_text")
+
+    def test_assemble_presentation_other_intent_document_not_auto_previewed(self) -> None:
+        """别人登记的文档（origin_intent_id 不是本 intent）不因本次执行被自动预览。"""
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        self._heartbeat("living-room-iphone-1")
+        brain_db.put_asset(
+            {
+                "asset_id": "asset_pdf_other",
+                "type": "document",
+                "mime_type": "application/pdf",
+                "status": "available",
+                "origin_intent_id": "601",
+            }
+        )
+        intent = {
+            "intent_id": 679,
+            "text": "把这份PDF打印出来",
+            "source": "text",
+            "edge_id": "living-room-iphone-1",
+            "execution_plan": [
+                {"step": 1, "capability": "asset.inventory"},
+                {"step": 2, "capability": "printer.print"},
+            ],
+            "ctx_param": {
+                "answer_text": "已把这份 PDF 发到打印机。",
+                "asset_ref": {
+                    "asset_id": "asset_pdf_other",
+                    "type": "document",
+                    "mime_type": "application/pdf",
+                },
+            },
+        }
+        pres = hb.assemble_presentation(intent)
+        self.assertEqual(pres["type"], "text")
+        self.assertEqual(pres["from"], "answer_text")
+
     def test_assemble_presentation_inventory_count_stays_text(self) -> None:
         """盘点数量不问「看」，仍走 answer_text，不升 document。"""
         self._register_endpoint("living-room-iphone-1", "iphone")
