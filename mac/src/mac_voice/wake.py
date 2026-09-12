@@ -22,14 +22,16 @@ DEFAULT_DOUBLE_WAKE_MS = 1100
 # starts during the last syllable but ends well after the window opens.
 _ECHO_OVERLAP_S = 0.45
 
-# TTS/STT often doubles 又 or adds 啊/？ (「又又咋了？」).
-_ACK_ECHO = re.compile(r"^((我)?在呢|又+咋[了啦][啊呀吗嘛]?|咋了[啊呀吗嘛]?)$")
+# TTS/STT often doubles 我/又 or adds 啊/？ (「我我在呢」「又又咋了？」).
+_ACK_ECHO = re.compile(r"^(我*在呢|又+咋[了啦][啊呀吗嘛]?|咋了[啊呀吗嘛]?)$")
 # Speaker bleed mixed into a longer STT line (not a full-utterance match).
-_ACK_EMBEDDED = re.compile(r"(我在呢|又+咋[了啦][啊呀吗嘛]?)")
-# Same clip: 又咋了 immediately followed by the command.
-_ACK_PREFIX = re.compile(r"^((我)?在呢|又+咋[了啦][啊呀吗嘛]?|咋了[啊呀吗嘛]?)")
+_ACK_EMBEDDED = re.compile(r"(我+在呢|又+咋[了啦][啊呀吗嘛]?)")
+# Same clip: 又咋了 / 我在呢 immediately followed by the command.
+_ACK_PREFIX = re.compile(r"^(我*在呢|又+咋[了啦][啊呀吗嘛]?|咋了[啊呀吗嘛]?)")
 
 _TRAILING_PUNCT = " \t.,!?;:，。！？、；：·…\"'“”‘’()（）[]【】"
+# STT debris around 面条 (凉凉面条儿 / 调面条条); not a real command by itself.
+_WAKE_RESIDUE = re.compile(r"^[儿条啊呀呢嗯的哦嘿哈凉调面]*$")
 
 
 def normalize(text: str) -> str:
@@ -89,6 +91,14 @@ def extract_wake(
     if not leftover:
         leftover = norm_remainder
     return hits, leftover
+
+
+def is_wake_residue(remainder: str) -> bool:
+    """True when leftover is empty or only STT debris around the wake word."""
+    rem = normalize(remainder or "")
+    if not rem:
+        return True
+    return bool(_WAKE_RESIDUE.match(rem))
 
 
 def _compact_ack_text(text: str) -> str:
@@ -220,11 +230,11 @@ class WakeGate:
         )
         self.state = "idle"
         self.should_ack = False
-        self.last_hits = 0
         self._deadline = 0.0
         self._window_open_at = 0.0
         self._partial_hits = 0
         self._late_until = late
+        # Keep last_hits from the utterance that triggered this reset (logging).
 
     def expire_if_needed(
         self,
@@ -322,7 +332,7 @@ class WakeGate:
         if (
             self.repeat >= 2
             and hits == 1
-            and not remainder.strip()
+            and is_wake_residue(remainder)
             and duration >= self.double_wake_s
         ):
             hits = 2
@@ -392,8 +402,9 @@ class WakeGate:
         if hits >= self.repeat:
             self._finish_wake(speech_end)
             return None
-        # STT often collapses 面条面条 → 面条; do not POST that as a command.
-        if hits > 0 and not remainder.strip():
+        # STT often garbles 面条面条 → 凉凉面条儿 / 调面条条 (hits=1 + junk rem).
+        # Any wake hit re-arms partial; do not POST leftover as a command.
+        if hits > 0:
             self._enter_partial(speech_end, hits)
             return None
         leftover = strip_ack_echo(original).strip()
@@ -435,8 +446,8 @@ class WakeGate:
         if hits >= self.repeat:
             self._finish_wake(speech_end)
             return None
-        # Continuous re-wake: collapsed single 面条 must re-arm partial, not POST.
-        if hits > 0 and not remainder.strip():
+        # Continuous re-wake: any wake hit re-arms partial, not POST.
+        if hits > 0:
             self._enter_partial(speech_end, hits)
             return None
         self._reset()
