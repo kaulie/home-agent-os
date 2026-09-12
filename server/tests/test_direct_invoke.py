@@ -172,6 +172,30 @@ class DirectInvokeApiTest(unittest.TestCase):
         self.assertIn("display.pdf.page", body["error"])
         self.assertEqual(hb.task_queue.qsize(), before_qsize)
 
+    def test_direct_invoke_system_capability_allowed(self) -> None:
+        # system 能力（Brain 内执行）无 edge 广告，门禁应放行
+        client = hb.app.test_client()
+        before_qsize = hb.task_queue.qsize()
+        resp = client.post(
+            "/api/v1/intent",
+            json={
+                "text": "现在几点",
+                "participant_id": "iphone-origin",
+                "capability": "clock.now",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["task_kind"], "direct_invoke")
+        self.assertNotEqual(body["intent_status"], "failed")
+        self.assertEqual(hb.task_queue.qsize(), before_qsize)
+        intent = hb.get_intent(body["intent_id"])
+        plan = intent["execution_plan"]
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0]["capability"], "clock.now")
+        self.assertEqual(intent["status"], "succeeded")
+
     def test_no_capability_still_llm_path(self) -> None:
         client = hb.app.test_client()
         before_qsize = hb.task_queue.qsize()
