@@ -6,10 +6,13 @@ MAC_EDGE_DISPLAY_BACKEND=xiaomi or a Xiaomi TV host/name is configured.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import socket
+import tempfile
 import time
+from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urljoin, urlparse
 from xml.etree import ElementTree as ET
@@ -157,19 +160,99 @@ def _host_matches(url: str) -> bool:
     return host == wanted or host.endswith("." + wanted) or wanted == host
 
 
+def _renderer_matches(parsed: dict[str, str], location: str) -> bool:
+    """统一的电视匹配语义：配了 NAME 必须名匹配；只配 HOST 则地址匹配即可；
+    都没配则 friendlyName 须命中默认小米电视词。"""
+    if not _host_matches(location):
+        return False
+    if _wanted_name():
+        return _name_matches(parsed["friendly_name"])
+    if _wanted_host():
+        return True
+    return _name_matches(parsed["friendly_name"])
+
+
+# ---------------------------------------------------------------------------
+# 发现加速与待机唤醒：位置缓存 + SSDP 多轮 + WoL
+#
+# 小米电视「网络待机」时 DLNA 活着、可直接投（电视被唤醒亮屏）；但 SSDP 组播
+# 在 Wi-Fi 下抖动明显，且深度休眠时组播无响应。因此：
+# 1. 投成功过的电视描述地址（location）落盘缓存，下次先单播直连——不依赖组播；
+# 2. SSDP 默认搜 2 轮（MAC_EDGE_XIAOMI_TV_SSDP_ROUNDS 可调，1–5）；
+# 3. 配了 MAC_EDGE_XIAOMI_TV_MAC 时，搜不到就发 WoL 魔术包唤醒后再补一轮。
+# ---------------------------------------------------------------------------
+
+
+def _cache_path() -> Path:
+    root = (os.environ.get("MAC_EDGE_DATA_DIR") or "").strip()
+    base = Path(root) if root else Path(tempfile.gettempdir()) / "mac-edge-xiaomi-tv"
+    return base / "xiaomi_tv_renderer.json"
+
+
+def _read_cache(path: Path) -> dict[str, str] | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    location = str(data.get("location") or "").strip()
+    if not location:
+        return None
+    data["location"] = location
+    return data
+
+
+def _write_cache(path: Path, location: str, parsed: dict[str, str]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "location": location,
+                    "friendly_name": parsed.get("friendly_name", ""),
+                    "control_url": parsed.get("control_url", ""),
+                    "saved_at": int(time.time()),
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def _ssdp_rounds() -> int:
+    raw = (os.environ.get("MAC_EDGE_XIAOMI_TV_SSDP_ROUNDS") or "").strip()
+    try:
+        return max(1, min(5, int(raw))) if raw else 2
+    except ValueError:
+        return 2
+
+
+def _send_wol(mac: str) -> None:
+    """Wake-on-LAN 魔术包（UDP 广播 9 端口 ×3）。MAC 形如 aa:bb:cc:dd:ee:ff。"""
+    cleaned = mac.replace(":", "").replace("-", "").strip()
+    if len(cleaned) != 12:
+        raise XiaomiTvError(f"MAC_EDGE_XIAOMI_TV_MAC 格式不对：{mac!r}")
+    try:
+        payload = b"\xff" * 6 + bytes.fromhex(cleaned) * 16
+    except ValueError as e:
+        raise XiaomiTvError(f"MAC_EDGE_XIAOMI_TV_MAC 格式不对：{mac!r}") from e
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        for _ in range(3):
+            s.sendto(payload, ("255.255.255.255", 9))
+
+
 def discover_renderer(
     *,
     search_fn: Callable[[], list[str]] | None = None,
     fetch_fn: Callable[[str], str] | None = None,
     timeout_sec: float = 5.0,
+    wol_fn: Callable[[str], None] | None = None,
+    sleep_fn: Callable[[float], None] | None = None,
 ) -> dict[str, str]:
-    search = search_fn or (lambda: _ssdp_search(min(timeout_sec, 3.0)))
-    locations = search()
-    if not locations:
-        raise XiaomiTvError(
-            "投电视失败：局域网里没有发现 DLNA 电视。请打开小米电视投屏/DLNA，"
-            "或设置 MAC_EDGE_XIAOMI_TV_HOST。"
-        )
     fetcher = fetch_fn
     if fetcher is None:
 
@@ -183,7 +266,48 @@ def discover_renderer(
             return resp.text
 
         fetcher = _fetch
-    candidates: list[dict[str, str]] = []
+
+    # 1) 缓存直连：上次投成功的描述地址单播重取（拿到最新 control_url），
+    #    不依赖组播；待机电视只要网络栈活着即可命中。
+    cache = _cache_path()
+    cached = _read_cache(cache)
+    if cached is not None:
+        loc = cached["location"].strip()
+        try:
+            parsed = parse_device_description(fetcher(loc), loc)
+        except (XiaomiTvError, httpx.RequestError):
+            parsed = None
+        if parsed is not None and _renderer_matches(parsed, loc):
+            log.info(
+                "xiaomi tv renderer via cache name=%s control=%s",
+                parsed.get("friendly_name"),
+                parsed.get("control_url"),
+            )
+            return parsed
+        log.info("xiaomi tv cache stale (%s), fall back to SSDP", loc)
+
+    # 2) SSDP 多轮（Wi-Fi 组播抖动，一轮空手不代表电视不在）
+    search = search_fn or (lambda: _ssdp_search(min(timeout_sec, 3.0)))
+    locations: list[str] = []
+    for _ in range(_ssdp_rounds()):
+        locations = search()
+        if locations:
+            break
+
+    # 3) 配了电视 MAC 时发 WoL 魔术包唤醒（深度休眠），稍等网络栈起来再补一轮
+    if not locations:
+        mac = (os.environ.get("MAC_EDGE_XIAOMI_TV_MAC") or "").strip()
+        if mac:
+            (wol_fn or _send_wol)(mac)
+            (sleep_fn or time.sleep)(3.0)
+            locations = search()
+
+    if not locations:
+        raise XiaomiTvError(
+            "投电视失败：局域网里没有发现 DLNA 电视。请打开小米电视投屏/DLNA，"
+            "或设置 MAC_EDGE_XIAOMI_TV_HOST；深度休眠可配 MAC_EDGE_XIAOMI_TV_MAC 网络唤醒。"
+        )
+    candidates: list[tuple[str, dict[str, str]]] = []
     for loc in locations:
         if not _host_matches(loc):
             continue
@@ -196,23 +320,21 @@ def discover_renderer(
             continue
         if parsed is None:
             continue
-        if _wanted_name() or not _wanted_host():
-            if not _name_matches(parsed["friendly_name"]) and not _wanted_host():
-                continue
-        if _wanted_name() and not _name_matches(parsed["friendly_name"]):
+        if not _renderer_matches(parsed, loc):
             continue
-        candidates.append(parsed)
+        candidates.append((loc, parsed))
     if not candidates:
         raise XiaomiTvError(
             "投电视失败：发现了 DLNA 设备，但没有匹配的小米电视。"
             "请设置 MAC_EDGE_XIAOMI_TV_NAME 或 HOST。"
         )
-    chosen = candidates[0]
+    chosen_loc, chosen = candidates[0]
     log.info(
         "xiaomi tv renderer name=%s control=%s",
         chosen.get("friendly_name"),
         chosen.get("control_url"),
     )
+    _write_cache(cache, chosen_loc, chosen)
     return chosen
 
 
