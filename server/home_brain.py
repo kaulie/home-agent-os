@@ -4230,15 +4230,16 @@ def _dispatch_direct_capability(
 ):
     """POST /api/v1/intent 带 capability/params 的直派通路（Console 按钮等 UI 控制面）。
 
-    跳过 shortcut 拦截与 LLM 规划，直接构造单步计划派发。门禁：至少一个在线
-    edge 广告该能力（与 LLM 路径的选边同源）；无提供者走失败回路。
+    跳过 shortcut 拦截与 LLM 规划，直接构造单步计划派发。门禁：system 能力
+    （Brain 内执行）直接放行；edge 能力要求至少一个在线 edge 广告该能力
+    （与 LLM 路径的选边同源），无提供者走失败回路。
     """
     providers = {
         str(row.get("edge_id") or "").strip()
         for row in online_capability_providers(capability)
     }
     providers.discard("")
-    if not providers:
+    if not providers and not is_system_capability(capability):
         fail_msg = f"直派失败：没有在线 edge 支持 {capability}"
         mark_intent_failed(intent_id, fail_msg)
         intent = get_intent(intent_id)
