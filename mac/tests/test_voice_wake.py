@@ -493,6 +493,46 @@ class WakeGateTests(unittest.TestCase):
         self._arm(2.0)
         self.assertEqual(self.gate.feed("现在几点", now=2.5), "现在几点")
 
+    def test_collapsed_single_wake_while_listening_enters_partial(self) -> None:
+        """STT 收成一遍「面条」时不得当指令；应进入 partial 以便连续再唤。"""
+        self.assertIsNone(
+            self.gate.feed("面条 面条", speech_start=0.0, speech_end=0.8)
+        )
+        self._arm(1.0)
+        self.assertIsNone(
+            self.gate.feed(
+                "面条。",
+                now=2.0,
+                speech_start=1.5,
+                speech_end=2.0,
+            )
+        )
+        self.assertEqual(self.gate.state, "partial")
+        self.assertFalse(self.gate.should_ack)
+        self.assertIsNone(self.gate.feed("面条", now=2.5, speech_start=2.3, speech_end=2.8))
+        self.assertEqual(self.gate.state, "acking")
+        self.assertTrue(self.gate.should_ack)
+
+    def test_collapsed_single_wake_while_acking_enters_partial(self) -> None:
+        self.assertIsNone(
+            self.gate.feed("面条 面条", speech_start=0.0, speech_end=0.8)
+        )
+        self.assertEqual(self.gate.state, "acking")
+        self.assertIsNone(
+            self.gate.feed(
+                "面条",
+                now=1.2,
+                speech_start=1.0,
+                speech_end=1.4,
+            )
+        )
+        self.assertEqual(self.gate.state, "partial")
+        self.assertIsNone(
+            self.gate.feed("面条", now=2.0, speech_start=1.8, speech_end=2.2)
+        )
+        self.assertEqual(self.gate.state, "acking")
+        self.assertTrue(self.gate.should_ack)
+
     def test_empty_stt_does_not_repeat_ack(self) -> None:
         self.assertIsNone(
             _gate_transcript(self.gate, "面条 面条", speech_start=0.0, speech_end=0.8)
@@ -760,6 +800,42 @@ class ListenQueueTests(unittest.TestCase):
         self.assertTrue(activity.should_hold(20.0, silence_s=1.0))
         activity.in_speech = False
         self.assertTrue(activity.should_hold(11.0, queued=1, silence_s=1.0))
+
+    def test_same_gate_rewake_within_debounce_still_says(self) -> None:
+        from mac_voice.listen import should_say_wake_ack
+
+        self.assertTrue(
+            should_say_wake_ack(
+                now=1.0,
+                last_ack_say_at=0.0,
+                last_ack_gate_key="pid:mac-1",
+                gate_key="pid:mac-1",
+            )
+        )
+
+    def test_cross_gate_within_debounce_suppresses(self) -> None:
+        from mac_voice.listen import should_say_wake_ack
+
+        self.assertFalse(
+            should_say_wake_ack(
+                now=1.0,
+                last_ack_say_at=0.0,
+                last_ack_gate_key="pid:mac-1",
+                gate_key="pid:iphone-1",
+            )
+        )
+
+    def test_cross_gate_after_debounce_says(self) -> None:
+        from mac_voice.listen import should_say_wake_ack
+
+        self.assertTrue(
+            should_say_wake_ack(
+                now=2.0,
+                last_ack_say_at=0.0,
+                last_ack_gate_key="pid:mac-1",
+                gate_key="pid:iphone-1",
+            )
+        )
 
 
 if __name__ == "__main__":
