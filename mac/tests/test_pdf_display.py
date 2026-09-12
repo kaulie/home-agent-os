@@ -524,10 +524,22 @@ class ZoomTests(_Base):
         self._zoom(asset, displayed, action="in")   # 再放大：z1.5 PNG 已渲染，但跨 intent 授权可能重传
         session = pdf_display.current_session()
         self.assertIsNotNone(session)
-        self.assertTrue((session.work_dir / "page-1-z1.5.png").is_file())
+        self.assertTrue((session.work_dir / "page-1-z1p5.png").is_file())
         self.assertTrue((session.work_dir / "page-1.png").is_file())
         # 同 intent 内 ref 缓存命中 → 不重复上传
         self.assertEqual(asset.upload_file.call_count, uploads_before)
+
+    def test_zoom_upload_filename_uses_legal_charset(self) -> None:
+        # 黑盒回归：Brain 上传校验只允许字母/数字/中文/-/_，1.5 倍档文件名不得含多余小数点
+        asset = _asset_for(self.pdf_path)
+        displayed: list[str] = []
+        self._open(asset, displayed, asset_ref=DOC_REF)
+        asset.upload_file.reset_mock()
+        self._zoom(asset, displayed, action="in")
+        filename = asset.upload_file.call_args.kwargs["filename"]
+        stem = filename.rsplit(".", 1)[0]
+        self.assertIn("z1p5", stem)
+        self.assertRegex(stem, r"^[A-Za-z0-9\-_一-鿿]+$")
 
     def test_page_turn_resets_zoom(self) -> None:
         asset = _asset_for(self.pdf_path)
