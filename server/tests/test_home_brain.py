@@ -3454,6 +3454,46 @@ class HomeBrainPersistTest(unittest.TestCase):
                 self.assertEqual(plan[0]["input_constrict"].get("user_input"), text)
                 self.assertNotIn("song", plan[0]["input_constrict"])
 
+    def test_shortcut_tv_pdf_page_skips_llm(self) -> None:
+        self._register_live_issuer("iphone-origin")
+        brain_db.put_registration(
+            {
+                "participant_id": "mac-edge",
+                "device_type": "mac",
+                "roles": ["runtime"],
+                "services": [
+                    {
+                        "service_id": "local.display",
+                        "capabilities": [{"capability_id": "display.pdf.page"}],
+                    }
+                ],
+            }
+        )
+        self._heartbeat("mac-edge")
+        hb._REGISTERED_edges = brain_db.registration_ids()
+        hb.rebuild_capability_maps()
+        client = hb.app.test_client()
+        before_qsize = hb.task_queue.qsize()
+        for text, action in (("电视下一页", "next"), ("电视上一页", "prev")):
+            with self.subTest(text=text):
+                resp = client.post(
+                    "/api/v1/intent",
+                    json={
+                        "text": text,
+                        "source": "voice",
+                        "participant_id": "iphone-origin",
+                    },
+                )
+                self.assertEqual(resp.status_code, 200)
+                body = resp.get_json()
+                self.assertEqual(body["intent_status"], "intent_parsed")
+                self.assertEqual(body["task_kind"], "shortcut")
+                self.assertEqual(hb.task_queue.qsize(), before_qsize)
+                plan = hb.get_intent(body["intent_id"])["execution_plan"]
+                self.assertEqual(plan[0]["capability"], "display.pdf.page")
+                self.assertEqual(plan[0]["input_constrict"].get("action"), action)
+                self.assertEqual(plan[0]["assigned_edge_id"], "mac-edge")
+
     def _register_voice_runtime(
         self, pid: str, *, with_speak: bool = True, with_echo: bool = True
     ) -> None:

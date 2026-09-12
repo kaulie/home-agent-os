@@ -236,9 +236,56 @@ def match_photo_latest(text: str) -> RuleHit | None:
     )
 
 
+_TV_PDF_HINT = "电视"
+_TV_PDF_PREV = ("上一页", "上页", "往前翻", "向前翻")
+_TV_PDF_NEXT = ("下一页", "下页", "往后翻", "向后翻")
+_TV_PDF_EXCLUDE = (
+    "第几页",
+    "哪一页",
+    "什么",
+    "啥",
+    "多少页",
+    "几页",
+)
+
+
+def match_tv_pdf_page(text: str) -> RuleHit | None:
+    """「电视上一页 / 电视下一页」→ display.pdf.page 翻页（电视前缀消歧，不带前缀不拦截）。"""
+    t0 = time.perf_counter()
+    utterance = _rstrip_punct(_lstrip_courtesy(str(text or "").strip()))
+    if not utterance or _TV_PDF_HINT not in utterance:
+        return None
+    if matches_any(utterance, _TV_PDF_EXCLUDE):
+        return None
+    action = ""
+    if matches_any(utterance, _TV_PDF_PREV):
+        action = "prev"
+    elif matches_any(utterance, _TV_PDF_NEXT):
+        action = "next"
+    if not action:
+        return None
+
+    match_ms = int(round((time.perf_counter() - t0) * 1000))
+    return RuleHit(
+        rule="tv_pdf_page",
+        goal="display.pdf.page",
+        plan=[
+            {
+                "step": 1,
+                "capability": "display.pdf.page",
+                "input_constrict": {"action": action},
+                "output_constrict": {"status_text": {}},
+            }
+        ],
+        # 语音发起时由 TTS 注入步朗读 status_text（如「已翻到第 2 页 / 共 3 页」）
+        presentation={"type": "audio", "from": "status_text"},
+        match_ms=match_ms,
+    )
+
+
 def match_rules(text: str) -> RuleHit | None:
     """Run P0 rules in priority order; uncertain → None."""
-    for matcher in (match_clock, match_climate, match_photo_latest):
+    for matcher in (match_clock, match_climate, match_photo_latest, match_tv_pdf_page):
         hit = matcher(text)
         if hit is not None:
             return hit

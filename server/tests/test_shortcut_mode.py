@@ -369,6 +369,38 @@ class ShortcutModeTest(unittest.TestCase):
     def test_photo_latest_skips_counting(self) -> None:
         self.assertIsNone(intercept("我今天拍了几张照片"))
 
+    def test_tv_pdf_page_next_prev(self) -> None:
+        plan = self._rule_hit("电视下一页", rule="tv_pdf_page", goal="display.pdf.page")
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0]["capability"], "display.pdf.page")
+        self.assertEqual(plan[0]["input_constrict"], {"action": "next"})
+        self.assertIn("status_text", plan[0]["output_constrict"])
+
+        plan = self._rule_hit("电视上一页", rule="tv_pdf_page", goal="display.pdf.page")
+        self.assertEqual(plan[0]["input_constrict"], {"action": "prev"})
+
+    def test_tv_pdf_page_variants(self) -> None:
+        for text, action in (
+            ("把电视翻到下一页", "next"),
+            ("电视往后翻", "next"),
+            ("帮我把电视翻到上一页", "prev"),
+            ("电视往前翻一页", "prev"),
+        ):
+            with self.subTest(text=text):
+                plan = self._rule_hit(text, rule="tv_pdf_page", goal="display.pdf.page")
+                self.assertEqual(plan[0]["input_constrict"], {"action": action})
+
+    def test_tv_pdf_page_requires_tv_prefix(self) -> None:
+        # 不带「电视」前缀的翻页不拦截（保持原 LLM/阅读上下文路径）
+        self.assertIsNone(intercept("下一页"))
+        self.assertIsNone(intercept("上一页"))
+        self.assertIsNone(intercept("翻页"))
+
+    def test_tv_pdf_page_skips_questions(self) -> None:
+        self.assertIsNone(intercept("电视一共几页"))
+        self.assertIsNone(intercept("电视翻到第几页了"))
+        self.assertIsNone(intercept("电视下一页讲了什么"))
+
 
 if __name__ == "__main__":
     unittest.main()
