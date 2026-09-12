@@ -425,6 +425,20 @@ ADS: dict[str, dict[str, Any]] = {
         typical_triggers=["轮播这几张照片", "电视上放幻灯片", "把这些照片轮播"],
         do_not_dispatch=["单图投屏", "拍照", "看图", "按厂商选设备"],
     ),
+    "display.pdf": _ad(
+        kind="output",
+        role="PDF 投屏打开器",
+        planner_recognize="把本步已有的 PDF/document Asset 投到电视上显示（每页渲染成图片逐页投）。入参 asset_ref（必填，type=document，常为 $asset_ref），可选 page（默认第 1 页）。用户没指定哪份 PDF 时，先排 asset.inventory 取最新 document 再接本步。本步只打开并显示，翻页用 display.pdf.page；不打印、不 OCR、不看图理解",
+        typical_triggers=["把这份 PDF 投到电视", "把最新的 PDF 投屏到电视上", "PDF 上电视", "把这个文档投到电视上看"],
+        do_not_dispatch=["打印", "OCR", "看图理解", "单图投屏", "幻灯片", "翻页", "下一页"],
+    ),
+    "display.pdf.page": _ad(
+        kind="output",
+        role="PDF 投屏翻页器",
+        planner_recognize="电视正在投屏 PDF 时翻页：下一页（默认）/上一页/翻到第 N 页。入参 action=next/prev/goto（goto 必填 page）。不需要 asset_ref——翻的是当前投屏会话里那份 PDF。没有正在投屏的 PDF 时本步会失败，应先经 display.pdf 打开会话",
+        typical_triggers=["下一页", "上一页", "翻到第 5 页", "翻页", "往后翻", "往前翻"],
+        do_not_dispatch=["打开 PDF", "投屏新文档", "打印", "看图理解", "切歌", "单图投屏"],
+    ),
     "notify.speak": _ad(
         kind="output",
         role="语音播报器",
@@ -475,6 +489,25 @@ ADS: dict[str, dict[str, Any]] = {
             "PDF 横竖切换",
         ],
         do_not_dispatch=["打印", "OCR", "看图理解", "扫描", "识别内容", "PDF 合成/转图片", "配网"],
+    ),
+    "pdf.to_images": _ad(
+        kind="action",
+        role="PDF 页面渲染器",
+        planner_recognize=(
+            "把本步已有的 PDF/document Asset 的每页（或 page_start–page_end 页范围）"
+            "渲染成高清 PNG 图片并逐页登记为 image Asset，产出 asset_refs（顺序=页码），"
+            "可交给 display.slideshow 轮播、逐页 OCR、vision.ask 看某页等下游。"
+            "入参 asset_ref（必填，type=document），可选 page_start/page_end/dpi（默认 200）。"
+            "本能力只渲染登记图片，不投屏、不 OCR、不打印；电视翻页场景用 display.pdf，"
+            "不要经本能力整份预渲染"
+        ),
+        typical_triggers=[
+            "把这个 PDF 每页转成图片",
+            "PDF 转图片",
+            "把这份 PDF 拆成一页一页的图",
+            "把 PDF 第 3 到 5 页转成图",
+        ],
+        do_not_dispatch=["打印", "OCR", "看图理解", "投屏翻页", "PDF 旋转", "图片合成 PDF", "拍照"],
     ),
     "web.scraper": _ad(
         kind="action",

@@ -1,0 +1,28 @@
+id: pdf-display
+service_id: xiaomi.tv.display
+group: display
+version: "0.1.0"
+display_name: PDF 投屏（逐页渲染）
+description: 把 PDF 每页渲染成图片投到电视（小米 DLNA / Cast），支持翻页；wire 为 display.pdf / display.pdf.page
+
+capabilities:
+  - capability_id: display.pdf
+    description: 打开一份 PDF document Asset 并投屏显示指定页（默认第 1 页）
+  - capability_id: display.pdf.page
+    description: 在当前投屏会话上翻页（next/prev/goto）
+
+entry:
+  mac: mac/src/mac_edge/plugins/pdf_display.py
+config:
+  - key: MAC_EDGE_PDF_DISPLAY_DPI
+    platform: mac
+    description: 页图渲染 DPI，默认 200（钳制 72–400）
+  - key: MAC_EDGE_DISPLAY_BACKEND
+    platform: mac
+    description: xiaomi 用 DLNA；cast 用 Chromecast HTTP；与 display.photo 同一套选择
+  - key: MAC_EDGE_XIAOMI_TV_HOST
+    platform: mac
+    description: 可选；小米电视 LAN IP（DLNA 后端）
+notes: |
+  显示服务（xiaomi.tv.display / chromecast.display）在本机可 import pymupdf 时
+  才附加广告 display.pdf / display.pdf.page；依赖见 mac/requirements.txt（pymupdf）。

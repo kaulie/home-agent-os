@@ -1,0 +1,20 @@
+id: pdf-to-images
+service_id: local.pdf.images
+group: convert
+version: "0.1.0"
+display_name: PDF 页面渲染器
+description: 把 PDF 每页（或页范围）渲染成高清 PNG 并逐页登记为 image Asset，产出 asset_refs 供下游复用
+
+capabilities:
+  - capability_id: pdf.to_images
+    description: PDF/document Asset → 高清页图 image Assets（顺序=页码）
+
+entry:
+  mac: mac/src/mac_edge/plugins/pdf_to_images.py
+config:
+  - key: MAC_EDGE_PDF_DISPLAY_DPI
+    platform: mac
+    description: 默认渲染 DPI（200，钳制 72–400）；入参 dpi 可逐次覆盖
+notes: |
+  渲染底层复用 mac_edge.plugins.pdf_render（PyMuPDF），与 display.pdf 同源。
+  本机可 import pymupdf 时才广告 local.pdf.images；依赖见 mac/requirements.txt。

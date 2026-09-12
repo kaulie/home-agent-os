@@ -10,5 +10,7 @@ sounddevice>=0.4.6
 numpy>=1.24.0
 # pdf.rotate — PDF 横版/竖版整份旋转（document Asset 页方向切换）
 pypdf>=4.0,<7
+# display.pdf — PDF 投屏电视（逐页渲染成 PNG；wheel 自足无系统依赖）
+pymupdf>=1.24,<2
 # web.scraper — HTML→PDF 渲染引擎之一（需系统 Pango 才能渲染；缺失时自动回退 Chrome/Edge headless）
 weasyprint>=65,<71

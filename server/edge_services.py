@@ -321,6 +321,82 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
         },
         'output_schema': {},
     },
+    'display.pdf': {
+        'kind': 'output',
+        'group': 'display',
+        'service_id': 'chromecast.display',
+        'role': 'PDF 投屏打开器',
+        'planner_recognize': '把 PDF 文档投到电视显示（每页渲染成图片逐页投）',
+        'typical_triggers': ['把这份 PDF 投到电视', '把最新的 PDF 投屏到电视上'],
+        'do_not_dispatch': ['打印', 'OCR', '看图理解', '翻页'],
+        'input_schema': {
+            'asset_ref': {
+                'type': 'string',
+                'required': True,
+                'description': 'AssetRef JSON {asset_id, type, mime_type?}，type 必须为 document（PDF）。禁止 path / 永久 URL。常为 $asset_ref。',
+            },
+            'page': {
+                'type': 'number',
+                'required': False,
+                'description': '打开后显示的页码（1-based），默认第 1 页',
+            },
+        },
+        'output_schema': {
+            'page': {
+                'type': 'number',
+                'required': True,
+                'description': '当前投屏页码（1-based）',
+            },
+            'page_count': {
+                'type': 'number',
+                'required': True,
+                'description': 'PDF 总页数',
+            },
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话，如「已把 PDF 投到电视，第 1 页 / 共 12 页」',
+            },
+        },
+    },
+    'display.pdf.page': {
+        'kind': 'output',
+        'group': 'display',
+        'service_id': 'chromecast.display',
+        'role': 'PDF 投屏翻页器',
+        'planner_recognize': '电视正在投屏 PDF 时翻页：下一页（默认）/上一页/翻到第 N 页',
+        'typical_triggers': ['下一页', '上一页', '翻到第 5 页'],
+        'do_not_dispatch': ['打开 PDF', '投屏新文档', '打印', '切歌'],
+        'input_schema': {
+            'action': {
+                'type': 'string',
+                'required': False,
+                'description': 'next（默认）/ prev / goto；也接受 下一页/上一页/翻到 等中文',
+            },
+            'page': {
+                'type': 'number',
+                'required': False,
+                'description': 'action=goto 时必填的目标页码（1-based）',
+            },
+        },
+        'output_schema': {
+            'page': {
+                'type': 'number',
+                'required': True,
+                'description': '翻页后当前页码（1-based）',
+            },
+            'page_count': {
+                'type': 'number',
+                'required': True,
+                'description': 'PDF 总页数',
+            },
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话，如「已翻到第 2 页 / 共 12 页」',
+            },
+        },
+    },
     'game.launch': {
         'kind': 'output',
         'group': 'game',
@@ -1100,6 +1176,75 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
                 'type': 'string',
                 'required': True,
                 'description': '中文一句话结果，含页数、方向与 asset_id',
+            },
+        },
+    },
+    'pdf.to_images': {
+        'kind': 'action',
+        'group': 'convert',
+        'service_id': 'local.pdf.images',
+        'role': 'PDF 页面渲染器',
+        'planner_recognize': (
+            '把本步已有的 PDF/document Asset 的每页（或指定页范围）渲染成高清 PNG 图片，'
+            '逐页登记为 image Asset，产出 asset_refs（顺序=页码）供下游复用'
+        ),
+        'typical_triggers': [
+            '把这个 PDF 每页转成图片',
+            'PDF 转图片',
+            '把这份 PDF 拆成一页一页的图',
+        ],
+        'do_not_dispatch': ['打印', 'OCR', '看图理解', '投屏翻页', 'PDF 旋转', '图片合成 PDF', '拍照'],
+        'input_schema': {
+            'asset_ref': {
+                'type': 'object',
+                'required': True,
+                'description': (
+                    '必填 AssetRef JSON，type=document（PDF）。'
+                    '例 {"asset_id":"asset_…","type":"document"}。'
+                    '禁止 path / 永久 URL；缺则本能力无效。'
+                ),
+            },
+            'page_start': {
+                'type': 'number',
+                'required': False,
+                'description': '起始页（1-based），缺省第 1 页；越界钳到边界',
+            },
+            'page_end': {
+                'type': 'number',
+                'required': False,
+                'description': '结束页（1-based，闭区间），缺省最后一页；越界钳到边界',
+            },
+            'dpi': {
+                'type': 'number',
+                'required': False,
+                'description': '渲染清晰度 DPI，默认 200（钳制 72–400）',
+            },
+            'name': {
+                'type': 'string',
+                'required': False,
+                'description': '可选页图文件名前缀；不传则用 pdf-<asset_id 前 12 位>',
+            },
+        },
+        'output_schema': {
+            'asset_refs': {
+                'type': 'string',
+                'required': True,
+                'description': '页图 AssetRef JSON 数组，顺序=页码。可交给 display.slideshow / OCR / vision 等下游。',
+            },
+            'page_count': {
+                'type': 'number',
+                'required': True,
+                'description': 'PDF 总页数',
+            },
+            'rendered_pages': {
+                'type': 'number',
+                'required': True,
+                'description': '本次实际渲染页数',
+            },
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话结果，含页范围、页数与 DPI',
             },
         },
     },
