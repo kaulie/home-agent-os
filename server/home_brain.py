@@ -121,6 +121,11 @@ except ImportError:  # pragma: no cover
     )
 
 try:
+    import playback_session
+except ImportError:  # pragma: no cover
+    from server import playback_session  # type: ignore
+
+try:
     from system_capabilities import (
         SYSTEM_EDGE_ID,
         catalog_rows as system_capability_catalog_rows,
@@ -4779,6 +4784,17 @@ def admin_put_voice_settings():
     return jsonify(ok=True, wake_ack=saved)
 
 
+@app.route("/api/v1/playback_session", methods=["GET"])
+def get_playback_session_api():
+    """Current playback state for a scene (tv_pdf / music …); latest updated wins."""
+    scene = request.args.get("scene", "")
+    edge_id = request.args.get("edge_id", "")
+    if not str(scene or "").strip():
+        return jsonify(ok=False, error="scene is required", session=None), 400
+    row = brain_db.get_playback_session(scene, edge_id=edge_id or None)
+    return jsonify(ok=True, session=row)
+
+
 @app.route("/api/v1/intent_detail", methods=["GET"])
 def get_intent_detail():
     intent_id_str = request.args.get("intent_id", "")
@@ -5215,6 +5231,13 @@ def _apply_step_status_record(
     step_log.append(_record)
     intent["step_log"] = step_log
     _save_intent(intent)
+    playback_session.record_from_step(
+        intent=intent,
+        step_id=step_id_int,
+        step_status=int(step_status),
+        outputs=outputs,
+        edge_id=actor,
+    )
     _maybe_finalize_intent_after_step(intent_id_int, intent)
 
 

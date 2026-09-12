@@ -30,9 +30,30 @@ struct TVView: View {
                 .padding(.bottom, 32)
             }
         }
+        .onAppear {
+            loadSession()
+        }
         .onDisappear {
             pollTask?.cancel()
             pollTask = nil
+        }
+    }
+
+    /// 打开 Tab 时回显 Brain 记录的当前播放状态（不覆盖本页刚翻过的更新状态）。
+    private func loadSession() {
+        let client = model.intentClient
+        let serverURL = model.intentServerURL
+        Task { @MainActor in
+            guard let session = await client.fetchPlaybackSession(scene: "tv_pdf", intentURL: serverURL) else {
+                return
+            }
+            guard page == nil else { return }
+            if let p = session.position, p > 0 { page = p }
+            if let n = session.total, n > 0 { pageCount = n }
+            if !session.statusText.isEmpty {
+                statusLine = session.statusText
+                isError = false
+            }
         }
     }
 

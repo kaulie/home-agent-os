@@ -38,7 +38,7 @@ class BrainDbTest(unittest.TestCase):
             )
         }
         self.assertTrue(
-            {"meta", "jobs", "participants", "intent_reviews", "intent_classification_events", "global_events", "assets", "asset_grants", "edge_control_policy", "admin_op_log", "cloud_api_calls", "schema_migrations"} <= names
+            {"meta", "jobs", "participants", "intent_reviews", "intent_classification_events", "global_events", "assets", "asset_grants", "edge_control_policy", "admin_op_log", "cloud_api_calls", "playback_sessions", "schema_migrations"} <= names
         )
         self.assertNotIn("edges", names)
         self.assertNotIn("intent_queue", names)
@@ -63,7 +63,7 @@ class BrainDbTest(unittest.TestCase):
         ]
         self.assertEqual(
             versions,
-            list(range(1, 27)),
+            list(range(1, 28)),
         )
         job_cols = {
             row[1]: row[2]
