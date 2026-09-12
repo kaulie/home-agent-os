@@ -40,6 +40,7 @@ from mac_edge.plugins.pdf_render import (
     pdf_page_count,
     render_dpi,
     render_page_png,
+    render_page_region_png,
 )
 from mac_edge.plugins.xiaomi_tv_display import display_backend
 from mac_edge.plugins.xiaomi_tv_display import play_photo as xiaomi_play_photo
@@ -71,8 +72,33 @@ _ACTION_ALIASES = {
 }
 
 
+ZOOM_IN = "in"
+ZOOM_OUT = "out"
+ZOOM_RESET = "reset"
+SUPPORTED_ZOOM_ACTIONS = frozenset({ZOOM_IN, ZOOM_OUT, ZOOM_RESET})
+
+_ZOOM_ACTION_ALIASES = {
+    "in": ZOOM_IN,
+    "zoom_in": ZOOM_IN,
+    "放大": ZOOM_IN,
+    "再放大": ZOOM_IN,
+    "out": ZOOM_OUT,
+    "zoom_out": ZOOM_OUT,
+    "缩小": ZOOM_OUT,
+    "reset": ZOOM_RESET,
+    "还原": ZOOM_RESET,
+    "恢复原图": ZOOM_RESET,
+    "原图": ZOOM_RESET,
+    "重置": ZOOM_RESET,
+}
+
+# 放大档位：中心区域 1/zoom 重渲染；dpi 随档位同比提高，输出像素恒定清晰。
+ZOOM_LEVELS = (1.0, 1.5, 2.0, 3.0, 4.0)
+_ZOOM_MAX_RENDER_DPI = 1200
+
+
 class PdfDisplayError(Exception):
-    """display.pdf / display.pdf.page 明确中文失败。"""
+    """display.pdf / display.pdf.page / display.pdf.zoom 明确中文失败。"""
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +114,8 @@ class _PdfSession:
     current_page: int
     dpi: int
     work_dir: Path
-    page_refs: dict[int, Any] = field(default_factory=dict)
+    zoom: float = 1.0
+    page_refs: dict[tuple[int, float], Any] = field(default_factory=dict)
 
 
 _SESSION: _PdfSession | None = None
@@ -164,6 +191,43 @@ def parse_page_action(raw: Any) -> str:
     )
 
 
+def parse_zoom_action(raw: Any) -> str:
+    """缩放动作归一化：in / out / reset；接受 放大/缩小/还原 等中文别名。"""
+    text = str(raw if raw is not None else "").strip().lower()
+    if not text:
+        return ZOOM_IN
+    hit = _ZOOM_ACTION_ALIASES.get(text)
+    if hit is not None:
+        return hit
+    compact = text.replace(" ", "").replace("_", "")
+    for alias, canonical in _ZOOM_ACTION_ALIASES.items():
+        if alias and compact == alias.replace(" ", "").replace("_", ""):
+            return canonical
+    raise PdfDisplayError(
+        f"action 无法识别：{raw!r}（可用 in=放大 / out=缩小 / reset=还原，"
+        "也接受 放大/缩小/还原 等）"
+    )
+
+
+def _zoom_step_up(zoom: float) -> float:
+    for level in ZOOM_LEVELS:
+        if level > zoom + 1e-9:
+            return level
+    return ZOOM_LEVELS[-1]
+
+
+def _zoom_step_down(zoom: float) -> float:
+    for level in reversed(ZOOM_LEVELS):
+        if level < zoom - 1e-9:
+            return level
+    return ZOOM_LEVELS[0]
+
+
+def _zoom_render_dpi(session: "_PdfSession", zoom: float) -> int:
+    """放大时 dpi 同比提高，输出像素尺寸与整页一致（清晰不糊）。"""
+    return min(int(round(session.dpi * max(1.0, zoom))), _ZOOM_MAX_RENDER_DPI)
+
+
 # ---------------------------------------------------------------------------
 # 投屏后端（与 executor 的 display.photo 分支同一套选择逻辑）
 # ---------------------------------------------------------------------------
@@ -189,16 +253,38 @@ def _display_photo(
 # ---------------------------------------------------------------------------
 
 
+def _page_cache_stem(page: int, zoom: float) -> str:
+    if zoom > 1.0:
+        return f"page-{page}-z{zoom:g}"
+    return f"page-{page}"
+
+
 def _ensure_rendered(
     session: _PdfSession,
     page: int,
     *,
+    zoom: float = 1.0,
     render_fn: Callable[[Path, int, int, Path], Path] | None = None,
+    region_render_fn: Callable[[Path, int, float, int, Path], Path] | None = None,
 ) -> Path:
-    """本页 PNG 本地路径；未渲染则渲染（render_fn 可注入，便于无 pymupdf 单测）。"""
-    out_path = session.work_dir / f"page-{page}.png"
+    """本页（或本页放大区域）PNG 本地路径；未渲染则渲染（render fns 可注入，便于无 pymupdf 单测）。"""
+    out_path = session.work_dir / f"{_page_cache_stem(page, zoom)}.png"
     if out_path.is_file() and out_path.stat().st_size > 0:
         return out_path
+    if zoom > 1.0:
+        dpi = _zoom_render_dpi(session, zoom)
+        if region_render_fn is not None:
+            produced = region_render_fn(session.pdf_path, page - 1, zoom, dpi, out_path)
+            produced_path = Path(produced) if produced else out_path
+            if not produced_path.is_file() or produced_path.stat().st_size <= 0:
+                raise PdfDisplayError(f"渲染第 {page} 页放大区域失败：未产出图片")
+            return produced_path
+        try:
+            return render_page_region_png(
+                session.pdf_path, page - 1, zoom=zoom, dpi=dpi, out_path=out_path
+            )
+        except PdfRenderError as e:
+            raise PdfDisplayError(str(e)) from e
     if render_fn is not None:
         produced = render_fn(session.pdf_path, page - 1, session.dpi, out_path)
         produced_path = Path(produced) if produced else out_path
@@ -219,10 +305,12 @@ def _upload_page(
     png_path: Path,
     *,
     asset: Any,
+    zoom: float = 1.0,
 ) -> Any:
     from mac_edge.asset.types import AssetError
 
-    filename = f"pdf-page-{_safe_dir_name(session.asset_id)[:24]}-p{page}.png"
+    zoom_suffix = f"-z{zoom:g}" if zoom > 1.0 else ""
+    filename = f"pdf-page-{_safe_dir_name(session.asset_id)[:24]}-p{page}{zoom_suffix}.png"
     try:
         return asset.upload_file(
             png_path,
@@ -240,26 +328,32 @@ def _page_url(
     page: int,
     *,
     asset: Any,
+    zoom: float = 1.0,
     render_fn: Callable[[Path, int, int, Path], Path] | None = None,
+    region_render_fn: Callable[[Path, int, float, int, Path], Path] | None = None,
 ) -> str:
-    """当页 LAN URL：会话缓存命中直接取链；授权失效 / 未传过则（重）上传。"""
+    """当页（或放大区域）LAN URL：会话缓存命中直接取链；授权失效 / 未传过则（重）上传。"""
     from mac_edge.asset.types import AssetError
 
-    ref = session.page_refs.get(page)
+    cache_key = (page, zoom)
+    ref = session.page_refs.get(cache_key)
     if ref is not None:
         try:
             return asset.http_url(ref)
         except AssetError:
             # 页图 Asset 授权按 intent 授予；跨 intent 翻回旧页时重传。
-            session.page_refs.pop(page, None)
+            session.page_refs.pop(cache_key, None)
             log.info(
-                "pdf display: page %s ref grant stale under intent %s — re-upload",
+                "pdf display: page %s zoom=%s ref grant stale under intent %s — re-upload",
                 page,
+                zoom,
                 getattr(asset, "intent_id", ""),
             )
-    png = _ensure_rendered(session, page, render_fn=render_fn)
-    ref = _upload_page(session, page, png, asset=asset)
-    session.page_refs[page] = ref
+    png = _ensure_rendered(
+        session, page, zoom=zoom, render_fn=render_fn, region_render_fn=region_render_fn
+    )
+    ref = _upload_page(session, page, png, asset=asset, zoom=zoom)
+    session.page_refs[cache_key] = ref
     try:
         return asset.http_url(ref)
     except AssetError as e:
@@ -273,10 +367,14 @@ def _show_page(
     asset: Any,
     display_base_url: str,
     timeout_sec: float,
+    zoom: float = 1.0,
     display_fn: Callable[[str], str] | None = None,
     render_fn: Callable[[Path, int, int, Path], Path] | None = None,
+    region_render_fn: Callable[[Path, int, float, int, Path], Path] | None = None,
 ) -> str:
-    url = _page_url(session, page, asset=asset, render_fn=render_fn)
+    url = _page_url(
+        session, page, asset=asset, zoom=zoom, render_fn=render_fn, region_render_fn=region_render_fn
+    )
     if display_fn is not None:
         return display_fn(url)
     return _display_photo(
@@ -431,12 +529,15 @@ def page_from_params(
             "status_text": status_text,
         }
 
+    # 翻页回到整页视图（缩放状态不跨页保留）
+    session.zoom = 1.0
     msg = _show_page(
         session,
         target,
         asset=asset,
         display_base_url=display_base_url,
         timeout_sec=timeout_sec,
+        zoom=1.0,
         display_fn=display_fn,
         render_fn=render_fn,
     )
@@ -456,3 +557,77 @@ def page_from_params(
         session.page_count,
     )
     return f"{msg} · display.pdf.page page={target}/{session.page_count}", outputs
+
+
+def zoom_from_params(
+    params: dict[str, Any],
+    *,
+    asset: Any,
+    display_base_url: str = DEFAULT_CAST_DISPLAY_URL,
+    timeout_sec: float = 60.0,
+    display_fn: Callable[[str], str] | None = None,
+    render_fn: Callable[[Path, int, int, Path], Path] | None = None,
+    region_render_fn: Callable[[Path, int, float, int, Path], Path] | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """display.pdf.zoom：在当前会话上放大/缩小/还原当前页（中心区域无损重渲染）。"""
+    _require_cap_asset(asset)
+    raw_params = params if isinstance(params, dict) else {}
+    session = current_session()
+    if session is None or not session.pdf_path.is_file():
+        raise PdfDisplayError(
+            "当前没有正在投屏的 PDF（可能已重启），请先说「把这份 PDF 投到电视」"
+        )
+    action = parse_zoom_action(raw_params.get("action"))
+    old_zoom = float(session.zoom)
+    if action == ZOOM_RESET:
+        new_zoom = 1.0
+    elif action == ZOOM_OUT:
+        new_zoom = _zoom_step_down(old_zoom)
+    else:
+        new_zoom = _zoom_step_up(old_zoom)
+
+    base_outputs = {
+        "page": session.current_page,
+        "page_count": session.page_count,
+        "asset_id": session.asset_id,
+    }
+    if abs(new_zoom - old_zoom) < 1e-9:
+        if action == ZOOM_IN:
+            status_text = f"已是最大放大倍数（{old_zoom:g} 倍）"
+        else:
+            status_text = "已是原图大小"
+        return status_text, {**base_outputs, "zoom": old_zoom, "status_text": status_text}
+
+    session.zoom = new_zoom
+    msg = _show_page(
+        session,
+        session.current_page,
+        asset=asset,
+        display_base_url=display_base_url,
+        timeout_sec=timeout_sec,
+        zoom=new_zoom,
+        display_fn=display_fn,
+        render_fn=render_fn,
+        region_render_fn=region_render_fn,
+    )
+    where = f"第 {session.current_page} 页 / 共 {session.page_count} 页"
+    if new_zoom <= 1.0:
+        status_text = f"已恢复原图大小（{where}）"
+    elif action == ZOOM_OUT:
+        status_text = f"已缩小到 {new_zoom:g} 倍（{where}）"
+    else:
+        status_text = f"已放大到 {new_zoom:g} 倍（{where}）"
+    outputs: dict[str, Any] = {
+        **base_outputs,
+        "zoom": new_zoom,
+        "status_text": status_text,
+    }
+    log.info(
+        "display.pdf.zoom ok asset=%s action=%s zoom=%s page=%s/%s",
+        session.asset_id,
+        action,
+        new_zoom,
+        session.current_page,
+        session.page_count,
+    )
+    return f"{msg} · display.pdf.zoom zoom={new_zoom:g} page={session.current_page}/{session.page_count}", outputs

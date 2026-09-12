@@ -439,6 +439,13 @@ ADS: dict[str, dict[str, Any]] = {
         typical_triggers=["下一页", "上一页", "翻到第 5 页", "翻页", "往后翻", "往前翻"],
         do_not_dispatch=["打开 PDF", "投屏新文档", "打印", "看图理解", "切歌", "单图投屏"],
     ),
+    "display.pdf.zoom": _ad(
+        kind="output",
+        role="PDF 投屏缩放器",
+        planner_recognize="电视正在投屏 PDF 时放大/缩小当前页画面：中心区域按档位无损重渲染再投（1.0→1.5→2→3→4 倍）。入参 action=in（默认）/out/reset。不需要 asset_ref——缩放的是当前投屏会话里那份 PDF。翻页后自动回到原图",
+        typical_triggers=["电视放大", "电视缩小", "电视还原", "放大一点", "看不清，放大"],
+        do_not_dispatch=["打开 PDF", "投屏新文档", "翻页", "照片放大", "打印"],
+    ),
     "notify.speak": _ad(
         kind="output",
         role="语音播报器",

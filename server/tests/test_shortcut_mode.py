@@ -401,6 +401,46 @@ class ShortcutModeTest(unittest.TestCase):
         self.assertIsNone(intercept("电视翻到第几页了"))
         self.assertIsNone(intercept("电视下一页讲了什么"))
 
+    def test_tv_pdf_zoom_in_out_reset(self) -> None:
+        plan = self._rule_hit("电视放大", rule="tv_pdf_zoom", goal="display.pdf.zoom")
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0]["capability"], "display.pdf.zoom")
+        self.assertEqual(plan[0]["input_constrict"], {"action": "in"})
+        self.assertIn("status_text", plan[0]["output_constrict"])
+
+        plan = self._rule_hit("电视缩小", rule="tv_pdf_zoom", goal="display.pdf.zoom")
+        self.assertEqual(plan[0]["input_constrict"], {"action": "out"})
+
+        plan = self._rule_hit("电视还原", rule="tv_pdf_zoom", goal="display.pdf.zoom")
+        self.assertEqual(plan[0]["input_constrict"], {"action": "reset"})
+
+    def test_tv_pdf_zoom_variants(self) -> None:
+        for text, action in (
+            ("把电视放大一点", "in"),
+            ("电视上的图片放大", "in"),
+            ("帮我把电视缩小", "out"),
+            ("电视恢复原图", "reset"),
+            ("电视原图大小", "reset"),
+        ):
+            with self.subTest(text=text):
+                plan = self._rule_hit(text, rule="tv_pdf_zoom", goal="display.pdf.zoom")
+                self.assertEqual(plan[0]["input_constrict"], {"action": action})
+
+    def test_tv_pdf_zoom_requires_tv_prefix(self) -> None:
+        # 不带「电视」前缀不触发缩放（「放大」可能被存量 music 规则当歌名拦截，这里只断言不命中 tv_pdf_zoom）
+        for text in ("放大", "缩小一点", "还原"):
+            with self.subTest(text=text):
+                hit = intercept(text)
+                if hit is not None:
+                    self.assertNotEqual(hit.plan[0]["capability"], "display.pdf.zoom")
+
+    def test_tv_pdf_zoom_skips_volume_and_questions(self) -> None:
+        # 「电视声音放大」是音量调节，绝不能误触图片缩放
+        self.assertIsNone(intercept("把电视声音放大"))
+        self.assertIsNone(intercept("电视音量放大一点"))
+        self.assertIsNone(intercept("电视放大了几倍"))
+        self.assertIsNone(intercept("电视为什么要放大"))
+
 
 if __name__ == "__main__":
     unittest.main()

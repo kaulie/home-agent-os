@@ -11,6 +11,7 @@ struct TVView: View {
     @State private var busy = false
     @State private var page: Int?
     @State private var pageCount: Int?
+    @State private var zoom: Double = 1.0
     @State private var statusLine = "先在「互动」里说：把 PDF 投到电视上"
     @State private var isError = false
     @State private var pollTask: Task<Void, Never>?
@@ -23,6 +24,7 @@ struct TVView: View {
                     header
                     pagePanel
                     controls
+                    zoomControls
                     statusPanel
                 }
                 .padding(.horizontal, 20)
@@ -75,6 +77,11 @@ struct TVView: View {
                     Text("共 \(pageCount) 页")
                         .font(.system(size: 14, weight: .regular, design: .rounded))
                         .foregroundStyle(EdgeTheme.dim)
+                    if zoom > 1.0 {
+                        Text("已放大 \(Self.zoomText(zoom)) 倍")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(EdgeTheme.sand)
+                    }
                 } else {
                     Text("—")
                         .font(.system(size: 44, weight: .semibold, design: .serif))
@@ -118,6 +125,37 @@ struct TVView: View {
         .disabled(busy)
     }
 
+    /// 缩放行：缩小 / 还原 / 放大 → 直派 display.pdf.zoom（edge 侧中心裁剪重渲染，翻页自动回原图）。
+    private var zoomControls: some View {
+        HStack(spacing: 12) {
+            zoomButton(title: "缩小", systemImage: "minus.magnifyingglass", action: "out")
+            zoomButton(title: "还原", systemImage: "arrow.up.backward.and.arrow.down.forward", action: "reset")
+            zoomButton(title: "放大", systemImage: "plus.magnifyingglass", action: "in")
+        }
+    }
+
+    private func zoomButton(title: String, systemImage: String, action: String) -> some View {
+        Button {
+            zoomPDF(action)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .bold))
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .foregroundStyle(busy ? EdgeTheme.dim : EdgeTheme.sand)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(EdgeTheme.sand.opacity(busy ? 0.10 : 0.22))
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(busy)
+    }
+
     private var statusPanel: some View {
         EdgePanel {
             HStack(alignment: .top, spacing: 10) {
@@ -139,26 +177,53 @@ struct TVView: View {
     // MARK: - 直派 + 轮询
 
     private func turnPage(_ action: String) {
+        let label = action == "next" ? "下一页" : "上一页"
+        invokeDirect(
+            capability: "display.pdf.page",
+            params: ["action": action],
+            label: label,
+            busyText: "正在翻\(label)…",
+            failPrefix: "翻页失败"
+        )
+    }
+
+    private func zoomPDF(_ action: String) {
+        let label = action == "in" ? "放大" : action == "out" ? "缩小" : "还原"
+        invokeDirect(
+            capability: "display.pdf.zoom",
+            params: ["action": action],
+            label: label,
+            busyText: "正在\(label)…",
+            failPrefix: "\(label)失败"
+        )
+    }
+
+    private func invokeDirect(
+        capability: String,
+        params: [String: String],
+        label: String,
+        busyText: String,
+        failPrefix: String
+    ) {
         guard !busy else { return }
         busy = true
         isError = false
-        statusLine = action == "next" ? "正在翻下一页…" : "正在翻上一页…"
+        statusLine = busyText
         pollTask?.cancel()
         let client = model.intentClient
         let serverURL = model.intentServerURL
-        let label = action == "next" ? "下一页" : "上一页"
         pollTask = Task { @MainActor in
             let result = await client.dispatch(
                 text: label,
                 source: "text",
                 serverURL: serverURL,
-                capability: "display.pdf.page",
-                params: ["action": action]
+                capability: capability,
+                params: params
             )
             guard result.ok, let snapshot = result.snapshot else {
                 busy = false
                 isError = true
-                statusLine = "翻页失败：\(Self.firstLine(result.message))"
+                statusLine = "\(failPrefix)：\(Self.firstLine(result.message))"
                 return
             }
             await pollTerminal(intentId: snapshot.jobId, serverURL: serverURL, client: client)
@@ -180,17 +245,23 @@ struct TVView: View {
         busy = false
         guard let snap = last else {
             isError = true
-            statusLine = "翻页结果查询失败：拿不到 intent 详情"
+            statusLine = "结果查询失败：拿不到 intent 详情"
             return
         }
         apply(snapshot: snap)
     }
 
     private func apply(snapshot: IntentJobSnapshot) {
-        let step = snapshot.planSteps.first(where: { $0.capability == "display.pdf.page" })
+        let step = snapshot.planSteps.first(where: { $0.capability.hasPrefix("display.pdf") })
         if let outputs = step?.realizedOutputs {
             if let p = Int(outputs["page"] ?? ""), p > 0 { page = p }
             if let n = Int(outputs["page_count"] ?? ""), n > 0 { pageCount = n }
+            if step?.capability == "display.pdf.zoom" {
+                if let z = Double(outputs["zoom"] ?? ""), z > 0 { zoom = z }
+            } else if step?.capability == "display.pdf.page" {
+                // edge 侧翻页即回 1 倍（缩放不跨页保留），本地角标同步清掉
+                zoom = 1.0
+            }
             if let text = outputs["status_text"], !text.isEmpty {
                 statusLine = text
                 isError = false
@@ -199,15 +270,23 @@ struct TVView: View {
         }
         if snapshot.wireStatus == .failed {
             isError = true
-            statusLine = "翻页失败：\(snapshot.error ?? step?.runDetail ?? "未知原因")"
+            statusLine = "操作失败：\(snapshot.error ?? step?.runDetail ?? "未知原因")"
         } else if snapshot.wireStatus.isTerminal {
             isError = false
-            statusLine = page.map { "已翻到第 \($0) 页" } ?? "翻页完成"
+            statusLine = page.map { "已翻到第 \($0) 页" } ?? "操作完成"
         } else {
             // 轮询超时仍未终态：不报错，提示稍后看电视
             isError = false
             statusLine = "已下发，电视响应稍慢，请稍候"
         }
+    }
+
+    /// 1.5 → "1.5"，2.0 → "2"
+    private static func zoomText(_ value: Double) -> String {
+        if value == value.rounded() {
+            return String(Int(value))
+        }
+        return String(format: "%.1f", value)
     }
 
     private static func firstLine(_ text: String) -> String {

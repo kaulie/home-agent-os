@@ -145,6 +145,28 @@ class PlaybackSessionMappingTest(unittest.TestCase):
         self.assertEqual(row["payload"]["status_text"], "已翻到第 2 页 / 共 3 页")
         self.assertEqual(row["last_intent_id"], "55")
 
+    def test_display_pdf_zoom_outputs_mapped(self) -> None:
+        sid = playback_session.record_from_step(
+            intent=self._intent("display.pdf.zoom", {"action": "in", "appliance": "小米电视 DLNA"}),
+            step_id=1,
+            step_status=2,
+            outputs={
+                "page": 2,
+                "page_count": 3,
+                "zoom": 1.5,
+                "asset_id": "asset_9",
+                "status_text": "已放大到 1.5 倍（第 2 页 / 共 3 页）",
+            },
+        )
+        self.assertIsNotNone(sid)
+        row = brain_db.get_playback_session("tv_pdf")
+        assert row is not None
+        self.assertEqual(row["scene"], "tv_pdf")
+        self.assertEqual(row["position"], 2)
+        self.assertEqual(row["total"], 3)
+        self.assertEqual(row["payload"]["zoom"], 1.5)
+        self.assertEqual(row["payload"]["status_text"], "已放大到 1.5 倍（第 2 页 / 共 3 页）")
+
     def test_unmapped_capability_noop(self) -> None:
         sid = playback_session.record_from_step(
             intent=self._intent("music.pause"),
