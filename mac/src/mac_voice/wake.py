@@ -9,7 +9,15 @@ from collections.abc import Sequence
 
 DEFAULT_WAKE_WORD = "面条"
 DEFAULT_WAKE_REPEAT = 2
-DEFAULT_WAKE_ALIASES = ("miantiao", "棉条", "面跳", "免条")
+DEFAULT_WAKE_ALIASES = (
+    "miantiao",
+    "棉条",
+    "面跳",
+    "免条",
+    # Common Volc STT near-misses for 「面条」
+    "面条儿",
+    "面条条",
+)
 DEFAULT_COMMAND_WINDOW_MS = 5000
 DEFAULT_PARTIAL_WAKE_MS = 2500
 DEFAULT_WAKE_ACK = "我在呢"
