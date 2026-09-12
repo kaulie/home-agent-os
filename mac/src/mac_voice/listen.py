@@ -33,8 +33,24 @@ _STALE_SEC = 2.5
 # still waiting to cut the command utterance.
 _HOLD_AFTER_HIGH_S = 0.75
 _HOLD_AFTER_SILENCE_PAD_S = 0.35
-# Debounce shared-speaker 「又咋了」 when two routes wake nearly together.
+# Debounce shared-speaker 「又咋了」 when two *different* routes wake nearly
+# together. Same gate_key continuous re-wake must still speak (not "失效").
 _ACK_SAY_DEBOUNCE_S = 1.5
+
+
+def should_say_wake_ack(
+    *,
+    now: float,
+    last_ack_say_at: float,
+    last_ack_gate_key: str,
+    gate_key: str,
+    debounce_s: float = _ACK_SAY_DEBOUNCE_S,
+) -> bool:
+    """True unless a different input just used the shared speaker."""
+    if (now - last_ack_say_at) >= debounce_s:
+        return True
+    # Same participant/ingress re-waking within the window: always audible.
+    return bool(gate_key) and gate_key == last_ack_gate_key
 
 
 def _utterance_duration_ms(utt: AudioUtterance) -> int:
@@ -529,6 +545,7 @@ async def _run_live_locked(
         pickup_thread.start()
     wake_tasks: dict[str, asyncio.Task[None]] = {}
     last_ack_say_at = 0.0
+    last_ack_gate_key = ""
     try:
         while True:
             try:
@@ -617,9 +634,15 @@ async def _run_live_locked(
                 speech_end=utt.speech_end,
             )
             if gate is not None and gate.consume_ack():
-                say = (now - last_ack_say_at) >= _ACK_SAY_DEBOUNCE_S
+                say = should_say_wake_ack(
+                    now=now,
+                    last_ack_say_at=last_ack_say_at,
+                    last_ack_gate_key=last_ack_gate_key,
+                    gate_key=gate_key,
+                )
                 if say:
                     last_ack_say_at = now
+                    last_ack_gate_key = gate_key
                 prev = wake_tasks.get(gate_key)
                 if prev is not None and not prev.done():
                     prev.cancel()

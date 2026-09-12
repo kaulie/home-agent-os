@@ -93,7 +93,7 @@ flowchart LR
 
 隔离后建议：
 
-- **应答仍全局喇叭播一次**（客厅就一个喇叭）：谁唤醒谁触发 `handle_wake`；短时间内第二路再唤醒，可合并/丢弃重复播报（debounce ~1.5s），避免「又咋了又咋了」。
+- **应答仍全局喇叭播一次**（客厅就一个喇叭）：谁唤醒谁触发 `handle_wake`；短时间内**另一路**再唤醒，可合并/丢弃重复播报（debounce ~1.5s），避免「又咋了又咋了」。同路连续再唤始终播应答。
 - **开窗只给触发那一路**：`arm_after_ack` / `_arm_command_window` 只作用在该 key 的 gate。
 - TTS 回声：仍靠现有 echo 过滤；回声可能进 USB 或 Home Mic。回声 utterance 应打上实际录入路的 participant——若被另一路麦录到，可能误喂另一 gate。缓解：
   - 继续用 `looks_like_ack_echo` 全路丢弃纯应答；

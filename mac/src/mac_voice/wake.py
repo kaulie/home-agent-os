@@ -392,6 +392,10 @@ class WakeGate:
         if hits >= self.repeat:
             self._finish_wake(speech_end)
             return None
+        # STT often collapses 面条面条 → 面条; do not POST that as a command.
+        if hits > 0 and not remainder.strip():
+            self._enter_partial(speech_end, hits)
+            return None
         leftover = strip_ack_echo(original).strip()
         if not leftover or looks_like_ack_echo(leftover):
             return None
@@ -430,6 +434,10 @@ class WakeGate:
             return None
         if hits >= self.repeat:
             self._finish_wake(speech_end)
+            return None
+        # Continuous re-wake: collapsed single 面条 must re-arm partial, not POST.
+        if hits > 0 and not remainder.strip():
+            self._enter_partial(speech_end, hits)
             return None
         self._reset()
         return leftover
