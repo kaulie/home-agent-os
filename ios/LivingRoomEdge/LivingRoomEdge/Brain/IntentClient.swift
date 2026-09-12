@@ -326,6 +326,62 @@ final class IntentClient {
         return nil
     }
 
+    /// Brain `playback_sessions` 行（tv_pdf 等场景的当前播放状态）。
+    struct PlaybackSession: Equatable {
+        var scene: String = ""
+        var edgeId: String = ""
+        var target: String = ""
+        var assetId: String = ""
+        var position: Int?
+        var total: Int?
+        var state: String = ""
+        var statusText: String = ""
+        var updatedAt: TimeInterval = 0
+    }
+
+    /// `GET /api/v1/playback_session?scene=` — 打开控制面时回显当前播放状态。
+    func fetchPlaybackSession(scene: String, intentURL: String? = nil) async -> PlaybackSession? {
+        let base = (intentURL ?? lastServerURL).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: base) else { return nil }
+        var path = components.path
+        if path.hasSuffix("/intent") {
+            path = String(path.dropLast("intent".count)) + "playback_session"
+        } else if let range = path.range(of: "/api/v1/") {
+            path = String(path[..<range.upperBound]) + "playback_session"
+        } else {
+            path = "/api/v1/playback_session"
+        }
+        components.path = path
+        components.queryItems = [URLQueryItem(name: "scene", value: scene)]
+        guard let url = components.url else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        do {
+            let timed = try await TimedHTTP.data(for: request, label: "playback-session")
+            guard let http = timed.http, (200 ..< 300).contains(http.statusCode),
+                  let obj = try JSONSerialization.jsonObject(with: timed.data) as? [String: Any],
+                  let row = obj["session"] as? [String: Any]
+            else { return nil }
+            var session = PlaybackSession()
+            session.scene = row["scene"] as? String ?? ""
+            session.edgeId = row["edge_id"] as? String ?? ""
+            session.target = row["target"] as? String ?? ""
+            session.assetId = row["asset_id"] as? String ?? ""
+            session.state = row["state"] as? String ?? ""
+            if let n = row["position"] as? NSNumber { session.position = n.intValue }
+            if let n = row["total"] as? NSNumber { session.total = n.intValue }
+            if let n = row["updated_at"] as? NSNumber { session.updatedAt = n.doubleValue }
+            if let payload = row["payload"] as? [String: Any] {
+                session.statusText = payload["status_text"] as? String ?? ""
+            }
+            return session
+        } catch {
+            NSLog("[IntentClient] fetchPlaybackSession failed: %@", error.localizedDescription)
+            return nil
+        }
+    }
+
     func fetchIntentDetail(intentId: String, intentURL: String? = nil) async -> IntentJobSnapshot? {
         let base = (intentURL ?? lastServerURL).trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = Self.intentDetailURL(fromIntentURL: base, intentId: intentId) else {

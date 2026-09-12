@@ -2471,6 +2471,144 @@ def resolve_active_mode() -> str | None:
     return None
 
 
+def _row_to_playback_session(row: sqlite3.Row) -> dict[str, Any]:
+    payload: Any = None
+    raw_payload = row["payload"]
+    if raw_payload:
+        try:
+            payload = json.loads(raw_payload)
+        except (TypeError, ValueError):
+            payload = None
+    return {
+        "session_id": int(row["session_id"]),
+        "scene": str(row["scene"]),
+        "edge_id": str(row["edge_id"]),
+        "target": row["target"] or "",
+        "asset_id": row["asset_id"] or "",
+        "position": row["position"],
+        "total": row["total"],
+        "state": str(row["state"]),
+        "payload": payload if isinstance(payload, dict) else {},
+        "last_intent_id": row["last_intent_id"] or "",
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def upsert_playback_session(record: dict[str, Any]) -> int:
+    """Latest-wins write keyed on (scene, edge_id). Returns session_id."""
+    scene = str(record.get("scene") or "").strip()
+    edge_id = str(record.get("edge_id") or "").strip()
+    state = str(record.get("state") or "").strip()
+    if not scene:
+        raise ValueError("scene is required")
+    if not edge_id:
+        raise ValueError("edge_id is required")
+    if not state:
+        raise ValueError("state is required")
+    now = _unix_seconds(record.get("updated_at"))
+    with _lock:
+        conn = _connect()
+        conn.execute(
+            """
+            INSERT INTO playback_sessions(
+              scene, edge_id, target, asset_id, position, total, state,
+              payload, last_intent_id, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(scene, edge_id) DO UPDATE SET
+              target = excluded.target,
+              asset_id = excluded.asset_id,
+              position = excluded.position,
+              total = excluded.total,
+              state = excluded.state,
+              payload = excluded.payload,
+              last_intent_id = excluded.last_intent_id,
+              updated_at = excluded.updated_at
+            """,
+            (
+                scene,
+                edge_id,
+                _opt_text(record.get("target")),
+                _opt_text(record.get("asset_id")),
+                record.get("position"),
+                record.get("total"),
+                state,
+                _opt_json(record.get("payload")),
+                _opt_text(record.get("last_intent_id")),
+                now,
+                now,
+            ),
+        )
+        row = conn.execute(
+            "SELECT session_id FROM playback_sessions WHERE scene = ? AND edge_id = ?",
+            (scene, edge_id),
+        ).fetchone()
+        return int(row["session_id"])
+
+
+def get_playback_session(
+    scene: str,
+    *,
+    edge_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Latest updated session for a scene (optionally pinned to one edge)."""
+    scene_s = str(scene or "").strip()
+    if not scene_s:
+        return None
+    edge_s = str(edge_id or "").strip()
+    with _lock:
+        conn = _connect()
+        try:
+            if edge_s:
+                row = conn.execute(
+                    """
+                    SELECT * FROM playback_sessions
+                    WHERE scene = ? AND edge_id = ?
+                    """,
+                    (scene_s, edge_s),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT * FROM playback_sessions
+                    WHERE scene = ?
+                    ORDER BY updated_at DESC, session_id DESC
+                    LIMIT 1
+                    """,
+                    (scene_s,),
+                ).fetchone()
+        except sqlite3.OperationalError:
+            return None
+    return _row_to_playback_session(row) if row is not None else None
+
+
+def list_playback_sessions(*, scene: str | None = None) -> list[dict[str, Any]]:
+    scene_s = str(scene or "").strip()
+    with _lock:
+        conn = _connect()
+        try:
+            if scene_s:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM playback_sessions
+                    WHERE scene = ?
+                    ORDER BY updated_at DESC, session_id DESC
+                    """,
+                    (scene_s,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM playback_sessions
+                    ORDER BY updated_at DESC, session_id DESC
+                    """
+                ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+    return [_row_to_playback_session(row) for row in rows]
+
+
 def _normalize_cloud_call_ok(value: Any) -> int:
     if value in (True, 1, "1"):
         return 1
