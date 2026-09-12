@@ -647,6 +647,9 @@ class ConfigDefaultTests(unittest.TestCase):
         self.assertEqual(cfg.phone_wake_max_speech_ms, 2800)
         self.assertEqual(cfg.phone_command_silence_ms, 1500)
         self.assertEqual(cfg.phone_command_max_speech_ms, 12_000)
+        self.assertEqual(cfg.usb_wake_silence_ms, 400)
+        self.assertEqual(cfg.usb_wake_max_speech_ms, 2800)
+        self.assertEqual(cfg.silence_ms, 1000)
 
     def test_load_config_fetches_wake_ack_from_brain_when_env_unset(self) -> None:
         from mac_voice.config import load_config
@@ -836,6 +839,40 @@ class ListenQueueTests(unittest.TestCase):
                 gate_key="pid:iphone-1",
             )
         )
+
+    def test_usb_endpoint_wake_silence_until_command_speech(self) -> None:
+        from mac_voice.listen import UsbEndpoint
+
+        clock = {"t": 0.0}
+        ep = UsbEndpoint(
+            wake_silence_ms=400,
+            command_silence_ms=1000,
+            wake_max_speech_ms=2800,
+            command_max_speech_ms=8000,
+            command_window_ms=5000,
+            clock=lambda: clock["t"],
+        )
+        self.assertEqual(ep.silence_ms(), 400)
+        ep.begin_command_listen()
+        # Idle in command window: still wake silence (fast re-wake).
+        self.assertEqual(ep.silence_ms(), 400)
+        clock["t"] = 0.5
+        ep.note_activity("speech")
+        self.assertEqual(ep.silence_ms(), 1000)
+        self.assertEqual(ep.max_speech_ms(), 8000)
+        ep.note_activity("idle")
+        self.assertEqual(ep.silence_ms(), 400)
+
+    def test_usb_endpoint_mute_end_opens_command_window(self) -> None:
+        from mac_voice.listen import UsbEndpoint
+
+        clock = {"t": 10.0}
+        ep = UsbEndpoint(clock=lambda: clock["t"])
+        ep.note_mute(True)
+        clock["t"] = 11.0
+        ep.note_mute(False)
+        ep.note_activity("speech")
+        self.assertEqual(ep.silence_ms(), 1000)
 
 
 if __name__ == "__main__":
