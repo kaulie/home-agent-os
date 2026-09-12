@@ -9,6 +9,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from mac_edge.plugins.pdf_render import (
+    center_clip_for_zoom,
+    render_page_region_png,
     DEFAULT_RENDER_DPI,
     PdfRenderError,
     clamp_dpi,
@@ -96,6 +98,39 @@ class RealRenderTests(unittest.TestCase):
             with self.assertRaises(PdfRenderError) as ctx:
                 render_page_png(pdf, 5, dpi=150, out_path=Path(td) / "x.png")
             self.assertIn("越界", str(ctx.exception))
+
+    def test_region_render_zoom_keeps_output_pixels(self) -> None:
+        """zoom=2 中心区域 + dpi×2 → 输出像素尺寸与整页一致（放大不糊的关键）。"""
+        with tempfile.TemporaryDirectory() as td:
+            pdf = self._build_pdf(1, Path(td) / "in.pdf")
+            full = Path(td) / "full.png"
+            render_page_png(pdf, 0, dpi=150, out_path=full)
+            zoomed = Path(td) / "z2.png"
+            render_page_region_png(pdf, 0, zoom=2.0, dpi=300, out_path=zoomed)
+            self.assertTrue(zoomed.read_bytes().startswith(b"\x89PNG"))
+
+            import struct
+
+            def _png_size(p: Path) -> tuple[int, int]:
+                data = p.read_bytes()
+                w, h = struct.unpack(">II", data[16:24])
+                return w, h
+
+            fw, fh = _png_size(full)
+            zw, zh = _png_size(zoomed)
+            # 裁剪矩形舍入允许 ≤2px 差
+            self.assertLessEqual(abs(fw - zw), 2)
+            self.assertLessEqual(abs(fh - zh), 2)
+
+    def test_center_clip_math(self) -> None:
+        class _Rect:
+            x0, y0, x1, y1 = 0.0, 0.0, 400.0, 200.0
+            width, height = 400.0, 200.0
+
+        clip = center_clip_for_zoom(_Rect(), 2.0)
+        self.assertEqual(clip, (100.0, 50.0, 300.0, 150.0))
+        # zoom=1 → 整页
+        self.assertEqual(center_clip_for_zoom(_Rect(), 1.0), (0.0, 0.0, 400.0, 200.0))
 
 
 if __name__ == "__main__":

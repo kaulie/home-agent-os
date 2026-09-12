@@ -119,3 +119,55 @@ def render_page_png(pdf_path: Path, page_index: int, *, dpi: int, out_path: Path
     if not out_path.is_file() or out_path.stat().st_size <= 0:
         raise PdfRenderError(f"渲染第 {page_index + 1} 页失败：未产出图片")
     return out_path
+
+
+def center_clip_for_zoom(page_rect: Any, zoom: float) -> tuple[float, float, float, float]:
+    """页面中心放大裁剪区（PDF 坐标）：zoom=2 → 中心 1/2 宽高的矩形。"""
+    z = max(1.0, float(zoom))
+    w = float(page_rect.width) / z
+    h = float(page_rect.height) / z
+    cx = (float(page_rect.x0) + float(page_rect.x1)) / 2.0
+    cy = (float(page_rect.y0) + float(page_rect.y1)) / 2.0
+    return (cx - w / 2.0, cy - h / 2.0, cx + w / 2.0, cy + h / 2.0)
+
+
+def render_page_region_png(
+    pdf_path: Path,
+    page_index: int,
+    *,
+    zoom: float,
+    dpi: int,
+    out_path: Path,
+) -> Path:
+    """把页面中心 1/zoom 区域渲染成 PNG——电视放大用。
+
+    dpi 随 zoom 同比提高时，输出像素尺寸与整页渲染一致：电视全屏显示
+    即内容放大 zoom 倍且保持清晰（矢量重渲染，非位图拉伸）。
+    """
+    fitz = _fitz()
+    try:
+        doc = fitz.open(str(pdf_path))
+    except Exception as e:
+        raise PdfRenderError(f"无法读取 PDF：{e}") from e
+    try:
+        if page_index < 0 or page_index >= int(doc.page_count):
+            raise PdfRenderError(
+                f"页下标越界：{page_index + 1}（共 {doc.page_count} 页）"
+            )
+        page = doc.load_page(page_index)
+        clip = center_clip_for_zoom(page.rect, zoom)
+        rect = fitz.Rect(clip) & page.rect
+        if rect.is_empty or rect.width <= 0 or rect.height <= 0:
+            raise PdfRenderError(f"放大裁剪区无效：zoom={zoom!r}")
+        pix = page.get_pixmap(dpi=int(dpi), clip=rect)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        pix.save(str(out_path))
+    except PdfRenderError:
+        raise
+    except Exception as e:
+        raise PdfRenderError(f"渲染第 {page_index + 1} 页局部失败：{e}") from e
+    finally:
+        doc.close()
+    if not out_path.is_file() or out_path.stat().st_size <= 0:
+        raise PdfRenderError(f"渲染第 {page_index + 1} 页局部失败：未产出图片")
+    return out_path

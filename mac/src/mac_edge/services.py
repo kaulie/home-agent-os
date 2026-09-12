@@ -179,6 +179,38 @@ PDF_DISPLAY_CAPABILITIES: list[dict[str, Any]] = [
             },
         },
     ),
+    attach(
+        'display.pdf.zoom',
+        input_schema={
+            'action': {
+                'type': 'string',
+                'required': False,
+                'description': 'in（默认）/ out / reset；也接受 放大/缩小/还原 等中文',
+            },
+        },
+        output_schema={
+            'page': {
+                'type': 'number',
+                'required': True,
+                'description': '当前投屏页码（1-based）',
+            },
+            'page_count': {
+                'type': 'number',
+                'required': True,
+                'description': 'PDF 总页数',
+            },
+            'zoom': {
+                'type': 'number',
+                'required': True,
+                'description': '缩放后倍数（1.0 = 原图）',
+            },
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话，如「已放大到 2 倍（第 2 页 / 共 12 页）」',
+            },
+        },
+    ),
 ]
 
 

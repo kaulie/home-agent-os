@@ -283,9 +283,62 @@ def match_tv_pdf_page(text: str) -> RuleHit | None:
     )
 
 
+_TV_PDF_ZOOM_IN = ("放大",)
+_TV_PDF_ZOOM_OUT = ("缩小",)
+_TV_PDF_ZOOM_RESET = ("还原", "恢复原图", "原图大小")
+# 「把电视声音放大」绝不能误触图片缩放
+_TV_PDF_ZOOM_EXCLUDE = _TV_PDF_EXCLUDE + (
+    "声音",
+    "音量",
+    "几倍",
+)
+
+
+def match_tv_pdf_zoom(text: str) -> RuleHit | None:
+    """「电视放大 / 电视缩小 / 电视还原」→ display.pdf.zoom（电视前缀消歧，音量类排除）。"""
+    t0 = time.perf_counter()
+    utterance = _rstrip_punct(_lstrip_courtesy(str(text or "").strip()))
+    if not utterance or _TV_PDF_HINT not in utterance:
+        return None
+    if matches_any(utterance, _TV_PDF_ZOOM_EXCLUDE):
+        return None
+    action = ""
+    if matches_any(utterance, _TV_PDF_ZOOM_RESET):
+        action = "reset"
+    elif matches_any(utterance, _TV_PDF_ZOOM_OUT):
+        action = "out"
+    elif matches_any(utterance, _TV_PDF_ZOOM_IN):
+        action = "in"
+    if not action:
+        return None
+
+    match_ms = int(round((time.perf_counter() - t0) * 1000))
+    return RuleHit(
+        rule="tv_pdf_zoom",
+        goal="display.pdf.zoom",
+        plan=[
+            {
+                "step": 1,
+                "capability": "display.pdf.zoom",
+                "input_constrict": {"action": action},
+                "output_constrict": {"status_text": {}},
+            }
+        ],
+        # 语音发起时由 TTS 注入步朗读 status_text（如「已放大到 2 倍」）
+        presentation={"type": "audio", "from": "status_text"},
+        match_ms=match_ms,
+    )
+
+
 def match_rules(text: str) -> RuleHit | None:
     """Run P0 rules in priority order; uncertain → None."""
-    for matcher in (match_clock, match_climate, match_photo_latest, match_tv_pdf_page):
+    for matcher in (
+        match_clock,
+        match_climate,
+        match_photo_latest,
+        match_tv_pdf_page,
+        match_tv_pdf_zoom,
+    ):
         hit = matcher(text)
         if hit is not None:
             return hit

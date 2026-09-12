@@ -33,6 +33,7 @@ from mac_edge.plugins.pdf_display import (
     PdfDisplayError,
     open_from_params as pdf_display_open_from_params,
     page_from_params as pdf_display_page_from_params,
+    zoom_from_params as pdf_display_zoom_from_params,
 )
 from mac_edge.capability_ads import composition_of, decomposes_to
 from mac_edge.capability_availability import is_available
@@ -1549,6 +1550,19 @@ def _execute_capability(
     if cap == "display.pdf.page":
         try:
             msg, outputs = pdf_display_page_from_params(
+                params,
+                asset=asset,
+                display_base_url=config.cast_display_url,
+                timeout_sec=config.display_http_timeout_sec,
+            )
+            return True, msg, outputs
+        except (PdfDisplayError, CastError, XiaomiTvError, AssetError) as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "display.pdf.zoom":
+        try:
+            msg, outputs = pdf_display_zoom_from_params(
                 params,
                 asset=asset,
                 display_base_url=config.cast_display_url,

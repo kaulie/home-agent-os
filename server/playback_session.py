@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 SCENE_BY_CAPABILITY = {
     "display.pdf": "tv_pdf",
     "display.pdf.page": "tv_pdf",
+    "display.pdf.zoom": "tv_pdf",
 }
 
 STATE_PLAYING = "playing"
@@ -39,13 +40,25 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
+def _float_or_none(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _extract_tv_pdf(step: dict, outputs: dict) -> dict[str, Any]:
-    """display.pdf / display.pdf.page outputs → session fields."""
+    """display.pdf / display.pdf.page / display.pdf.zoom outputs → session fields."""
     constrict = step.get("input_constrict") or {}
     payload: dict[str, Any] = {}
     status_text = str(outputs.get("status_text") or "").strip()
     if status_text:
         payload["status_text"] = status_text
+    zoom = _float_or_none(outputs.get("zoom"))
+    if zoom is not None:
+        payload["zoom"] = zoom
     return {
         "target": str(constrict.get("appliance") or "").strip(),
         "asset_id": str(outputs.get("asset_id") or "").strip(),

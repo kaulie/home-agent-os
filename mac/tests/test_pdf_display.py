@@ -19,12 +19,17 @@ from mac_edge.plugins.pdf_display import (
     ACTION_GOTO,
     ACTION_NEXT,
     ACTION_PREV,
+    ZOOM_IN,
+    ZOOM_OUT,
+    ZOOM_RESET,
     PdfDisplayError,
     open_from_params,
     page_from_params,
     parse_page_action,
     parse_page_number,
+    parse_zoom_action,
     reset_session,
+    zoom_from_params,
 )
 from mac_edge.plugins.pdf_render import pymupdf_available, render_dpi
 from mac_edge.services import default_services
@@ -411,6 +416,158 @@ class ExecutorDispatchTests(_Base):
             )
         self.assertFalse(ok)
         self.assertIn("没有正在投屏的 PDF", msg)
+
+
+def _fake_region_render(pdf_path: Path, page_index: int, zoom: float, dpi: int, out_path: Path) -> Path:
+    """假局部渲染：写最小 PNG 头字节，记录 zoom/dpi。"""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(b"\x89PNG\r\n\x1a\n" + bytes([page_index]))
+    return out_path
+
+
+class ZoomParseTests(unittest.TestCase):
+    def test_zoom_action_aliases(self) -> None:
+        for raw in ("in", "zoom_in", "放大", "再放大", None, ""):
+            self.assertEqual(parse_zoom_action(raw), ZOOM_IN, raw)
+        for raw in ("out", "zoom_out", "缩小"):
+            self.assertEqual(parse_zoom_action(raw), ZOOM_OUT, raw)
+        for raw in ("reset", "还原", "恢复原图", "原图"):
+            self.assertEqual(parse_zoom_action(raw), ZOOM_RESET, raw)
+
+    def test_zoom_action_invalid_fails(self) -> None:
+        with self.assertRaises(PdfDisplayError):
+            parse_zoom_action("随便")
+
+
+class ZoomTests(_Base):
+    def _zoom(self, asset: MagicMock, displayed: list[str], **params):
+        return zoom_from_params(
+            params,
+            asset=asset,
+            display_fn=lambda url: displayed.append(url) or "display ok",
+            render_fn=_fake_render,
+            region_render_fn=_fake_region_render,
+        )
+
+    def test_zoom_in_ladder_and_clamp(self) -> None:
+        asset = _asset_for(self.pdf_path)
+        displayed: list[str] = []
+        self._open(asset, displayed, asset_ref=DOC_REF.to_dict())
+
+        _msg, outputs = self._zoom(asset, displayed, action="in")
+        self.assertEqual(outputs["zoom"], 1.5)
+        self.assertIn("已放大到 1.5 倍", outputs["status_text"])
+
+        _msg, outputs = self._zoom(asset, displayed, action="放大")
+        self.assertEqual(outputs["zoom"], 2.0)
+
+        for want in (3.0, 4.0):
+            _msg, outputs = self._zoom(asset, displayed, action="in")
+            self.assertEqual(outputs["zoom"], want)
+
+        # 到顶后不再重投屏，中文提示
+        before = len(displayed)
+        _msg, outputs = self._zoom(asset, displayed, action="in")
+        self.assertEqual(outputs["zoom"], 4.0)
+        self.assertIn("已是最大放大倍数", outputs["status_text"])
+        self.assertEqual(len(displayed), before)
+
+    def test_zoom_out_and_reset(self) -> None:
+        asset = _asset_for(self.pdf_path)
+        displayed: list[str] = []
+        self._open(asset, displayed, asset_ref=DOC_REF.to_dict())
+        self._zoom(asset, displayed, action="in")
+        self._zoom(asset, displayed, action="in")
+
+        _msg, outputs = self._zoom(asset, displayed, action="out")
+        self.assertEqual(outputs["zoom"], 1.5)
+        self.assertIn("已缩小到 1.5 倍", outputs["status_text"])
+
+        _msg, outputs = self._zoom(asset, displayed, action="还原")
+        self.assertEqual(outputs["zoom"], 1.0)
+        self.assertIn("已恢复原图大小", outputs["status_text"])
+
+        # 原图再缩小：不重投屏
+        before = len(displayed)
+        _msg, outputs = self._zoom(asset, displayed, action="out")
+        self.assertEqual(outputs["zoom"], 1.0)
+        self.assertIn("已是原图大小", outputs["status_text"])
+        self.assertEqual(len(displayed), before)
+
+    def test_zoom_uses_region_render_with_raised_dpi(self) -> None:
+        asset = _asset_for(self.pdf_path)
+        self._open(asset, [], asset_ref=DOC_REF.to_dict())
+        calls: list[tuple] = []
+
+        def spy_region(pdf_path, page_index, zoom, dpi, out_path):
+            calls.append((page_index, zoom, dpi))
+            return _fake_region_render(pdf_path, page_index, zoom, dpi, out_path)
+
+        _msg, outputs = zoom_from_params(
+            {"action": "in"},
+            asset=asset,
+            display_fn=lambda url: "ok",
+            render_fn=_fake_render,
+            region_render_fn=spy_region,
+        )
+        self.assertEqual(outputs["zoom"], 1.5)
+        # 页 1（0-based 0），zoom 1.5，dpi = 200×1.5 = 300
+        self.assertEqual(calls, [(0, 1.5, 300)])
+
+    def test_zoom_renders_distinct_cache_and_reuses(self) -> None:
+        asset = _asset_for(self.pdf_path)
+        displayed: list[str] = []
+        self._open(asset, displayed, asset_ref=DOC_REF.to_dict())
+        self._zoom(asset, displayed, action="in")   # z1.5 渲染+上传
+        self._zoom(asset, displayed, action="out")  # 回 1.0 用整页缓存
+        uploads_before = asset.upload_file.call_count
+        self._zoom(asset, displayed, action="in")   # 再放大：z1.5 PNG 已渲染，但跨 intent 授权可能重传
+        session = pdf_display.current_session()
+        self.assertIsNotNone(session)
+        self.assertTrue((session.work_dir / "page-1-z1.5.png").is_file())
+        self.assertTrue((session.work_dir / "page-1.png").is_file())
+        # 同 intent 内 ref 缓存命中 → 不重复上传
+        self.assertEqual(asset.upload_file.call_count, uploads_before)
+
+    def test_page_turn_resets_zoom(self) -> None:
+        asset = _asset_for(self.pdf_path)
+        displayed: list[str] = []
+        self._open(asset, displayed, asset_ref=DOC_REF.to_dict())
+        self._zoom(asset, displayed, action="in")
+        session = pdf_display.current_session()
+        self.assertEqual(session.zoom, 1.5)
+
+        _msg, outputs = page_from_params(
+            {"action": "next"}, asset=asset,
+            display_fn=lambda url: displayed.append(url) or "ok",
+            render_fn=_fake_render,
+        )
+        self.assertEqual(outputs["page"], 2)
+        self.assertEqual(session.zoom, 1.0)
+
+    def test_zoom_without_session_fails(self) -> None:
+        asset = _asset_for(self.pdf_path)
+        with self.assertRaises(PdfDisplayError) as ctx:
+            self._zoom(asset, [], action="in")
+        self.assertIn("没有正在投屏的 PDF", str(ctx.exception))
+
+    def test_executor_dispatches_display_pdf_zoom(self) -> None:
+        from mac_edge.executor import _execute_capability
+
+        asset = _asset_for(self.pdf_path)
+        config = MagicMock()
+        config.cast_display_url = "http://127.0.0.1:9095/endpoint/display"
+        config.display_http_timeout_sec = 5.0
+        with patch(
+            "mac_edge.executor.pdf_display_zoom_from_params",
+            return_value=("ok", {"page": 1, "page_count": 3, "zoom": 1.5}),
+        ) as fn:
+            ok, msg, outputs = _execute_capability(
+                "display.pdf.zoom", asset, params={"action": "in"}, config=config
+            )
+        self.assertTrue(ok)
+        self.assertEqual(outputs["zoom"], 1.5)
+        fn.assert_called_once()
 
 
 if __name__ == "__main__":
