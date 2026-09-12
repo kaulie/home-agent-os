@@ -53,6 +53,87 @@ def should_say_wake_ack(
     return bool(gate_key) and gate_key == last_ack_gate_key
 
 
+class UsbEndpoint:
+    """USB mic: short silence while hunting wake; long silence mid-command.
+
+    Mirrors phone HAP1: wake cuts stay snappy; after local ack / notify.speak,
+    the next utterance (once speech starts) uses command silence so mid-phrase
+    pauses still glue. Idle inside the command window keeps wake silence so
+    continuous 「面条面条」 re-wake is not slowed.
+    """
+
+    def __init__(
+        self,
+        *,
+        wake_silence_ms: int = 400,
+        command_silence_ms: int = 1000,
+        wake_max_speech_ms: int = 2800,
+        command_max_speech_ms: int = 8000,
+        command_window_ms: int = 5000,
+        clock: Any = time.monotonic,
+    ) -> None:
+        self.wake_silence_ms = max(250, int(wake_silence_ms))
+        self.command_silence_ms = max(400, int(command_silence_ms))
+        self.wake_max_speech_ms = max(800, int(wake_max_speech_ms))
+        self.command_max_speech_ms = max(2000, int(command_max_speech_ms))
+        self.command_window_s = max(0.5, float(command_window_ms) / 1000.0)
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._command_until = 0.0
+        self._command_utt_active = False
+        self._was_muted = False
+
+    def begin_command_listen(self, *, window_ms: float | None = None) -> None:
+        with self._lock:
+            window = (
+                self.command_window_s
+                if window_ms is None
+                else max(0.5, float(window_ms) / 1000.0)
+            )
+            self._command_until = self._clock() + window
+            self._command_utt_active = False
+        log.info(
+            "mac_usb command listen window=%.1fs cmd_silence_ms=%s wake_silence_ms=%s",
+            window,
+            self.command_silence_ms,
+            self.wake_silence_ms,
+        )
+
+    def note_mute(self, muted: bool) -> None:
+        """When notify.speak PlaybackMute ends, open command glue window."""
+        with self._lock:
+            if self._was_muted and not muted:
+                self._command_until = self._clock() + self.command_window_s
+                self._command_utt_active = False
+            self._was_muted = muted
+
+    def note_activity(self, state: str) -> None:
+        with self._lock:
+            now = self._clock()
+            in_window = now <= self._command_until or self._command_utt_active
+            if state == "speech" and in_window:
+                if not self._command_utt_active and now <= self._command_until:
+                    log.info("mac_usb command utterance started")
+                self._command_utt_active = True
+                return
+            if state == "idle" and self._command_utt_active:
+                self._command_utt_active = False
+                self._command_until = 0.0
+                log.info("mac_usb command utterance ended → wake endpoint")
+
+    def silence_ms(self) -> int:
+        with self._lock:
+            if self._command_utt_active:
+                return self.command_silence_ms
+            return self.wake_silence_ms
+
+    def max_speech_ms(self) -> int:
+        with self._lock:
+            if self._command_utt_active:
+                return self.command_max_speech_ms
+            return self.wake_max_speech_ms
+
+
 def _utterance_duration_ms(utt: AudioUtterance) -> int:
     if utt.speech_start is not None and utt.speech_end is not None:
         return max(0, int((utt.speech_end - utt.speech_start) * 1000))
@@ -175,6 +256,7 @@ def _capture_loop(
     out_q: queue.Queue[AudioUtterance | None],
     stop: threading.Event,
     activity: _CaptureActivity,
+    usb_endpoint: UsbEndpoint | None = None,
 ) -> None:
     """Drain mic forever; push silence-cut utterances. Never waits on STT."""
     last_energy_log = 0.0
@@ -230,18 +312,35 @@ def _capture_loop(
         tts_mute = PlaybackMute()
 
         def muted() -> bool:
-            return tts_mute()
+            on = tts_mute()
+            if usb_endpoint is not None:
+                usb_endpoint.note_mute(on)
+            return on
+
+        def on_usb_activity(state: str) -> None:
+            activity.note(state)
+            if usb_endpoint is not None:
+                usb_endpoint.note_activity(state)
+
+        silence: int | Any = (
+            usb_endpoint.silence_ms if usb_endpoint is not None else cfg.silence_ms
+        )
+        max_speech: int | Any = (
+            usb_endpoint.max_speech_ms
+            if usb_endpoint is not None
+            else cfg.max_speech_ms
+        )
 
         for utt in iter_utterances(
             watched_levels(),
             format=PCM_16K_MONO,
             energy_threshold=cfg.energy_threshold,
             start_threshold=start_th,
-            silence_ms=cfg.silence_ms,
+            silence_ms=silence,
             min_speech_ms=cfg.min_speech_ms,
-            max_speech_ms=cfg.max_speech_ms,
+            max_speech_ms=max_speech,
             muted=muted,
-            on_activity=activity.note,
+            on_activity=on_usb_activity,
         ):
             if stop.is_set():
                 break
@@ -373,6 +472,7 @@ async def _ack_wake(
     ingress: str = "",
     participant_id: str = "",
     say: bool = True,
+    usb_endpoint: UsbEndpoint | None = None,
 ) -> None:
     try:
         if say:
@@ -391,6 +491,8 @@ async def _ack_wake(
             )
     except Exception:
         log.exception("wake ack local echo failed")
+    if usb_endpoint is not None and (ingress or "").strip() == "mac_usb":
+        usb_endpoint.begin_command_listen(window_ms=cfg.command_window_ms)
     gate.arm_after_ack()
 
 
@@ -483,9 +585,18 @@ async def _run_live_locked(
     utt_q: queue.Queue[AudioUtterance | None] = queue.Queue(maxsize=8)
     stop = threading.Event()
     activity = _CaptureActivity()
+    usb_endpoint: UsbEndpoint | None = None
+    if cfg.listen_mode == "wake_word":
+        usb_endpoint = UsbEndpoint(
+            wake_silence_ms=cfg.usb_wake_silence_ms,
+            command_silence_ms=cfg.silence_ms,
+            wake_max_speech_ms=cfg.usb_wake_max_speech_ms,
+            command_max_speech_ms=cfg.max_speech_ms,
+            command_window_ms=cfg.command_window_ms,
+        )
     thread = threading.Thread(
         target=_capture_loop,
-        args=(source, cfg, utt_q, stop, activity),
+        args=(source, cfg, utt_q, stop, activity, usb_endpoint),
         name="mac-voice-capture",
         daemon=True,
     )
@@ -520,7 +631,9 @@ async def _run_live_locked(
             ingest = None
     if pool is not None:
         log.info(
-            "live listen mode=%s wake=%r x%d scope=%s window_ms=%s device=%s energy>=%s silence_ms=%s home_mic=%s (Ctrl+C to stop)",
+            "live listen mode=%s wake=%r x%d scope=%s window_ms=%s device=%s "
+            "energy>=%s usb_wake_silence_ms=%s cmd_silence_ms=%s home_mic=%s "
+            "(Ctrl+C to stop)",
             cfg.listen_mode,
             cfg.wake_word,
             cfg.wake_repeat,
@@ -528,6 +641,7 @@ async def _run_live_locked(
             cfg.command_window_ms,
             device if device is not None else cfg.input_device,
             cfg.energy_threshold,
+            cfg.usb_wake_silence_ms,
             cfg.silence_ms,
             "on" if ingest is not None else "off",
         )
@@ -654,6 +768,7 @@ async def _run_live_locked(
                         ingress=utt.ingress or "",
                         participant_id=input_pid,
                         say=say,
+                        usb_endpoint=usb_endpoint,
                     )
                 )
             if command is None:

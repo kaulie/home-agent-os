@@ -78,6 +78,8 @@ class VoiceConfig:
     silence_ms: int
     min_speech_ms: int
     max_speech_ms: int
+    usb_wake_silence_ms: int
+    usb_wake_max_speech_ms: int
     wake_word: str
     wake_repeat: int
     wake_aliases: tuple[str, ...]
@@ -246,6 +248,20 @@ def load_config() -> VoiceConfig:
         silence_ms=int(_env("MAC_VOICE_SILENCE_MS", "1000") or "1000"),
         min_speech_ms=int(_env("MAC_VOICE_MIN_SPEECH_MS", "400") or "400"),
         max_speech_ms=int(_env("MAC_VOICE_MAX_SPEECH_MS", "8000") or "8000"),
+        # USB wake hunt: short trailing silence (phone uses 350). Command glue
+        # still uses silence_ms / max_speech_ms after ack or notify.speak.
+        usb_wake_silence_ms=_parse_int(
+            _env("MAC_VOICE_USB_WAKE_SILENCE_MS"),
+            400,
+            lo=250,
+            hi=2000,
+        ),
+        usb_wake_max_speech_ms=_parse_int(
+            _env("MAC_VOICE_USB_WAKE_MAX_SPEECH_MS"),
+            2800,
+            lo=800,
+            hi=15_000,
+        ),
         wake_word=wake_word,
         wake_repeat=_parse_int(
             _env("MAC_VOICE_WAKE_REPEAT"),
