@@ -33,10 +33,14 @@ final class IntentClient {
         source: String,
         serverURL: String,
         assetRef: [String: Any]? = nil,
-        context: [String: Any]? = nil
+        context: [String: Any]? = nil,
+        capability: String? = nil,
+        params: [String: Any]? = nil
     ) async -> DispatchResult {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedText.isEmpty else {
+        let trimmedCapability = (capability ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // 直派（capability 非空）时 text 仅作展示/留痕，允许为空
+        guard !trimmedText.isEmpty || !trimmedCapability.isEmpty else {
             return DispatchResult(ok: false, message: "text is empty", snapshot: nil)
         }
         let trimmedURL = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -56,10 +60,14 @@ final class IntentClient {
             src = "text"
         }
         var payload: [String: Any] = [
-            "text": trimmedText,
+            "text": trimmedText.isEmpty ? "直派 \(trimmedCapability)" : trimmedText,
             "source": src,
             "client_hint": ParticipantStore.clientHint,
         ]
+        if !trimmedCapability.isEmpty {
+            payload["capability"] = trimmedCapability
+            payload["params"] = params ?? [:]
+        }
         if let assetRef {
             payload["asset_ref"] = assetRef
             payload["context"] = ["asset_ref": assetRef]

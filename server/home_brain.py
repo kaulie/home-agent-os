@@ -4216,6 +4216,75 @@ def _log_music_shortcut_timing(intent_id, plan, timing: dict) -> None:
     )
 
 
+def _dispatch_direct_capability(
+    intent_id,
+    text,
+    capability,
+    params,
+    *,
+    source,
+    edge_id,
+    intent_origin,
+    ctx_param,
+    reply,
+):
+    """POST /api/v1/intent 带 capability/params 的直派通路（Console 按钮等 UI 控制面）。
+
+    跳过 shortcut 拦截与 LLM 规划，直接构造单步计划派发。门禁：至少一个在线
+    edge 广告该能力（与 LLM 路径的选边同源）；无提供者走失败回路。
+    """
+    providers = {
+        str(row.get("edge_id") or "").strip()
+        for row in online_capability_providers(capability)
+    }
+    providers.discard("")
+    if not providers:
+        fail_msg = f"直派失败：没有在线 edge 支持 {capability}"
+        mark_intent_failed(intent_id, fail_msg)
+        intent = get_intent(intent_id)
+        if intent:
+            _apply_failure_presentation(intent, fail_msg)
+            _save_intent(intent)
+        return jsonify(
+            ok=True,
+            text=text,
+            source=source,
+            edge_id=edge_id,
+            intent_origin=intent_origin,
+            reply=fail_msg,
+            intent_id=intent_id,
+            intent_status="failed",
+            task_kind="direct_invoke",
+            error=fail_msg,
+            asset_ref=ctx_param.get("asset_ref"),
+        )
+    intercepted = InterceptResult(
+        kind="plan",
+        mode=None,
+        plan=[
+            {
+                "step": 1,
+                "capability": capability,
+                "input_constrict": dict(params or {}),
+                "output_constrict": {},
+            }
+        ],
+        presentation={"type": "text"},
+        planner_meta={"goal": capability, "source": "direct_invoke"},
+    )
+    return _dispatch_shortcut_intent(
+        intent_id,
+        text,
+        intercepted,
+        source=source,
+        edge_id=edge_id,
+        intent_origin=intent_origin,
+        ctx_param=ctx_param,
+        reply=reply,
+        task_kind="direct_invoke",
+    )
+
+
 def _dispatch_shortcut_intent(
     intent_id,
     text,
@@ -4226,15 +4295,16 @@ def _dispatch_shortcut_intent(
     intent_origin,
     ctx_param,
     reply,
+    task_kind="shortcut",
 ):
     intent = get_intent(intent_id)
     if not intent:
         return jsonify(ok=False, error="intent not found"), 404
-    intent["task_kind"] = "shortcut"
+    intent["task_kind"] = task_kind
     if intercepted.mode:
         intent["shortcut_mode"] = intercepted.mode
     ctx = dict(intent.get("ctx_param") or intent.get("context") or {})
-    ctx["task_kind"] = "shortcut"
+    ctx["task_kind"] = task_kind
     if intercepted.mode:
         ctx["shortcut_mode"] = intercepted.mode
     intent["ctx_param"] = ctx
@@ -4289,7 +4359,7 @@ def _dispatch_shortcut_intent(
             source=source,
             edge_id=edge_id,
             cost_ms=0,
-            planner="shortcut",
+            planner=task_kind,
             request_payload={
                 "shortcut": True,
                 "kind": intercepted.kind,
@@ -4307,7 +4377,7 @@ def _dispatch_shortcut_intent(
             reply=fail_msg,
             intent_id=intent_id,
             intent_status="failed",
-            task_kind="shortcut",
+            task_kind=task_kind,
             shortcut_mode=intercepted.mode,
             error=fail_msg,
             asset_ref=ctx_param.get("asset_ref"),
@@ -4326,7 +4396,7 @@ def _dispatch_shortcut_intent(
         source=source,
         edge_id=edge_id,
         cost_ms=0,
-        planner="shortcut",
+        planner=task_kind,
         request_payload={
             "shortcut": True,
             "kind": intercepted.kind,
@@ -4344,7 +4414,7 @@ def _dispatch_shortcut_intent(
         reply=reply,
         intent_id=intent_id,
         intent_status="intent_parsed",
-        task_kind="shortcut",
+        task_kind=task_kind,
         shortcut_mode=intercepted.mode,
         asset_ref=ctx_param.get("asset_ref"),
     )
@@ -4381,6 +4451,8 @@ def dispatch_intent():
     edge_id = "11111"
     session_id = ""
     ctx_param = {}
+    direct_capability = ""
+    direct_params: dict = {}
     data = {}
     intent_base_time = int(time.time() * 1000)
     if request.method == 'GET':
@@ -4395,9 +4467,18 @@ def dispatch_intent():
         if not isinstance(data, dict):
             return jsonify(ok=False, error="JSON object required"), 400
 
+        # Direct capability invoke (Console 按钮等 UI 控制面)：capability 非空时
+        # 跳过 shortcut 拦截与 LLM 规划，直接单步派发。text 可缺省。
+        direct_capability = str(data.get("capability") or "").strip()
+        _raw_params = data.get("params")
+        direct_params = dict(_raw_params) if isinstance(_raw_params, dict) else {}
+
         text = str(data.get("text") or "").strip()
         if not text:
-            return jsonify(ok=False, error="text is required"), 400
+            if direct_capability:
+                text = f"直派 {direct_capability}"
+            else:
+                return jsonify(ok=False, error="text is required"), 400
 
         source = str(data.get("source") or "text").strip().lower() or "text"
         if source not in ("text", "voice", "visual", "dev"):
@@ -4541,6 +4622,18 @@ def dispatch_intent():
                     intent_id, _audio_key, _aid,
                 )
     intent_snap = get_intent(intent_id)
+    if direct_capability:
+        return _dispatch_direct_capability(
+            intent_id,
+            text,
+            direct_capability,
+            direct_params,
+            source=source,
+            edge_id=edge_id,
+            intent_origin=intent_origin,
+            ctx_param=ctx_param,
+            reply=reply,
+        )
     intercepted = shortcut_intercept(text, intent=intent_snap)
     if intercepted is not None:
         return _dispatch_shortcut_intent(

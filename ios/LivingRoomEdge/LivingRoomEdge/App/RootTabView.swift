@@ -1,18 +1,19 @@
 import SwiftUI
 import UIKit
 
-/// Five-pane shell: 互动 · 系统 · 能力 · 实体 · 节点
+/// Seven-pane shell: 互动 · 游戏 · 电视 · 系统 · 能力 · 实体 · 节点
 struct RootTabView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab: EdgeTab = .chat
-    /// Only mount tab roots after first visit — TabView otherwise instantiates all six
+    /// Only mount tab roots after first visit — TabView otherwise instantiates all
     /// panes at launch (GameControllerView pulls in AVCaptureSession / Vision on main).
     @State private var loadedTabs: Set<EdgeTab> = [.chat]
 
     enum EdgeTab: Hashable {
         case chat
         case game
+        case tv
         case system
         case runtime
         case entity
@@ -27,6 +28,10 @@ struct RootTabView: View {
 
             lazyTab(.game) {
                 GameControllerView()
+            }
+
+            lazyTab(.tv) {
+                TVView()
             }
 
             lazyTab(.system) {
@@ -75,6 +80,8 @@ struct RootTabView: View {
                 Label("互动", systemImage: "bubble.left.and.bubble.right.fill")
             case .game:
                 Label("游戏", systemImage: "gamecontroller.fill")
+            case .tv:
+                Label("电视", systemImage: "tv.fill")
             case .system:
                 Label("系统", systemImage: "antenna.radiowaves.left.and.right")
             case .runtime:
