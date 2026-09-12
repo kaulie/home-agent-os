@@ -253,9 +253,14 @@ def _display_photo(
 # ---------------------------------------------------------------------------
 
 
+def _zoom_token(zoom: float) -> str:
+    """zoom 文件名标记：Brain 上传校验只允许字母/数字/中文/-/_，小数点换成 p（1.5 → 1p5）。"""
+    return f"{zoom:g}".replace(".", "p")
+
+
 def _page_cache_stem(page: int, zoom: float) -> str:
     if zoom > 1.0:
-        return f"page-{page}-z{zoom:g}"
+        return f"page-{page}-z{_zoom_token(zoom)}"
     return f"page-{page}"
 
 
@@ -309,7 +314,7 @@ def _upload_page(
 ) -> Any:
     from mac_edge.asset.types import AssetError
 
-    zoom_suffix = f"-z{zoom:g}" if zoom > 1.0 else ""
+    zoom_suffix = f"-z{_zoom_token(zoom)}" if zoom > 1.0 else ""
     filename = f"pdf-page-{_safe_dir_name(session.asset_id)[:24]}-p{page}{zoom_suffix}.png"
     try:
         return asset.upload_file(
