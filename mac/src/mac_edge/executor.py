@@ -29,6 +29,11 @@ from mac_edge.plugins.xiaomi_tv_display import (
     photo_from_params as xiaomi_photo_from_params,
     slideshow_from_params as xiaomi_slideshow_from_params,
 )
+from mac_edge.plugins.pdf_display import (
+    PdfDisplayError,
+    open_from_params as pdf_display_open_from_params,
+    page_from_params as pdf_display_page_from_params,
+)
 from mac_edge.capability_ads import composition_of, decomposes_to
 from mac_edge.capability_availability import is_available
 from mac_edge.plugins.clock_now import ClockNowError, now_from_params
@@ -66,6 +71,10 @@ from mac_edge.plugins.file_convert import (
 from mac_edge.plugins.pdf_rotate import (
     PdfRotateError,
     rotate_from_params as pdf_rotate_from_params,
+)
+from mac_edge.plugins.pdf_to_images import (
+    PdfToImagesError,
+    images_from_params as pdf_to_images_from_params,
 )
 from mac_edge.plugins.web_scraper import (
     WebScraperError,
@@ -1524,6 +1533,32 @@ def _execute_capability(
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}
+    if cap == "display.pdf":
+        try:
+            msg, outputs = pdf_display_open_from_params(
+                params,
+                asset=asset,
+                display_base_url=config.cast_display_url,
+                timeout_sec=config.display_http_timeout_sec,
+            )
+            return True, msg, outputs
+        except (PdfDisplayError, CastError, XiaomiTvError, AssetError) as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "display.pdf.page":
+        try:
+            msg, outputs = pdf_display_page_from_params(
+                params,
+                asset=asset,
+                display_base_url=config.cast_display_url,
+                timeout_sec=config.display_http_timeout_sec,
+            )
+            return True, msg, outputs
+        except (PdfDisplayError, CastError, XiaomiTvError, AssetError) as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
     if cap == "notify.speak":
         try:
             msg = speak_from_params(params)
@@ -1553,6 +1588,14 @@ def _execute_capability(
             msg, outputs = pdf_rotate_from_params(params, asset=asset)
             return True, msg, outputs
         except (PdfRotateError, AssetError) as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "pdf.to_images":
+        try:
+            msg, outputs = pdf_to_images_from_params(params, asset=asset)
+            return True, msg, outputs
+        except (PdfToImagesError, AssetError) as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}

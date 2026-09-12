@@ -112,6 +112,85 @@ XIAOMI_TV_DISPLAY_SERVICE: dict[str, Any] = {
     "capabilities": list(CHROMECAST_DISPLAY_SERVICE["capabilities"]),
 }
 
+# display.pdf / display.pdf.page：PDF 逐页渲染成图投屏 + 翻页。
+# 两个显示服务（cast / xiaomi）共用；仅当本机可 import pymupdf 时附加广告。
+PDF_DISPLAY_CAPABILITIES: list[dict[str, Any]] = [
+    attach(
+        'display.pdf',
+        input_schema={
+            'asset_ref': {
+                'type': 'string',
+                'required': True,
+                'description': 'AssetRef JSON {asset_id, type, mime_type?}，type 必须为 document（PDF）。禁止 path / 永久 URL。常为 $asset_ref。',
+            },
+            'page': {
+                'type': 'number',
+                'required': False,
+                'description': '打开后显示的页码（1-based），默认第 1 页',
+            },
+        },
+        output_schema={
+            'page': {
+                'type': 'number',
+                'required': True,
+                'description': '当前投屏页码（1-based）',
+            },
+            'page_count': {
+                'type': 'number',
+                'required': True,
+                'description': 'PDF 总页数',
+            },
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话，如「已把 PDF 投到电视，第 1 页 / 共 12 页」',
+            },
+        },
+    ),
+    attach(
+        'display.pdf.page',
+        input_schema={
+            'action': {
+                'type': 'string',
+                'required': False,
+                'description': 'next（默认）/ prev / goto；也接受 下一页/上一页/翻到 等中文',
+            },
+            'page': {
+                'type': 'number',
+                'required': False,
+                'description': 'action=goto 时必填的目标页码（1-based）',
+            },
+        },
+        output_schema={
+            'page': {
+                'type': 'number',
+                'required': True,
+                'description': '翻页后当前页码（1-based）',
+            },
+            'page_count': {
+                'type': 'number',
+                'required': True,
+                'description': 'PDF 总页数',
+            },
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话，如「已翻到第 2 页 / 共 12 页」',
+            },
+        },
+    ),
+]
+
+
+def _display_capabilities() -> list[dict[str, Any]]:
+    """显示服务的 capability 列表：photo/slideshow 恒有；pymupdf 可用时附加 PDF 投屏。"""
+    caps = list(CHROMECAST_DISPLAY_SERVICE["capabilities"])
+    from mac_edge.plugins.pdf_render import pymupdf_available
+
+    if pymupdf_available():
+        caps.extend(PDF_DISPLAY_CAPABILITIES)
+    return caps
+
 LOCAL_NOTIFY_SERVICE: dict[str, Any] = {
     "service_id": "local.notify",
     "display_name": "Local Notify",
@@ -679,6 +758,71 @@ LOCAL_PDF_ROTATE_SERVICE: dict[str, Any] = {
                     "type": "string",
                     "required": True,
                     "description": "中文一句话结果，含页数、方向与 asset_id",
+                },
+            },
+        ),
+    ],
+}
+
+LOCAL_PDF_IMAGES_SERVICE: dict[str, Any] = {
+    "service_id": "local.pdf.images",
+    "display_name": "PDF 页面渲染器",
+    "version": "0.1.0",
+    "group": "convert",
+    "capabilities": [
+        attach(
+            "pdf.to_images",
+            input_schema={
+                "asset_ref": {
+                    "type": "object",
+                    "required": True,
+                    "description": (
+                        "必填 AssetRef JSON，type=document（PDF）。"
+                        "例 {\"asset_id\":\"asset_…\",\"type\":\"document\"}。"
+                        "禁止 path / 永久 URL；缺则本能力无效。"
+                    ),
+                },
+                "page_start": {
+                    "type": "number",
+                    "required": False,
+                    "description": "起始页（1-based），缺省第 1 页；越界钳到边界",
+                },
+                "page_end": {
+                    "type": "number",
+                    "required": False,
+                    "description": "结束页（1-based，闭区间），缺省最后一页；越界钳到边界",
+                },
+                "dpi": {
+                    "type": "number",
+                    "required": False,
+                    "description": "渲染清晰度 DPI，默认 200（钳制 72–400）",
+                },
+                "name": {
+                    "type": "string",
+                    "required": False,
+                    "description": "可选页图文件名前缀；不传则用 pdf-<asset_id 前 12 位>",
+                },
+            },
+            output_schema={
+                "asset_refs": {
+                    "type": "string",
+                    "required": True,
+                    "description": "页图 AssetRef JSON 数组，顺序=页码。可交给 display.slideshow / OCR / vision 等下游。",
+                },
+                "page_count": {
+                    "type": "number",
+                    "required": True,
+                    "description": "PDF 总页数",
+                },
+                "rendered_pages": {
+                    "type": "number",
+                    "required": True,
+                    "description": "本次实际渲染页数",
+                },
+                "status_text": {
+                    "type": "string",
+                    "required": True,
+                    "description": "中文一句话结果，含页范围、页数与 DPI",
                 },
             },
         ),
@@ -1727,6 +1871,7 @@ _LAPTOP_SERVICE_ORDER = (
     LOCAL_MATH_SERVICE,
     LOCAL_FILE_CONVERT_SERVICE,
     LOCAL_PDF_ROTATE_SERVICE,
+    LOCAL_PDF_IMAGES_SERVICE,
     LOCAL_WEB_SCRAPER_SERVICE,
     LOCAL_CHAT_SERVICE,
     LOCAL_ASSET_SERVICE,
@@ -1817,11 +1962,15 @@ def default_services() -> list[dict[str, Any]]:
     backend = display_backend()
     if backend == "xiaomi":
         if _allow_service(XIAOMI_TV_DISPLAY_SERVICE["service_id"], allowed_set):
-            services.append(dict(XIAOMI_TV_DISPLAY_SERVICE))
+            xiaomi_svc = dict(XIAOMI_TV_DISPLAY_SERVICE)
+            xiaomi_svc["capabilities"] = _display_capabilities()
+            services.append(xiaomi_svc)
             log.info("advertise xiaomi.tv.display (DLNA)")
     elif _allow_service(CHROMECAST_DISPLAY_SERVICE["service_id"], allowed_set):
         if _should_advertise_cast():
-            services.append(dict(CHROMECAST_DISPLAY_SERVICE))
+            cast_svc = dict(CHROMECAST_DISPLAY_SERVICE)
+            cast_svc["capabilities"] = _display_capabilities()
+            services.append(cast_svc)
             log.info(
                 "advertise chromecast.display (Cast HTTP reachable or MAC_EDGE_ADVERTISE_CAST=1)"
             )
@@ -1903,6 +2052,14 @@ def default_services() -> list[dict[str, Any]]:
             log.info("advertise local.pdf.rotate (pdf.rotate)")
         else:
             log.info("skip local.pdf.rotate — pypdf not installed")
+    if _allow_service(LOCAL_PDF_IMAGES_SERVICE["service_id"], allowed_set):
+        from mac_edge.plugins.pdf_render import pymupdf_available
+
+        if pymupdf_available():
+            services.append(dict(LOCAL_PDF_IMAGES_SERVICE))
+            log.info("advertise local.pdf.images (pdf.to_images)")
+        else:
+            log.info("skip local.pdf.images — pymupdf not installed")
     if _allow_service(LOCAL_WEB_SCRAPER_SERVICE["service_id"], allowed_set):
         from mac_edge.plugins.web_scraper import any_renderer_available
 
