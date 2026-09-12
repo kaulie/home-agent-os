@@ -76,6 +76,21 @@ class ExtractWakeTests(unittest.TestCase):
         self.assertEqual(hits, 2)
         self.assertEqual(remainder, "")
 
+    def test_er_and_tiao_stt_aliases(self) -> None:
+        hits, rem = extract_wake("面条儿面条儿")
+        self.assertEqual(hits, 2)
+        self.assertEqual(rem, "")
+        hits, rem = extract_wake("面条条面条条")
+        self.assertEqual(hits, 2)
+        self.assertEqual(rem, "")
+        hits, rem = extract_wake("面条条")
+        self.assertEqual(hits, 1)
+        self.assertEqual(rem, "")
+        # Longer alias wins over bare 面条 + leftover 儿/条
+        hits, rem = extract_wake("调面条条")
+        self.assertEqual(hits, 1)
+        self.assertEqual(rem, "调")
+
 
 class WakeGateTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -705,6 +720,8 @@ class ConfigDefaultTests(unittest.TestCase):
         self.assertEqual(cfg.wake_word, "面条")
         self.assertEqual(cfg.wake_repeat, 2)
         self.assertIn("棉条", cfg.wake_aliases)
+        self.assertIn("面条儿", cfg.wake_aliases)
+        self.assertIn("面条条", cfg.wake_aliases)
         self.assertEqual(cfg.wake_ack, "我在呢")
         self.assertEqual(cfg.command_window_ms, 5000)
         self.assertEqual(cfg.double_wake_ms, 1100)
