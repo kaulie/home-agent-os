@@ -23,7 +23,9 @@
 
 电视需开启无线投屏 / DLNA，与 Mac 同一局域网；图片 URL 必须是电视能拉的 LAN 地址。
 
+**待机投屏**：电视处于「网络待机」（非断电）时 DLNA 仍在线，直接投屏会唤醒亮屏，无需提前开机。发现链路按序：① 上次投成功的描述地址单播直连（缓存于 `$MAC_EDGE_DATA_DIR/xiaomi_tv_renderer.json`，绕开组播抖动）→ ② SSDP 多轮搜索（默认 2 轮）→ ③ 配了 MAC 时发 WoL 魔术包唤醒后补搜一轮。电视完全断电则网络无法唤醒，属物理限制。
+
 ## 入口
 
 - Mac：`mac/src/mac_edge/plugins/xiaomi_tv_display.py`；`services.py` 按 `display_backend()` 广告
-- 可选：`MAC_EDGE_XIAOMI_TV_HOST`、`MAC_EDGE_XIAOMI_TV_NAME`
+- 可选：`MAC_EDGE_XIAOMI_TV_HOST`、`MAC_EDGE_XIAOMI_TV_NAME`、`MAC_EDGE_XIAOMI_TV_MAC`（WoL 唤醒）、`MAC_EDGE_XIAOMI_TV_SSDP_ROUNDS`（发现轮数，默认 2，1–5）
