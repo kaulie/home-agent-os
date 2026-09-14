@@ -76,6 +76,21 @@ class ExtractWakeTests(unittest.TestCase):
         self.assertEqual(hits, 2)
         self.assertEqual(remainder, "")
 
+    def test_er_and_tiao_stt_aliases(self) -> None:
+        hits, rem = extract_wake("面条儿面条儿")
+        self.assertEqual(hits, 2)
+        self.assertEqual(rem, "")
+        hits, rem = extract_wake("面条条面条条")
+        self.assertEqual(hits, 2)
+        self.assertEqual(rem, "")
+        hits, rem = extract_wake("面条条")
+        self.assertEqual(hits, 1)
+        self.assertEqual(rem, "")
+        # Longer alias wins over bare 面条 + leftover 儿/条
+        hits, rem = extract_wake("调面条条")
+        self.assertEqual(hits, 1)
+        self.assertEqual(rem, "调")
+
 
 class WakeGateTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -513,6 +528,101 @@ class WakeGateTests(unittest.TestCase):
         self.assertEqual(self.gate.state, "acking")
         self.assertTrue(self.gate.should_ack)
 
+    def test_stt_garble_in_listening_does_not_post(self) -> None:
+        """连续再唤 STT 成 凉凉面条儿 / 调面条条 不得 POST。"""
+        self.assertIsNone(
+            self.gate.feed("面条面条", speech_start=0.0, speech_end=0.8)
+        )
+        self._arm(1.0)
+        self.assertIsNone(
+            self.gate.feed(
+                "凉凉面条儿。",
+                now=2.0,
+                speech_start=1.5,
+                speech_end=2.0,
+            )
+        )
+        self.assertEqual(self.gate.state, "partial")
+        self.assertEqual(self.gate.last_hits, 1)
+        self.assertFalse(self.gate.should_ack)
+        self.assertIsNone(
+            self.gate.feed("调面条条。", now=2.5, speech_start=2.2, speech_end=2.8)
+        )
+        self.assertEqual(self.gate.state, "acking")
+        self.assertTrue(self.gate.should_ack)
+
+    def test_stt_garble_long_clip_counts_as_double_wake(self) -> None:
+        self.assertIsNone(
+            self.gate.feed(
+                "凉凉面条儿。",
+                now=0.0,
+                speech_start=0.0,
+                speech_end=1.3,
+            )
+        )
+        self.assertEqual(self.gate.state, "acking")
+        self.assertEqual(self.gate.last_hits, 2)
+        self.assertTrue(self.gate.should_ack)
+
+    def test_real_command_in_listening_still_posts(self) -> None:
+        self.assertIsNone(
+            self.gate.feed("面条面条", speech_start=0.0, speech_end=0.8)
+        )
+        self._arm(1.0)
+        self.assertEqual(
+            self.gate.feed("开灯", now=2.0, speech_start=1.5, speech_end=2.0),
+            "开灯",
+        )
+        self.assertEqual(self.gate.state, "idle")
+
+    def test_doubled_wo_ack_echo_keeps_listening(self) -> None:
+        self.assertIsNone(
+            self.gate.feed("面条面条", speech_start=0.0, speech_end=0.8)
+        )
+        self._arm(2.0)
+        self.assertIsNone(
+            self.gate.feed(
+                "我我在呢。",
+                now=2.5,
+                speech_start=2.1,
+                speech_end=2.5,
+            )
+        )
+        self.assertEqual(self.gate.state, "listening")
+        self.assertEqual(
+            self.gate.feed("几点了", now=3.5, speech_start=3.0, speech_end=3.5),
+            "几点了",
+        )
+
+    def test_doubled_zai_ne_echo_does_not_post(self) -> None:
+        """喇叭回声被听成「我在呢在呢」不得当指令。"""
+        self.assertIsNone(
+            self.gate.feed("面条面条", speech_start=0.0, speech_end=0.8)
+        )
+        self._arm(2.0)
+        self.assertIsNone(
+            self.gate.feed(
+                "我在呢在呢。",
+                now=2.5,
+                speech_start=2.1,
+                speech_end=2.5,
+            )
+        )
+        self.assertEqual(self.gate.state, "listening")
+        self.assertIsNone(
+            self.gate.feed(
+                "我我在呢在呢在呢。",
+                now=3.0,
+                speech_start=2.6,
+                speech_end=3.0,
+            )
+        )
+        self.assertEqual(self.gate.state, "listening")
+        self.assertEqual(
+            self.gate.feed("几点了", now=4.0, speech_start=3.5, speech_end=4.0),
+            "几点了",
+        )
+
     def test_collapsed_single_wake_while_acking_enters_partial(self) -> None:
         self.assertIsNone(
             self.gate.feed("面条 面条", speech_start=0.0, speech_end=0.8)
@@ -639,6 +749,8 @@ class ConfigDefaultTests(unittest.TestCase):
         self.assertEqual(cfg.wake_word, "面条")
         self.assertEqual(cfg.wake_repeat, 2)
         self.assertIn("棉条", cfg.wake_aliases)
+        self.assertIn("面条儿", cfg.wake_aliases)
+        self.assertIn("面条条", cfg.wake_aliases)
         self.assertEqual(cfg.wake_ack, "我在呢")
         self.assertEqual(cfg.command_window_ms, 5000)
         self.assertEqual(cfg.double_wake_ms, 1100)
@@ -748,7 +860,17 @@ class AckEchoTests(unittest.TestCase):
         self.assertTrue(looks_like_ack_echo("又又咋了？"))
         self.assertTrue(looks_like_ack_echo("又又咋了"))
         self.assertTrue(looks_like_ack_echo("我在呢"))
+        self.assertTrue(looks_like_ack_echo("我我在呢"))
+        self.assertTrue(looks_like_ack_echo("我我我在呢。"))
         self.assertTrue(looks_like_ack_echo("在呢。"))
+        self.assertTrue(looks_like_ack_echo("我在呢在呢。"))
+        self.assertTrue(looks_like_ack_echo("我我在呢在呢在呢。"))
+        self.assertTrue(looks_like_ack_echo("在呢在呢"))
+        self.assertEqual(strip_ack_echo("我我在呢。"), "")
+        self.assertEqual(strip_ack_echo("我在呢在呢。"), "")
+        self.assertEqual(strip_ack_echo("我我在呢在呢在呢。"), "")
+        self.assertEqual(command_after_ack_prefix("我我在呢？关闭台灯"), "关闭台灯")
+        self.assertEqual(command_after_ack_prefix("我在呢在呢关闭台灯"), "关闭台灯")
         self.assertTrue(looks_like_ack_echo("咋了"))
         self.assertFalse(looks_like_ack_echo("开灯"))
         self.assertFalse(looks_like_ack_echo("关闭台灯"))
