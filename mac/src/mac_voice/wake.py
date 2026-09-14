@@ -30,12 +30,13 @@ DEFAULT_DOUBLE_WAKE_MS = 1100
 # starts during the last syllable but ends well after the window opens.
 _ECHO_OVERLAP_S = 0.45
 
-# TTS/STT often doubles 我/又 or adds 啊/？ (「我我在呢」「又又咋了？」).
-_ACK_ECHO = re.compile(r"^(我*在呢|又+咋[了啦][啊呀吗嘛]?|咋了[啊呀吗嘛]?)$")
+# TTS/STT often doubles 我/在呢/又 (「我我在呢」「我在呢在呢」「又又咋了？」).
+_ACK_WO = r"(我*在呢)+"
+_ACK_ECHO = re.compile(rf"^({_ACK_WO}|又+咋[了啦][啊呀吗嘛]?|咋了[啊呀吗嘛]?)$")
 # Speaker bleed mixed into a longer STT line (not a full-utterance match).
-_ACK_EMBEDDED = re.compile(r"(我+在呢|又+咋[了啦][啊呀吗嘛]?)")
+_ACK_EMBEDDED = re.compile(rf"({_ACK_WO}|又+咋[了啦][啊呀吗嘛]?)")
 # Same clip: 又咋了 / 我在呢 immediately followed by the command.
-_ACK_PREFIX = re.compile(r"^(我*在呢|又+咋[了啦][啊呀吗嘛]?|咋了[啊呀吗嘛]?)")
+_ACK_PREFIX = re.compile(rf"^({_ACK_WO}|又+咋[了啦][啊呀吗嘛]?|咋了[啊呀吗嘛]?)")
 
 _TRAILING_PUNCT = " \t.,!?;:，。！？、；：·…\"'“”‘’()（）[]【】"
 # STT debris around 面条 (凉凉面条儿 / 调面条条); not a real command by itself.

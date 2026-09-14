@@ -594,6 +594,35 @@ class WakeGateTests(unittest.TestCase):
             "几点了",
         )
 
+    def test_doubled_zai_ne_echo_does_not_post(self) -> None:
+        """喇叭回声被听成「我在呢在呢」不得当指令。"""
+        self.assertIsNone(
+            self.gate.feed("面条面条", speech_start=0.0, speech_end=0.8)
+        )
+        self._arm(2.0)
+        self.assertIsNone(
+            self.gate.feed(
+                "我在呢在呢。",
+                now=2.5,
+                speech_start=2.1,
+                speech_end=2.5,
+            )
+        )
+        self.assertEqual(self.gate.state, "listening")
+        self.assertIsNone(
+            self.gate.feed(
+                "我我在呢在呢在呢。",
+                now=3.0,
+                speech_start=2.6,
+                speech_end=3.0,
+            )
+        )
+        self.assertEqual(self.gate.state, "listening")
+        self.assertEqual(
+            self.gate.feed("几点了", now=4.0, speech_start=3.5, speech_end=4.0),
+            "几点了",
+        )
+
     def test_collapsed_single_wake_while_acking_enters_partial(self) -> None:
         self.assertIsNone(
             self.gate.feed("面条 面条", speech_start=0.0, speech_end=0.8)
@@ -834,8 +863,14 @@ class AckEchoTests(unittest.TestCase):
         self.assertTrue(looks_like_ack_echo("我我在呢"))
         self.assertTrue(looks_like_ack_echo("我我我在呢。"))
         self.assertTrue(looks_like_ack_echo("在呢。"))
+        self.assertTrue(looks_like_ack_echo("我在呢在呢。"))
+        self.assertTrue(looks_like_ack_echo("我我在呢在呢在呢。"))
+        self.assertTrue(looks_like_ack_echo("在呢在呢"))
         self.assertEqual(strip_ack_echo("我我在呢。"), "")
+        self.assertEqual(strip_ack_echo("我在呢在呢。"), "")
+        self.assertEqual(strip_ack_echo("我我在呢在呢在呢。"), "")
         self.assertEqual(command_after_ack_prefix("我我在呢？关闭台灯"), "关闭台灯")
+        self.assertEqual(command_after_ack_prefix("我在呢在呢关闭台灯"), "关闭台灯")
         self.assertTrue(looks_like_ack_echo("咋了"))
         self.assertFalse(looks_like_ack_echo("开灯"))
         self.assertFalse(looks_like_ack_echo("关闭台灯"))
