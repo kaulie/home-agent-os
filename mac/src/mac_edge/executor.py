@@ -38,7 +38,11 @@ from mac_edge.plugins.pdf_display import (
 from mac_edge.capability_ads import composition_of, decomposes_to
 from mac_edge.capability_availability import is_available
 from mac_edge.plugins.clock_now import ClockNowError, now_from_params
-from mac_edge.plugins.netease_music import NeteaseMusicError, run_from_params as music_from_params
+from mac_edge.plugins.netease_music import (
+    NeteaseMusicError,
+    NeteaseMusicLoginRequired,
+    run_from_params as music_from_params,
+)
 from mac_edge.plugins.music_recognize import (
     MusicRecognizeError,
     run_from_params as music_recognize_from_params,
@@ -1733,6 +1737,10 @@ def _execute_capability(
         try:
             msg, outputs = music_from_params(cap, params)
             return True, msg, outputs
+        except NeteaseMusicLoginRequired as e:
+            # ncm-cli login is gone. Runtime does not judge the caller: report the
+            # full login info raw so Brain can decide delivery (iPhone gets the link).
+            return False, str(e), {"netease_login": e.info}
         except NeteaseMusicError as e:
             return False, str(e), {}
         except Exception as e:

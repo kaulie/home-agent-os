@@ -384,6 +384,72 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertEqual(intent["presentation"]["from"], "msg")
         self.assertEqual(intent["presentation"]["text"], "拍照节点当前不在线，无法拍照")
 
+    # --- ncm-cli login loss: human reason + link only for iPhone origin ---
+
+    _LOGIN_URL = "https://163cn.tv/bgl5Nc5N"
+
+    def _login_failure_intent(self, *, issuer: str, login_url: str | None = None) -> dict:
+        """Intent whose music step failed because ncm-cli is logged out."""
+        info: dict = {
+            "logged_in": False,
+            "reason": "未登录，请执行 ncm-cli login 完成登录",
+        }
+        url = self._LOGIN_URL if login_url is None else login_url
+        if url:
+            info["login_url"] = url
+        return {
+            "text": "播放五月天的歌",
+            "source": "voice",
+            "intent_origin": "lan",
+            "edge_id": issuer,
+            "source_context": {"device_id": issuer},
+            "execution_plan": [{"step": 1, "capability": "music.play"}],
+            "step_outputs": {"1": {"netease_login": info}},
+        }
+
+    def test_failure_presentation_login_link_hidden_for_mac_origin(self) -> None:
+        self._register_endpoint("living-room-mac", "mac")
+        intent = self._login_failure_intent(issuer="living-room-mac")
+        raw = "ncm-cli 未返回 JSON：error: unknown command 'playlist'"
+        text = hb._apply_failure_presentation(intent, raw)
+        self.assertNotIn("playlist", text)
+        self.assertNotIn("163cn.tv", text)
+        self.assertIn("登录已失效", text)
+        self.assertEqual(intent["presentation"]["text"], text)
+        self.assertEqual(intent["presentation"]["from"], "msg")
+
+    def test_failure_presentation_login_link_shown_for_iphone_origin(self) -> None:
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        intent = self._login_failure_intent(issuer="living-room-iphone-1")
+        text = hb._apply_failure_presentation(intent, "ncm-cli 未返回 JSON：boom")
+        self.assertIn(self._LOGIN_URL, text)
+        self.assertIn("登录已失效", text)
+        self.assertEqual(intent["presentation"]["text"], text)
+
+    def test_failure_presentation_login_link_hidden_without_url(self) -> None:
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        intent = self._login_failure_intent(issuer="living-room-iphone-1", login_url="")
+        text = hb._apply_failure_presentation(intent, "boom")
+        self.assertIn("登录已失效", text)
+        self.assertNotIn("http", text)
+
+    def test_failure_presentation_login_link_hidden_for_unknown_device(self) -> None:
+        intent = self._login_failure_intent(issuer="ghost-1")
+        text = hb._apply_failure_presentation(intent, "boom")
+        self.assertIn("登录已失效", text)
+        self.assertNotIn("163cn.tv", text)
+
+    def test_failure_presentation_non_login_failure_keeps_msg(self) -> None:
+        intent = {
+            "text": "拍照",
+            "source": "voice",
+            "edge_id": "x",
+            "step_outputs": {"1": {"answer_text": "noop"}},
+        }
+        text = hb._apply_failure_presentation(intent, "拍照节点当前不在线")
+        self.assertEqual(text, "拍照节点当前不在线")
+        self.assertEqual(intent["presentation"]["text"], "拍照节点当前不在线")
+
     def test_client_hint_reuses_participant_id(self) -> None:
         client = hb.app.test_client()
         first = client.post(

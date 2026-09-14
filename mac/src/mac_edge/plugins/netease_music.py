@@ -106,6 +106,18 @@ class NeteaseMusicError(Exception):
     pass
 
 
+class NeteaseMusicLoginRequired(NeteaseMusicError):
+    """ncm-cli 登录态失效。
+
+    Runtime 不判断发起端是谁，只把 ncm-cli 的完整登录信息**原样**上报
+    （``info`` 里带登录短链），由上层 Brain 决定要不要展示、怎么展示。
+    """
+
+    def __init__(self, message: str, info: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.info: dict[str, Any] = dict(info) if isinstance(info, dict) else {}
+
+
 def ncm_cli_bin() -> str | None:
     override = (os.environ.get("MAC_EDGE_NCM_CLI") or os.environ.get("NCM_CLI") or "").strip()
     if override:
@@ -129,6 +141,87 @@ def ncm_cli_configured() -> bool:
 
 
 netease_configured = ncm_cli_configured
+
+
+LOGIN_CHECK_TIMEOUT_SEC = 15.0
+LOGIN_LINK_TIMEOUT_SEC = 30.0
+# Reuse a freshly minted login link for a while: the QR lives ~5min and every
+# ``login --background`` spawns another poller, so do not stampede.
+LOGIN_LINK_TTL_SEC = 240.0
+_login_link_cache: tuple[float, str] | None = None
+
+
+def _login_payload(combined: str) -> dict[str, Any]:
+    try:
+        return last_json_object(combined)
+    except NeteaseMusicError:
+        return {}
+
+
+def _run_login_cli(bin_path: str, args: list[str], timeout_sec: float):
+    """Best-effort ncm-cli login subcommand; None when it cannot run.
+
+    Never let the login probe mask the real music failure it is describing.
+    """
+    try:
+        return subprocess.run(
+            [bin_path, *args],
+            capture_output=True,
+            text=True,
+            timeout=max(5.0, float(timeout_sec)),
+            check=False,
+        )
+    except Exception as e:  # noqa: BLE001
+        log.warning("ncm-cli %s failed: %s", " ".join(args), e)
+        return None
+
+
+def ncm_login_link(bin_path: str | None = None) -> str:
+    """Fresh scan login link from ``ncm-cli login --background`` ('' on failure)."""
+    global _login_link_cache
+    now = time.monotonic()
+    if _login_link_cache is not None:
+        cached_at, cached_link = _login_link_cache
+        if cached_link and now - cached_at < LOGIN_LINK_TTL_SEC:
+            return cached_link
+    bin_path = bin_path or ncm_cli_bin()
+    if not bin_path:
+        return ""
+    proc = _run_login_cli(bin_path, ["login", "--background"], LOGIN_LINK_TIMEOUT_SEC)
+    if proc is None:
+        return ""
+    payload = _login_payload(f"{proc.stdout or ''}\n{proc.stderr or ''}")
+    link = str(payload.get("clickableUrl") or payload.get("qrCodeUrl") or "").strip()
+    if link:
+        _login_link_cache = (now, link)
+    return link
+
+
+def ncm_login_required_info(*, fetch_link: bool = True) -> dict[str, Any]:
+    """Raw ncm-cli login state, or ``{}`` when logged in / unknowable.
+
+    Reported verbatim to Brain, which decides whether the *originating* device
+    should get the login link. ``fetch_link`` mints a fresh link (and starts the
+    poller that completes the login once scanned).
+    """
+    bin_path = ncm_cli_bin()
+    if not bin_path:
+        return {}
+    proc = _run_login_cli(bin_path, ["login", "--check"], LOGIN_CHECK_TIMEOUT_SEC)
+    if proc is None:
+        return {}
+    payload = _login_payload(f"{proc.stdout or ''}\n{proc.stderr or ''}")
+    if not payload or payload.get("success") is True:
+        return {}
+    info: dict[str, Any] = {
+        "logged_in": False,
+        "reason": str(payload.get("message") or "").strip() or "未登录",
+    }
+    if fetch_link:
+        link = ncm_login_link(bin_path)
+        if link:
+            info["login_url"] = link
+    return info
 
 
 def is_available(_config: Any = None) -> Availability:
@@ -1491,6 +1584,24 @@ def run_from_params(
     cap = str(capability_id or "").strip()
     if cap not in _MUSIC_CAPS:
         raise NeteaseMusicError(f"unsupported capability {cap}")
+    try:
+        return _run_music_capability(cap, params)
+    except NeteaseMusicLoginRequired:
+        raise
+    except NeteaseMusicError as e:
+        # Any music failure while ncm-cli is logged out is really a login failure
+        # (the CLI silently drops authenticated commands, e.g. ``playlist``).
+        # Report the full login info raw; Brain decides who gets the link.
+        info = ncm_login_required_info()
+        if info:
+            raise NeteaseMusicLoginRequired(str(e), info) from None
+        raise
+
+
+def _run_music_capability(
+    cap: str,
+    params: dict[str, Any] | None = None,
+) -> tuple[str, dict[str, Any]]:
     if cap == "music.play":
         return play_from_params(params)
     if cap == "music.cache":

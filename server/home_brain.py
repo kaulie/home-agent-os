@@ -3565,10 +3565,79 @@ def _ark_http_error_msg(response_json):
     return text
 
 
-def _apply_failure_presentation(intent, msg):
+# Runtime reports ncm-cli login state on a login-required music failure. Brain —
+# not Runtime — decides whether the *originating* device gets the login link.
+_LOGIN_REQUIRED_OUTPUT_KEYS = ("netease_login", "music_login")
+_LOGIN_REQUIRED_TEXT = "网易云音乐登录已失效，请用手机网易云 App 重新扫码登录。"
+_LOGIN_REQUIRED_LINK_HINT = "点此登录："
+
+
+def _intent_issuer_participant_id(intent):
+    """Originating participant: persisted source_context device_id, else issuer."""
+    intent = intent or {}
+    ctx = intent.get("source_context")
+    ctx = ctx if isinstance(ctx, dict) else {}
+    return str(ctx.get("device_id") or "").strip() or _issuer_participant_id(intent)
+
+
+def _participant_device_type(pid):
+    pid = str(pid or "").strip()
+    if not pid:
+        return ""
+    rec = brain_db.get_registration(pid) or {}
+    if not rec:
+        rec = _participant_snapshot(pid) or {}
+    return str((rec or {}).get("device_type") or "").strip().lower()
+
+
+def _intent_issuer_is_iphone(intent):
+    """True only when the intent originated on an iPhone/iOS client."""
+    return _participant_device_type(_intent_issuer_participant_id(intent)) in (
+        "iphone",
+        "ios",
+    )
+
+
+def _step_output_login_info(intent):
+    """Login info the Runtime reported on a music login failure, or {}."""
+    outputs = (intent or {}).get("step_outputs")
+    if not isinstance(outputs, dict):
+        return {}
+    for blob in outputs.values():
+        if not isinstance(blob, dict):
+            continue
+        for key in _LOGIN_REQUIRED_OUTPUT_KEYS:
+            info = blob.get(key)
+            if isinstance(info, dict) and info:
+                return info
+    return {}
+
+
+def _user_facing_failure_text(intent, msg):
+    """Human failure text.
+
+    Login-required failures (Runtime said ncm-cli is logged out) always lose the
+    raw CLI noise; the login link is attached **only** when the intent started on
+    an iPhone, so a Mac/TV speaker request never gets a link it cannot use.
+    """
     text = str(msg or "").strip()
+    info = _step_output_login_info(intent)
+    if not info:
+        return text
+    text = _LOGIN_REQUIRED_TEXT
+    url = str(
+        info.get("login_url") or info.get("clickableUrl") or info.get("qrCodeUrl") or ""
+    ).strip()
+    if url and _intent_issuer_is_iphone(intent):
+        text = f"{text} {_LOGIN_REQUIRED_LINK_HINT}{url}"
+    return text
+
+
+def _apply_failure_presentation(intent, msg):
+    """Fill the client-visible failure Presentation; returns the text actually used."""
+    text = _user_facing_failure_text(intent, msg)
     if not intent or not text:
-        return
+        return text
     pres = intent.get("presentation") if isinstance(intent.get("presentation"), dict) else {}
     pres_type = "text"
     if str((intent or {}).get("task_kind") or "") == "shortcut":
@@ -3583,6 +3652,7 @@ def _apply_failure_presentation(intent, msg):
         },
         intent,
     )
+    return text
 
 
 def _normalize_status(raw):
@@ -5079,7 +5149,9 @@ def _maybe_finalize_intent_after_step(intent_id_int, intent) -> None:
         if failed_cap in _UPLOAD_STEP_CAPABILITIES:
             msg = _upload_failure_msg(plan, failed[0], msg)
         _abandon_pending_plan_steps(intent, reason=_PENDING_STEP_ABANDONED_MSG)
-        _apply_failure_presentation(intent, msg)
+        # User-facing text may be rewritten (e.g. ncm-cli login link). Raw error
+        # stays on the step / step_log for diagnostics.
+        msg = _apply_failure_presentation(intent, msg) or msg
         if intent.get("presentation") is not None:
             intent["exposed_outputs"] = intent["presentation"]
         intent["status"] = "failed"
@@ -5447,6 +5519,10 @@ def notify_intent_status_update(intent_id):
     msg = data.get('msg')
     if not msg and intent_status == "failed":
         msg = intent.get("msg") or intent.get("error")
+    if msg and intent_status == "failed":
+        # Same user-facing rewrite as the step-finalisation path (idempotent):
+        # raw ncm-cli noise → human text, login link only for iPhone-origin.
+        msg = _user_facing_failure_text(intent, msg)
     if msg:
         _record['msg'] = msg
         _record['detail'] = msg

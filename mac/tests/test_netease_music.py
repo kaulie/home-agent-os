@@ -1065,6 +1065,112 @@ class NeteaseMusicTests(unittest.TestCase):
         self.assertTrue(all(nm.is_solo_for_artist(r, artist="王力宏") for r in got[:10]))
         self.assertFalse(nm.is_solo_for_artist(got[10], artist="王力宏"))
 
+    # --- ncm-cli login loss: report raw login info, let Brain decide delivery ---
+
+    def _login_cli(self, *, logged_in: bool, link: str = "") -> object:
+        """subprocess.run side effect for the ``login`` subcommands."""
+
+        def fake_run(cmd, **_kwargs):
+            if cmd[1:3] == ["login", "--check"]:
+                if logged_in:
+                    return _completed('{"success": true, "message": "已登录"}')
+                return _completed(
+                    '{"success": false, "message": "未登录，请执行 ncm-cli login 完成登录"}'
+                )
+            if cmd[1:3] == ["login", "--background"]:
+                return _completed(
+                    json.dumps(
+                        {
+                            "success": True,
+                            "qrCodeUrl": link,
+                            "clickableUrl": link,
+                            "message": "后台轮询已启动，请点击链接登录",
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            self.fail(f"unexpected ncm-cli {cmd}")
+
+        return fake_run
+
+    def test_login_required_info_reports_link_when_logged_out(self) -> None:
+        nm._login_link_cache = None
+        link = "https://163cn.tv/bgl5Nc5N"
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(
+                nm.subprocess, "run", side_effect=self._login_cli(logged_in=False, link=link)
+            ):
+                info = nm.ncm_login_required_info()
+        self.assertEqual(info["logged_in"], False)
+        self.assertIn("未登录", info["reason"])
+        self.assertEqual(info["login_url"], link)
+
+    def test_login_required_info_empty_when_logged_in(self) -> None:
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(
+                nm.subprocess, "run", side_effect=self._login_cli(logged_in=True)
+            ):
+                self.assertEqual(nm.ncm_login_required_info(), {})
+
+    def test_login_link_cached_between_failures(self) -> None:
+        nm._login_link_cache = None
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **_kwargs):
+            calls.append(list(cmd))
+            if cmd[1:3] == ["login", "--background"]:
+                return _completed('{"success": true, "clickableUrl": "https://163cn.tv/aa"}')
+            self.fail(f"unexpected {cmd}")
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                first = nm.ncm_login_link()
+                second = nm.ncm_login_link()
+        self.assertEqual(first, "https://163cn.tv/aa")
+        self.assertEqual(second, first)
+        # QR lives ~5min; every --background spawns a poller, so do not stampede.
+        self.assertEqual(len(calls), 1)
+
+    def test_run_from_params_upgrades_failure_to_login_required(self) -> None:
+        nm._login_link_cache = None
+        link = "https://163cn.tv/zzz"
+
+        def fake_run(cmd, **_kwargs):
+            if cmd[1:3] == ["login", "--check"]:
+                return _completed('{"success": false, "message": "未登录"}')
+            if cmd[1:3] == ["login", "--background"]:
+                return _completed('{"success": true, "clickableUrl": "%s"}' % link)
+            if _ncm_action(cmd) == "playlist_create":
+                # Logged out: ncm-cli silently drops authenticated commands.
+                return _completed("error: unknown command 'playlist'", returncode=1)
+            return _completed('{"success": false, "message": "播放列表为空"}')
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with self.assertRaises(nm.NeteaseMusicLoginRequired) as ctx:
+                    nm.run_from_params(
+                        "music.play", self._with_issuer({"user_input": "播放五月天的歌"})
+                    )
+        self.assertIsInstance(ctx.exception, nm.NeteaseMusicError)
+        self.assertEqual(ctx.exception.info.get("login_url"), link)
+        self.assertEqual(ctx.exception.info.get("logged_in"), False)
+
+    def test_run_from_params_keeps_plain_error_when_logged_in(self) -> None:
+        def fake_run(cmd, **_kwargs):
+            if cmd[1:3] == ["login", "--check"]:
+                return _completed('{"success": true, "message": "已登录"}')
+            if _ncm_action(cmd) == "playlist_create":
+                return _completed("error: unknown command 'playlist'", returncode=1)
+            return _completed('{"success": false, "message": "播放列表为空"}')
+
+        with patch.object(nm, "ncm_cli_bin", return_value="/usr/bin/ncm-cli"):
+            with patch.object(nm.subprocess, "run", side_effect=fake_run):
+                with self.assertRaises(nm.NeteaseMusicError) as ctx:
+                    nm.run_from_params(
+                        "music.play", self._with_issuer({"user_input": "播放五月天的歌"})
+                    )
+        self.assertNotIsInstance(ctx.exception, nm.NeteaseMusicLoginRequired)
+
 
 if __name__ == "__main__":
     unittest.main()
