@@ -384,7 +384,8 @@ private struct ChatTurnView: View {
                     CopyableBubble(
                         text: turn.userText,
                         foreground: .white,
-                        background: Color.accentColor
+                        background: Color.accentColor,
+                        linkColor: .white
                     )
                     if let aid = turn.inputAssetId, !aid.isEmpty {
                         Text("asset \(aid)")
@@ -516,9 +517,13 @@ private struct CopyableBubble: View {
     let text: String
     let foreground: Color
     let background: Color
+    /// Tint for embedded URLs. Explicit (not inherited from ``foreground``) so the
+    /// ncm-cli login link stays recognisable inside the red failure bubble, and
+    /// overridable (.white) on the accent-coloured user bubble.
+    var linkColor: Color = .accentColor
 
     var body: some View {
-        Text(text)
+        Text(linkifiedText(text, linkColor: linkColor))
             .font(.body)
             .foregroundStyle(foreground)
             .textSelection(.enabled)
@@ -536,10 +541,17 @@ private struct CopyableBubble: View {
     }
 }
 
-/// Plain text with any embedded URL rendered as a tappable link — e.g. the
+/// Plain text with any embedded URL rendered as a **tappable** link — e.g. the
 /// ncm-cli login link Brain attaches to a music failure that originated on an
 /// iPhone. Non-URL text is left untouched.
-private func linkifiedText(_ raw: String) -> AttributedString {
+///
+/// Links get an explicit ``linkColor`` plus an underline: a bare `Text` run keeps
+/// the bubble's ``foreground`` colour, so without this the URL reads exactly like
+/// the surrounding sentence (the id=764 regression: "提示有了，但链接点不动").
+private func linkifiedText(
+    _ raw: String,
+    linkColor: Color = .accentColor
+) -> AttributedString {
     let ns = raw as NSString
     guard !raw.isEmpty else { return AttributedString("") }
     guard let detector = try? NSDataDetector(
@@ -558,6 +570,8 @@ private func linkifiedText(_ raw: String) -> AttributedString {
         }
         var link = AttributedString(ns.substring(with: match.range))
         link.link = url
+        link.foregroundColor = linkColor
+        link.underlineStyle = Text.LineStyle.single
         out += link
         cursor = match.range.location + match.range.length
     }
