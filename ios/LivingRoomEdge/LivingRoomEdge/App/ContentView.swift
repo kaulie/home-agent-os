@@ -536,6 +536,39 @@ private struct CopyableBubble: View {
     }
 }
 
+/// Plain text with any embedded URL rendered as a tappable link — e.g. the
+/// ncm-cli login link Brain attaches to a music failure that originated on an
+/// iPhone. Non-URL text is left untouched.
+private func linkifiedText(_ raw: String) -> AttributedString {
+    let ns = raw as NSString
+    guard !raw.isEmpty else { return AttributedString("") }
+    guard let detector = try? NSDataDetector(
+        types: NSTextCheckingResult.CheckingType.link.rawValue
+    ) else {
+        return AttributedString(raw)
+    }
+    var out = AttributedString()
+    var cursor = 0
+    for match in detector.matches(in: raw, range: NSRange(location: 0, length: ns.length)) {
+        guard let url = match.url, match.range.location >= cursor else { continue }
+        if match.range.location > cursor {
+            out += AttributedString(
+                ns.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
+            )
+        }
+        var link = AttributedString(ns.substring(with: match.range))
+        link.link = url
+        out += link
+        cursor = match.range.location + match.range.length
+    }
+    if cursor < ns.length {
+        out += AttributedString(
+            ns.substring(with: NSRange(location: cursor, length: ns.length - cursor))
+        )
+    }
+    return out
+}
+
 private struct PresentationBubble: View {
     let presentation: IntentPresentation
     var intentId: String = ""
@@ -585,7 +618,7 @@ private struct PresentationBubble: View {
                         .foregroundStyle(.secondary)
                 }
                 if !presentation.text.isEmpty {
-                    Text(presentation.text)
+                    Text(linkifiedText(presentation.text))
                         .font(.body)
                         .textSelection(.enabled)
                 }
@@ -602,7 +635,7 @@ private struct PresentationBubble: View {
                 }
             case .text, .html:
                 if !presentation.text.isEmpty {
-                    Text(presentation.text)
+                    Text(linkifiedText(presentation.text))
                         .font(.body)
                         .textSelection(.enabled)
                 }
@@ -610,14 +643,14 @@ private struct PresentationBubble: View {
                 if !presentation.assetId.isEmpty {
                     AudioBubblePlayer(presentation: presentation, intentId: intentId)
                 } else if !presentation.text.isEmpty {
-                    Text(presentation.text)
+                    Text(linkifiedText(presentation.text))
                         .font(.body)
                         .textSelection(.enabled)
                 }
             case .document:
                 DocumentBubblePreview(presentation: presentation, intentId: intentId)
                 if !presentation.text.isEmpty {
-                    Text(presentation.text)
+                    Text(linkifiedText(presentation.text))
                         .font(.body)
                         .textSelection(.enabled)
                 }
