@@ -384,7 +384,10 @@ class LocalLedger:
                 break
             iid, n, ev = job
             st = int(ev.get("status") or 0)
-            outputs = ev.get("outputs") if st == STEP_SUCCEEDED else None
+            # Terminal steps keep their outputs. A FAILED step can still carry a
+            # product for the upper layer (e.g. ncm-cli login info the Brain turns
+            # into a login link) — never drop it on the way to Brain.
+            outputs = ev.get("outputs") if st in (STEP_SUCCEEDED, STEP_FAILED) else None
             if not isinstance(outputs, dict):
                 outputs = None
             ts_ms = ev.get("ts_ms")
@@ -590,7 +593,7 @@ def _enqueue_step_event(
         seq = 1
     step["sync_seq"] = seq
     item: dict[str, Any] = {"status": st, "ts_ms": int(ts_ms), "seq": seq}
-    if outputs and st == STEP_SUCCEEDED:
+    if outputs and st in (STEP_SUCCEEDED, STEP_FAILED):
         item["outputs"] = dict(outputs)
     note = str(msg or "").strip()
     if note:

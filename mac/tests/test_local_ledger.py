@@ -314,6 +314,48 @@ class LocalLedgerTests(unittest.TestCase):
         self.assertEqual(brain.step_posts[0][2], 3)
         self.assertEqual(brain.step_posts[0][5], "camera.capture: GoPro shutter timeout")
 
+    def test_flush_failed_includes_outputs(self) -> None:
+        # netease.music-style: the step FAILS but still reports a product (ncm-cli
+        # login info) that the Brain needs to build the user-facing message.
+        # id=763 regression: the ledger used to drop outputs on non-SUCCEEDED steps.
+        self.ledger.ingest_peek([_waiting_intent()], EID)
+        outputs = {
+            "netease_login": {
+                "logged_in": False,
+                "reason": "未登录，请执行 ncm-cli login 完成登录",
+                "login_url": "https://163cn.tv/bgl5Nc5N",
+            }
+        }
+        self.ledger.set_step_status(
+            IID, 1, 3, outputs=outputs, ts_ms=70, msg="ncm-cli 未返回 JSON：boom"
+        )
+        brain = _FakeBrain()
+        posted = self.ledger.flush_to_brain(brain, EID)  # type: ignore[arg-type]
+        self.assertEqual(posted, 1)
+        self.assertEqual(brain.step_posts[0][2], 3)
+        self.assertEqual(brain.step_posts[0][3], outputs)
+
+    def test_failed_outputs_survive_brain_down_replay(self) -> None:
+        self.ledger.ingest_peek([_waiting_intent()], EID)
+        outputs = {"netease_login": {"logged_in": False, "login_url": "https://163cn.tv/x"}}
+        self.ledger.set_step_status(IID, 1, 3, outputs=outputs, ts_ms=80)
+        down = _FakeBrain(fail=True)
+        self.assertEqual(self.ledger.flush_to_brain(down, EID), 0)  # type: ignore[arg-type]
+        up = _FakeBrain()
+        posted = self.ledger.flush_to_brain(up, EID)  # type: ignore[arg-type]
+        self.assertGreaterEqual(posted, 1)
+        self.assertEqual(up.step_posts[0][2], 3)
+        self.assertEqual(up.step_posts[0][3], outputs)
+
+    def test_non_terminal_outputs_are_not_carried(self) -> None:
+        self.ledger.ingest_peek([_waiting_intent()], EID)
+        self.ledger.set_step_status(IID, 1, 1, outputs={"junk": 1}, ts_ms=90)
+        rec = self.ledger.get(IID)
+        assert rec is not None
+        q = rec["execution_plan"][0].get("sync_queue") or []
+        self.assertEqual([int(e["status"]) for e in q], [1])
+        self.assertNotIn("outputs", q[0])
+
     def test_recycled_id_replaces_terminal_local(self) -> None:
         old = _waiting_intent(intent_status="failed")
         old["text"] = "晋字笔画怎么写"
