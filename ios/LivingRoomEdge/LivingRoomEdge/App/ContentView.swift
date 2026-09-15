@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import PDFKit
+import CoreImage
 
 struct ContentView: View {
     private enum ChatPane: String, Hashable {
@@ -385,7 +386,8 @@ private struct ChatTurnView: View {
                         text: turn.userText,
                         foreground: .white,
                         background: Color.accentColor,
-                        linkColor: .white
+                        linkColor: .white,
+                        qrCaptionColor: .white.opacity(0.85)
                     )
                     if let aid = turn.inputAssetId, !aid.isEmpty {
                         Text("asset \(aid)")
@@ -521,24 +523,56 @@ private struct CopyableBubble: View {
     /// ncm-cli login link stays recognisable inside the red failure bubble, and
     /// overridable (.white) on the accent-coloured user bubble.
     var linkColor: Color = .accentColor
+    /// Caption colour under the QR code. Defaults to `.secondary` (neutral /
+    /// failure bubbles); the accent-filled user bubble passes translucent white.
+    var qrCaptionColor: Color = .secondary
 
     var body: some View {
-        Text(linkifiedText(text, linkColor: linkColor))
-            .font(.body)
-            .foregroundStyle(foreground)
-            .textSelection(.enabled)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .contextMenu {
-                Button {
-                    UIPasteboard.general.string = text
-                } label: {
-                    Label("复制", systemImage: "doc.on.doc")
-                }
+        VStack(alignment: .leading, spacing: 10) {
+            Text(linkifiedText(text, linkColor: linkColor))
+                .font(.body)
+                .foregroundStyle(foreground)
+                .textSelection(.enabled)
+            // The link stays tappable *and* gets a scannable QR code next to it,
+            // so a short link (e.g. the ncm-cli login URL) can also be opened from
+            // another device when tapping in-app is not convenient.
+            if let url = firstLinkURL(in: text) {
+                LinkQRCodeView(url: url, captionColor: qrCaptionColor)
             }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(background)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = text
+            } label: {
+                Label("复制", systemImage: "doc.on.doc")
+            }
+        }
     }
+}
+
+/// Shared ``NSDataDetector`` for link detection. Creating one is comparatively
+/// expensive and every chat bubble re-evaluates its body on refresh, so the
+/// detector (and therefore the detection result) is reused for both the
+/// tappable-link rendering and the QR code.
+private enum LinkDetector {
+    static let shared: NSDataDetector? = try? NSDataDetector(
+        types: NSTextCheckingResult.CheckingType.link.rawValue
+    )
+}
+
+/// First URL embedded in ``raw``, if any — used to pick the QR code payload.
+/// Same detector as ``linkifiedText`` so the QR always matches the tappable link.
+private func firstLinkURL(in raw: String) -> URL? {
+    guard !raw.isEmpty, let detector = LinkDetector.shared else { return nil }
+    let ns = raw as NSString
+    return detector
+        .matches(in: raw, range: NSRange(location: 0, length: ns.length))
+        .compactMap(\.url)
+        .first
 }
 
 /// Plain text with any embedded URL rendered as a **tappable** link — e.g. the
@@ -554,9 +588,7 @@ private func linkifiedText(
 ) -> AttributedString {
     let ns = raw as NSString
     guard !raw.isEmpty else { return AttributedString("") }
-    guard let detector = try? NSDataDetector(
-        types: NSTextCheckingResult.CheckingType.link.rawValue
-    ) else {
+    guard let detector = LinkDetector.shared else {
         return AttributedString(raw)
     }
     var out = AttributedString()
@@ -581,6 +613,70 @@ private func linkifiedText(
         )
     }
     return out
+}
+
+/// Renders ``url`` as a scannable QR code, shown *below* the link inside a chat
+/// bubble (the tappable link is kept as-is). White quiet zone is deliberate: the
+/// surrounding bubble is coloured (accent = user, tertiary = failure), and a code
+/// without margin/contrast is hard for the camera to read.
+private struct LinkQRCodeView: View {
+    let url: URL
+    /// Caption colour, derived from the bubble's own foreground so it stays
+    /// readable on both the accent-filled and the neutral failure bubble.
+    var captionColor: Color = .secondary
+    var size: CGFloat = 132
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let image = LinkQRCode.image(for: url) {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size, height: size)
+                    .padding(8)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityLabel("链接二维码，可扫码打开：\(url.absoluteString)")
+            } else {
+                Text("二维码生成失败：\(url.absoluteString)")
+                    .font(.caption2)
+                    .foregroundStyle(captionColor)
+            }
+            Text("可扫码打开链接")
+                .font(.caption2)
+                .foregroundStyle(captionColor)
+        }
+        .padding(.top, 2)
+    }
+}
+
+/// QR code generation for links, via CoreImage's built-in `CIQRCodeGenerator`
+/// (no third-party dependency). Results are cached: SwiftUI re-runs the bubble
+/// body on every chat refresh / scroll, and rasterising through `CIContext` is
+/// not something to redo for an unchanged URL.
+private enum LinkQRCode {
+    private static let cache = NSCache<NSString, UIImage>()
+    private static let context = CIContext()
+    /// Scale factor so the bitmap is well above the 132pt display size —
+    /// `.interpolation(.none)` then downsamples to crisp module edges.
+    private static let scale: CGFloat = 12
+
+    static func image(for url: URL) -> UIImage? {
+        let key = url.absoluteString as NSString
+        if let hit = cache.object(forKey: key) { return hit }
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(url.absoluteString.utf8), forKey: "inputMessage")
+        // "M" (15%) is the usual balance for short URLs: still scannable when a
+        // phone loses a few modules to glare, without inflating module count.
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        guard let cg = context.createCGImage(scaled, from: scaled.extent) else { return nil }
+        let image = UIImage(cgImage: cg)
+        cache.setObject(image, forKey: key)
+        return image
+    }
 }
 
 private struct PresentationBubble: View {
