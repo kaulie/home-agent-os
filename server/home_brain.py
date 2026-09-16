@@ -4643,19 +4643,22 @@ def dispatch_intent():
         intent_body["context"] = ctx_param
     if source == "dev":
         view = submit_agent_task(text)
-        return jsonify(
-            ok=True,
-            text=text,
-            source=source,
-            edge_id=edge_id,
-            intent_origin=intent_origin,
-            reply=f"已下发开发任务：{text}",
-            intent_id=view.get("task_id"),
-            intent_status=view.get("status"),
-            task_kind="dev_task",
-            asset_ref=ctx_param.get("asset_ref"),
-            **view,
-        )
+        # dev 任务视图里的键可能与下面显式字段同名（intent_id / task_kind / text / status …），
+        # 直接 **view 会撞成 TypeError（接口 500）。显式字段优先，其余透传。
+        payload: dict[str, Any] = {
+            "ok": True,
+            "text": text,
+            "source": source,
+            "edge_id": edge_id,
+            "intent_origin": intent_origin,
+            "reply": f"已下发开发任务：{text}",
+            "intent_id": view.get("task_id"),
+            "intent_status": view.get("status"),
+            "task_kind": "dev_task",
+            "asset_ref": ctx_param.get("asset_ref"),
+        }
+        payload.update({key: value for key, value in view.items() if key not in payload})
+        return jsonify(**payload)
     intent_id = new_intent(intent_body)
     _observe_intent_complexity(text, intent_id=intent_id)
     if ctx_param.get("asset_ref") and callable(getattr(brain_db, "put_asset_grant", None)):
