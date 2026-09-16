@@ -13,6 +13,8 @@ paper.read ├── original   # 原文听读（v1 已交付，全程不调 LLM
 
 - ``original``（默认）：**忠实原文**，只做听觉必需的清理与重排（断词/续行/引文编号/页码/
   URL/公式语音化/图表引用自然化/标题朗读化），结构层丢掉 References 及其后、不念 caption。
+  引用话术与标题脚手架**跟随正文语言**（中文论文「图二 / 下面是…部分。」，英文论文
+  「Figure 2 / Next, the … section.」），音色也用同一门语言 —— 英文论文不会再被中文音色念。
   红线：不总结、不解释、不补论文外知识 —— 详见 `mac_edge.plugins.paper_clean`。
 - ``explain``：v1 只保留契约（`paper_explain`），调用时**明确中文失败**（不静默降级）。
 
@@ -33,7 +35,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
-from mac_edge.plugins.paper_clean import assemble_script, build_original_pieces
+from mac_edge.plugins.paper_clean import assemble_script, build_original_pieces, resolve_script_lang
 from mac_edge.plugins.paper_explain import PaperExplainError, explain_script
 from mac_edge.plugins.paper_structure import (
     PaperStructure,
@@ -261,7 +263,9 @@ def read_from_params(
             "paper.read explain 模式没有产出讲解稿"
         )
 
-    prefix, pieces = build_original_pieces(structure)
+    # 听读语言：显式 lang 优先，否则按论文正文自动判定；脚手架话术与 TTS 音色用同一门语言
+    script_lang = resolve_script_lang(structure, raw_params.get("lang"))
+    prefix, pieces = build_original_pieces(structure, script_lang=script_lang)
     if not pieces:
         raise PaperReadError("听读失败：清洗后没有可朗读的正文")
     full_script = assemble_script(prefix, pieces)
@@ -275,7 +279,9 @@ def read_from_params(
         raw_params.get("name") or structure.title or "",
         fallback=f"paper-{ref.asset_id[:12]}",
     )
-    lang = str(raw_params.get("lang") or "zh_CN").strip() or "zh_CN"
+    # lang 不传（None）＝按正文语言自动判定音色；显式传入仍以调用方为准。
+    # 这里与脚手架语言同源（script_lang），避免「英文正文 + 中文音色」或反之。
+    lang = str(raw_params.get("lang") or "").strip() or script_lang
     voice = str(raw_params.get("voice") or "").strip() or None
     backend = str(raw_params.get("backend") or "").strip().lower() or None
     synthesize = synthesize_fn or synthesize_speech

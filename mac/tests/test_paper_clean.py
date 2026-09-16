@@ -65,11 +65,27 @@ class CleanBodyTests(unittest.TestCase):
         self.assertNotIn("\\", out)
 
     def test_figure_table_equation_references_naturalized(self) -> None:
-        out = pc.clean_body("Fig. 2 shows it, Table 3 lists it, Eq. (4) proves it, Section 2.1 explains it.")
+        out = pc.clean_body(
+            "Fig. 2 shows it, Table 3 lists it, Eq. (4) proves it, Section 2.1 explains it.",
+            lang="zh",
+        )
         self.assertIn("图二", out)
         self.assertIn("表三", out)
         self.assertIn("公式四", out)
         self.assertIn("第 2.1 节", out)
+
+    def test_references_follow_english_body(self) -> None:
+        """英文正文里不再冒出「图一」：引用话术跟着正文语言走。"""
+        out = pc.clean_body(
+            "Fig. 2 shows it, Table 3 lists it, Eq. (4) proves it, Section 2.1 explains it.",
+            lang="en",
+        )
+        self.assertIn("Figure 2", out)
+        self.assertIn("Table 3", out)
+        self.assertIn("Equation 4", out)
+        self.assertIn("Section 2.1", out)
+        self.assertNotIn("图", out)
+        self.assertNotIn("表", out)
 
     def test_whitespace_and_punctuation_tidied(self) -> None:
         out = pc.clean_body("Too   many    spaces , and , , dup punct .")
@@ -95,6 +111,11 @@ class HeadingTests(unittest.TestCase):
         self.assertEqual(pc.speakable_heading("  Introduction. "), "下面是 Introduction 部分。")
         self.assertEqual(pc.speakable_heading(""), "")
 
+    def test_speakable_heading_english(self) -> None:
+        self.assertEqual(pc.speakable_heading("3.2 Method", lang="en"), "Next, the 3.2 Method section.")
+        self.assertEqual(pc.speakable_heading("Abstract", lang="en"), "Next, the Abstract section.")
+        self.assertEqual(pc.speakable_heading("", lang="en"), "")
+
 
 class ScriptTests(unittest.TestCase):
     def _structure(self) -> PaperStructure:
@@ -109,13 +130,29 @@ class ScriptTests(unittest.TestCase):
 
     def test_build_pieces_and_assemble(self) -> None:
         prefix, pieces = pc.build_original_pieces(self._structure())
-        self.assertEqual(prefix, "论文标题：Listening to Papers。")
+        # 正文是英文 → 脚手架也走英文（否则英文里夹「下面是…部分。」）
+        self.assertEqual(prefix, "Paper title: Listening to Papers.")
         self.assertEqual([p["type"] for p in pieces], ["abstract", "method"])
-        self.assertEqual(pieces[0]["text"], "下面是 Abstract 部分。\nWe listen. See.")
+        self.assertEqual(pieces[0]["text"], "Next, the Abstract section.\nWe listen. See.")
         script = pc.assemble_script(prefix, pieces)
         self.assertTrue(script.startswith(prefix))
-        self.assertIn("下面是 2 Method 部分。", script)
-        self.assertIn("图一", script)
+        self.assertIn("Next, the 2 Method section.", script)
+        self.assertIn("Figure 1", script)
+
+    def test_build_pieces_chinese_scaffolding(self) -> None:
+        """中文论文仍走中文脚手架（显式 lang / 正文判定都认）。"""
+        structure = PaperStructure(
+            title="听读论文",
+            pages=2,
+            sections=[Section(type="abstract", heading="摘要", paragraphs=["我们听读。见图表。"], start_page=1, end_page=1)],
+        )
+        prefix, pieces = pc.build_original_pieces(structure)
+        self.assertEqual(prefix, "论文标题：听读论文。")
+        self.assertEqual(pieces[0]["text"], "下面是 摘要 部分。\n我们听读。见图表。")
+        # 显式给英文正文指定中文 → 中文脚手架（用户说了算）
+        zh_prefix, zh_pieces = pc.build_original_pieces(self._structure(), script_lang="zh")
+        self.assertEqual(zh_prefix, "论文标题：Listening to Papers。")
+        self.assertIn("下面是 Abstract 部分。", zh_pieces[0]["text"])
 
     def test_assemble_without_title(self) -> None:
         _prefix, pieces = pc.build_original_pieces(

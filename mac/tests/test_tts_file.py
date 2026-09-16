@@ -20,6 +20,8 @@ from mac_edge.plugins.tts_file import (
     TtsResult,
     clamp_speed,
     concat_mp3,
+    detect_lang,
+    normalize_lang,
     resolve_edge_voice,
     split_text_for_tts,
     synthesize_speech,
@@ -108,6 +110,67 @@ class SpeedAndVoiceTests(unittest.TestCase):
         with patch.dict("os.environ", {"MAC_EDGE_PDF_READER_VOICE": "自定义音色"}, clear=False):
             self.assertEqual(resolve_edge_voice(None, "zh_CN"), "自定义音色")
 
+    def test_edge_voice_auto_detects_english_text(self) -> None:
+        """英文正文 + lang 缺省 → 英文音色（中文音色念英文＝别扭口音）。"""
+        paper = (
+            "We describe a new problem solver called STRIPS that attempts to find a sequence "
+            "of operators in a space of world models to transform a given initial world model."
+        )
+        with patch.dict(
+            "os.environ",
+            {
+                "MAC_EDGE_PDF_READER_VOICE": "",
+                "MAC_EDGE_PDF_READER_VOICE_ZH": "",
+                "MAC_EDGE_PDF_READER_VOICE_EN": "",
+            },
+            clear=False,
+        ):
+            self.assertEqual(resolve_edge_voice(None, None, text=paper), tts_file.DEFAULT_EDGE_VOICE_EN)
+            self.assertEqual(resolve_edge_voice(None, "auto", text=paper), tts_file.DEFAULT_EDGE_VOICE_EN)
+            self.assertEqual(resolve_edge_voice(None, None, text="这是一篇中文论文。"), tts_file.DEFAULT_EDGE_VOICE_ZH)
+            # 显式 lang 仍然优先于正文判定
+            self.assertEqual(resolve_edge_voice(None, "zh_CN", text=paper), tts_file.DEFAULT_EDGE_VOICE_ZH)
+
+    def test_edge_voice_lang_specific_env(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "MAC_EDGE_PDF_READER_VOICE": "",
+                "MAC_EDGE_PDF_READER_VOICE_ZH": "zh-CN-YunxiNeural",
+                "MAC_EDGE_PDF_READER_VOICE_EN": "en-US-AndrewMultilingualNeural",
+            },
+            clear=False,
+        ):
+            self.assertEqual(resolve_edge_voice(None, "zh_CN"), "zh-CN-YunxiNeural")
+            self.assertEqual(resolve_edge_voice(None, "en_US"), "en-US-AndrewMultilingualNeural")
+            # 显式 voice 最高优先
+            self.assertEqual(resolve_edge_voice("en-US-BrianNeural", "zh_CN"), "en-US-BrianNeural")
+
+
+class LangDetectTests(unittest.TestCase):
+    def test_normalize_lang(self) -> None:
+        self.assertEqual(normalize_lang(None), "")
+        self.assertEqual(normalize_lang("  "), "")
+        self.assertEqual(normalize_lang("auto"), "")
+        self.assertEqual(normalize_lang("AUTO"), "")
+        self.assertEqual(normalize_lang("zh-CN"), "zh_cn")
+        self.assertEqual(normalize_lang("en_US"), "en_us")
+
+    def test_english_text(self) -> None:
+        self.assertEqual(detect_lang("This is an English sentence about STRIPS."), "en_US")
+
+    def test_chinese_text(self) -> None:
+        self.assertEqual(detect_lang("这是一篇中文论文的正文。"), "zh_CN")
+
+    def test_mixed_text_stays_chinese(self) -> None:
+        """中文论文里的英文术语不该把语言判成英文。"""
+        text = "本文提出一种基于 transformer 的双塔召回模型，并在 RAG 场景下验证了 Recall 指标。"
+        self.assertEqual(detect_lang(text), "zh_CN")
+
+    def test_numeric_only_falls_back_to_default(self) -> None:
+        self.assertEqual(detect_lang("1234 56.7% )( 8/9", default="zh_CN"), "zh_CN")
+        self.assertEqual(detect_lang("", default="en_US"), "en_US")
+
 
 class ConcatTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -175,6 +238,31 @@ class SynthesizeTests(unittest.TestCase):
         self.assertTrue(result.path.is_file())
         self.assertTrue(result.path.name.endswith(".mp3"))
         self.assertGreaterEqual(result.path.stat().st_size, tts_file.MIN_AUDIO_BYTES)
+
+    def test_edge_english_text_picks_english_voice(self) -> None:
+        """英文正文（lang 缺省）→ 英文音色；块更大 → 接缝更少。"""
+        seen: list[str] = []
+
+        class Communicate:
+            def __init__(self, text: str, voice: str, rate: str | None = None) -> None:
+                seen.append(voice)
+
+            async def save(self, path: str) -> None:
+                Path(path).write_bytes(_AUDIO_BYTES)
+
+        env = {
+            "MAC_EDGE_PDF_READER_VOICE": "",
+            "MAC_EDGE_PDF_READER_VOICE_ZH": "",
+            "MAC_EDGE_PDF_READER_VOICE_EN": "",
+        }
+        text = "This is an English paper sentence. " * 150  # 约 5000 字符
+        with patch.dict("os.environ", env, clear=False):
+            with patch.dict(sys.modules, {"edge_tts": types.SimpleNamespace(Communicate=Communicate)}):
+                result = synthesize_speech(text, self.root, stem="en", backend="edge")
+        self.assertEqual(result.voice, tts_file.DEFAULT_EDGE_VOICE_EN)
+        self.assertEqual(set(seen), {tts_file.DEFAULT_EDGE_VOICE_EN})
+        # 默认块 3000 字 → 5000 多字的英文只需 2 块（旧的 1000 字默认要 6 块）
+        self.assertEqual(result.chunks, 2)
 
     def test_edge_failure_falls_back_to_say(self) -> None:
         if not tts_file.say_available():

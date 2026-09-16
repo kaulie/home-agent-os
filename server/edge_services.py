@@ -1257,7 +1257,7 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             '把本步已有的 PDF/document Asset 的文字念成一段语音（TTS 音频 Asset）：'
             '用户说「念一下这份 PDF / 把这份文档读给我听 / 朗读这个 PDF」时用本步。'
             '入参 asset_ref（必填，type=document，常为 $asset_ref），可选 page_start/page_end、'
-            'speed、voice、max_chars。产出 audio AssetRef——语音入口把 presentation 设为 '
+            'speed、voice、max_chars（lang 不传时按正文语言自动选音色）。产出 audio AssetRef——语音入口把 presentation 设为 '
             '{type:audio, from:asset_ref} 播放这段朗读；用户没指定哪份 PDF 时，先排 '
             'asset.inventory 取最新 document 再接本步。只念文档正文，不是短提醒/公告'
             '（那种用 notify.speak）；扫描件（无文字层）本步会失败，要先 pdf.to_images + image.ocr'
@@ -1303,14 +1303,17 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             'lang': {
                 'type': 'string',
                 'required': False,
-                'description': '朗读语言，默认 zh_CN（zh_CN / en_US）；决定默认音色',
+                'description': (
+                    '朗读语言（zh_CN / en_US）；不传则按正文语言自动判定'
+                    '（英文论文用英文音色，避免中文音色念英文的口音）'
+                ),
             },
             'voice': {
                 'type': 'string',
                 'required': False,
                 'description': (
-                    '可选音色：edge-tts 音色名（如 zh-CN-YunxiNeural）或 macOS say 音色名；'
-                    '不传则按语言取默认音色'
+                    '可选音色：edge-tts 音色名（如 en-US-AvaMultilingualNeural / '
+                    'zh-CN-YunxiNeural）或 macOS say 音色名；不传则按语言取默认音色'
                 ),
             },
             'speed': {
@@ -1409,7 +1412,7 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             'pdf.reader 只管「念一下这份 PDF」这类通用短文档；本步面向论文/长文献，会做结构（识别章节、'
             '跳过 References 与页眉页脚、不念图表说明），并回 sections[] 索引（每节字数/页范围/估算起始秒）。'
             '入参 asset_ref（必填，type=document，常为 $asset_ref）；mode 默认 original（原文听读，忠实原文、'
-            '不讲解），可选 page_start/page_end、speed、voice、max_chars。产出 audio AssetRef——语音入口把 '
+            '不讲解），可选 page_start/page_end、speed、voice、max_chars（lang 不传时按正文语言自动选音色）。产出 audio AssetRef——语音入口把 '
             'presentation 设为 {type:audio, from:asset_ref} 播放。用户没指定哪篇论文时，先排 asset.inventory '
             '取最新 document 再接本步。mode=explain（AI 讲解）v1 保留未交付，传了会明确失败；'
             '扫描件（无文字层）会失败，要先 pdf.to_images + image.ocr'
@@ -1469,14 +1472,17 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             'lang': {
                 'type': 'string',
                 'required': False,
-                'description': '朗读语言，默认 zh_CN（zh_CN / en_US）；决定默认音色',
+                'description': (
+                    '朗读语言（zh_CN / en_US）；不传则按正文语言自动判定'
+                    '（英文论文用英文音色，避免中文音色念英文的口音）'
+                ),
             },
             'voice': {
                 'type': 'string',
                 'required': False,
                 'description': (
-                    '可选音色：edge-tts 音色名（如 zh-CN-YunxiNeural）或 macOS say 音色名；'
-                    '不传则按语言取默认音色'
+                    '可选音色：edge-tts 音色名（如 en-US-AvaMultilingualNeural / '
+                    'zh-CN-YunxiNeural）或 macOS say 音色名；不传则按语言取默认音色'
                 ),
             },
             'speed': {
