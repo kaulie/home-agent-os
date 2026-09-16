@@ -25,6 +25,7 @@ from typing import Any, Callable
 from mac_edge.plugins.pdf_render import (
     PdfRenderError,
     clamp_dpi,
+    normalize_page_range,
     pdf_page_count,
     render_page_png,
 )
@@ -45,33 +46,21 @@ def parse_page_range(
     *,
     page_count: int,
 ) -> tuple[int, int]:
-    """页范围归一化为 1-based 闭区间 [start, end]；缺省整份，越界钳到边界。"""
-    def _num(raw: Any, label: str) -> int | None:
-        text = str(raw if raw is not None else "").strip()
-        if not text:
-            return None
-        try:
-            value = int(float(text))
-        except (TypeError, ValueError) as e:
-            raise PdfToImagesError(f"{label} 必须是数字：{raw!r}") from e
-        if value < 1:
-            raise PdfToImagesError(f"{label} 必须 ≥ 1：{raw!r}")
-        return value
+    """页范围归一化为 1-based 闭区间 [start, end]；缺省整份，越界钳到边界。
 
-    start = _num(raw_start, "page_start") or 1
-    end = _num(raw_end, "page_end") or page_count
-    start = max(1, min(start, page_count))
-    end = max(1, min(end, page_count))
-    if start > end:
-        raise PdfToImagesError(
-            f"页范围无效：page_start={start} > page_end={end}（共 {page_count} 页）"
+    页码语义由共享底层 `pdf_render.normalize_page_range` 统一（与 pdf.reader 同源），
+    这里只把失败转成本能力的 `PdfToImagesError`。
+    """
+    try:
+        return normalize_page_range(
+            raw_start,
+            raw_end,
+            page_count=page_count,
+            max_pages=MAX_RENDER_PAGES,
+            what="渲染",
         )
-    if end - start + 1 > MAX_RENDER_PAGES:
-        raise PdfToImagesError(
-            f"一次最多渲染 {MAX_RENDER_PAGES} 页，当前请求 {end - start + 1} 页"
-            f"（第 {start}–{end} 页）；请缩小页范围"
-        )
-    return start, end
+    except PdfRenderError as e:
+        raise PdfToImagesError(str(e)) from e
 
 
 def _safe_stem(raw: Any, *, fallback: str) -> str:

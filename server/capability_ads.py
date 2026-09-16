@@ -536,6 +536,37 @@ ADS: dict[str, dict[str, Any]] = {
         ],
         do_not_dispatch=["打印", "OCR", "看图理解", "投屏翻页", "PDF 旋转", "图片合成 PDF", "拍照"],
     ),
+    "pdf.reader": _ad(
+        kind="action",
+        role="PDF 语音朗读器",
+        planner_recognize=(
+            "把本步已有的 PDF/document Asset 的文字念成一段语音（TTS 音频 Asset）："
+            "用户说「念一下这份 PDF / 把这份文档读给我听 / 朗读这个 PDF」时用本步。"
+            "入参 asset_ref（必填，type=document，常为 $asset_ref），可选 page_start/page_end、"
+            "speed、voice、max_chars。产出 audio AssetRef——语音入口把 presentation 设为 "
+            "{type:audio, from:asset_ref} 播放这段朗读；用户没指定哪份 PDF 时，先排 "
+            "asset.inventory 取最新 document 再接本步。只念文档正文，不是短提醒/公告"
+            "（那种用 notify.speak）；扫描件（无文字层）本步会失败，要先 pdf.to_images + image.ocr"
+        ),
+        typical_triggers=[
+            "念一下这份 PDF",
+            "把这份文档读给我听",
+            "朗读这个 PDF",
+            "把 PDF 转成语音",
+            "读一遍这个文档",
+        ],
+        do_not_dispatch=[
+            "打印",
+            "投屏",
+            "看图理解",
+            "OCR 识别",
+            "拍照",
+            "提醒/公告短句播报",
+            "放歌",
+            "PDF 转图片",
+            "PDF 旋转",
+        ],
+    ),
     "web.scraper": _ad(
         kind="action",
         role="网页抓取器（URL / url 资产 → 核心正文/整页 → PDF/文本）",
