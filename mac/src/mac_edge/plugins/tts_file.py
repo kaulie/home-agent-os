@@ -9,6 +9,12 @@
   `en-US-AvaMultilingualNeural`）。长文按句切块，逐块合成 mp3 后按 MP3 帧拼接成
   一个 mp3（不需要 ffmpeg）→ mime `audio/mpeg`。
 
+**长文切块与超时**：块上限 `DEFAULT_CHUNK_CHARS`（3000 字）越大，块间接缝越少、
+听感越连贯；单块超时不能写死（实测同一台机 3–13 秒/1000 字，波动 4 倍以上），
+按 `max(30s, 每 1000 字 40s)` 给基线，再按**实测合成速度** ×3 放大（封顶 150s）。
+合成总时长上限见 `MAC_EDGE_PDF_READER_TIMEOUT_SEC`（默认 240s，须小于 Edge 的
+能力超时 300s）。
+
 **音色选择（`lang` / `voice` 的优先级）**：显式 `voice` → 环境变量
 `MAC_EDGE_PDF_READER_VOICE` → 显式 `lang` → 按**正文语言**自动判定
 （`detect_lang`：CJK 字数 vs 拉丁词数）→ 该语言的默认音色
@@ -55,7 +61,15 @@ DEFAULT_SAY_RATE_WPM = 180
 # 单块字数上限：块越大，块间接缝（每块一次独立合成的语气重置 + 尾静音）越少，
 # 长文听感越连贯；单块合成耗时实测约 字数/220 秒，3000 字 ≈ 14s，仍远低于块超时。
 DEFAULT_CHUNK_CHARS = 3000
+# 单块超时**不能写死**：块越大、网络越慢，单块耗时越长。本机经代理实测
+# 1000 字 ≈ 12s（85 字/秒），而同一台机器早些时候快 2–3 倍 —— 死守 30s 会把
+# 正常的大块误判成超时（实测发生过：3000 字块 37s > 30s → 白回退 macOS say）。
+# 规则：基线 = max(30s, 每 1000 字 40s)，再按**实测合成速度**自适应放大（×3 余量）。
 DEFAULT_CHUNK_TIMEOUT_SEC = 30.0
+MIN_CHUNK_TIMEOUT_SEC = 30.0
+CHUNK_TIMEOUT_SEC_PER_1000_CHARS = 40.0
+MAX_CHUNK_TIMEOUT_SEC = 150.0
+CHUNK_TIMEOUT_RATE_MARGIN = 3.0
 # 单次合成总时长上限：必须小于 Edge 的 MAC_EDGE_CAPABILITY_TIMEOUT_SEC（默认 300s），
 # 这样超时先出明确中文失败，而不是被 executor 硬杀。
 DEFAULT_TOTAL_TIMEOUT_SEC = 240.0
@@ -298,6 +312,27 @@ def probe_duration_sec(path: str | Path) -> float | None:
     return None
 
 
+def chunk_timeout_for(chunk_chars: int) -> float:
+    """单块超时基线：max(30s, 每 1000 字 40s)。"""
+    chars = max(1, int(chunk_chars or 0))
+    return max(MIN_CHUNK_TIMEOUT_SEC, CHUNK_TIMEOUT_SEC_PER_1000_CHARS * chars / 1000.0)
+
+
+def _chunk_budget(
+    chunk_chars: int, explicit_cap: float | None, observed_rate: float | None
+) -> float:
+    """本块的实际超时预算。
+
+    - 基线：`chunk_timeout_for`（块越大给越多）
+    - 实测速度慢于预期时按 ×`CHUNK_TIMEOUT_RATE_MARGIN` 放大（封顶 `MAX_CHUNK_TIMEOUT_SEC`）
+    - 调用方显式给了 `chunk_timeout_sec` → 以它为准（单测/调用方需要确定性）
+    """
+    budget = chunk_timeout_for(chunk_chars)
+    if observed_rate and observed_rate > 0:
+        budget = max(budget, min(MAX_CHUNK_TIMEOUT_SEC, CHUNK_TIMEOUT_RATE_MARGIN * chunk_chars / observed_rate))
+    return float(explicit_cap) if explicit_cap is not None else budget
+
+
 def _edge_rate(speed: float) -> str:
     return f"{int(round((speed - 1.0) * 100)):+d}%"
 
@@ -333,7 +368,7 @@ def _synthesize_edge(
     speed: float,
     lang: str,
     total_timeout_sec: float,
-    chunk_timeout_sec: float,
+    chunk_timeout_sec: float | None,
     chunk_chars: int,
 ) -> TtsResult:
     try:
@@ -347,6 +382,8 @@ def _synthesize_edge(
     if not chunks:
         raise TtsFileError("朗读失败：没有可合成的文字")
     deadline = time.monotonic() + max(5.0, float(total_timeout_sec))
+    explicit_cap = float(chunk_timeout_sec) if chunk_timeout_sec else None
+    observed_rate: float | None = None  # 实测合成长速度（字/秒），用来给后续块放大超时
     parts: list[Path] = []
     for index, chunk in enumerate(chunks, start=1):
         if time.monotonic() > deadline:
@@ -354,31 +391,36 @@ def _synthesize_edge(
                 f"edge-tts 合成超时：已完成 {len(parts)}/{len(chunks)} 段"
                 f"（上限 {total_timeout_sec:.0f}s）"
             )
+        budget = _chunk_budget(len(chunk), explicit_cap, observed_rate)
         out = out_dir / f"{stem}-part{index:03d}.mp3"
+        started = time.monotonic()
         try:
             asyncio.run(
                 asyncio.wait_for(
                     _edge_save(edge_tts, chunk, out, voice=pick, rate=rate),
-                    timeout=chunk_timeout_sec,
+                    timeout=budget,
                 )
             )
         except TimeoutError as e:
             raise TtsFileError(
-                f"edge-tts 合成第 {index}/{len(chunks)} 段超时（{chunk_timeout_sec:.0f}s）"
+                f"edge-tts 合成第 {index}/{len(chunks)} 段超时（{budget:.0f}s，{len(chunk)} 字）"
             ) from e
         except Exception as e:
             raise TtsFileError(f"edge-tts 合成第 {index}/{len(chunks)} 段失败：{e}") from e
+        elapsed = max(0.05, time.monotonic() - started)
+        observed_rate = len(chunk) / elapsed
         if not out.is_file() or out.stat().st_size < MIN_AUDIO_BYTES:
             raise TtsFileError(f"edge-tts 合成第 {index}/{len(chunks)} 段失败：音频为空")
         parts.append(out)
     mp3 = concat_mp3(parts, out_dir / f"{stem}.mp3")
     log.info(
-        "edge-tts ok voice=%s lang=%s rate=%s chunks=%s bytes=%s",
+        "edge-tts ok voice=%s lang=%s rate=%s chunks=%s bytes=%s rate_chars_per_sec=%s",
         pick,
         lang or "auto",
         rate,
         len(chunks),
         mp3.stat().st_size,
+        f"{observed_rate:.0f}" if observed_rate else "?",
     )
     return TtsResult(
         path=mp3,
@@ -461,7 +503,7 @@ def synthesize_speech(
     speed: Any = None,
     lang: str | None = None,
     total_timeout_sec: float | None = None,
-    chunk_timeout_sec: float = DEFAULT_CHUNK_TIMEOUT_SEC,
+    chunk_timeout_sec: float | None = None,
     chunk_chars: int = DEFAULT_CHUNK_CHARS,
     allow_say_fallback: bool | None = None,
 ) -> TtsResult:
