@@ -1,0 +1,36 @@
+id: paper-reader
+service_id: local.paper.read
+group: read
+version: "0.1.0"
+display_name: 论文听读器
+description: 把论文/长文献 PDF 解析成 Paper Structure，按 original 原文模式产出可连续听读的 TTS 音频（audio Asset）
+
+capabilities:
+  - capability_id: paper.read
+    description: 论文 PDF/document Asset → 结构化听读音频 audio Asset（v1：original 原文模式；explain 讲解保留未交付）
+
+entry:
+  mac: mac/src/mac_edge/plugins/paper_read.py
+config:
+  - key: MAC_EDGE_PAPER_READ_MAX_CHARS
+    platform: mac
+    description: 单次合成字数上限（默认 12000 ≈ 40 分钟语音）；入参 max_chars 可逐次覆盖，0=不截断
+  - key: MAC_EDGE_PDF_READER_TTS_BACKEND
+    platform: mac
+    description: 合成引擎 edge（默认，edge-tts 神经音色）/ say（macOS 本机，离线）；与 pdf.reader 共用
+  - key: MAC_EDGE_PDF_READER_VOICE
+    platform: mac
+    description: 默认音色名；不设时中文用 zh-CN-XiaoxiaoNeural、英文用 en-US-AriaNeural
+  - key: MAC_EDGE_PDF_READER_TTS_FALLBACK_SAY
+    platform: mac
+    description: edge-tts 合成失败时是否回退 macOS say（默认 1=回退）
+  - key: MAC_EDGE_PDF_READER_TIMEOUT_SEC
+    platform: mac
+    description: 单次合成总时长上限（默认 240s；须小于 MAC_EDGE_CAPABILITY_TIMEOUT_SEC）
+notes: |
+  结构层 mac_edge/plugins/paper_structure.py（PyMuPDF，与 pdf.to_images / display.pdf / pdf.reader 同源）：
+  双栏阅读顺序、去页眉页脚页码、章节识别、References 硬截断、Figure/Table caption 只记不念（全部确定性规则，不调 LLM）。
+  清洗层 mac_edge/plugins/paper_clean.py（正则；断词/续行/引文编号/URL/页码/公式语音化/图表引用自然化/标题朗读化）。
+  合成复用 mac_edge.plugins.tts_file；上传复用 CapAsset.upload_file（producer=paper.read，type=audio）。
+  explain 模式在 mac_edge/plugins/paper_explain.py 里保留契约，调用时明确中文失败（不静默降级为 original）。
+  本机可 import pymupdf 且存在可用 TTS 引擎时才广告 local.paper.read（laptop 角色）。

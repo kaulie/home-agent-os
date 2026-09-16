@@ -1,6 +1,6 @@
 # paper.read v1 — 论文听读能力（设计 + 落地计划）
 
-**状态：** 待确认（代码未开工，先落盘 plan）
+**状态：** 已确认并开工（范围调整见 [`paper_read_v2.md`](paper_read_v2.md)：先做 original，explain 保留）
 **版本：** v1（2026-09-16）
 **近邻：** [`plugins/pdf-reader/capability.md`](../plugins/pdf-reader/capability.md)（已上线的 `pdf.reader`）
 **参考：** `mokawa3018-ctrl/paper-reader-skill`（结构化解析）· `soumyasj/pdf2speech`（朗读清洗）· `techdou/paper-reading`（Explain 阅读链）· `dayangxing/Paper-reader-skill`（三层深度）

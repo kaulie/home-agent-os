@@ -989,6 +989,183 @@ LOCAL_PDF_READER_SERVICE: dict[str, Any] = {
         ),
     ],
 }
+LOCAL_PAPER_READ_SERVICE: dict[str, Any] = {
+    "service_id": "local.paper.read",
+    "display_name": "论文听读器",
+    "version": "0.1.0",
+    "group": "read",
+    "capabilities": [
+        attach(
+            "paper.read",
+            input_schema={
+                "asset_ref": {
+                    "type": "object",
+                    "required": True,
+                    "description": (
+                        "必填 AssetRef JSON，type=document（PDF 论文）。"
+                        "例 {\"asset_id\":\"asset_…\",\"type\":\"document\"}。"
+                        "禁止 path / 永久 URL；缺则本能力无效。"
+                    ),
+                },
+                "mode": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "阅读模式，默认 original（原文听读：忠实原文、跳 References、不念图表说明）；"
+                        "explain（AI 讲解）v1 保留未交付，传了会明确失败"
+                    ),
+                },
+                "depth": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "explain 的讲解层数：overview（默认）/ method / deep；original 模式忽略"
+                    ),
+                },
+                "page_start": {
+                    "type": "number",
+                    "required": False,
+                    "description": "起始页（1-based），缺省第 1 页；越界钳到边界",
+                },
+                "page_end": {
+                    "type": "number",
+                    "required": False,
+                    "description": "结束页（1-based，闭区间），缺省最后一页；越界钳到边界",
+                },
+                "lang": {
+                    "type": "string",
+                    "required": False,
+                    "description": "朗读语言，默认 zh_CN（zh_CN / en_US）；决定默认音色",
+                },
+                "voice": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "可选音色：edge-tts 音色名（如 zh-CN-YunxiNeural）或 macOS say 音色名；"
+                        "不传则按语言取默认音色"
+                    ),
+                },
+                "speed": {
+                    "type": "number",
+                    "required": False,
+                    "description": "语速倍率，默认 1.0（钳制 0.5–2.0）",
+                },
+                "max_chars": {
+                    "type": "number",
+                    "required": False,
+                    "description": (
+                        "本次合成的字数上限，默认 12000（约 40 分钟语音）；0=不截断。"
+                        "超上限按句边界截断并在 status_text 说明"
+                    ),
+                },
+                "name": {
+                    "type": "string",
+                    "required": False,
+                    "description": (
+                        "可选音频展示名（不含扩展名）；不传则用论文标题，再退化为 "
+                        "paper-<asset_id 前 12 位>"
+                    ),
+                },
+            },
+            output_schema={
+                "asset_ref": {
+                    "type": "object",
+                    "required": True,
+                    "description": (
+                        "新登记的 audio AssetRef（mime audio/mpeg 或 audio/mp4）；"
+                        "presentation {type: audio, from: asset_ref} 即播放这段听读音频"
+                    ),
+                },
+                "mode": {
+                    "type": "string",
+                    "required": True,
+                    "description": "本次实际使用的模式（original / explain）",
+                },
+                "depth": {
+                    "type": "string",
+                    "required": False,
+                    "description": "explain 模式回显的讲解层数；original 为 null",
+                },
+                "title": {
+                    "type": "string",
+                    "required": False,
+                    "description": "识别到的论文标题；识别不到为 null",
+                },
+                "page_count": {
+                    "type": "number",
+                    "required": True,
+                    "description": "PDF 总页数",
+                },
+                "page_start": {
+                    "type": "number",
+                    "required": True,
+                    "description": "本次听读起始页（1-based）",
+                },
+                "page_end": {
+                    "type": "number",
+                    "required": True,
+                    "description": "本次听读结束页（1-based，闭区间）",
+                },
+                "sections": {
+                    "type": "object",
+                    "required": True,
+                    "description": (
+                        "section 级索引数组：每项 {index, type, heading, chars, page_start, "
+                        "page_end, est_offset_sec}（est_offset_sec 为估算起始秒）"
+                    ),
+                },
+                "sections_count": {
+                    "type": "number",
+                    "required": True,
+                    "description": "识别到的章节数",
+                },
+                "chars": {
+                    "type": "number",
+                    "required": True,
+                    "description": "实际合成为语音的字数（截断后）",
+                },
+                "chars_total": {
+                    "type": "number",
+                    "required": True,
+                    "description": "清洗后完整听读稿的字数（截断前）",
+                },
+                "truncated": {
+                    "type": "boolean",
+                    "required": True,
+                    "description": "是否因字数上限截断（true=只念了前面一部分）",
+                },
+                "duration_sec": {
+                    "type": "number",
+                    "required": False,
+                    "description": "音频时长（秒）；探测不到时为 null",
+                },
+                "engine": {
+                    "type": "string",
+                    "required": True,
+                    "description": "实际使用的合成引擎：edge（edge-tts）/ say（macOS 本机）",
+                },
+                "voice": {
+                    "type": "string",
+                    "required": True,
+                    "description": "实际使用的音色名",
+                },
+                "text_preview": {
+                    "type": "string",
+                    "required": False,
+                    "description": "听读稿开头摘要（约 80 字），供对话回显",
+                },
+                "status_text": {
+                    "type": "string",
+                    "required": True,
+                    "description": (
+                        "中文一句话结果，含模式、页范围、章节数、字数、时长、是否截断与引擎"
+                    ),
+                },
+            },
+        ),
+    ],
+}
+
 
 LOCAL_WEB_SCRAPER_SERVICE: dict[str, Any] = {
     "service_id": "local.web.scraper",
@@ -2034,6 +2211,7 @@ _LAPTOP_SERVICE_ORDER = (
     LOCAL_PDF_ROTATE_SERVICE,
     LOCAL_PDF_IMAGES_SERVICE,
     LOCAL_PDF_READER_SERVICE,
+    LOCAL_PAPER_READ_SERVICE,
     LOCAL_WEB_SCRAPER_SERVICE,
     LOCAL_CHAT_SERVICE,
     LOCAL_ASSET_SERVICE,
@@ -2230,6 +2408,14 @@ def default_services() -> list[dict[str, Any]]:
             log.info("advertise local.pdf.reader (pdf.reader)")
         else:
             log.info("skip local.pdf.reader — pymupdf or TTS engine missing")
+    if _allow_service(LOCAL_PAPER_READ_SERVICE["service_id"], allowed_set):
+        from mac_edge.plugins.paper_read import paper_read_available
+
+        if paper_read_available():
+            services.append(dict(LOCAL_PAPER_READ_SERVICE))
+            log.info("advertise local.paper.read (paper.read)")
+        else:
+            log.info("skip local.paper.read — pymupdf or TTS engine missing")
     if _allow_service(LOCAL_WEB_SCRAPER_SERVICE["service_id"], allowed_set):
         from mac_edge.plugins.web_scraper import any_renderer_available
 
