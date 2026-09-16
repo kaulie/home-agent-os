@@ -267,9 +267,10 @@ def _capture_loop(
                 source.open()
                 break
             except Exception:
-                log.exception("open mic failed; retry in 2s")
+                retry_sec = cfg.mic_retry_sec
+                log.exception("open mic failed; retry in %gs", retry_sec)
                 source.close(retry=True)
-                if stop.wait(2.0):
+                if stop.wait(retry_sec):
                     return
         else:
             return

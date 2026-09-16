@@ -53,6 +53,10 @@ MUSIC_IDLE_STT_MODES = frozenset({"all", "skip_long", "none"})
 DEFAULT_MUSIC_IDLE_STT = "skip_long"
 DEFAULT_MUSIC_IDLE_STT_MAX_MS = 2500
 DEFAULT_RECOGNIZE_ACK = "好，开始识曲，我最多听 30 秒"
+# Mic open retry backoff (seconds). The reSpeaker USB mic may be unplugged or not
+# yet enumerated; retrying every 2s spammed the supervised log with a full
+# traceback per attempt. Default 10s keeps recovery quick while cutting the noise.
+DEFAULT_MIC_RETRY_SEC = 10.0
 
 
 @dataclass(frozen=True)
@@ -105,6 +109,7 @@ class VoiceConfig:
     wake_scope: str
     recognize_ack: str = ""
     recognize_ack_enabled: bool = False
+    mic_retry_sec: float = DEFAULT_MIC_RETRY_SEC
 
 
 def _parse_device(raw: str) -> int | str | None:
@@ -244,6 +249,12 @@ def load_config() -> VoiceConfig:
         or "volc.seedasr.sauc.duration",
         sauc_seg_duration_ms=max(50, seg),
         input_device=_parse_device(_env("MAC_VOICE_INPUT_DEVICE", "0")),
+        mic_retry_sec=_parse_float(
+            _env("MAC_VOICE_MIC_RETRY_SEC"),
+            DEFAULT_MIC_RETRY_SEC,
+            lo=1.0,
+            hi=600.0,
+        ),
         energy_threshold=float(_env("MAC_VOICE_ENERGY_THRESHOLD", "500") or "500"),
         silence_ms=int(_env("MAC_VOICE_SILENCE_MS", "1000") or "1000"),
         min_speech_ms=int(_env("MAC_VOICE_MIN_SPEECH_MS", "400") or "400"),
