@@ -21,13 +21,36 @@
 | 文件 | 改动 |
 |---|---|
 | `mac/src/mac_edge/plugins/text_lang.py`（新） | `detect_lang`（CJK 字数 vs 拉丁词数，阈值 0.3：中文论文里的英文术语不会把语言带偏）、`normalize_lang`、`lang_key`。TTS 与脚手架**用同一个判定** |
-| `mac/src/mac_edge/plugins/tts_file.py` | 音色优先级：显式 `voice` > env `MAC_EDGE_PDF_READER_VOICE` > 显式 `lang` > **正文语言自动判定** > 该语言默认。新增 env `MAC_EDGE_PDF_READER_VOICE_ZH` / `..._VOICE_EN`；英文默认 `en-US-AriaNeural` → **`en-US-AvaMultilingualNeural`**；切块上限 1000 → **3000 字**（接缝 17 → 6）；`synthesize_speech(lang=None)` = 自动 |
+| `mac/src/mac_edge/plugins/tts_file.py` | 音色优先级：显式 `voice` > env `MAC_EDGE_PDF_READER_VOICE` > 显式 `lang` > **正文语言自动判定** > 该语言默认。新增 env `MAC_EDGE_PDF_READER_VOICE_ZH` / `..._VOICE_EN`；英文默认 `en-US-AriaNeural` → **`en-US-AvaMultilingualNeural`**；切块上限 1000 → **3000 字**（接缝 17 → 4）；单块超时改为**随块大小 + 实测速度自适应**（见 §2.1）；`synthesize_speech(lang=None)` = 自动 |
 | `mac/src/mac_edge/plugins/pdf_reader.py` | `lang` 缺省改为 None（交给自动判定），显式传入仍以调用方为准 |
 | `mac/src/mac_edge/plugins/paper_clean.py` | 引用话术/标题脚手架跟随正文语言：中文「图二 / 下面是…部分。」，英文「Figure 2 / Next, the … section.」；`build_original_pieces(structure, script_lang=…)` 缺省按正文判定 |
 | `mac/src/mac_edge/plugins/paper_read.py` | 判一次语言（显式 `lang` 优先，否则正文判定），**脚手架和音色都用它**，不会出现「英文正文 + 中文脚手架/中文音色」 |
 | `mac/src/mac_edge/services.py`、`server/edge_services.py` | `lang` / `voice` 入参描述改成「不传则按正文语言自动判定」 |
 | `plugins/pdf-reader/capability.md`、`plugins/paper-reader/capability.md` | 同上 + 音色 env 说明 |
 | `mac/tests/test_tts_file.py`、`test_paper_clean.py` | 新增：英文正文→英文音色、显式 lang 优先、中英混排判中文、env 分语言音色、英文脚手架/引用；更新 2 个原先把「英文正文 + 中文脚手架」写成期望的用例 |
+
+## 2.1 部署时踩到的回归与修复（同 PR，实测驱动）
+
+第一次部署（merge `1db0a6c`）后我用**你原话**跑真链路验收，发现 `paper.read` 回退到了
+macOS `say`：
+
+```
+14:15:22 WARNING edge-tts 合成失败（edge-tts 合成第 1/4 段超时（30s））— 回退 macOS say
+14:15:32 paper.read ok … engine=say voice=Samantha
+```
+
+原因：我把切块上限从 1000 提到 3000，却把**单块超时写死 30s**。实测本机经代理
+合成速度只有 **85 字/秒（1000 字 ≈ 11.8s，3000 字 ≈ 37s）**，而早先同一台机快 2–3 倍 ——
+3000 字的块必然撞上 30s 硬超时，白回退到机器人声。
+
+修复（同一个 PR 的后续 commit）：
+
+- 单块超时基线 `chunk_timeout_for()` = `max(30s, 每 1000 字 40s)`（3000 字 → 120s）
+- 再按**实测合成速度**自适应：后续块的预算 = `max(基线, 3 × 块字数 / 实测字每秒)`，
+  封顶 150s —— 网络变慢时自动给更多时间，不再误杀
+- 合成成功日志加 `rate_chars_per_sec`，超时报文带上实际块字数与预算，便于下次定位
+- 单测：块超时随块大小放大、按实测速度自适应、显式 `chunk_timeout_sec` 优先、
+  慢合成不再被误判超时（`test_tts_file` 33 个）
 
 ## 3. 验收
 

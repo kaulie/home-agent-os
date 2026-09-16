@@ -264,6 +264,70 @@ class SynthesizeTests(unittest.TestCase):
         # 默认块 3000 字 → 5000 多字的英文只需 2 块（旧的 1000 字默认要 6 块）
         self.assertEqual(result.chunks, 2)
 
+    def test_chunk_timeout_scales_with_chunk_size(self) -> None:
+        """块超时不能写死 30s：3000 字的块实测要 37s，固定 30s 会误判超时。"""
+        self.assertEqual(tts_file.chunk_timeout_for(200), 30.0)  # 下限
+        self.assertEqual(tts_file.chunk_timeout_for(1000), 40.0)
+        self.assertEqual(tts_file.chunk_timeout_for(3000), 120.0)
+
+    def test_chunk_budget_adapts_to_observed_rate(self) -> None:
+        # 基线优先（120s > 3 × 3000/100 = 90s）
+        self.assertEqual(tts_file._chunk_budget(3000, None, 100.0), 120.0)
+        # 实测变慢 → 按 ×3 余量放大，封顶 150s
+        self.assertEqual(tts_file._chunk_budget(3000, None, 10.0), 150.0)
+        self.assertEqual(tts_file._chunk_budget(1000, None, 5.0), 150.0)
+        # 调用方显式给值 → 以它为准
+        self.assertEqual(tts_file._chunk_budget(3000, 5.0, 100.0), 5.0)
+
+    def test_slow_chunk_is_not_killed_by_fixed_timeout(self) -> None:
+        """慢合成（模拟经代理 3000 字 37s 级别的慢）不该被当超时杀掉。"""
+        import asyncio as _asyncio
+
+        class SlowCommunicate:
+            def __init__(self, text: str, voice: str, rate: str | None = None) -> None:
+                self.text = text
+
+            async def save(self, path: str) -> None:
+                await _asyncio.sleep(0.35)
+                Path(path).write_bytes(_AUDIO_BYTES)
+
+        env = {
+            "MAC_EDGE_PDF_READER_VOICE": "",
+            "MAC_EDGE_PDF_READER_VOICE_ZH": "",
+            "MAC_EDGE_PDF_READER_VOICE_EN": "",
+        }
+        text = "This is a fairly long English sentence for the paper reader. " * 55  # ≈3000 字
+        with patch.dict("os.environ", env, clear=False):
+            with patch.dict(sys.modules, {"edge_tts": types.SimpleNamespace(Communicate=SlowCommunicate)}):
+                result = synthesize_speech(text, self.root, stem="slow", backend="edge")
+        self.assertEqual(result.engine, "edge")
+        self.assertGreaterEqual(result.chunks, 1)
+        self.assertTrue(result.path.is_file())
+
+    def test_explicit_chunk_timeout_still_reported(self) -> None:
+        import asyncio as _asyncio
+
+        class SlowCommunicate:
+            def __init__(self, text: str, voice: str, rate: str | None = None) -> None:
+                self.text = text
+
+            async def save(self, path: str) -> None:
+                await _asyncio.sleep(0.2)
+                Path(path).write_bytes(_AUDIO_BYTES)
+
+        with patch.dict(sys.modules, {"edge_tts": types.SimpleNamespace(Communicate=SlowCommunicate)}):
+            with self.assertRaises(TtsFileError) as ctx:
+                synthesize_speech(
+                    "甲" * 600,
+                    self.root,
+                    backend="edge",
+                    chunk_chars=600,
+                    chunk_timeout_sec=0.05,
+                    allow_say_fallback=False,
+                )
+        self.assertIn("段超时", str(ctx.exception))
+        self.assertIn("600 字", str(ctx.exception))
+
     def test_edge_failure_falls_back_to_say(self) -> None:
         if not tts_file.say_available():
             self.skipTest("macOS say not installed")
