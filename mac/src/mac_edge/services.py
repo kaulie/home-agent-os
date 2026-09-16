@@ -2337,9 +2337,9 @@ def default_services() -> list[dict[str, Any]]:
 
         if xiaodu_configured():
             services.append(dict(XIAODU_SPEAKER_SERVICE))
-            log.info("advertise xiaodu.speaker (MAC_EDGE_XIAODU_IP set)")
+            log.info("advertise xiaodu.speaker (SSDP 探测到 / 有缓存 / MAC_EDGE_XIAODU_IP)")
         else:
-            log.info("skip xiaodu.speaker — MAC_EDGE_XIAODU_IP unset")
+            log.info("skip xiaodu.speaker — 没探测到小度，也没配 MAC_EDGE_XIAODU_IP")
     if _allow_service(NETEASE_MUSIC_SERVICE["service_id"], allowed_set):
         from mac_edge.plugins.netease_music import ncm_cli_configured
 

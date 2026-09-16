@@ -20,6 +20,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 import httpx
 
+from mac_edge.plugins import lan_discovery as lan
 from mac_edge.plugins.chromecast_display import (
     DEFAULT_SLIDESHOW_INTERVAL_SEC,
     ORDER_ARRAY_ASC,
@@ -28,8 +29,8 @@ from mac_edge.plugins.chromecast_display import (
 
 log = logging.getLogger("mac_edge.xiaomi_tv")
 
-SSDP_ADDR = ("239.255.255.250", 1900)
-SSDP_ST = "urn:schemas-upnp-org:device:MediaRenderer:1"
+SSDP_ADDR = lan.SSDP_ADDR
+SSDP_ST = lan.SSDP_ST_MEDIA_RENDERER
 AV_TRANSPORT = "urn:schemas-upnp-org:service:AVTransport:1"
 SOAP_ENV = "http://schemas.xmlsoap.org/soap/envelope/"
 
@@ -69,38 +70,17 @@ def _wanted_name() -> str:
 
 
 def _ssdp_search(timeout_sec: float = 2.0) -> list[str]:
-    payload = (
-        "M-SEARCH * HTTP/1.1\r\n"
-        f"HOST: {SSDP_ADDR[0]}:{SSDP_ADDR[1]}\r\n"
-        "MAN: \"ssdp:discover\"\r\n"
-        f"MX: {max(1, int(timeout_sec))}\r\n"
-        f"ST: {SSDP_ST}\r\n"
-        "\r\n"
-    ).encode("utf-8")
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-    locations: list[str] = []
-    seen: set[str] = set()
+    """组播 M-SEARCH 找 DLNA 渲染器（走共用探测层，语义与旧实现一致）。"""
     try:
-        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-        sock.settimeout(timeout_sec)
-        sock.sendto(payload, SSDP_ADDR)
-        deadline = time.time() + timeout_sec
-        while time.time() < deadline:
-            try:
-                data, _addr = sock.recvfrom(4096)
-            except socket.timeout:
-                break
-            text = data.decode("utf-8", errors="replace")
-            for line in text.splitlines():
-                if line.lower().startswith("location:"):
-                    loc = line.split(":", 1)[1].strip()
-                    if loc and loc not in seen:
-                        seen.add(loc)
-                        locations.append(loc)
-    except OSError as e:
+        responses = lan.ssdp_search(
+            lan.SSDP_ST_MEDIA_RENDERER, timeout_sec=timeout_sec, rounds=1
+        )
+    except lan.LanDiscoveryError as e:
         raise XiaomiTvError(f"投电视失败：SSDP 发现失败（{e}）。") from e
-    finally:
-        sock.close()
+    locations: list[str] = []
+    for resp in responses:
+        if resp.location and resp.location not in locations:
+            locations.append(resp.location)
     return locations
 
 

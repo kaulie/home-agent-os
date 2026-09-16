@@ -68,6 +68,8 @@ agent-bridge/logs/
 .tmp_*
 mac/data/mac_voice.out
 mac/data/xiaodu-tts/
+mac/data/xiaodu_renderer.json
+mac/data/xiaomi_tv_renderer.json
 mac/data/cloud_usage.json
 mac/data/cloud_usage.json.lock
 mac/data/music_mode
