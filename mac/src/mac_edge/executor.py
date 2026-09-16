@@ -85,6 +85,10 @@ from mac_edge.plugins.pdf_reader import (
     PdfReaderError,
     read_from_params as pdf_reader_from_params,
 )
+from mac_edge.plugins.paper_read import (
+    PaperReadError,
+    read_from_params as paper_read_from_params,
+)
 from mac_edge.plugins.web_scraper import (
     WebScraperError,
     scrape_from_params as web_scraper_from_params,
@@ -1626,6 +1630,14 @@ def _execute_capability(
             msg, outputs = pdf_reader_from_params(params, asset=asset)
             return True, msg, outputs
         except (PdfReaderError, AssetError) as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "paper.read":
+        try:
+            msg, outputs = paper_read_from_params(params, asset=asset)
+            return True, msg, outputs
+        except (PaperReadError, AssetError) as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}

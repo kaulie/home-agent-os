@@ -547,6 +547,40 @@ ADS: dict[str, dict[str, Any]] = {
             "PDF 旋转",
         ],
     ),
+    "paper.read": _ad(
+        kind="action",
+        role="论文听读器（论文/长文献 → 结构化听读音频）",
+        planner_recognize=(
+            "把已有的论文 PDF/document Asset 转成适合**连续听读**的音频：用户说「把这篇论文念给我听 / "
+            "听读这篇 paper / 这篇论文太长了听一遍 / 帮我听读这篇研究」时用本步。与 pdf.reader 的分工："
+            "pdf.reader 只管「念一下这份 PDF」这类通用短文档；本步面向论文/长文献，会做结构（识别章节、"
+            "跳过 References 与页眉页脚、不念图表说明），并回 sections[] 索引（每节字数/页范围/估算起始秒）。"
+            "入参 asset_ref（必填，type=document，常为 $asset_ref）；mode 默认 original（原文听读，忠实原文、"
+            "不讲解），可选 page_start/page_end、speed、voice、max_chars。产出 audio AssetRef——语音入口把 "
+            "presentation 设为 {type:audio, from:asset_ref} 播放。用户没指定哪篇论文时，先排 asset.inventory "
+            "取最新 document 再接本步。mode=explain（AI 讲解）v1 保留未交付，传了会明确失败；"
+            "扫描件（无文字层）会失败，要先 pdf.to_images + image.ocr"
+        ),
+        typical_triggers=[
+            "把这篇论文念给我听",
+            "听读这篇 paper",
+            "这篇论文太长了，听一遍",
+            "帮我听读这篇研究",
+            "朗读这篇论文",
+        ],
+        do_not_dispatch=[
+            "念一份普通 PDF/说明书（用 pdf.reader）",
+            "论文总结 / Markdown 报告",
+            "论文问答",
+            "打印",
+            "投屏",
+            "OCR 识别",
+            "PDF 转图片",
+            "PDF 旋转",
+            "提醒/公告短句播报",
+            "放歌",
+        ],
+    ),
     "web.scraper": _ad(
         kind="action",
         role="网页抓取器（URL / url 资产 → 核心正文/整页 → PDF/文本）",
