@@ -194,7 +194,8 @@ def read_from_params(
         raise PdfReaderError("朗读失败：抽取到的文字为空")
 
     stem = _safe_stem(raw_params.get("name"), fallback=f"pdf-{ref.asset_id[:12]}")
-    lang = str(raw_params.get("lang") or "zh_CN").strip() or "zh_CN"
+    # lang 不传（None）＝按正文语言自动判定音色；显式传入仍以调用方为准
+    lang = str(raw_params.get("lang") or "").strip() or None
     voice = str(raw_params.get("voice") or "").strip() or None
     backend = str(raw_params.get("backend") or "").strip().lower() or None
     synthesize = synthesize_fn or synthesize_speech

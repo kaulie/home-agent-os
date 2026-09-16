@@ -892,14 +892,17 @@ LOCAL_PDF_READER_SERVICE: dict[str, Any] = {
                 "lang": {
                     "type": "string",
                     "required": False,
-                    "description": "朗读语言，默认 zh_CN（zh_CN / en_US）；决定默认音色",
+                    "description": (
+                        "朗读语言（zh_CN / en_US）；不传则按正文语言自动判定"
+                        "（英文论文用英文音色，避免中文音色念英文的口音）"
+                    ),
                 },
                 "voice": {
                     "type": "string",
                     "required": False,
                     "description": (
-                        "可选音色：edge-tts 音色名（如 zh-CN-YunxiNeural）或 macOS say 音色名；"
-                        "不传则按语言取默认音色"
+                        "可选音色：edge-tts 音色名（如 en-US-AvaMultilingualNeural / "
+                        "zh-CN-YunxiNeural）或 macOS say 音色名；不传则按语言取默认音色"
                     ),
                 },
                 "speed": {
@@ -1035,14 +1038,17 @@ LOCAL_PAPER_READ_SERVICE: dict[str, Any] = {
                 "lang": {
                     "type": "string",
                     "required": False,
-                    "description": "朗读语言，默认 zh_CN（zh_CN / en_US）；决定默认音色",
+                    "description": (
+                        "朗读语言（zh_CN / en_US）；不传则按正文语言自动判定"
+                        "（英文论文用英文音色，避免中文音色念英文的口音）"
+                    ),
                 },
                 "voice": {
                     "type": "string",
                     "required": False,
                     "description": (
-                        "可选音色：edge-tts 音色名（如 zh-CN-YunxiNeural）或 macOS say 音色名；"
-                        "不传则按语言取默认音色"
+                        "可选音色：edge-tts 音色名（如 en-US-AvaMultilingualNeural / "
+                        "zh-CN-YunxiNeural）或 macOS say 音色名；不传则按语言取默认音色"
                     ),
                 },
                 "speed": {

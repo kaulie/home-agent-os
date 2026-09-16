@@ -18,7 +18,7 @@ TTS 引擎（`edge-tts` 或 macOS `say`）时才广告。
 | 字段 | 值 |
 |------|-----|
 | role | PDF 语音朗读器 |
-| planner_recognize | 把本步已有的 PDF/document Asset 的文字念成一段语音（TTS 音频 Asset）。入参 asset_ref（必填，type=document，常为 $asset_ref），可选 page_start/page_end、speed、voice、max_chars。产出 audio AssetRef——语音入口把 presentation 设为 `{type:audio, from:asset_ref}` 播放这段朗读；用户没指定哪份 PDF 时，先排 asset.inventory 取最新 document 再接本步。只念文档正文，不是短提醒/公告（那种用 notify.speak）；扫描件（无文字层）会失败，要先 pdf.to_images + image.ocr |
+| planner_recognize | 把本步已有的 PDF/document Asset 的文字念成一段语音（TTS 音频 Asset）。入参 asset_ref（必填，type=document，常为 $asset_ref），可选 page_start/page_end、speed、voice、max_chars（lang 不传时按正文语言自动选音色）。产出 audio AssetRef——语音入口把 presentation 设为 `{type:audio, from:asset_ref}` 播放这段朗读；用户没指定哪份 PDF 时，先排 asset.inventory 取最新 document 再接本步。只念文档正文，不是短提醒/公告（那种用 notify.speak）；扫描件（无文字层）会失败，要先 pdf.to_images + image.ocr |
 | typical_triggers | `念一下这份 PDF`、`把这份文档读给我听`、`朗读这个 PDF`、`把 PDF 转成语音`、`读一遍这个文档` |
 | do_not_dispatch | 打印、投屏、看图理解、OCR 识别、拍照、提醒/公告短句播报、放歌、PDF 转图片、PDF 旋转 |
 
@@ -37,7 +37,7 @@ TTS 引擎（`edge-tts` 或 macOS `say`）时才广告。
 
 | 方向 | 内容 |
 |------|------|
-| **输入** | `asset_ref`（必填，AssetRef，`type=document` PDF）；`page_start` / `page_end`（可选，1-based 闭区间，缺省整份，越界钳到边界，单次上限 200 页）；`lang`（可选，默认 `zh_CN`）；`voice`（可选音色名）；`speed`（可选语速倍率，默认 1.0，钳制 0.5–2.0）；`max_chars`（可选字数上限，默认 12000，0=不截断）；`name`（可选音频展示名） |
+| **输入** | `asset_ref`（必填，AssetRef，`type=document` PDF）；`page_start` / `page_end`（可选，1-based 闭区间，缺省整份，越界钳到边界，单次上限 200 页）；`lang`（可选，`zh_CN` / `en_US`；不传则按正文语言自动判定）；`voice`（可选音色名，如 `en-US-AvaMultilingualNeural`）；`speed`（可选语速倍率，默认 1.0，钳制 0.5–2.0）；`max_chars`（可选字数上限，默认 12000，0=不截断）；`name`（可选音频展示名） |
 | **输出** | `asset_ref`（**audio** AssetRef，mime `audio/mpeg` 或 `audio/mp4`）；`page_count`；`page_start` / `page_end`；`chars`（实际合成字数）；`chars_total`（抽取总字数）；`truncated`（bool）；`duration_sec`；`engine`（edge/say）；`voice`；`text_preview`；`status_text`（中文一句话） |
 
 本能力 **只看本步入参**。缺 `asset_ref` / 非 `document` / 读不了文件 / 加密 /
@@ -46,10 +46,11 @@ TTS 引擎（`edge-tts` 或 macOS `say`）时才广告。
 
 ## 音频语义与引擎
 
-- **长文**：按句边界切块（每块 ≤ 1000 字），逐块合成后按 **MP3 帧** 拼接成一个 mp3
+- **长文**：按句边界切块（每块 ≤ 3000 字），逐块合成后按 **MP3 帧** 拼接成一个 mp3
   （无需 ffmpeg）——`afplay` / `AVPlayer` / 浏览器都能整段播放。`say` 后端一次性
   合成 .m4a（AAC）。
-- **引擎**：`edge`（默认，`edge-tts`，需外网；音色默认 `zh-CN-XiaoxiaoNeural`）→
+- **音色**：按**正文语言**自动选（`lang` 不传时）：中文→`zh-CN-XiaoxiaoNeural`，英文→`en-US-AvaMultilingualNeural`（edge-tts 神经音色）。显式 `voice` 参数 > env 全语言 `MAC_EDGE_PDF_READER_VOICE` > env 分语言 `MAC_EDGE_PDF_READER_VOICE_ZH` / `..._VOICE_EN` > 该语言默认。一篇英文论文用中文音色朗读会带明显口音——所以别把 `lang` 写死成 `zh_CN`。
+- **引擎**：`edge`（默认，`edge-tts`，需外网；中文默认音色 `zh-CN-XiaoxiaoNeural`，英文默认 `en-US-AvaMultilingualNeural`，按正文语言自动选）→
   产物 `audio/mpeg`；`say`（macOS 本机，离线；音色按语言取本机已装）→ 产物
   `audio/mp4`。edge 失败且 `MAC_EDGE_PDF_READER_TTS_FALLBACK_SAY`≠0 时自动回退 say，
   `status_text` 会说明实际引擎。

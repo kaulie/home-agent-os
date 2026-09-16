@@ -13,9 +13,12 @@
 | 删页码 / 页眉页脚 | 结构层已去 + 独立成行的数字（``_PAGE_NUM_LINE_RE``） |
 | 删版式噪声 | arXiv 戳、Preprint / Under review / Copyright 等独立行（``_NOISE_LINE_RE``） |
 | 公式语音化 | ``$$…$$`` → 「公式」；``$x$`` → 保留变量名 |
-| 图表引用自然化 | ``Fig. 2`` → 图二、``Table 3`` → 表三、``Eq. (4)`` → 公式四 |
-| 标题朗读化 | 独立行标题 → 「下面是<标题>部分。」（``speakable_heading``） |
+| 图表引用自然化 | 中文正文：``Fig. 2`` → 图二；英文正文：``Fig. 2`` → ``Figure 2`` |
+| 标题朗读化 | 独立行标题 → 中文「下面是<标题>部分。」/ 英文 ``Next, the <标题> section.`` |
 | 排版合并 | 多空格/多空行归一；caption 由结构层排除，不进正文 |
+
+脚手架话术（标题、章节引言、图表引用）**跟随正文语言**（`text_lang.detect_lang`），
+和 TTS 选音色用同一个判定 —— 否则英文论文里会突然冒出「图一」，听着中英夹生。
 
 **Original 红线**（写进代码也写进 capability 文档，本模块不做任何一件）：
 
@@ -32,6 +35,7 @@ import re
 from typing import Any
 
 from mac_edge.plugins.paper_structure import PaperStructure, Section
+from mac_edge.plugins.text_lang import detect_lang, lang_key, normalize_lang
 
 _CN_DIGITS = "零一二三四五六七八九"
 
@@ -114,8 +118,18 @@ def cn_number(value: Any) -> str:
     return _CN_DIGITS[tens] + "十" + (_CN_DIGITS[ones] if ones else "")
 
 
-def _naturalize_references(text: str) -> str:
-    """图表/公式/算法/章节引用 → 听觉自然的中文说法（规则化，不改含义）。"""
+def _naturalize_references(text: str, lang: str = "zh") -> str:
+    """图表/公式/算法/章节引用 → 听觉自然的说法（规则化，不改含义）。
+
+    措辞跟随**正文语言**：中文论文说「图二」，英文论文说「Figure 2」——否则英文句子
+    里突然冒出「图一」，听感就会中英夹生。
+    """
+    if lang == "en":
+        out = _FIG_REF_RE.sub(lambda m: f"Figure {m.group(1)}{m.group(2) or ''}", text)
+        out = _TABLE_REF_RE.sub(lambda m: f"Table {m.group(1)}{m.group(2) or ''}", out)
+        out = _EQ_REF_RE.sub(lambda m: f"Equation {m.group(1)}", out)
+        out = _ALGO_REF_RE.sub(lambda m: f"Algorithm {m.group(1)}", out)
+        return _SEC_REF_RE.sub(lambda m: f"Section {m.group(1)}", out)
     out = _FIG_REF_RE.sub(lambda m: f"图{cn_number(m.group(1))}{m.group(2) or ''}", text)
     out = _TABLE_REF_RE.sub(lambda m: f"表{cn_number(m.group(1))}{m.group(2) or ''}", out)
     out = _EQ_REF_RE.sub(lambda m: f"公式{cn_number(m.group(1))}", out)
@@ -149,8 +163,11 @@ def _tidy(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def clean_body(text: str) -> str:
-    """正文听觉清洗（Original 模式允许的全部规则，顺序固定、幂等友好）。"""
+def clean_body(text: str, *, lang: str = "zh") -> str:
+    """正文听觉清洗（Original 模式允许的全部规则，顺序固定、幂等友好）。
+
+    `lang`（`zh` / `en`）决定引用话术的语言，见 `_naturalize_references`。
+    """
     body = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
     body = _DEHYPHEN_RE.sub(r"\1\2", body)
     lines = [re.sub(r"[ \t\u3000]+", " ", line).strip() for line in body.split("\n")]
@@ -167,23 +184,26 @@ def clean_body(text: str) -> str:
     body = _BRACKET_CITE_RE.sub(" ", body)
     body = _NAMED_CITE_RE.sub(" ", body)
     body = _math_to_speech(body)
-    body = _naturalize_references(body)
+    body = _naturalize_references(body, lang)
     body = _JOIN_LINE_RE.sub(" ", body)
     return _tidy(body)
 
 
-def speakable_heading(heading: str) -> str:
-    """标题朗读化：独立行标题 → 「下面是<标题>部分。」（空标题 → 空串）。"""
+def speakable_heading(heading: str, *, lang: str = "zh") -> str:
+    """标题朗读化：独立行标题 → 「下面是<标题>部分。」/「Next, the <标题> section.」
+    （空标题 → 空串）。"""
     raw = re.sub(r"\s+", " ", str(heading or "")).strip().rstrip(".:：")
     if not raw:
         return ""
+    if lang == "en":
+        return f"Next, the {raw} section."
     return f"下面是 {raw} 部分。"
 
 
-def section_piece(section: Section) -> dict[str, Any]:
+def section_piece(section: Section, *, lang: str = "zh") -> dict[str, Any]:
     """一个章节 → 脚本片段（含标题朗读行；``text`` 就是进 TTS 的原文）。"""
-    body = clean_body("\n".join(section.paragraphs))
-    head = speakable_heading(section.heading)
+    body = clean_body("\n".join(section.paragraphs), lang=lang)
+    head = speakable_heading(section.heading, lang=lang)
     text = f"{head}\n{body}".strip() if head else body
     return {
         "type": section.type,
@@ -196,11 +216,35 @@ def section_piece(section: Section) -> dict[str, Any]:
     }
 
 
-def build_original_pieces(structure: PaperStructure) -> tuple[str, list[dict[str, Any]]]:
-    """PaperStructure → ``(prefix, pieces)``：prefix 是标题朗读行，pieces 是各章节片段。"""
+def structure_body_text(structure: PaperStructure) -> str:
+    """结构里的正文文本（用于判定听读语言）。"""
+    return "\n".join("\n".join(str(p or "") for p in (s.paragraphs or [])) for s in structure.sections)
+
+
+def resolve_script_lang(structure: PaperStructure, lang: str | None = None) -> str:
+    """听读脚本语言：显式 lang 优先，否则按正文自动判定 → `zh` / `en`。"""
+    explicit = normalize_lang(lang)
+    if explicit:
+        return lang_key(explicit)
+    return lang_key(detect_lang(structure_body_text(structure)))
+
+
+def build_original_pieces(
+    structure: PaperStructure, *, script_lang: str | None = None
+) -> tuple[str, list[dict[str, Any]]]:
+    """PaperStructure → ``(prefix, pieces)``：prefix 是标题朗读行，pieces 是各章节片段。
+
+    ``script_lang`` 缺省按正文自动判定（英文论文用英文脚手架，中文论文用中文脚手架）。
+    """
+    lang = resolve_script_lang(structure, script_lang)
     title = re.sub(r"\s+", " ", str(structure.title or "")).strip().rstrip(".")
-    prefix = f"论文标题：{title}。" if title else ""
-    pieces = [section_piece(s) for s in structure.sections]
+    if not title:
+        prefix = ""
+    elif lang == "en":
+        prefix = f"Paper title: {title}."
+    else:
+        prefix = f"论文标题：{title}。"
+    pieces = [section_piece(s, lang=lang) for s in structure.sections]
     return prefix, [p for p in pieces if str(p.get("text") or "").strip()]
 
 

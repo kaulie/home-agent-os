@@ -5,8 +5,17 @@
 
 后端（`MAC_EDGE_PDF_READER_TTS_BACKEND`，默认 `edge`）：
 
-- `edge`：edge-tts 神经音色（默认 `zh-CN-XiaoxiaoNeural`）。长文按句切块，
-  逐块合成 mp3 后按 MP3 帧拼接成一个 mp3（不需要 ffmpeg）→ mime `audio/mpeg`。
+- `edge`：edge-tts 神经音色（中文默认 `zh-CN-XiaoxiaoNeural`，英文默认
+  `en-US-AvaMultilingualNeural`）。长文按句切块，逐块合成 mp3 后按 MP3 帧拼接成
+  一个 mp3（不需要 ffmpeg）→ mime `audio/mpeg`。
+
+**音色选择（`lang` / `voice` 的优先级）**：显式 `voice` → 环境变量
+`MAC_EDGE_PDF_READER_VOICE` → 显式 `lang` → 按**正文语言**自动判定
+（`detect_lang`：CJK 字数 vs 拉丁词数）→ 该语言的默认音色
+（env `MAC_EDGE_PDF_READER_VOICE_ZH` / `..._VOICE_EN` 可换）。
+
+> 为什么要有自动判定：一篇英文论文若用中文音色朗读，会带明显口音、语调也不对，
+> 听感「不自然」。`lang` 缺省（`None` / `"auto"`）时按正文判定，中英混排也不会翻错。
 - `say`：macOS 本机 `say`（离线、无网络），一次性合成 AAC/m4a → mime `audio/mp4`。
 
 edge 合成失败且 `MAC_EDGE_PDF_READER_TTS_FALLBACK_SAY` 非 `0`（默认开）时自动回退
@@ -28,15 +37,24 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from mac_edge.plugins.text_lang import detect_lang, normalize_lang
+
 log = logging.getLogger("mac_edge.tts_file")
 
 DEFAULT_EDGE_VOICE_ZH = "zh-CN-XiaoxiaoNeural"
-DEFAULT_EDGE_VOICE_EN = "en-US-AriaNeural"
+# 英文长文听读默认音色：multilingual 系列比 Aria/Jenny 等更接近真人播讲
+DEFAULT_EDGE_VOICE_EN = "en-US-AvaMultilingualNeural"
+
+VOICE_ENV_ANY = "MAC_EDGE_PDF_READER_VOICE"
+VOICE_ENV_ZH = "MAC_EDGE_PDF_READER_VOICE_ZH"
+VOICE_ENV_EN = "MAC_EDGE_PDF_READER_VOICE_EN"
 
 SAY_BIN = "/usr/bin/say"
 DEFAULT_SAY_RATE_WPM = 180
 
-DEFAULT_CHUNK_CHARS = 1000
+# 单块字数上限：块越大，块间接缝（每块一次独立合成的语气重置 + 尾静音）越少，
+# 长文听感越连贯；单块合成耗时实测约 字数/220 秒，3000 字 ≈ 14s，仍远低于块超时。
+DEFAULT_CHUNK_CHARS = 3000
 DEFAULT_CHUNK_TIMEOUT_SEC = 30.0
 # 单次合成总时长上限：必须小于 Edge 的 MAC_EDGE_CAPABILITY_TIMEOUT_SEC（默认 300s），
 # 这样超时先出明确中文失败，而不是被 executor 硬杀。
@@ -125,25 +143,35 @@ def clamp_speed(raw: Any) -> float:
     return max(MIN_SPEED, min(value, MAX_SPEED))
 
 
-def resolve_edge_voice(voice: str | None, lang: str | None) -> str:
-    explicit = (
-        str(voice or "").strip() or (os.environ.get("MAC_EDGE_PDF_READER_VOICE") or "").strip()
-    )
+def resolve_edge_voice(voice: str | None, lang: str | None, *, text: str | None = None) -> str:
+    """edge-tts 音色：显式 voice > env 全语言音色 > env 分语言音色 > 该语言默认。
+
+    `lang` 为空（None / "" / "auto"）时按 `text` 正文语言自动判定。
+    """
+    explicit = str(voice or "").strip() or (os.environ.get(VOICE_ENV_ANY) or "").strip()
     if explicit:
         return explicit
-    lang_l = (lang or "zh_CN").strip().lower().replace("-", "_")
-    return DEFAULT_EDGE_VOICE_ZH if lang_l.startswith("zh") else DEFAULT_EDGE_VOICE_EN
+    eff = normalize_lang(lang) or detect_lang(text or "")
+    env_key = VOICE_ENV_ZH if eff.startswith("zh") else VOICE_ENV_EN
+    env_voice = (os.environ.get(env_key) or "").strip()
+    if env_voice:
+        return env_voice
+    return DEFAULT_EDGE_VOICE_ZH if eff.startswith("zh") else DEFAULT_EDGE_VOICE_EN
 
 
-def resolve_say_voice(voice: str | None, lang: str | None) -> str | None:
-    explicit = (
-        str(voice or "").strip() or (os.environ.get("MAC_EDGE_PDF_READER_VOICE") or "").strip()
-    )
+def resolve_say_voice(voice: str | None, lang: str | None, *, text: str | None = None) -> str | None:
+    """macOS say 音色：显式 voice / env 全语言音色 > 按语言挑本机音色。
+
+    分语言 env（`..._VOICE_ZH` / `..._VOICE_EN`）里放的是 edge 音色名，say 用不了，
+    故本函数不读它们。
+    """
+    explicit = str(voice or "").strip() or (os.environ.get(VOICE_ENV_ANY) or "").strip()
     if explicit:
         return explicit
+    eff = normalize_lang(lang) or detect_lang(text or "")
     from mac_edge.plugins.notify_speak import _pick_say_voice
 
-    return _pick_say_voice(lang or "zh_CN")
+    return _pick_say_voice(eff or "zh_CN")
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -313,7 +341,7 @@ def _synthesize_edge(
     except ImportError as e:
         raise TtsFileError("本机未安装 edge-tts（pip install edge-tts），无法用神经音色朗读") from e
 
-    pick = resolve_edge_voice(voice, lang)
+    pick = resolve_edge_voice(voice, lang, text=text)
     rate = _edge_rate(speed)
     chunks = split_text_for_tts(text, max_chars=chunk_chars)
     if not chunks:
@@ -345,8 +373,9 @@ def _synthesize_edge(
         parts.append(out)
     mp3 = concat_mp3(parts, out_dir / f"{stem}.mp3")
     log.info(
-        "edge-tts ok voice=%s rate=%s chunks=%s bytes=%s",
+        "edge-tts ok voice=%s lang=%s rate=%s chunks=%s bytes=%s",
         pick,
+        lang or "auto",
         rate,
         len(chunks),
         mp3.stat().st_size,
@@ -374,7 +403,7 @@ def _synthesize_say(
     say_bin = shutil.which("say") or SAY_BIN
     if not say_bin or not Path(say_bin).exists():
         raise TtsFileError("本机找不到 macOS say，无法合成朗读音频")
-    pick = resolve_say_voice(voice, lang)
+    pick = resolve_say_voice(voice, lang, text=text)
     rate = int(round(DEFAULT_SAY_RATE_WPM * speed))
     out = out_dir / f"{stem}.m4a"
     text_path = out_dir / f"{stem}-text.txt"
@@ -430,7 +459,7 @@ def synthesize_speech(
     backend: str | None = None,
     voice: str | None = None,
     speed: Any = None,
-    lang: str = "zh_CN",
+    lang: str | None = None,
     total_timeout_sec: float | None = None,
     chunk_timeout_sec: float = DEFAULT_CHUNK_TIMEOUT_SEC,
     chunk_chars: int = DEFAULT_CHUNK_CHARS,
@@ -439,6 +468,7 @@ def synthesize_speech(
     """把 text 合成成一个可播放音频文件（只合成，不播放、不上传）。
 
     backend 缺省取 `tts_backend()`（env `MAC_EDGE_PDF_READER_TTS_BACKEND`）。
+    lang 缺省（None / "" / "auto"）时按正文语言自动判定音色（见模块 docstring）。
     """
     body = (text or "").strip()
     if not body:
@@ -449,10 +479,11 @@ def synthesize_speech(
     chosen = str(backend or "").strip().lower() or tts_backend()
     spd = clamp_speed(speed)
     total = float(total_timeout_sec) if total_timeout_sec is not None else _total_timeout_sec()
+    eff_lang = normalize_lang(lang) or detect_lang(body)
 
     if chosen == "say":
         return _synthesize_say(
-            body, out_dir, stem=safe_stem, voice=voice, speed=spd, lang=lang, timeout_sec=total
+            body, out_dir, stem=safe_stem, voice=voice, speed=spd, lang=eff_lang, timeout_sec=total
         )
     if chosen != "edge":
         raise TtsFileError(f"未知 TTS 后端 {chosen!r}：支持 edge / say")
@@ -464,7 +495,7 @@ def synthesize_speech(
             stem=safe_stem,
             voice=voice,
             speed=spd,
-            lang=lang,
+            lang=eff_lang,
             total_timeout_sec=total,
             chunk_timeout_sec=chunk_timeout_sec,
             chunk_chars=chunk_chars,
@@ -475,6 +506,6 @@ def synthesize_speech(
             raise
         log.warning("edge-tts 合成失败（%s）— 回退 macOS say", e)
         result = _synthesize_say(
-            body, out_dir, stem=safe_stem, voice=voice, speed=spd, lang=lang, timeout_sec=total
+            body, out_dir, stem=safe_stem, voice=voice, speed=spd, lang=eff_lang, timeout_sec=total
         )
         return replace(result, fallback_reason=str(e))
