@@ -1248,6 +1248,156 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             },
         },
     },
+    'pdf.reader': {
+        'kind': 'action',
+        'group': 'convert',
+        'service_id': 'local.pdf.reader',
+        'role': 'PDF 语音朗读器',
+        'planner_recognize': (
+            '把本步已有的 PDF/document Asset 的文字念成一段语音（TTS 音频 Asset）：'
+            '用户说「念一下这份 PDF / 把这份文档读给我听 / 朗读这个 PDF」时用本步。'
+            '入参 asset_ref（必填，type=document，常为 $asset_ref），可选 page_start/page_end、'
+            'speed、voice、max_chars。产出 audio AssetRef——语音入口把 presentation 设为 '
+            '{type:audio, from:asset_ref} 播放这段朗读；用户没指定哪份 PDF 时，先排 '
+            'asset.inventory 取最新 document 再接本步。只念文档正文，不是短提醒/公告'
+            '（那种用 notify.speak）；扫描件（无文字层）本步会失败，要先 pdf.to_images + image.ocr'
+        ),
+        'typical_triggers': [
+            '念一下这份 PDF',
+            '把这份文档读给我听',
+            '朗读这个 PDF',
+            '把 PDF 转成语音',
+            '读一遍这个文档',
+        ],
+        'do_not_dispatch': [
+            '打印',
+            '投屏',
+            '看图理解',
+            'OCR 识别',
+            '拍照',
+            '提醒/公告短句播报',
+            '放歌',
+            'PDF 转图片',
+            'PDF 旋转',
+        ],
+        'input_schema': {
+            'asset_ref': {
+                'type': 'object',
+                'required': True,
+                'description': (
+                    '必填 AssetRef JSON，type=document（PDF）。'
+                    '例 {"asset_id":"asset_…","type":"document"}。'
+                    '禁止 path / 永久 URL；缺则本能力无效。'
+                ),
+            },
+            'page_start': {
+                'type': 'number',
+                'required': False,
+                'description': '起始页（1-based），缺省第 1 页；越界钳到边界',
+            },
+            'page_end': {
+                'type': 'number',
+                'required': False,
+                'description': '结束页（1-based，闭区间），缺省最后一页；越界钳到边界',
+            },
+            'lang': {
+                'type': 'string',
+                'required': False,
+                'description': '朗读语言，默认 zh_CN（zh_CN / en_US）；决定默认音色',
+            },
+            'voice': {
+                'type': 'string',
+                'required': False,
+                'description': (
+                    '可选音色：edge-tts 音色名（如 zh-CN-YunxiNeural）或 macOS say 音色名；'
+                    '不传则按语言取默认音色'
+                ),
+            },
+            'speed': {
+                'type': 'number',
+                'required': False,
+                'description': '语速倍率，默认 1.0（钳制 0.5–2.0）',
+            },
+            'max_chars': {
+                'type': 'number',
+                'required': False,
+                'description': (
+                    '本次合成的字数上限，默认 12000（约 40 分钟语音）；0=不截断。'
+                    '超上限按句边界截断并在 status_text 说明'
+                ),
+            },
+            'name': {
+                'type': 'string',
+                'required': False,
+                'description': '可选音频展示名（不含扩展名）；不传则用 pdf-<asset_id 前 12 位>',
+            },
+        },
+        'output_schema': {
+            'asset_ref': {
+                'type': 'object',
+                'required': True,
+                'description': (
+                    '新登记的 audio AssetRef（mime audio/mpeg 或 audio/mp4）；'
+                    'presentation {type: audio, from: asset_ref} 即播放这段朗读'
+                ),
+            },
+            'page_count': {
+                'type': 'number',
+                'required': True,
+                'description': 'PDF 总页数',
+            },
+            'page_start': {
+                'type': 'number',
+                'required': True,
+                'description': '本次朗读起始页（1-based）',
+            },
+            'page_end': {
+                'type': 'number',
+                'required': True,
+                'description': '本次朗读结束页（1-based，闭区间）',
+            },
+            'chars': {
+                'type': 'number',
+                'required': True,
+                'description': '实际合成为语音的字数（截断后）',
+            },
+            'chars_total': {
+                'type': 'number',
+                'required': True,
+                'description': '所选页范围抽取到的总字数（截断前）',
+            },
+            'truncated': {
+                'type': 'boolean',
+                'required': True,
+                'description': '是否因字数上限截断（true=只念了前面一部分）',
+            },
+            'duration_sec': {
+                'type': 'number',
+                'required': False,
+                'description': '音频时长（秒）；探测不到时为 null',
+            },
+            'engine': {
+                'type': 'string',
+                'required': True,
+                'description': '实际使用的合成引擎：edge（edge-tts）/ say（macOS 本机）',
+            },
+            'voice': {
+                'type': 'string',
+                'required': True,
+                'description': '实际使用的音色名',
+            },
+            'text_preview': {
+                'type': 'string',
+                'required': False,
+                'description': '朗读文字开头摘要（约 80 字），供对话回显',
+            },
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话结果，含页范围、字数、时长、引擎与 asset_id',
+            },
+        },
+    },
     'web.scraper': {
         'kind': 'action',
         'group': 'convert',
