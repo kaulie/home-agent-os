@@ -118,6 +118,39 @@ class InventoryAnswerTests(unittest.TestCase):
             "昨天还没有登记过照片。",
         )
 
+    def test_answer_audio_uses_tiao(self) -> None:
+        # 旧文案是「第 1 张audio」——量词必须按类型走
+        self.assertEqual(
+            inventory_answer_text(count=7, asset_type="audio", day=None, index=1),
+            "这是按登记顺序的第 1 条音频。",
+        )
+        self.assertEqual(
+            inventory_answer_text(count=2, asset_type="audio", day=None),
+            "一共登记了 2 条音频。",
+        )
+
+    def test_answer_document_and_url_nouns(self) -> None:
+        self.assertEqual(
+            inventory_answer_text(count=3, asset_type="document", day=None, index=2),
+            "这是按登记顺序的第 2 份文档。",
+        )
+        self.assertEqual(
+            inventory_answer_text(count=3, asset_type="url", day=None),
+            "一共登记了 3 个链接。",
+        )
+
+    def test_missing_index_keeps_measure_word(self) -> None:
+        self.assertEqual(
+            inventory_answer_text(count=1, asset_type="audio", day=None, index=3, found=False),
+            "没有第 3 条音频（一共 1 条）。",
+        )
+
+    def test_unknown_type_falls_back_to_ge(self) -> None:
+        self.assertEqual(
+            inventory_answer_text(count=1, asset_type="other", day=None),
+            "一共登记了 1 个other。",
+        )
+
 
 class InventoryFromParamsTests(unittest.TestCase):
     def test_maps_db_rows(self) -> None:

@@ -643,6 +643,15 @@ def parse_asset_time_bound(raw: str | None) -> float | None:
         return None
 
 
+_TYPE_NOUNS: dict[str, tuple[str, str]] = {
+    "image": ("照片", "张"),
+    "video": ("视频", "段"),
+    "audio": ("音频", "条"),
+    "document": ("文档", "份"),
+    "url": ("链接", "个"),
+}
+
+
 def inventory_answer_text(
     *,
     count: int,
@@ -659,26 +668,23 @@ def inventory_answer_text(
     else:
         day_label = (day or "").strip()
     kind = (asset_type or "").strip().lower()
-    if kind == "image":
-        noun = "照片"
-        counted = f"{count} 张照片"
-    elif kind == "video":
-        noun = "视频"
-        counted = f"{count} 段视频"
+    # 量词按 Asset 类型走：照片「张」、音频「条」、文档「份」、链接「个」。
+    # 旧实现一律「第 N 张<noun>」，音频/链接会说成「第 1 张audio」。
+    if kind in _TYPE_NOUNS:
+        noun, measure = _TYPE_NOUNS[kind]
     elif kind:
-        noun = kind
-        counted = f"{count} 个{kind}"
+        noun, measure = kind, "个"
     else:
-        noun = "资源"
-        counted = f"{count} 个资源"
+        noun, measure = "资源", "个"
+    counted = f"{count} {measure}{noun}"
     if index is not None:
         if not found or count <= 0:
             if day_label:
-                return f"{day_label}没有第 {index} 张{noun}（一共 {count} 张）。"
-            return f"没有第 {index} 张{noun}（一共 {count} 张）。"
+                return f"{day_label}没有第 {index} {measure}{noun}（一共 {count} {measure}）。"
+            return f"没有第 {index} {measure}{noun}（一共 {count} {measure}）。"
         if day_label:
-            return f"这是{day_label}按登记顺序的第 {index} 张{noun}。"
-        return f"这是按登记顺序的第 {index} 张{noun}。"
+            return f"这是{day_label}按登记顺序的第 {index} {measure}{noun}。"
+        return f"这是按登记顺序的第 {index} {measure}{noun}。"
     if day_label:
         if count <= 0:
             return f"{day_label}还没有登记过{noun}。"

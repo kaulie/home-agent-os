@@ -705,6 +705,33 @@ class HomeBrainPersistTest(unittest.TestCase):
         cleaned = hb.sanitize_execution_plan(plan, intent)
         self.assertEqual([s["capability"] for s in cleaned], ["asset.upload"])
 
+    def test_sanitize_gates_display_audio_on_tv_request(self) -> None:
+        """LLM 自己排了 display.audio 时：用户没点名电视 → 剥掉（留在手机上播）。"""
+        plan = [
+            {
+                "step": 1,
+                "capability": "asset.inventory",
+                "input_constrict": {"type": "audio"},
+            },
+            {
+                "step": 2,
+                "capability": "display.audio",
+                "input_constrict": {"asset_ref": "$asset_ref"},
+            },
+        ]
+        without_tv = hb.sanitize_execution_plan(
+            plan, {"text": "把最新的音频放出来", "source": "voice"}
+        )
+        self.assertEqual(
+            [s["capability"] for s in without_tv], ["asset.inventory"]
+        )
+        with_tv = hb.sanitize_execution_plan(
+            plan, {"text": "把最新的音频在小米电视上放出来", "source": "voice"}
+        )
+        self.assertEqual(
+            [s["capability"] for s in with_tv], ["asset.inventory", "display.audio"]
+        )
+
     def test_do_execution_plan_assigns_composite_to_available_runtime(self) -> None:
         self._register_photo_runtimes()
         iid = hb.new_intent(
@@ -1650,6 +1677,70 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertEqual(pres["from"], "asset_ref")
         self.assertEqual(pres["asset_ref"]["type"], "document")
         self.assertEqual(pres["asset_ref"]["asset_id"], "asset_05563d7eb33dbf460a0be521")
+
+    def test_assemble_presentation_display_audio_returns_status_text(self) -> None:
+        """id=781: 「把最新的音频在小米电视上放出来」→ 回给发声端的是 status_text，
+        不是把同一个 audio asset 再在 iPhone 上播一遍（否则电视和手机双响）。"""
+        self._register_endpoint("living-room-iphone-1", "iphone")
+        self._heartbeat("living-room-iphone-1")
+        intent = {
+            "intent_id": 781,
+            "text": "把最新的音频在小米电视上放出来",
+            "source": "voice",
+            "edge_id": "living-room-iphone-1",
+            "execution_plan": [
+                {
+                    "step": 1,
+                    "capability": "asset.inventory",
+                    "output_constrict": {"asset_ref": {"type": "object"}},
+                },
+                {
+                    "step": 2,
+                    "capability": "display.audio",
+                    "output_constrict": {"status_text": {"type": "string"}},
+                },
+            ],
+            "ctx_param": {
+                "status_text": "已在小米电视播放最新音频",
+                "asset_ref": {
+                    "asset_id": "asset_a0c48dd24cbf98761db195f0",
+                    "type": "audio",
+                    "mime_type": "audio/mpeg",
+                },
+            },
+            "step_outputs": {
+                "2": {"status_text": "已在小米电视播放最新音频"},
+            },
+        }
+        pres = hb.assemble_presentation(intent)
+        self.assertIsNotNone(pres)
+        # 回给发声端的是「一句确认」，不是再播一遍同一个音频（否则电视+手机双响）。
+        self.assertEqual(pres["from"], "status_text")
+        self.assertEqual(pres["text"], "已在小米电视播放最新音频")
+        self.assertNotIn("asset_ref", pres)
+
+    def test_presentation_kind_display_audio_prefers_status_text(self) -> None:
+        """plan 里有 display.audio 时，presentation 走 status_text，不被 asset.inventory 抢走。"""
+        kind, field = hb._presentation_kind_from_plan(
+            {
+                "text": "把最新的音频在小米电视上放出来",
+                "source": "voice",
+                "execution_plan": [
+                    {
+                        "step": 1,
+                        "capability": "asset.inventory",
+                        "output_constrict": {"asset_ref": {"type": "object"}},
+                    },
+                    {
+                        "step": 2,
+                        "capability": "display.audio",
+                        "output_constrict": {"status_text": {"type": "string"}},
+                    },
+                ],
+            }
+        )
+        self.assertEqual(kind, "text")
+        self.assertEqual(field, "status_text")
 
     def test_normalize_presentation_plan_keeps_document(self) -> None:
         """#677: planner 的 document 骨架不能被归一化丢掉（prompt/schema 都列了 document）。"""

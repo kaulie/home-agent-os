@@ -442,5 +442,64 @@ class ShortcutModeTest(unittest.TestCase):
         self.assertIsNone(intercept("电视为什么要放大"))
 
 
+    def test_latest_audio_cast_shortcut(self) -> None:
+        plan = self._rule_hit(
+            "把最新的音频在小米电视上放出来",
+            rule="latest_audio_cast",
+            goal="display.audio",
+        )
+        self.assertEqual(
+            [s["capability"] for s in plan],
+            ["asset.inventory", "display.audio"],
+        )
+        inv = plan[0]["input_constrict"]
+        self.assertEqual(inv.get("type"), "audio")
+        self.assertEqual(inv.get("order"), "newest_first")
+        self.assertEqual(inv.get("index"), 1)
+        self.assertEqual(plan[1]["input_constrict"]["asset_ref"], "$asset_ref")
+        self.assertIn("status_text", plan[1]["output_constrict"])
+        hit = intercept("把最新的音频在小米电视上放出来")
+        assert hit is not None
+        self.assertEqual(hit.presentation, {"type": "text", "from": "status_text"})
+
+    def test_latest_audio_cast_variants(self) -> None:
+        for text in (
+            "让小米电视播放最新的音频",
+            "把刚才的录音投到电视上放",
+            "在电视上放一下最新的录音",
+        ):
+            with self.subTest(text=text):
+                plan = self._rule_hit(
+                    text, rule="latest_audio_cast", goal="display.audio"
+                )
+                self.assertEqual(plan[0]["input_constrict"].get("type"), "audio")
+                self.assertEqual(plan[1]["capability"], "display.audio")
+
+    def test_latest_audio_cast_leaves_music_and_video_alone(self) -> None:
+        # 点歌 / 放歌归 music.*；视频、照片、PDF 各有自己的能力。
+        for text in (
+            "把最新的歌在电视上放出来",
+            "播放最新的音乐",
+            "把最新的视频在电视上放出来",
+            "把最新的照片在电视上放出来",
+            "把最新的 PDF 在电视上放出来",
+        ):
+            with self.subTest(text=text):
+                hit = intercept(text)
+                if hit is not None:
+                    caps = [s["capability"] for s in hit.plan]
+                    self.assertNotIn("display.audio", caps)
+
+    def test_latest_audio_cast_needs_tv(self) -> None:
+        # 只说要听音频（没点名电视）→ 本规则不拦截，交回 LLM / presentation 链路
+        for text in ("把最新的音频放出来", "听一下最新的录音"):
+            with self.subTest(text=text):
+                hit = intercept(text)
+                if hit is not None:
+                    self.assertNotEqual(
+                        (hit.planner_meta or {}).get("rule"), "latest_audio_cast"
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()

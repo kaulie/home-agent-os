@@ -397,6 +397,34 @@ KNOWN_CAPABILITIES: dict[str, dict[str, Any]] = {
             },
         },
     },
+    'display.audio': {
+        'kind': 'output',
+        'group': 'display',
+        'service_id': 'xiaomi.tv.display',
+        'role': '音频投电视播放器',
+        'planner_recognize': '把已有 audio Asset 交给电视用 DLNA 放出来（只出声，不投图）',
+        'typical_triggers': ['把最新的音频在小米电视上放出来', '让小米电视播放最新的音频'],
+        'do_not_dispatch': ['投图', '投 PDF', '点歌放歌', '打印'],
+        'input_schema': {
+            'asset_ref': {
+                'type': 'string',
+                'required': True,
+                'description': 'AssetRef JSON {asset_id, type: "audio", mime_type?}。禁止 path / 永久 URL。常为 $asset_ref。',
+            },
+        },
+        'output_schema': {
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话，如「已在小米电视播放最新音频」',
+            },
+            'asset_id': {
+                'type': 'string',
+                'required': False,
+                'description': '实际播放的 audio asset_id',
+            },
+        },
+    },
     'game.launch': {
         'kind': 'output',
         'group': 'game',

@@ -112,6 +112,33 @@ XIAOMI_TV_DISPLAY_SERVICE: dict[str, Any] = {
     "capabilities": list(CHROMECAST_DISPLAY_SERVICE["capabilities"]),
 }
 
+# display.audio：把已有 audio Asset 交给电视 DLNA 播放（论文听读产出的音频等）。
+# 只挂在小米电视 DLNA 服务上：Chromecast 那套自定义接收器只认图片，不认音频。
+AUDIO_DISPLAY_CAPABILITIES: list[dict[str, Any]] = [
+    attach(
+        'display.audio',
+        input_schema={
+            'asset_ref': {
+                'type': 'string',
+                'required': True,
+                'description': 'AssetRef JSON {asset_id, type: "audio", mime_type?}。禁止 path / 永久 URL。常为 $asset_ref。',
+            },
+        },
+        output_schema={
+            'status_text': {
+                'type': 'string',
+                'required': True,
+                'description': '中文一句话，如「已在小米电视播放最新音频」',
+            },
+            'asset_id': {
+                'type': 'string',
+                'required': False,
+                'description': '实际播放的 audio asset_id',
+            },
+        },
+    ),
+]
+
 # display.pdf / display.pdf.page：PDF 逐页渲染成图投屏 + 翻页。
 # 两个显示服务（cast / xiaomi）共用；仅当本机可 import pymupdf 时附加广告。
 PDF_DISPLAY_CAPABILITIES: list[dict[str, Any]] = [
@@ -214,13 +241,18 @@ PDF_DISPLAY_CAPABILITIES: list[dict[str, Any]] = [
 ]
 
 
-def _display_capabilities() -> list[dict[str, Any]]:
-    """显示服务的 capability 列表：photo/slideshow 恒有；pymupdf 可用时附加 PDF 投屏。"""
+def _display_capabilities(*, with_audio: bool = False) -> list[dict[str, Any]]:
+    """显示服务的 capability 列表：photo/slideshow 恒有；pymupdf 可用时附加 PDF 投屏。
+
+    with_audio=True 仅小米电视 DLNA 用（display.audio 是 DLNA 独有）。
+    """
     caps = list(CHROMECAST_DISPLAY_SERVICE["capabilities"])
     from mac_edge.plugins.pdf_render import pymupdf_available
 
     if pymupdf_available():
         caps.extend(PDF_DISPLAY_CAPABILITIES)
+    if with_audio:
+        caps.extend(AUDIO_DISPLAY_CAPABILITIES)
     return caps
 
 LOCAL_NOTIFY_SERVICE: dict[str, Any] = {
@@ -2309,7 +2341,7 @@ def default_services() -> list[dict[str, Any]]:
     if backend == "xiaomi":
         if _allow_service(XIAOMI_TV_DISPLAY_SERVICE["service_id"], allowed_set):
             xiaomi_svc = dict(XIAOMI_TV_DISPLAY_SERVICE)
-            xiaomi_svc["capabilities"] = _display_capabilities()
+            xiaomi_svc["capabilities"] = _display_capabilities(with_audio=True)
             services.append(xiaomi_svc)
             log.info("advertise xiaomi.tv.display (DLNA)")
     elif _allow_service(CHROMECAST_DISPLAY_SERVICE["service_id"], allowed_set):

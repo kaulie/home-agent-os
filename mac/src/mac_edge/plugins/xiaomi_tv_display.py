@@ -33,6 +33,7 @@ SSDP_ADDR = lan.SSDP_ADDR
 SSDP_ST = lan.SSDP_ST_MEDIA_RENDERER
 AV_TRANSPORT = "urn:schemas-upnp-org:service:AVTransport:1"
 SOAP_ENV = "http://schemas.xmlsoap.org/soap/envelope/"
+DEFAULT_AUDIO_MIME = "audio/mpeg"
 
 
 class XiaomiTvError(Exception):
@@ -355,26 +356,30 @@ def soap_action(
         raise XiaomiTvError(f"投电视失败：DLNA {action} HTTP {status}。")
 
 
-def play_photo(
-    photo_url: str,
+def _normalize_media_url(url: str, *, field: str) -> str:
+    value = (url or "").strip()
+    if not value:
+        raise XiaomiTvError(f"投电视失败：{field} 为空。")
+    if not value.startswith("http://") and not value.startswith("https://"):
+        raise XiaomiTvError(f"投电视失败：{field} 必须是 http(s)。")
+    return value
+
+
+def _play_uri(
+    target: dict[str, str],
+    url: str,
     *,
-    renderer: dict[str, str] | None = None,
+    metadata: str = "",
     timeout_sec: float = 10.0,
     post_fn: Callable[[str, str, dict[str, str]], int] | None = None,
-    discover_fn: Callable[[], dict[str, str]] | None = None,
 ) -> str:
-    url = (photo_url or "").strip()
-    if not url:
-        raise XiaomiTvError("投电视失败：photo_url 为空。")
-    if not url.startswith("http://") and not url.startswith("https://"):
-        raise XiaomiTvError("投电视失败：photo_url 必须是 http(s)。")
-    target = renderer or (discover_fn or discover_renderer)()
+    """SetAVTransportURI + Play；metadata 空串即旧行为（图片投屏）。"""
     control = target["control_url"]
     soap_action(
         control,
         "SetAVTransportURI",
         f"<InstanceID>0</InstanceID><CurrentURI>{xml_escape(url)}</CurrentURI>"
-        "<CurrentURIMetaData></CurrentURIMetaData>",
+        f"<CurrentURIMetaData>{xml_escape(metadata)}</CurrentURIMetaData>",
         timeout_sec=timeout_sec,
         post_fn=post_fn,
     )
@@ -385,8 +390,63 @@ def play_photo(
         timeout_sec=timeout_sec,
         post_fn=post_fn,
     )
-    name = target.get("friendly_name") or "xiaomi-tv"
+    return target.get("friendly_name") or "xiaomi-tv"
+
+
+def play_photo(
+    photo_url: str,
+    *,
+    renderer: dict[str, str] | None = None,
+    timeout_sec: float = 10.0,
+    post_fn: Callable[[str, str, dict[str, str]], int] | None = None,
+    discover_fn: Callable[[], dict[str, str]] | None = None,
+) -> str:
+    url = _normalize_media_url(photo_url, field="photo_url")
+    target = renderer or (discover_fn or discover_renderer)()
+    name = _play_uri(target, url, timeout_sec=timeout_sec, post_fn=post_fn)
     return f"dlna ok → {name}"
+
+
+def audio_current_uri_metadata(url: str, mime_type: str = "") -> str:
+    """音频的 DIDL-Lite 描述：电视按 upnp:class=audioItem 选播放器，而不是当图片渲染。
+
+    图片投屏（play_photo）刻意不带 metadata：旧行为实测可用，不动它。
+    """
+    kind = (mime_type or "").strip().lower() or DEFAULT_AUDIO_MIME
+    protocol_info = f"http-get:*:{kind}:*"
+    title = "Home Agent 音频"
+    return (
+        '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
+        'xmlns:dc="http://purl.org/dc/elements/1.1/" '
+        'xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">'
+        '<item id="0" parentID="-1" restricted="1">'
+        f"<dc:title>{xml_escape(title)}</dc:title>"
+        "<upnp:class>object.item.audioItem.musicTrack</upnp:class>"
+        f'<res protocolInfo="{protocol_info}">{xml_escape(url)}</res>'
+        "</item></DIDL-Lite>"
+    )
+
+
+def play_audio(
+    audio_url: str,
+    *,
+    mime_type: str = "",
+    renderer: dict[str, str] | None = None,
+    timeout_sec: float = 10.0,
+    post_fn: Callable[[str, str, dict[str, str]], int] | None = None,
+    discover_fn: Callable[[], dict[str, str]] | None = None,
+) -> str:
+    """把 audio Asset 的 http(s) 地址交给电视 DLNA 播放（音频 DIDL 元数据）。"""
+    url = _normalize_media_url(audio_url, field="audio_url")
+    target = renderer or (discover_fn or discover_renderer)()
+    name = _play_uri(
+        target,
+        url,
+        metadata=audio_current_uri_metadata(url, mime_type),
+        timeout_sec=timeout_sec,
+        post_fn=post_fn,
+    )
+    return f"dlna audio ok → {name}"
 
 
 def play_slideshow(
@@ -446,6 +506,62 @@ def photo_from_params(
             "cast_status": "accepted",
             "protocol_version": 0,
             "asset_id": asset_id,
+        },
+    )
+
+
+def _ref_str(ref: Any, key: str) -> str:
+    value = getattr(ref, key, None)
+    if value:
+        return str(value)
+    if isinstance(ref, dict):
+        return str(ref.get(key) or "")
+    return ""
+
+
+def _require_cap_asset(asset: Any) -> None:
+    """鸭子类型检查（与 pdf_display 同口径）：旧 plugin 用 isinstance(CapAsset)，
+    真机无差别，但单测里可以用最小替身。"""
+    if asset is None or not (
+        hasattr(asset, "require_ref") and hasattr(asset, "http_url")
+    ):
+        raise XiaomiTvError("display.audio 需要 CapAsset（Runtime SDK）")
+
+
+def audio_from_params(
+    params: dict[str, str],
+    *,
+    asset: Any,
+    timeout_sec: float = 10.0,
+    play_fn: Callable[..., str] | None = None,
+    **_kwargs: Any,
+) -> tuple[str, dict[str, Any]]:
+    """display.audio：把 audio Asset 交给电视 DLNA 播放（不做 TTS、不投图）。"""
+    from mac_edge.asset.types import AssetError
+
+    _require_cap_asset(asset)
+    try:
+        ref = asset.require_ref(params, "asset_ref")
+        asset_type = _ref_str(ref, "type").strip().lower()
+        mime_type = _ref_str(ref, "mime_type").strip().lower()
+        audio_url = asset.http_url(ref)
+    except AssetError as e:
+        raise XiaomiTvError(str(e)) from e
+    if asset_type and asset_type != "audio":
+        raise XiaomiTvError(f"display.audio 需要 audio Asset，当前是 {asset_type}")
+    if mime_type and not mime_type.startswith("audio/"):
+        raise XiaomiTvError(f"display.audio 需要音频 mime，当前是 {mime_type}")
+    player = play_fn or play_audio
+    msg = player(audio_url, mime_type=mime_type, timeout_sec=timeout_sec)
+    asset_id = _ref_str(ref, "asset_id") or None
+    return (
+        f"{msg} · cast_status=accepted (xiaomi dlna audio)",
+        {
+            "cast_transport": "xiaomi_dlna",
+            "cast_status": "accepted",
+            "protocol_version": 0,
+            "asset_id": asset_id,
+            "status_text": "已在小米电视播放最新音频",
         },
     )
 

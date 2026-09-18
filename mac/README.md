@@ -1,7 +1,7 @@
 # Mac Edge Runtime
 
 客厅 **Mac Edge** 后台进程（无 UI）：对接 Brain 做 **注册 / 心跳 / 轮询 intent**。  
-`display.photo` / `display.slideshow` 通过薄 Cast plugin 转发到**独立** Cast HTTP 服务（不同进程）。
+`display.photo` / `display.slideshow` / `display.audio` 通过薄 Cast / DLNA plugin 转发到**独立** Cast HTTP 服务或小米电视 DLNA（`display.audio` 仅 DLNA）。
 
 本目录已并入 monorepo：[`smart_home_control/mac`](.)（与 `ios/`、`android/` 并列）。
 

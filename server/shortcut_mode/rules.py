@@ -103,12 +103,12 @@ def _rstrip_punct(text: str) -> str:
     return str(text or "").strip().rstrip(_TRAILING_PUNCT).strip()
 
 
-def _inventory_step() -> dict:
+def _inventory_step(asset_type: str = "image") -> dict:
     return {
         "step": 1,
         "capability": "asset.inventory",
         "input_constrict": {
-            "type": "image",
+            "type": asset_type,
             "index": 1,
             "order": "newest_first",
             "include_refs": "true",
@@ -236,6 +236,67 @@ def match_photo_latest(text: str) -> RuleHit | None:
     )
 
 
+_AUDIO_CAST_NOUNS = ("音频", "录音", "语音")
+_AUDIO_CAST_HINTS = (
+    "在电视上",
+    "电视上",
+    "投到电视",
+    "丢到电视",
+    "放到电视",
+    "电视播放",
+    "电视里放",
+)
+_AUDIO_LATEST_HINTS = ("最新", "最后", "刚才", "最近", "上一条", "上一个")
+# 「歌/音乐」归 music.*，「视频/照片/PDF」各有自己的能力，不允许被本规则截胡。
+_AUDIO_CAST_EXCLUDE = (
+    "歌",
+    "音乐",
+    "视频",
+    "照片",
+    "图片",
+    "pdf",
+    "PDF",
+    "文档",
+    "打印",
+)
+
+
+def match_latest_audio_cast(text: str) -> RuleHit | None:
+    """「把最新的音频在小米电视上放出来」→ asset.inventory(type=audio) + display.audio。
+
+    规则只认「音频/录音 + 最新 + 电视」这一族说法，其余仍走 LLM 规划。
+    """
+    t0 = time.perf_counter()
+    utterance = _rstrip_punct(_lstrip_courtesy(str(text or "").strip()))
+    if not utterance or not any(n in utterance for n in _AUDIO_CAST_NOUNS):
+        return None
+    if matches_any(utterance, _AUDIO_CAST_EXCLUDE):
+        return None
+    if not matches_any(utterance, _AUDIO_CAST_HINTS):
+        return None
+    if not matches_any(utterance, _AUDIO_LATEST_HINTS):
+        return None
+
+    plan = [
+        _inventory_step("audio"),
+        {
+            "step": 2,
+            "capability": "display.audio",
+            "input_constrict": {"asset_ref": "$asset_ref"},
+            "output_constrict": {"status_text": {}},
+        },
+    ]
+    match_ms = int(round((time.perf_counter() - t0) * 1000))
+    return RuleHit(
+        rule="latest_audio_cast",
+        goal="display.audio",
+        plan=plan,
+        # 语音发起时 TTS 念 status_text（如「已在小米电视播放最新音频」）
+        presentation={"type": "text", "from": "status_text"},
+        match_ms=match_ms,
+    )
+
+
 _TV_PDF_HINT = "电视"
 _TV_PDF_PREV = ("上一页", "上页", "往前翻", "向前翻")
 _TV_PDF_NEXT = ("下一页", "下页", "往后翻", "向后翻")
@@ -336,6 +397,7 @@ def match_rules(text: str) -> RuleHit | None:
         match_clock,
         match_climate,
         match_photo_latest,
+        match_latest_audio_cast,
         match_tv_pdf_page,
         match_tv_pdf_zoom,
     ):
