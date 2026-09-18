@@ -12,7 +12,7 @@ if __name__ == "__main__":
     try:
         import os
 
-        from mdns_service import BRAIN_TYPE, lan_ipv4, publish_service
+        from mdns_service import BRAIN_TYPE, lan_ipv4, publish_service, warm_img_server_discovery
 
         _BRAIN_MDNS = publish_service(
             name="Home Agent Brain",
@@ -25,6 +25,9 @@ if __name__ == "__main__":
             },
             hostname="brain.local",
         )
+        # 启动即预热「资源服务器端口发现」（端点文件 → mDNS，后台线程）：
+        # 第一条上传/取字节就能用上正确端口，而不必在请求路径上等 Bonjour。
+        warm_img_server_discovery()
     except Exception:
         log.warning("mdns brain publish skipped; LAN discovery unavailable", exc_info=True)
     log.info("Brain home_brain.py on :9527")
