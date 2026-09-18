@@ -3,13 +3,15 @@ service_id: xiaomi.tv.display
 group: display
 version: "0.1.0"
 display_name: 小米电视 DLNA
-description: 经 DLNA 把图投到小米电视；wire 仍为 display.photo / display.slideshow
+description: 经 DLNA 把图/音频投到小米电视；wire = display.photo / display.slideshow / display.audio
 
 capabilities:
   - capability_id: display.photo
     description: 把一张图投到小米电视（DLNA）
   - capability_id: display.slideshow
     description: 把多张图轮播到小米电视（DLNA）
+  - capability_id: display.audio
+    description: 把已有 audio Asset 交给小米电视 DLNA 出声（Cast 后端不提供）
 
 entry:
   mac: mac/src/mac_edge/plugins/xiaomi_tv_display.py

@@ -418,6 +418,13 @@ ADS: dict[str, dict[str, Any]] = {
         typical_triggers=["把这张图投到电视", "投屏", "投到电视", "丢到电视", "放到电视"],
         do_not_dispatch=["拍多图", "幻灯片", "放歌", "按厂商选 Chromecast"],
     ),
+    "display.audio": _ad(
+        kind="output",
+        role="音频投电视播放器",
+        planner_recognize="把本步已有的 audio Asset（如论文听读产出的音频）交给电视用 DLNA 放出来。入参 asset_ref（必填，type=audio，常为 $asset_ref）。用户没说是哪份音频时，先排 asset.inventory（type=audio, order=newest_first, index=1）再接本步。本步只出声，不投图、不放歌、不做 TTS、不打印",
+        typical_triggers=["把最新的音频在小米电视上放出来", "让小米电视播放最新的音频", "把这段录音投到电视上放", "在电视上放这段音频"],
+        do_not_dispatch=["投图", "投 PDF", "点歌放歌", "打印", "TTS 念文本", "ChromeCast 投屏"],
+    ),
     "display.slideshow": _ad(
         kind="output",
         role="多图幻灯片投屏器",

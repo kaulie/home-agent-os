@@ -25,6 +25,7 @@ from mac_edge.plugins.chromecast_display import (
 )
 from mac_edge.plugins.xiaomi_tv_display import (
     XiaomiTvError,
+    audio_from_params as xiaomi_audio_from_params,
     display_backend,
     photo_from_params as xiaomi_photo_from_params,
     slideshow_from_params as xiaomi_slideshow_from_params,
@@ -1543,6 +1544,20 @@ def _execute_capability(
                 )
             return True, msg, outputs
         except (CastError, XiaomiTvError, AssetError) as e:
+            return False, str(e), {}
+        except Exception as e:
+            return False, f"{type(e).__name__}: {e}", {}
+    if cap == "display.audio":
+        try:
+            if display_backend() != "xiaomi":
+                return False, "display.audio 需要小米电视 DLNA 显示后端（当前是 Cast）", {}
+            msg, outputs = xiaomi_audio_from_params(
+                params,
+                asset=asset,
+                timeout_sec=config.display_http_timeout_sec,
+            )
+            return True, msg, outputs
+        except (XiaomiTvError, AssetError) as e:
             return False, str(e), {}
         except Exception as e:
             return False, f"{type(e).__name__}: {e}", {}
