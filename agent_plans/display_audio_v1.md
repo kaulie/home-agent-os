@@ -57,3 +57,7 @@
 - Cast（Chromecast）后端音频播放：需要接收器侧支持 audio media，另开能力。
 - 音量/暂停/继续等音频传输控制（`display.audio.pause` 等）：本次不做。
 - `paper.read` 一步到位「生成即投电视」：本次只做「已有音频 → 电视」，听读链路不动。
+- **风险（待真机确认）**：Brain `/api/v1/assets/<id>/content` 返回 200 + `Content-Length`，
+  不支持 `Range`（图片投屏、小度 TTS 拉流都是这条链路，实测可用）。若小米电视的 DLNA
+  播放器要求 206 才能播/拖动，退路是像 `xiaodu_speaker` 那样在 Mac 本地起一个带 Range
+  的文件服务，把 `CapAsset.materialize_file(ref)` 的文件喂给电视。
