@@ -29,8 +29,16 @@ Presentation：语音问法优先 `type=audio`，`from=answer_text`。
 `capabilities.summary` 给**用户听**的是一段口语介绍；要给**人查/对比/排账**的完整目录在这里：
 
 - 仓库：<https://github.com/kaulie/home-agent-capabilty-marketplace>
-- 网页（可搜/按 group 筛）：`index.html`；机器可读：`catalog/capabilities.json`
-- 内容由本仓代码自动导出：`python3 mac/scripts/export_capability_catalog.py --out <marketplace> --live`
-   （定义层来自 `capability_ads.py` / `services.py` / `plugins/*`，实况层来自 Brain `GET /api/v1/capabilities`）
-- 目录里有两笔「账」值得定期看：**声明未上线**（定义有、此刻没广告）与**线上未声明**（在跑但没定义）。
+- 网页（可搜 / 按 group·服务·关键字·宿主筛）：`index.html`；机器可读：`catalog/capabilities.json`
+- 内容由集市的两步同步产出（**不要手改生成物**）：
+  ```bash
+  # 1) 本仓代码 → 导出声明（只读、无副作用）
+  python3 mac/scripts/export_capability_catalog.py --out <marketplace 检出目录>
+  # 2) 集市侧：导出 → 入库 → 回写仓库 → 自检
+  <marketplace>/scripts/sync.sh <本仓检出目录>
+  ```
+- 定位：集市是**能力展示与技能介绍**，只登记声明（能力/服务/条件挂载/参数/触发语/文档 + 人工策展：
+  描述、关键字、适用宿主），**不保存实时状态**（在线/设备/探测结果）。要看实时状态用 Brain
+  `GET /api/v1/capabilities`；要看代码与目录有没有漂移：`<marketplace>/scripts/sync.sh <本仓> --check`。
+
 
