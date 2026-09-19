@@ -2,6 +2,14 @@ import Foundation
 
 /// Client-side energy gate before HAP1 send: drop silence, keep a short pre-roll,
 /// and hold open for a hangover so mid-phrase pauses are not chopped.
+///
+/// It also *reports* how long the room has been quiet when it closes. The Mac
+/// only receives speech (this gate), and its AGC lifts room tone above the fixed
+/// energy thresholds, so silence is invisible over there: the segmenter used to
+/// wait for `max_speech` (2.8s) before every wake clip, delaying
+/// 「面条面条 → 我在呢」by ~1.4s. The quiet report (HAP1 type 5) lets Mac
+/// `voice.stream` endpoint on wall clock like the USB mic.
+/// See `agent_plans/phone_wake_latency_v1.md`.
 final class HomeMicEnergyGate {
     /// Absolute RMS floor (post-AGC, 0…1). Below this never opens.
     private let absoluteFloor: Float = 0.007
@@ -21,6 +29,9 @@ final class HomeMicEnergyGate {
     private var quietMs: Double = 0
     private var preRoll: [Data] = []
     private var preRollBytes = 0
+    /// Quiet ms measured when the gate last closed; read by the controller, which
+    /// turns it into one HAP1 quiet frame. 0 = nothing to report.
+    private var pendingQuietMs: Double = 0
 
     private var maxPreRollBytes: Int {
         Int(sampleRate * (preRollMs / 1000.0) * Double(bytesPerSample))
@@ -29,6 +40,8 @@ final class HomeMicEnergyGate {
     init(
         sampleRate: Double = 44_100,
         preRollMs: Double = 280,
+        // Must stay ≥ MAC_VOICE_PHONE_WAKE_SILENCE_MS (350) so one quiet frame
+        // already endpoints a wake clip on the Mac.
         hangoverMs: Double = 400
     ) {
         self.sampleRate = sampleRate
@@ -42,14 +55,21 @@ final class HomeMicEnergyGate {
         quietMs = 0
         preRoll.removeAll(keepingCapacity: true)
         preRollBytes = 0
+        pendingQuietMs = 0
+    }
+
+    /// Take the quiet window measured at the last close (ms); 0 = none.
+    func takeQuietReportMs() -> Double {
+        let ms = pendingQuietMs
+        pendingQuietMs = 0
+        return ms
     }
 
     /// Returns PCM chunks to send (may include flushed pre-roll). Empty = hold.
+    ///
+    /// The detector always runs; `enabled == false` only means "also upload the
+    /// quiet audio" (debug: bandwidth instead of silence reporting).
     func filter(_ pcm: Data, enabled: Bool) -> [Data] {
-        guard enabled else {
-            reset()
-            return pcm.isEmpty ? [] : [pcm]
-        }
         guard !pcm.isEmpty, pcm.count % bytesPerSample == 0 else { return [] }
 
         let frames = pcm.count / bytesPerSample
@@ -68,12 +88,13 @@ final class HomeMicEnergyGate {
             if rms >= openTh {
                 open = true
                 quietMs = 0
-                var out = preRoll
+                var out = enabled ? preRoll : []
                 preRoll.removeAll(keepingCapacity: true)
                 preRollBytes = 0
                 out.append(pcm)
                 return out
             }
+            guard enabled else { return [pcm] }
             pushPreRoll(pcm)
             return []
         }
@@ -95,7 +116,10 @@ final class HomeMicEnergyGate {
         }
 
         open = false
+        // Hand the Mac the missing wall-clock silence (speech has stopped).
+        pendingQuietMs = max(pendingQuietMs, quietMs)
         quietMs = 0
+        guard enabled else { return [pcm] }
         pushPreRoll(pcm)
         return []
     }

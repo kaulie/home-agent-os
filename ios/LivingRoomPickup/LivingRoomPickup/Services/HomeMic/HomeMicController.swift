@@ -401,15 +401,17 @@ final class HomeMicController: NSObject {
         // Keep uploading during local wake-ack. Muting here chopped the start of
         // the follow-up command (打开 → 开 / 客厅空调).「我在呢」echo is dropped
         // by the Mac wake gate.
-        let chunks: [Data]
-        if HomeMicSettings.energyGateEnabled {
-            chunks = energyGate.filter(data, enabled: true)
-        } else {
-            chunks = data.isEmpty ? [] : [data]
-        }
+        let chunks = energyGate.filter(data, enabled: HomeMicSettings.energyGateEnabled)
         guard client.isConnected else { return }
         for chunk in chunks where !chunk.isEmpty {
             client.sendPCM(chunk)
+        }
+        // The Mac only ever sees uploaded speech, so tell it how long the room has
+        // been quiet: without this the segmenter cannot endpoint and every clip
+        // runs to the 2.8s wake max (「面条面条 → 我在呢」 feels slow).
+        let quietMs = energyGate.takeQuietReportMs()
+        if quietMs > 0 {
+            client.sendQuietGap(ms: Int(quietMs.rounded()))
         }
     }
 

@@ -397,13 +397,18 @@ def _home_mic_capture_loop(
                 now = time.time()
                 if now - last_energy_log >= 5.0:
                     dyn = max(energy, min(noise_ema * 2.5, start_th))
+                    gaps = ingest.gap_stats()
                     log.info(
-                        "phone_hap1 alive participant=%s peak_rms=%.0f gate=%.0f noise=%.0f pcm_in=%d (queue=%d)",
+                        "phone_hap1 alive participant=%s peak_rms=%.0f gate=%.0f noise=%.0f "
+                        "pcm_in=%d silence_ms=%s gaps=%d gap_total=%.1fs (queue=%d)",
                         current_pid["v"] or ingest.participant_id or "-",
                         peak,
                         dyn,
                         noise_ema,
                         ingest.pcm_bytes,
+                        ingest.phone_silence_ms(),
+                        int(gaps["count"]),
+                        gaps["ms_total"] / 1000.0,
                         out_q.qsize(),
                     )
                     peak = 0.0
@@ -608,6 +613,8 @@ async def _run_live_locked(
             host=cfg.pickup_ingest_host,
             port=cfg.pickup_ingest_port,
             chunk_ms=100,
+            stream_gap_ms=getattr(cfg, "phone_stream_gap_ms", 300) or 0,
+            gap_cap_ms=getattr(cfg, "phone_gap_cap_ms", 900) or 0,
         )
         try:
             ingest.start()

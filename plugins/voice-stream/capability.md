@@ -21,6 +21,10 @@
 1. 初始化进入系统后按 listen_mode 开麦（默认 wake_word：USB 麦常开，未唤醒不发 intent）
 2. 能量切句 → STT → 唤醒门（面条 ×2）→ 可选 POST intent
 2b. **Home Mic 合流**：iPhone 直连本机 HAP1 ingest（默认 `0.0.0.0:8792`），重采样 16 kHz 后进入同一套切句 / STT / 唤醒。身份来自 iPhone Runtime 心跳登记的 `participant_id`（HAP1 hello 带上），不是写死的 `usb_mic`/`home_mic` 频道名。`source_context.device_id` / `input_participant_id` = 说话那台 Runtime；`ingress` 仅标记传输（`mac_usb` | `phone_hap1`）；`voice_host_participant_id` = 跑 STT 的 Mac。**不经 Brain 转 PCM**；Brain 只接收 STT 后的 Intent
+2b2. **Home Mic 静音按真实时间补回（切句与 USB 对齐）**：端上能量门只上传语音（省流量），Mac 又按「收到的字节」数静音，于是手机路径几乎从不等静音——实测 117 条 clip 里 107 条跑满 `PHONE_WAKE_MAX_SPEECH_MS`（2.8s）才切，唤醒应答平均多等 ~1.4s。现在两端配合：
+   - 端上在门关闭时发 HAP1 **frame 5 `quiet`**（`{"ms":400}`，= hangover 实测静音）；Mac 把它转成等长**零 PCM** 注入切句，350ms 唤醒静音立刻切句。单帧上限 `PHONE_GAP_CAP_MS`（900ms）：> 唤醒静音 350（一帧即可切唤醒）、< 指令静音 1500（一帧永不切碎指令句）。
+   - 兜底：手机码流停顿 ≥ `PHONE_STREAM_GAP_MS`（默认 300ms）时 Mac 按停顿时长注入零 PCM 并累积（旧版 App 也生效；指令句仍按 1500ms 胶合）。
+   - 关闭：`MAC_VOICE_PHONE_GAP_CAP_MS=0`（回到只按 max_speech 切句）。
 2c. **唤醒窗按 Input Source 隔离**（默认）：`WakeGatePool` 以 `input_participant_id` 为键（空则回退 `ingress`）。USB 唤醒后，Home Mic 在 5s 内不说唤醒词不能蹭窗下发；反之亦然。喇叭应答仍共享：约 1.5s debounce **仅抑制异路**重复播报；同路连续再唤始终播。回滚：`MAC_VOICE_WAKE_SCOPE=global`。`always_on` 无 gate，行为不变。
 3. **不要**作为用户任务的计划逐步执行；误派则失败并带可读 msg
 
@@ -42,6 +46,9 @@
 | `MAC_VOICE_PARTIAL_WAKE_MS` | 两遍之间最大间隔，默认 `2500` |
 | `MAC_VOICE_DOUBLE_WAKE_MS` | 一句里 STT 只出一遍唤醒词时，语音时长达到此值仍按两遍计，默认 `1100` |
 | `MAC_VOICE_WAKE_ACK` | 唤醒成功后喇叭回复，默认 `我在呢`；未设时从 Brain `GET /api/v1/voice/settings` 读取 |
+| `MAC_VOICE_PHONE_WAKE_SILENCE_MS` | Home Mic **猎唤醒**句末静音，默认 `350` |
+| `MAC_VOICE_PHONE_STREAM_GAP_MS` | 手机码流停顿多久算「静音」（补零 PCM 注入切句的兜底），默认 `300`；`0` 关闭 |
+| `MAC_VOICE_PHONE_GAP_CAP_MS` | 单帧 `quiet` 最多注入多少静音，默认 `900`（> 唤醒静音、< 指令静音）；`0` 关闭注入 |
 | `MAC_VOICE_SILENCE_MS` | USB **指令**句末静音多久才切句，默认 `1000`（中间停顿少于 1 秒并成一句） |
 | `MAC_VOICE_USB_WAKE_SILENCE_MS` | USB **猎唤醒**句末静音，默认 `400`（比指令短，加快「面条面条→我在呢」） |
 | `MAC_VOICE_USB_WAKE_MAX_SPEECH_MS` | USB 猎唤醒单句最长，默认 `2800` |

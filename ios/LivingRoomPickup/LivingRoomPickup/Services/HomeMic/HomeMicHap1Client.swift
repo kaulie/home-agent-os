@@ -159,6 +159,20 @@ final class HomeMicHap1Client {
         }
     }
 
+    /// HAP1 type 5: "the room has been quiet for `ms`". The Mac turns it into
+    /// real silence so its segmenter can endpoint on wall clock like the USB mic
+    /// (see `agent_plans/phone_wake_latency_v1.md`).
+    func sendQuietGap(ms: Int) {
+        let clamped = max(0, min(ms, 2000))
+        guard clamped > 0 else { return }
+        queue.async { [weak self] in
+            guard let self = self, self.sessionReady else { return }
+            let body = Data("{\"ms\":\(clamped)}".utf8)
+            guard let frame = Self.packFrame(type: 5, payload: body) else { return }
+            self.sendRaw(frame)
+        }
+    }
+
     func close() {
         close(notify: false)
     }

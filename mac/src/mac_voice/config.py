@@ -110,6 +110,10 @@ class VoiceConfig:
     recognize_ack: str = ""
     recognize_ack_enabled: bool = False
     mic_retry_sec: float = DEFAULT_MIC_RETRY_SEC
+    # Phone HAP1 endpoints on wall-clock silence synthesized by the ingest
+    # (FRAME_QUIET / stream stall) — see agent_plans/phone_wake_latency_v1.md.
+    phone_stream_gap_ms: int = 300
+    phone_gap_cap_ms: int = 900
 
 
 def _parse_device(raw: str) -> int | str | None:
@@ -368,6 +372,21 @@ def load_config() -> VoiceConfig:
             hi=60_000,
         ),
         wake_scope=_parse_wake_scope(_env("MAC_VOICE_WAKE_SCOPE")),
+        # Phone path: synthesize wall-clock silence between uploads so the
+        # segmenter endpoints on 350ms/1500ms like the USB mic (was: every clip
+        # ran to phone_wake_max_speech_ms = 2.8s, delaying「我在呢」).
+        phone_stream_gap_ms=_parse_int(
+            _env("MAC_VOICE_PHONE_STREAM_GAP_MS"),
+            300,
+            lo=0,
+            hi=5000,
+        ),
+        phone_gap_cap_ms=_parse_int(
+            _env("MAC_VOICE_PHONE_GAP_CAP_MS"),
+            900,
+            lo=0,
+            hi=1500,
+        ),
         recognize_ack=recognize_ack,
         recognize_ack_enabled=recognize_ack_enabled,
     )
