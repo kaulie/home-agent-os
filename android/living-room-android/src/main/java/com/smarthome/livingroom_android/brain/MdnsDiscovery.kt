@@ -89,9 +89,11 @@ object MdnsDiscovery {
                         )
                     }
                     override fun onServiceLost(serviceInfo: NsdServiceInfo) {}
-                    override fun onDiscoveryFailed(serviceType: String, errorCode: Int) {
+                    override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
                         finish()
                     }
+
+                    override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {}
                 }
                 discovery = browser
                 cont.invokeOnCancellation {

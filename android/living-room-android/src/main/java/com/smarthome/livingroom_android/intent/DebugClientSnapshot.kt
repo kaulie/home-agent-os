@@ -1,8 +1,8 @@
 package com.smarthome.livingroom_android.intent
 
 import com.smarthome.livingroom_android.brain.BrainEndpoint
+import com.smarthome.livingroom_android.brain.BrainNetworkEnvironment
 import com.smarthome.livingroom_android.ui.BrainHeartbeatStatus
-import com.smarthome.livingroom_android.ui.BrainNetworkEnvironment
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -31,7 +31,7 @@ object DebugClientSnapshot {
             "primary_brain" to mapOf(
                 "mode" to primary.name.lowercase(Locale.US),
                 "mode_label" to env.mode.label,
-                "routing" to env.routing.rawValue,
+                "routing" to env.routing.wire,
                 "routing_label" to env.routing.title,
                 "base_url" to BrainEndpoint.displayBase(intentServerUrl),
                 "intent_url" to intentServerUrl,

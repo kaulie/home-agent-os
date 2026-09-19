@@ -31,6 +31,7 @@ import com.smarthome.livingroom_android.intent.ClockSyncSample
 import android.net.Uri
 import com.smarthome.livingroom_android.intent.DebugClientSnapshot
 import com.smarthome.livingroom_android.edge.IntentRuntimeLog
+import com.smarthome.livingroom_android.intent.IntentApi
 import com.smarthome.livingroom_android.intent.IntentDetail
 import com.smarthome.livingroom_android.intent.IntentSubmitResult
 import com.smarthome.livingroom_android.intent.LocalUploads
