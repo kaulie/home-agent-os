@@ -39,6 +39,8 @@ def _cfg(**kwargs) -> VoiceConfig:
         silence_ms=800,
         min_speech_ms=400,
         max_speech_ms=8000,
+        usb_wake_silence_ms=400,
+        usb_wake_max_speech_ms=2800,
         wake_word="面条",
         wake_repeat=2,
         wake_aliases=("miantiao", "棉条", "面跳", "免条"),

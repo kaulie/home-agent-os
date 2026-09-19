@@ -1,4 +1,10 @@
-"""Home Mic (phone HAP1) → local ingest → 16k PCM for voice.stream + speak downlink."""
+"""Home Mic (phone HAP1) → local ingest → 16k PCM for voice.stream + speak downlink.
+
+Frame types: 1 heartbeat, 2 pcm, 3 command (down), 4 hello, 5 quiet (up).
+A quiet frame means "the phone's energy gate closed after N ms of silence"; the
+ingest turns it into zero-PCM so the shared segmenter endpoints like the USB mic
+(see agent_plans/phone_wake_latency_v1.md).
+"""
 
 from __future__ import annotations
 
@@ -23,6 +29,22 @@ FRAME_HEARTBEAT = 1
 FRAME_PCM = 2
 FRAME_COMMAND = 3
 FRAME_HELLO = 4
+# client → server: speech stopped, payload {"ms": <quiet ms>}. The phone only
+# uploads speech (client energy gate), so without this the segmenter — which
+# measures silence in *received bytes* — can never endpoint and every clip runs
+# to max_speech (see agent_plans/phone_wake_latency_v1.md).
+FRAME_QUIET = 5
+
+# Wall-clock silence the ingest fakes when the phone's stream stalls, even
+# without a FRAME_QUIET (old clients / lost frame). Below the wake silence so a
+# stall always endpoints a wake clip, far below the command silence.
+DEFAULT_STREAM_GAP_MS = 300
+# Ceiling for one injected silence: > wake silence (350ms) so a single quiet
+# frame endpoints a wake clip, < command silence (1500ms) so it can never chop
+# a command sentence.
+DEFAULT_GAP_CAP_MS = 900
+# Stop faking silence this long after the last real PCM (app paused/closed).
+DEFAULT_ACTIVE_WINDOW_S = 30.0
 
 _active_lock = threading.Lock()
 _active_server: "PickupIngestServer | None" = None
@@ -88,6 +110,22 @@ def read_frame(sock: socket.socket) -> tuple[int, bytes] | None:
     return frame_type, payload or b""
 
 
+def _parse_quiet_ms(payload: bytes) -> float:
+    """Quiet duration reported by a FRAME_QUIET client frame (ms)."""
+    try:
+        parsed = json.loads((payload or b"").decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        return 0.0
+    if not isinstance(parsed, dict):
+        return 0.0
+    raw = parsed.get("ms", parsed.get("quiet_ms"))
+    try:
+        ms = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    return max(0.0, ms)
+
+
 class PickupIngestServer:
     """Accept phone HAP1; expose 16 kHz PCM; downlink speak commands on same TCP."""
 
@@ -98,6 +136,9 @@ class PickupIngestServer:
         port: int = 8792,
         chunk_ms: int = 100,
         queue_max: int = 200,
+        stream_gap_ms: int = DEFAULT_STREAM_GAP_MS,
+        gap_cap_ms: int = DEFAULT_GAP_CAP_MS,
+        active_window_s: float = DEFAULT_ACTIVE_WINDOW_S,
     ) -> None:
         self._host = host
         self._port = port
@@ -125,6 +166,17 @@ class PickupIngestServer:
         self._phone_cmd_silence_ms = 1500
         self._phone_cmd_max_ms = 12_000
         self._command_window_ms = 5000
+        # Wall-clock silence synthesis (see FRAME_QUIET above).
+        self._stream_gap_ms = max(0, int(stream_gap_ms))
+        self._gap_cap_ms = max(0, int(gap_cap_ms))
+        self._active_window_s = max(1.0, float(active_window_s))
+        # Last *real* PCM arrival and last synthesized-silence emit (monotonic).
+        self._last_pcm_at = 0.0
+        self._last_gap_at = 0.0
+        self._last_gap_pid = ""
+        self._gap_count = 0
+        self._gap_ms_total = 0.0
+        self._last_gap_log_at = 0.0
 
     def configure_phone_endpoint(
         self,
@@ -325,11 +377,23 @@ class PickupIngestServer:
             yield pcm
 
     def iter_pcm_tagged(self, chunk_ms: int = 100) -> Iterator[tuple[bytes, str]]:
+        """Yield 16 kHz PCM as (pcm, participant_id).
+
+        Between phone uploads (its energy gate drops silence) we synthesize
+        zero-PCM for the wall-clock gap so the shared segmenter can endpoint —
+        exactly like the USB mic, which always streams real time.
+        """
         del chunk_ms
         while not self._stop.is_set():
             try:
-                item = self._q.get(timeout=0.5)
+                item = self._q.get(timeout=self._poll_s)
             except queue.Empty:
+                gap = self._due_stream_gap()
+                if gap is None:
+                    continue
+                pcm, pid, ms = gap
+                log.debug("phone_hap1 silence synthesized for stall %.0fms", ms)
+                yield (pcm, pid)
                 continue
             if item is None:
                 if self._stop.is_set():
@@ -354,6 +418,90 @@ class PickupIngestServer:
             except queue.Full:
                 pass
 
+    # MARK: - wall-clock silence (FRAME_QUIET / stream stall)
+
+    @staticmethod
+    def _silence_pcm(ms: float) -> bytes:
+        """Zero s16le mono 16 kHz for ``ms`` milliseconds (even byte count)."""
+        if ms <= 0:
+            return b""
+        n_bytes = int(PCM_16K_MONO.sample_rate * (ms / 1000.0) * PCM_16K_MONO.sample_width)
+        n_bytes -= n_bytes % PCM_16K_MONO.sample_width
+        if n_bytes <= 0:
+            return b""
+        return bytes(n_bytes)
+
+    def gap_stats(self) -> dict[str, float]:
+        return {
+            "count": float(self._gap_count),
+            "ms_total": self._gap_ms_total,
+        }
+
+    def _note_gap(self, ms: float) -> None:
+        self._gap_count += 1
+        self._gap_ms_total += ms
+        now = time.monotonic()
+        if now - self._last_gap_log_at >= 5.0:
+            self._last_gap_log_at = now
+            log.info(
+                "phone_hap1 silence synthesized gaps=%d total=%.1fs last=%.0fms",
+                self._gap_count,
+                self._gap_ms_total / 1000.0,
+                ms,
+            )
+
+    def inject_quiet(self, ms: float, *, participant_id: str = "", source: str = "frame") -> int:
+        """Queue ``ms`` of silence so the segmenter can endpoint on wall clock.
+
+        The phone only uploads speech (client energy gate), and its AGC lifts room
+        tone above the fixed energy thresholds, so silence is otherwise invisible
+        to the byte-based segmenter: every clip ran to max_speech (measured 2.8s)
+        and the wake ack waited for it.
+        """
+        cap = self._gap_cap_ms
+        if cap <= 0:
+            return 0
+        ms = max(0.0, min(float(ms), float(cap)))
+        pcm = self._silence_pcm(ms)
+        if not pcm:
+            return 0
+        pid = (participant_id or "").strip() or self._last_gap_pid
+        self._last_gap_pid = pid
+        self._note_gap(ms)
+        log.debug("phone_hap1 quiet injected source=%s ms=%.0f pid=%s", source, ms, pid or "-")
+        self._push(pcm, pid)
+        return int(ms)
+
+    def _due_stream_gap(self, now: float | None = None) -> tuple[bytes, str, float] | None:
+        """Silence owed because the phone stopped sending PCM (no quiet frame)."""
+        if self._stream_gap_ms <= 0 or self._gap_cap_ms <= 0:
+            return None
+        if not self._clients:
+            return None
+        now = time.monotonic() if now is None else now
+        last = max(self._last_pcm_at, self._last_gap_at)
+        if last <= 0:
+            return None
+        elapsed_ms = (now - last) * 1000.0
+        if elapsed_ms < self._stream_gap_ms:
+            return None
+        if now - self._last_pcm_at > self._active_window_s:
+            return None  # phone gone/paused: stop faking time
+        ms = min(elapsed_ms, float(self._gap_cap_ms))
+        pcm = self._silence_pcm(ms)
+        if not pcm:
+            return None
+        self._last_gap_at = now
+        self._note_gap(ms)
+        return pcm, self._last_gap_pid, ms
+
+    @property
+    def _poll_s(self) -> float:
+        # Poll fine enough that synthesized silence tracks wall clock.
+        if self._stream_gap_ms <= 0:
+            return 0.5  # feature off: legacy polling
+        return min(0.25, max(0.05, self._stream_gap_ms / 2000.0))
+
     def _register_client(
         self,
         peer: str,
@@ -374,6 +522,13 @@ class PickupIngestServer:
                 self._participant_id = participant_id
             elif not self._participant_id and device_id:
                 self._participant_id = device_id
+
+    def _mark_pcm_arrival(self, participant_id: str = "") -> None:
+        """Real audio arrived: restart the wall-clock silence tally."""
+        self._last_pcm_at = time.monotonic()
+        pid = (participant_id or "").strip()
+        if pid:
+            self._last_gap_pid = pid
 
     def _unregister_client(self, peer: str) -> None:
         with self._lock:
@@ -457,6 +612,31 @@ class PickupIngestServer:
                     except OSError:
                         break
                     continue
+                if frame_type == FRAME_QUIET:
+                    # Speech stopped on the phone (its gate closed). Payload is
+                    # {"ms": <quiet ms>} — inject that much silence so the shared
+                    # segmenter endpoints by wall clock instead of max_speech.
+                    owner = participant_id or device_id or peer
+                    ms = _parse_quiet_ms(payload)
+                    injected = self.inject_quiet(
+                        ms,
+                        participant_id=owner,
+                        source="frame",
+                    )
+                    log.info(
+                        "phone_hap1 quiet frame from=%s ms=%.0f injected=%s participant=%s",
+                        peer,
+                        ms,
+                        injected,
+                        owner,
+                    )
+                    if pending:
+                        # Flush the tail that arrived before the quiet report so
+                        # the injected silence lands *after* it in the queue.
+                        self._push(bytes(pending), owner)
+                        pending.clear()
+                    self._last_gap_pid = owner
+                    continue
                 if frame_type != FRAME_PCM:
                     continue
                 if not registered:
@@ -474,6 +654,7 @@ class PickupIngestServer:
                     self._pcm_bytes += len(payload)
                 pending.extend(pcm16)
                 owner = participant_id or device_id or peer
+                self._mark_pcm_arrival(owner)
                 while len(pending) >= self._chunk_bytes:
                     chunk = bytes(pending[: self._chunk_bytes])
                     del pending[: self._chunk_bytes]
