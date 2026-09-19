@@ -53,7 +53,6 @@ class LivingRoomAndroidApp : Application() {
     lateinit var settings: AppSettings
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-        private set
     lateinit var participant: ParticipantStore
         private set
     lateinit var brain: CompositeBrainClient
