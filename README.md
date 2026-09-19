@@ -53,10 +53,8 @@
 | 路径 | 说明 |
 |------|------|
 | [`server/`](server/) | Brain：意图、能力路由、心跳、`execution_timing` |
-| [`android/app-v2/`](android/app-v2/) | Chromecast / Android TV Edge |
-| [`android/living-room-android/`](android/living-room-android/) | Android 手机 Edge（意图入口 / 调试 Wi‑Fi） |
-| [`ios/LivingRoomEdge/`](ios/README.md) | iPhone 意图窗口（发 intent、轮询进度） |
 | [`mac/`](mac/README.md) | Mac Edge（Cast 转发、TTS、内网 ping） |
+| [`home-agent-cli`](https://github.com/kaulie/home-agent-cli) | iOS / Android **客户端 App**（**已迁出本仓**：App 不作为服务部署） |
 | [`agent-bridge/`](agent-bridge/) | Cursor Agent 本地 bridge（手机 `source=dev` 开发任务） |
 | [`plugins/`](plugins/) | 跨端 Skill：`gopro-camera`、`chromecast-display`、`netease-music`、`runtime-agent-sdk` |
 
@@ -96,8 +94,6 @@ GET  /api/v1/devices/living-room/intents?edge_id=<本节点>
 |------|------|
 | [`docs/service-topology.md`](docs/service-topology.md) | 本机/云服务端口、开机拉起、巡检 |
 | [`server/README.md`](server/README.md) | 协议、路由 |
-| [`ios/README.md`](ios/README.md) | iPhone 意图窗口 |
 | [`mac/README.md`](mac/README.md) | Mac Edge |
-| [`android/app-v2/README.md`](android/app-v2/README.md) | Chromecast Edge |
-| [`android/living-room-android/README.md`](android/living-room-android/README.md) | 手机 Edge |
+| [`home-agent-cli`](https://github.com/kaulie/home-agent-cli) | iOS / Android 客户端 App（已迁出；各工程 README 在该仓 `ios/*/README.md`） |
 | [`plugins/*/capability.md`](plugins/) | 插件 wire schema |

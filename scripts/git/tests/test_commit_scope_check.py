@@ -34,10 +34,10 @@ class CommitScopeCheckTests(unittest.TestCase):
         self.assertIn("server", msg)
 
     def test_declared_scopes_allowed(self) -> None:
-        files = ["server/dev_task.py", "ios/HomeAgentDev/HomeAgentDev/DevStore.swift"]
+        files = ["server/dev_task.py", "plugins/paper-reader/capability.md"]
         ok, _ = csc.analyze(
             files,
-            "feat(ios-dev): Fleet UI\n\nScopes: server, ios-dev\nagent: ui",
+            "feat(plugins): paper reader contract\n\nScopes: server, plugins\nagent: server",
             rules=self.rules,
         )
         self.assertTrue(ok)
@@ -48,12 +48,12 @@ class CommitScopeCheckTests(unittest.TestCase):
         self.assertTrue(ok)
 
     def test_issue_branch_and_message_allowed(self) -> None:
-        files = ["server/dev_task.py", "ios/HomeAgentDev/HomeAgentDev/DevStore.swift"]
+        files = ["server/dev_task.py", "plugins/paper-reader/capability.md"]
         ok, _ = csc.analyze(
             files,
-            "fix(ios-dev): Fleet 页展示状态\n\nRefs: #42\nagent: ui",
+            "fix(plugins): paper reader contract\n\nRefs: #42\nagent: server",
             rules=self.rules,
-            branch="feature/42-fleet-tab",
+            branch="feature/42-paper-reader",
         )
         self.assertTrue(ok)
 
@@ -97,10 +97,10 @@ class CommitMsgFormatTests(unittest.TestCase):
         ok, detail = csc.validate_format(
             _msg("feat(server): wrong scope title"),
             rules=self.rules,
-            staged=["ios/HomeAgentDev/Foo.swift"],
+            staged=["plugins/paper-reader/capability.md"],
         )
         self.assertFalse(ok)
-        self.assertIn("ios-dev", detail)
+        self.assertIn("plugins", detail)
 
     def test_docs_scope_for_docs_only(self) -> None:
         ok, _ = csc.validate_format(

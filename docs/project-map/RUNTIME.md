@@ -50,9 +50,7 @@ curl -sf http://127.0.0.1:9189/health
 
 ### iOS / Android
 
-iOS：各 App 目录 `python3 generate_xcodeproj.py` 后 `open *.xcodeproj`。主 Console 是 `ios/LivingRoomEdge/`。
-
-Android：`android/` Gradle 多模块。主路径文档为 `:living-room-android`。
+**客户端 App 已迁出本仓** → <https://github.com/kaulie/home-agent-cli>（构建方式见该仓 README：iOS 各 App 目录 `python3 generate_xcodeproj.py` 后 `open *.xcodeproj`；Android 为 `android/` Gradle 多模块，主路径 `:living-room-android`）。
 
 ### Cast Receiver
 

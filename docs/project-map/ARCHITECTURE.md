@@ -168,4 +168,4 @@ intent_received → intent_parsed → (hub_received / scheduled / assigned) → 
 | Mac Agent | `EdgeAgent` | `mac/src/mac_edge/agent.py` |
 | Mac 调度 | `IntentScheduler.handle` | `mac/src/mac_edge/scheduler.py` |
 | Hydrate | `resolve_params` | `mac/src/mac_edge/runtime_context.py` |
-| iOS 发出 / 有限 Runtime | `IntentClient` | `ios/LivingRoomEdge/.../Brain/IntentClient.swift` |
+| iOS 发出 / 有限 Runtime | `IntentClient`（**已迁出** → [home-agent-cli](https://github.com/kaulie/home-agent-cli)） | `ios/LivingRoomEdge/.../Brain/IntentClient.swift` |

@@ -3,11 +3,6 @@
     { "name": "agent-bridge", "prefixes": ["agent-bridge/"] },
     { "name": "chat", "prefixes": ["chat/"] },
     { "name": "server", "prefixes": ["server/", "home_brain.py"] },
-    { "name": "ios-dev", "prefixes": ["ios/HomeAgentDev/"] },
-    { "name": "ios-admin", "prefixes": ["ios/HomeAgentAdmin/"] },
-    { "name": "ios-living", "prefixes": ["ios/LivingRoomEdge/", "ios/LivingRoomLegacy/"] },
-    { "name": "ios-other", "prefixes": ["ios/"] },
-    { "name": "android", "prefixes": ["android/"] },
     { "name": "mac", "prefixes": ["mac/"] },
     { "name": "plugins", "prefixes": ["plugins/"] },
     { "name": "character-service", "prefixes": ["character-service/"] },
@@ -27,8 +22,6 @@
   ],
   "linked_primary_groups": [
     ["agent-bridge", "chat", "server"],
-    ["server", "ios-dev"],
-    ["server", "android"],
     ["server", "mac"]
   ]
 }

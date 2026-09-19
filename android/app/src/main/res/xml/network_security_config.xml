@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<network-security-config>
-    <!-- Allow HTTP to LAN servers during early development. -->
-    <base-config cleartextTrafficPermitted="true" />
-</network-security-config>

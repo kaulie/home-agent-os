@@ -1,12 +1,7 @@
 ---
 description: UI dev agent — all user-facing interaction surfaces
 globs:
-  - ios/LivingRoomEdge/**
-  - ios/LivingRoomLegacy/**
-  - ios/HomeAgentDev/**
-  - ios/HomeAgentAdmin/**
-  - android/**/intent/**
-  - android/**/ui/**
+  # 客户端 App（原 ios/、android/）已迁出 → https://github.com/kaulie/home-agent-cli
   - plugins/chromecast-display/receiver/**
   - plugins/chromecast-display/ios/**
   - games/**
@@ -19,7 +14,7 @@ Fleet worker：**UI dev agent**。合并原 `@intent`（发出窗口、物流 UI
 
 ## 职责
 
-- Intent Source **产品层**发出窗口：自然语言输入、语音、`intent_detail` 展示与物流时间线。
+- Intent Source **产品层**发出窗口：自然语言输入、语音、`intent_detail` 展示与物流时间线（**客户端代码已迁出** → [home-agent-cli](https://github.com/kaulie/home-agent-cli)）。
 - Endpoint 呈现：Chromecast Receiver、Cast 协议、电视/墙上展示；见 [`docs/chromecast-cast-protocol.md`](docs/chromecast-cast-protocol.md)、[`docs/endpoint-contract.md`](docs/endpoint-contract.md)。
 - 管理端 / Dev 端 UI（HomeAgentAdmin、HomeAgentDev）中与用户可见交互相关的部分。
 - 游戏宿主 UI（`games/`）若涉及用户操作面。

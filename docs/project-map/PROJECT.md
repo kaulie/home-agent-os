@@ -90,8 +90,7 @@ Fleet handle（`@brain` `@runtime` `@ui` …）是**写代码的人**，不是�
 |------|--------|
 | `server/` | Brain |
 | `mac/` | Mac Edge + mac_voice |
-| `ios/` | User / Admin / Dev / Pickup 等 App |
-| `android/` | Android Console + Edge |
+| `ios/` / `android/` | 客户端 App（iPhone / Android）—— **已迁出本仓** → <https://github.com/kaulie/home-agent-cli> |
 | `plugins/` | Capability 契约（及部分端实现） |
 | `admin/` | 本机 Business Admin HTML（不上云） |
 | `chat/` | Agent Chatbox |

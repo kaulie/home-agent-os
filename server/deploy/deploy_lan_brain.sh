@@ -62,7 +62,6 @@ deploy_remote() {
     --exclude 'gopropics/' \
     --exclude 'agent_access.log' \
     --exclude 'pronunciation-service/pyenv/' \
-    --exclude 'ios/**/DerivedData/' \
     --exclude '**/node_modules/' \
     "$ROOT/" "$HOST:$REMOTE_ROOT/"
 

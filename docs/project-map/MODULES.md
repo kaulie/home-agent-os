@@ -13,8 +13,8 @@
 | `clock.now` 执行（读钟） | System capabilities **或** Mac plugin | Brain：`server/system_capabilities.py`；Mac：`mac/src/mac_edge/plugins/clock_now.py` | `query.content` 不得编时刻 | Brain 测 + `mac/tests/test_clock_now.py`。**CONFLICT：** 双路径，见 Notes |
 | `display.slideshow` 缺图 | Capability 契约 + Mac/Cast plugin | `plugins/chromecast-display/capability.md`；`mac/src/mac_edge/plugins/chromecast_display.py` | 禁止从前序 `camera.capture` 拼列表；契约要 `asset_refs` 不是 `photo_urls` | `mac/tests/test_capability_asset_refs.py` |
 | hydrate `$var` / 前序门 | Mac Edge Runtime（及各端同构） | `mac/src/mac_edge/runtime_context.py`；iOS：`IntentClient.hydrateParams` | Brain 规划、plugin 自己读 `step_outputs` | `mac/tests/` runtime/context 相关 |
-| iPhone 聊天窗 / 物流 UI | iOS Console | `ios/LivingRoomEdge/.../Intent/`、`App/ContentView.swift` | Brain、Mac plugin | XCUITest（若有覆盖）+ 真机点一次 |
-| iPhone 发 intent / 轮询 | iOS Console | `Brain/IntentClient.swift` | 改 plan 结构 | 黑盒 `tests/blackbox/` |
+| iPhone 聊天窗 / 物流 UI | iOS Console（**已迁出** → [home-agent-cli](https://github.com/kaulie/home-agent-cli)） | `home-agent-cli: ios/LivingRoomEdge/.../Intent/`、`App/ContentView.swift` | Brain、Mac plugin | XCUITest（若有覆盖）+ 真机点一次 |
+| iPhone 发 intent / 轮询 | iOS Console（同上，已迁出） | `Brain/IntentClient.swift` | 改 plan 结构 | 黑盒 `tests/blackbox/` |
 | 云 Brain 发一版 | 部署（非模块实现） | `.cursor/rules/cloud-deploy.mdc` | 未测工作区、`db.py`/`sql/`/`data/`/`admin/` | `[release] stage=deployed` + `/health` |
 | schema / 迁移 | DBA（见 BOUNDARIES） | `server/sql/`、`docs/db-schema.md` | 未经点名改 Edge JSON | `@dba` + Brain 单测 |
 | Chat 点名 / 徽章 | Chatbox | `chat/mentions.py`、`chat/serve.py` | Brain DB | `python3 -m unittest chat.tests.test_chat` |
@@ -345,8 +345,9 @@ High（共享文件）。
 ### Entry Points
 
 ```bash
-python3 ios/LivingRoomEdge/generate_xcodeproj.py
-open ios/LivingRoomEdge/LivingRoomEdge.xcodeproj
+# iOS 客户端已迁出本仓 —— 见 https://github.com/kaulie/home-agent-cli
+#   python3 ios/LivingRoomEdge/generate_xcodeproj.py
+#   open ios/LivingRoomEdge/LivingRoomEdge.xcodeproj
 ```
 
 ### Important Files
@@ -370,7 +371,7 @@ High。
 
 ### Notes
 
-**CONFLICT：** 根 README 仍写 iPhone「非 Edge、只发 intent」。以本模块与 [ios/README.md](../../ios/README.md) 为准。
+**CONFLICT：** 根 README 仍写 iPhone「非 Edge、只发 intent」。以本模块与 [home-agent-cli 的 ios/README.md](https://github.com/kaulie/home-agent-cli/blob/main/ios/README.md) 为准。
 
 ---
 
@@ -380,7 +381,9 @@ High。
 
 三套独立 App，不要塞进 Console 底栏。
 
-| App | 路径 | 职责 |
+> **已迁出本仓** → <https://github.com/kaulie/home-agent-cli>（路径仍是 `ios/<App>/`）。本节保留为职责说明。
+
+| App | 路径（在 `home-agent-cli` 仓） | 职责 |
 |-----|------|------|
 | HomeAgent Admin | `ios/HomeAgentAdmin/` | 业务运行态：节点 / 角色 / 事件 |
 | HomeAgent Dev | `ios/HomeAgentDev/` | 开发任务、Fleet、调试、服务 Tab |
@@ -407,7 +410,7 @@ Brain；Dev 还依赖 agent-bridge（云上经隧道）。
 
 ### Entry Points
 
-各目录 `generate_xcodeproj.py` 后 `open *.xcodeproj`。
+**已迁出本仓** → <https://github.com/kaulie/home-agent-cli>（各目录 `generate_xcodeproj.py` 后 `open *.xcodeproj`）。
 
 ### Important Files
 
