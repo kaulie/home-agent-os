@@ -6,10 +6,13 @@
 
 数据来源（逐层合并，缺哪层都能出目录）：
 
-  1. 定义层  mac_edge.capability_ads.ADS —— 规划器广告（kind/composition/role/触发语/不要派给谁）
+  1. 定义层  mac_edge.capability_ads.ADS —— mac edge 规划器广告（kind/composition/role/触发语/不要派给谁）
   2. 声明层  mac_edge.services 的 `*_SERVICE` 常量 —— service_id → capabilities（含 input/output schema）
   3. 可用性  mac_edge.capability_availability —— 该能力有没有执行前探测（有无 checker）
   4. 文档层  plugins/*/manifest.yaml + capability.md —— 能力包（display_name/group/entry/config/文档）
+  5. Brain 层 server/capability_ads.py + server/edge_services.py::KNOWN_CAPABILITIES
+             —— Brain 规划器广告与 Edge wire 规格：只**补**本机没声明的（定义补空、服务归属、
+                `kind: system` → 宿主 brain），并把 mac 侧没有的服务（iphone.*/system.*/…）纳入目录
 
 产物（写进 --out 指向的仓库，通常是 capability-marketplace 的检出目录）：
 
@@ -59,6 +62,46 @@ def _import_mac_edge():
     from mac_edge import capability_ads, capability_availability  # noqa: PLC0415
 
     return capability_ads, capability_availability
+
+
+def _load_module(path: Path, name: str):
+    """按路径加载一个纯 Python 模块（不经过包导入，避免拉起服务）。"""
+    import importlib.util  # noqa: PLC0415
+
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"无法加载 {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _import_brain() -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+    """读 **Brain 侧声明**（只读、无副作用）：规划器广告 + Edge wire 能力规格。
+
+    为什么要并进来：集市是「所有声明」的统一目录 —— mac edge 的 ADS 只覆盖本机，
+    而 `server/capability_ads.py`（Brain 规划器广告）与 `server/edge_services.py::KNOWN_CAPABILITIES`
+    （Edge 客户端注册/心跳用的 wire 规格）里还声明了别的宿主上的能力：`kind: system`
+    按该模块文档 = Brain 侧目录/盘点（如 `map.route.estimate`），另有 iphone./gopro./system.
+    等服务归属。它们以前只能在实况里看到，在目录里算「没声明」。
+
+    两个模块只 import typing/copy → 读它们不会拉起任何服务（符合「导出必须无副作用」）。
+    """
+    root = repo_root()
+    added = False
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))  # edge_services 里 `from server.capability_ads import ADS`
+        added = True
+    try:
+        ads = _load_module(root / "server" / "capability_ads.py", "brain_capability_ads").ADS
+        wire = _load_module(root / "server" / "edge_services.py", "brain_edge_services").KNOWN_CAPABILITIES
+    finally:
+        if added:
+            try:
+                sys.path.remove(str(root))
+            except ValueError:
+                pass
+    return ads, wire
 
 
 def _service_constants() -> dict[str, dict[str, Any]]:
@@ -336,8 +379,76 @@ def _merge_declared_caps(
             _write_layer(e, "definition", {k: cap.get(k) for k in DEFINITION_FIELDS}, f"caps:{const_name}")
 
 
+def _write_layer_gaps(e: dict[str, Any], fields: dict[str, Any], source: str) -> bool:
+    """**只补空字段**（不覆盖已有层，与 `_write_layer` 的「后者覆盖前者」相反）。
+
+    用在本机 ADS 之后的补充层（Brain 声明）：本机 planner 广告更贴近实际执行，优先；
+    Brain 侧只补本机没说的字段，并只在真补了东西时记 `sources`（避免给 59 条同定义的能力
+    刷出无意义的来源噪音）。
+    """
+    dst = e.setdefault("definition", {})
+    wrote = False
+    for field in DEFINITION_FIELDS:
+        value = fields.get(field)
+        if value in (None, "", [], {}):
+            continue
+        if dst.get(field) in (None, "", [], {}):
+            dst[field] = list(value) if isinstance(value, (list, tuple)) else value
+            wrote = True
+    if wrote and source:
+        sources = dst.setdefault("sources", [])
+        if source not in sources:
+            sources.append(source)
+    return wrote
+
+
+def _merge_brain(
+    by_id: dict[str, dict[str, Any]],
+    ads: dict[str, dict[str, Any]],
+    wire: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """合并 Brain 侧声明：补定义、补服务归属、标 Brain 侧宿主，并返回 Brain 独有的服务。
+
+    - `declared_by`：wire 的 `service_id`（把以前「没有服务归属」的能力补全，如
+      `asset.inventory → system.asset`、`bluetooth.connect → marshall.willen`）；
+    - `runs_on`：`kind == "system"` 的能力加 `brain`（该 kind 的定义就是「Brain 侧目录/盘点，
+      不绑 Runtime」，见 `server/capability_ads.py` 文档）；
+    - 服务：只返回 **mac 侧没声明过** 的服务（`iphone.*` / `system.*` / `marshall.willen` …），
+      让「谁声明」在目录里点得到。
+    """
+    services: dict[str, list[str]] = {}
+    for cid, ad in ads.items():
+        e = by_id.setdefault(cid, _new_entry(cid))
+        e["in_ads"] = True  # Brain 规划器广告也算「在 ADS 里」
+        _write_layer_gaps(e, {k: ad.get(k) for k in DEFINITION_FIELDS}, "brain.ads")
+    for cid, spec in wire.items():
+        e = by_id.setdefault(cid, _new_entry(cid))
+        sid = str(spec.get("service_id") or "").strip()
+        if sid:
+            if sid not in e["declared_by"]:
+                e["declared_by"].append(sid)
+            services.setdefault(sid, [])
+            if cid not in services[sid]:
+                services[sid].append(cid)
+        if str(spec.get("kind") or "") == "system" and "brain" not in e["runs_on"]:
+            e["runs_on"].append("brain")
+        _write_layer_gaps(e, {k: spec.get(k) for k in DEFINITION_FIELDS}, "brain.wire")
+    return [
+        {
+            "constant": "",
+            "service_id": sid,
+            "display_name": "",
+            "group": "",
+            "version": "",
+            "capabilities": sorted(caps),
+            "source": "brain.wire",
+        }
+        for sid, caps in sorted(services.items())
+    ]
+
+
 def build_catalog() -> dict[str, Any]:
-    """合并四层来源，返回 catalog（除 generated_at 外是纯函数：同输入必得同输出）。
+    """合并五层来源，返回 catalog（除 generated_at 外是纯函数：同输入必得同输出）。
 
     只出**声明层**（由代码决定）：集市是能力展示与技能介绍，不登记实时状态。
     """
@@ -345,12 +456,17 @@ def build_catalog() -> dict[str, Any]:
     ads: dict[str, dict[str, Any]] = dict(capability_ads.ADS)
     services_raw = _service_constants()
     packages = _manifest_packages(repo_root())
+    brain_ads, brain_wire = _import_brain()
 
     by_id: dict[str, dict[str, Any]] = {}
     _merge_ads(by_id, ads)
     services = _merge_services(by_id, services_raw)
     _merge_declared_caps(by_id, _capability_constants())
     _merge_packages(by_id, packages)
+    # Brain 侧只补本机没声明的：定义补空、服务归属、kind=system → brain 宿主
+    brain_services = _merge_brain(by_id, brain_ads, brain_wire)
+    known_sids = {s["service_id"] for s in services}
+    services += [s for s in brain_services if s["service_id"] not in known_sids]
 
     # 可用性探测：执行前 checker（本身无副作用，这里只记录「有没有这道闸」）
     checkers = getattr(capability_availability, "_CHECKERS", {}) or {}
@@ -391,11 +507,12 @@ def build_catalog() -> dict[str, Any]:
         "source": {"repo": "home-agent-os", "commit": _git_commit(), "edge": "mac_edge"},
         "summary": {
             "capabilities": len(capabilities),
-            "ads_definitions": len(ads),
+            "ads_definitions": len(set(ads) | {c for c in brain_ads}),
             "declared_capabilities": sum(len(s["capabilities"]) for s in services),
             "services": len(services),
             "extensions": len(packages),
             "with_checker": sum(1 for e in capabilities if e["availability"]["has_checker"]),
+            "brain_wire": len(brain_wire),
             "groups": dict(sorted(groups.items())),
             "kinds": dict(sorted(kinds.items())),
         },
@@ -437,6 +554,7 @@ def catalog_schema() -> dict[str, Any]:
                         "group": {"type": "string"},
                         "version": {"type": "string"},
                         "constant": {"type": "string"},
+                        "source": {"type": "string", "description": "服务声明来源（mac.services / brain.wire）"},
                         "capabilities": {"type": "array", "items": {"type": "string"}},
                     },
                 },
