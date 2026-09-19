@@ -5720,8 +5720,26 @@ def _explicit_img_server_upload_url() -> str:
     ).strip().rstrip("/")
 
 
+def _img_server_discovered_port(default: int = 8080) -> int:
+    """资源服务器端口（显式 env 之外的那条路）。
+
+    顺序见 `mdns_service`：**端点文件（服务自己写的，确定性）→ mDNS（跨设备兜底）
+    → 已验证缓存 → 默认 8080**，每一层都过 `/health` 自校验。这样「端口由 asset-hub 自己
+    决定」才真正成立：换端口只改它一处配置，Brain 跟着发现走，不再各自硬编码 8080。
+    """
+    try:
+        from mdns_service import resolve_img_server_port
+
+        return int(resolve_img_server_port(default))
+    except Exception:
+        return int(default)
+
+
 def _img_server_upload_url() -> str:
-    return _explicit_img_server_upload_url() or "http://127.0.0.1:8080/api/v1/photos/upload"
+    explicit = _explicit_img_server_upload_url()
+    if explicit:
+        return explicit
+    return f"http://127.0.0.1:{_img_server_discovered_port()}/api/v1/photos/upload"
 
 
 def _img_server_internal_base() -> str:
@@ -5739,7 +5757,7 @@ def _img_server_internal_base() -> str:
             return "%s://%s" % ((parsed.scheme or "http"), parsed.netloc)
     except Exception:
         pass
-    return "http://127.0.0.1:8080"
+    return f"http://127.0.0.1:{_img_server_discovered_port()}"
 
 
 def _use_local_upload_store() -> bool:
@@ -5818,16 +5836,20 @@ def _img_server_health_public_base() -> str:
 
 
 def _lan_img_server_public_base() -> str:
-    """LAN public base for this host's co-located img-server — auto-detected."""
+    """LAN public base for this host's co-located img-server — auto-detected.
+
+    端口也走发现（端点文件 → mDNS → 8080）：本机 img-server 换了口，
+    给电视/小度的地址跟着换，不需要改 Brain 的任何配置。
+    """
     try:
         from mdns_service import lan_ipv4
 
         ip = (lan_ipv4() or "127.0.0.1").strip()
         if ip.startswith("127."):
             ip = "127.0.0.1"
-        return f"http://{ip}:8080"
+        return f"http://{ip}:{_img_server_discovered_port()}"
     except Exception:
-        return "http://127.0.0.1:8080"
+        return f"http://127.0.0.1:{_img_server_discovered_port()}"
 
 
 def _img_server_public_base() -> str:

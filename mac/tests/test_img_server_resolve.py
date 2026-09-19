@@ -130,7 +130,12 @@ class ImgServerResolveTests(unittest.TestCase):
 
 class LanPublicBaseTests(unittest.TestCase):
     def test_default_lan_public_base_shape(self) -> None:
-        base = default_lan_public_base()
+        # 现在端口由发现决定（asset-hub 的 ASSET_HUB_PORT 是权威），这里把解析结果固定成
+        # 默认端口再验「地址形态」——形态本身与端口来源解耦（见 test_img_server_discovery.py）。
+        from mac_edge.asset.backends import img_server as _img_server
+
+        with patch.object(_img_server, "img_server_port", return_value=8080):
+            base = default_lan_public_base()
         self.assertTrue(base.startswith("http://"))
         self.assertTrue(base.endswith(":8080"))
         self.assertNotIn("192.168.3.73", base)

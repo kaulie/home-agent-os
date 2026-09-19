@@ -2,13 +2,236 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import re
+import select
 import socket
+import subprocess
+import threading
+import time
+import urllib.request
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
 
 from mac_edge.asset.types import AssetStorageError, HttpUrlRepresentation
+
+log = logging.getLogger("mac_edge.asset.img_server")
+
+# ---------------------------------------------------------------------------
+# 资源服务器（img-server / home-asset-hub）的端口从哪来
+#
+# 「端口由服务自己决定」：asset-hub 的 ASSET_HUB_PORT（默认 8080）就是权威，
+# Edge 不该硬编码它。解析顺序（每层都过 /health 自校验）：
+#
+#   1. MAC_EDGE_IMG_SERVER_PORT（显式配置永远赢）
+#   2. 端点文件：服务启动时自己写的 <runtime>/backend/endpoint.json（确定性、零延迟）
+#   3. mDNS `_ha-img-server._tcp`（跨设备兜底；实测本机 dns-sd 不稳，所以放在文件后面）
+#   4. 已验证缓存 → 8080（= 现网行为，永远退得回去）
+#
+# 缓存/负缓存是必须的：上传在请求路径上，不能每次上传都去等 Bonjour。
+# ---------------------------------------------------------------------------
+
+IMG_SERVER_SERVICE = "home-asset-hub"
+IMG_SERVER_SERVICE_TYPE = "_ha-img-server._tcp"
+IMG_SERVER_INSTANCE = "Home Agent img-server"
+DEFAULT_IMG_SERVER_PORT = 8080
+IMG_SERVER_NEGATIVE_TTL = 15.0
+
+_state: dict[str, Any] = {"at": 0.0, "port": 0, "checked_at": 0.0}
+_endpoint_cache: dict[str, Any] = {"path": "", "mtime": 0.0, "data": None}
+_lock = threading.Lock()
+
+
+def img_server_endpoint_candidates() -> list[Path]:
+    """端点文件候选路径（按可信度排序）。"""
+    out: list[Path] = []
+    explicit = (os.environ.get("ASSET_HUB_ENDPOINT_FILE") or "").strip()
+    if explicit:
+        out.append(Path(explicit))
+    disc = (os.environ.get("ASSET_HUB_DISCOVERY_DIR") or "").strip()
+    if disc:
+        out.append(Path(disc) / f"{IMG_SERVER_SERVICE}.json")
+    rt = (os.environ.get("RUNTIME_DIR") or "").strip()
+    runtime_root = str(Path(rt).resolve().parent) if rt else str(Path.home() / "runtime")
+    out.append(Path(runtime_root) / ".discovery" / f"{IMG_SERVER_SERVICE}.json")
+    out.append(Path(runtime_root) / IMG_SERVER_SERVICE / "backend" / "endpoint.json")
+    seen: set[str] = set()
+    uniq: list[Path] = []
+    for p in out:
+        if str(p) not in seen:
+            seen.add(str(p))
+            uniq.append(p)
+    return uniq
+
+
+def read_img_server_endpoint() -> dict[str, Any] | None:
+    """读端点文件（第一层）：{port, public_base, health_path, ...}；没有返回 None（按 mtime 缓存）。"""
+    for path in img_server_endpoint_candidates():
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        with _lock:
+            if _endpoint_cache["path"] == str(path) and float(_endpoint_cache["mtime"]) == stat.st_mtime:
+                data = _endpoint_cache["data"]
+                if isinstance(data, dict):
+                    return data
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(data, dict):
+            continue
+        try:
+            port = int(data.get("port") or 0)
+        except (TypeError, ValueError):
+            continue
+        if port <= 0:
+            continue
+        with _lock:
+            _endpoint_cache.update({"path": str(path), "mtime": stat.st_mtime, "data": data})
+        return data
+    return None
+
+
+def _parse_dns_sd_lookup(line: str) -> int | None:
+    """解析 `dns-sd -L` 的一行 → 端口。纯函数。
+
+    行尾可能有 `Flags: 1` 这种带冒号的尾巴，所以取「reached at」后的第一个 token 再切 host:port。
+    """
+    if " can be reached at " not in line:
+        return None
+    _left, _, right = line.partition(" can be reached at ")
+    parts = right.split()
+    if not parts:
+        return None
+    _host, sep, port_s = parts[0].rpartition(":")
+    if not sep:
+        return None
+    try:
+        port = int(port_s)
+    except ValueError:
+        return None
+    return port if port > 0 else None
+
+
+def _lookup_port_via_dns_sd(timeout: float = 1.5) -> int | None:
+    """按已知名字 `dns-sd -L` 查端口。
+
+    坑：`dns-sd -L` 命中后**不会自己退出**（subprocess.run 会等超时、并把已读到的输出一起丢掉），
+    所以用 Popen 边读边判，拿到答案立刻收工。
+    """
+    try:
+        proc = subprocess.Popen(
+            ["dns-sd", "-L", IMG_SERVER_INSTANCE, IMG_SERVER_SERVICE_TYPE, ".", "-t", str(int(max(1, timeout)))],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except Exception:
+        return None
+    deadline = time.time() + max(0.5, timeout) + 0.5
+    try:
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0 or proc.stdout is None:
+                return None
+            try:
+                ready, _, _ = select.select([proc.stdout], [], [], remaining)
+            except Exception:
+                return None
+            if not ready:
+                return None
+            line = proc.stdout.readline()
+            if not line:
+                return None
+            port = _parse_dns_sd_lookup(line)
+            if port:
+                return port
+    finally:
+        try:
+            proc.kill()
+            proc.wait(timeout=1)
+        except Exception:
+            pass
+
+
+def _health_ok(port: int, timeout: float = 0.6) -> bool:
+    """自校验：端点/mDNS 可能过期，先问一句 /health 再采信。"""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{int(port)}/health", timeout=timeout) as resp:
+            if int(getattr(resp, "status", 0) or resp.getcode() or 0) != 200:
+                return False
+            raw = resp.read().decode("utf-8", "replace")
+        data = json.loads(raw) if raw.strip() else {}
+        return isinstance(data, dict) and bool(
+            data.get("ok") is True or data.get("service") in (IMG_SERVER_SERVICE, "img-server")
+        )
+    except Exception:
+        return False
+
+
+def resolve_img_server_port(
+    default: int = DEFAULT_IMG_SERVER_PORT,
+    *,
+    ttl: float = 60.0,
+    timeout: float = 1.5,
+    verify: bool = True,
+    blocking: bool | None = None,
+) -> int:
+    """发现资源服务器端口（永不抛异常，失败即回退 default=8080）。"""
+    explicit = (os.environ.get("MAC_EDGE_IMG_SERVER_PORT") or "").strip()
+    if explicit.isdigit() and int(explicit) > 0:
+        return int(explicit)
+    now = time.time()
+    with _lock:
+        port = int(_state.get("port") or 0)
+        at = float(_state.get("at") or 0.0)
+        checked_at = float(_state.get("checked_at") or 0.0)
+    if port and (now - at) < ttl:
+        return port
+    if (now - checked_at) < IMG_SERVER_NEGATIVE_TTL:
+        return port or int(default)
+    if blocking is None:
+        blocking = checked_at <= 0.0
+
+    def _probe() -> int:
+        endpoint = read_img_server_endpoint()
+        candidate = int(endpoint["port"]) if endpoint else 0
+        if not candidate:
+            candidate = _lookup_port_via_dns_sd(timeout=timeout) or 0
+        ok = bool(candidate) and (not verify or _health_ok(candidate))
+        with _lock:
+            _state["checked_at"] = time.time()
+            if ok:
+                _state.update({"at": time.time(), "port": candidate})
+        if candidate and not ok:
+            log.warning("img-server 发现到端口 %s 但 /health 自校验失败，忽略", candidate)
+        return candidate if ok else 0
+
+    if blocking:
+        found = _probe()
+        with _lock:
+            return found or int(_state.get("port") or 0) or int(default)
+
+    # 非阻塞：先用旧值/默认值，后台刷新下一次生效（上传路径不被 Bonjour 挡住）
+    def _bg() -> None:
+        try:
+            _probe()
+        except Exception:  # pragma: no cover - 后台线程不该影响主流程
+            log.debug("img-server background discovery failed", exc_info=True)
+
+    threading.Thread(target=_bg, name="img-server-port-refresh", daemon=True).start()
+    return port or int(default)
+
+
+def img_server_port() -> int:
+    """当前应使用的资源服务器端口（发现 → 已验证缓存 → 8080）。"""
+    return resolve_img_server_port()
+
 
 
 def detect_lan_ipv4() -> str:
@@ -60,13 +283,18 @@ def detect_lan_ipv4() -> str:
     return "127.0.0.1"
 
 
-def default_lan_public_base(port: int = 8080) -> str:
-    """LAN URL of this host's img-server (the address other devices fetch)."""
-    return f"http://{detect_lan_ipv4()}:{port}"
+def default_lan_public_base(port: int | None = None) -> str:
+    """LAN URL of this host's img-server (the address other devices fetch).
+
+    port=None → 走发现（端点文件 → mDNS → 已验证缓存 → 8080）：asset-hub 换端口这一处，
+    给电视/小度的地址自动跟着换。
+    """
+    return f"http://{detect_lan_ipv4()}:{int(port) if port else img_server_port()}"
 
 
-# Backward-compatible name; computed once at import time.
-DEFAULT_LAN_PUBLIC_BASE = default_lan_public_base()
+# Backward-compatible name. 注意：**导入期不做发现**（import 不该有 IO/子进程），
+# 这里只给「默认端口的 LAN 地址」形态；运行时请用 default_lan_public_base()（会走发现）。
+DEFAULT_LAN_PUBLIC_BASE = f"http://{detect_lan_ipv4()}:{DEFAULT_IMG_SERVER_PORT}"
 
 
 def lan_facing_brain_base(brain_base_url: str) -> str:
