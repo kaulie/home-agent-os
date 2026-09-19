@@ -23,3 +23,14 @@
 | 执行方 | Brain（`server/system_capabilities.py`） |
 
 Presentation：语音问法优先 `type=audio`，`from=answer_text`。
+
+## 开发者 / 运维：完整目录在「能力集市」
+
+`capabilities.summary` 给**用户听**的是一段口语介绍；要给**人查/对比/排账**的完整目录在这里：
+
+- 仓库：<https://github.com/kaulie/home-agent-capabilty-marketplace>
+- 网页（可搜/按 group 筛）：`index.html`；机器可读：`catalog/capabilities.json`
+- 内容由本仓代码自动导出：`python3 mac/scripts/export_capability_catalog.py --out <marketplace> --live`
+   （定义层来自 `capability_ads.py` / `services.py` / `plugins/*`，实况层来自 Brain `GET /api/v1/capabilities`）
+- 目录里有两笔「账」值得定期看：**声明未上线**（定义有、此刻没广告）与**线上未声明**（在跑但没定义）。
+
