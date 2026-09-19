@@ -18,13 +18,13 @@
   schema/catalog.schema.json  catalog 结构约束（由本脚本生成，避免手写漂移）
   capabilities/<id>.md        每个能力一页（触发语/参数表/不要派给谁/在哪台设备/文档链接）
 
-用法：
+用法（只出声明层：集市是「能力展示与技能介绍」，不登记实时状态）：
 
-  # 生成（只出声明层：集市是「能力展示与技能介绍」，不登记实时状态）
   python3 mac/scripts/export_capability_catalog.py --out ../home-agent-capabilty-marketplace
 
-  # CI：代码改了但目录没更新 → 非零退出（忽略 generated_at/commit 这类易变字段）
-  python3 mac/scripts/export_capability_catalog.py --out ../home-agent-capabilty-marketplace --check
+对账（代码改了但目录没更新）不在这里做：仓库里的 `catalog/capabilities.json` 是**集市数据库的导出**
+（含人工策展字段），与本脚本的原始产物结构不同，所以漂移判定由集市侧统一负责 —— 见
+`scripts/sync.sh <home-agent-os> --check`（CI 也跑它，实现见 marketplace `tests/catalog-drift.py`）。
 """
 
 from __future__ import annotations
@@ -678,69 +678,13 @@ def write_catalog(catalog: dict[str, Any], out: Path) -> list[str]:
     return sorted(written)
 
 
-def normalize_for_check(catalog: dict[str, Any]) -> dict[str, Any]:
-    """比对用的归一化：只丢易变字段（每次生成都会变，不代表能力变了）。"""
-    import copy
-
-    data = copy.deepcopy(catalog)
-    data.pop("generated_at", None)
-    data.get("source", {}).pop("commit", None)
-    return data
-
-
-def check_catalog(catalog: dict[str, Any], out: Path) -> list[str]:
-    """与仓库里已有的 catalog 比对，返回漂移描述（空 = 一致）。"""
-    existing_path = Path(out) / "catalog/capabilities.json"
-    if not existing_path.is_file():
-        return [f"{existing_path} 不存在：先跑一次导出（去掉 --check）"]
-    try:
-        existing = json.loads(existing_path.read_text(encoding="utf-8"))
-    except Exception as e:  # noqa: BLE001
-        return [f"{existing_path} 不是合法 JSON：{e}"]
-
-    a, b = normalize_for_check(existing), normalize_for_check(catalog)
-    if a == b:
-        return []
-
-    problems: list[str] = []
-    for key in ("schema", "source", "summary", "services"):
-        if a.get(key) != b.get(key):
-            problems.append(f"{key} 不同")
-    old_caps = {c["capability_id"]: c for c in a.get("capabilities", [])}
-    new_caps = {c["capability_id"]: c for c in b.get("capabilities", [])}
-    for cid in sorted(set(old_caps) - set(new_caps)):
-        problems.append(f"仓库里有、代码里没了：{cid}")
-    for cid in sorted(set(new_caps) - set(old_caps)):
-        problems.append(f"代码里有、仓库里没有：{cid}")
-    for cid in sorted(set(old_caps) & set(new_caps)):
-        if old_caps[cid] != new_caps[cid]:
-            fields = sorted(
-                k
-                for k in set(old_caps[cid]) | set(new_caps[cid])
-                if old_caps[cid].get(k) != new_caps[cid].get(k)
-            )
-            problems.append(f"{cid} 字段变了：{', '.join(fields)}")
-    return problems
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="导出 mac edge 能力目录（capability marketplace）")
     parser.add_argument("--out", required=True, help="目标目录（marketplace 仓库检出目录）")
-    parser.add_argument("--check", action="store_true", help="只比对不写文件；有漂移则退出码 1")
     args = parser.parse_args(argv)
 
     catalog = build_catalog()
     out = Path(args.out)
-
-    if args.check:
-        problems = check_catalog(catalog, out)
-        if problems:
-            print(f"[check] 目录与代码不一致（{len(problems)} 处）：", file=sys.stderr)
-            for p in problems[:40]:
-                print(f"  - {p}", file=sys.stderr)
-            return 1
-        print("[check] 一致 ✓")
-        return 0
 
     written = write_catalog(catalog, out)
     s = catalog["summary"]

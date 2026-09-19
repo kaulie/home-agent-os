@@ -1,16 +1,17 @@
-"""能力目录导出器：ADS / 服务声明 / 可用性 / 能力包 四层合并 + 漂移检查。
+"""能力目录导出器：ADS / 服务声明 / 可用性 / 能力包 四层合并。
 
-重点钉四件事：
+重点钉三件事：
 1. **无副作用**：导出绝不能调用 `services.default_services()`（它会起 game host、探测设备）；
-2. **确定性**：同输入两次导出除 generated_at 外逐字一致（否则 --check 没法用）；
-3. **只出声明**：产物里不许出现任何实时状态字段（在线/设备/providers/reconcile）；
-4. **该抓的漂移要抓到**：能力增删、契约字段变化。
+2. **确定性**：同输入两次导出除 generated_at 外逐字一致；
+3. **只出声明**：产物里不许出现任何实时状态字段（在线/设备/providers/reconcile）。
+
+漂移对账不在这里做（产物结构 ≠ 集市仓库里的库导出）：
+由集市侧 `scripts/sync.sh <home-agent-os> --check` 负责。
 """
 
 from __future__ import annotations
 
 import importlib.util
-import json
 import sys
 import tempfile
 import unittest
@@ -76,33 +77,17 @@ class ExportCatalogTest(unittest.TestCase):
         a.pop("generated_at"), b.pop("generated_at")
         self.assertEqual(a, b)
 
-    def test_write_then_check_passes_and_removes_stale_pages(self) -> None:
+    def test_write_and_removes_stale_pages(self) -> None:
         catalog = self._build()
         exporter.write_catalog(catalog, self.out)
         self.assertTrue((self.out / "catalog/capabilities.json").is_file())
         self.assertTrue((self.out / "capabilities/display.audio.md").is_file())
         self.assertTrue((self.out / "schema/catalog.schema.json").is_file())
-        self.assertEqual(exporter.check_catalog(catalog, self.out), [])
         # 代码里删掉一个能力 → 仓库里的旧页要清掉
         stale = self.out / "capabilities/gone.away.md"
         stale.write_text("stale", encoding="utf-8")
         exporter.write_catalog(catalog, self.out)
         self.assertFalse(stale.exists(), "已不存在的能力页必须被清掉")
-
-    def test_check_reports_drift(self) -> None:
-        catalog = self._build()
-        exporter.write_catalog(catalog, self.out)
-        path = self.out / "catalog/capabilities.json"
-        data = json.loads(path.read_text(encoding="utf-8"))
-        for cap in data["capabilities"]:
-            if cap["capability_id"] == "display.audio":
-                cap["definition"]["typical_triggers"] = ["被篡改"]
-        data["capabilities"] = [c for c in data["capabilities"] if c["capability_id"] != "clock.now"]
-        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-
-        joined = chr(10).join(exporter.check_catalog(catalog, self.out))
-        self.assertIn("display.audio", joined)
-        self.assertIn("clock.now", joined)
 
     def test_markdown_sections_and_params(self) -> None:
         catalog = self._build()
