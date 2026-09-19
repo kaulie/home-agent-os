@@ -10,19 +10,18 @@
   2. 声明层  mac_edge.services 的 `*_SERVICE` 常量 —— service_id → capabilities（含 input/output schema）
   3. 可用性  mac_edge.capability_availability —— 该能力有没有执行前探测（有无 checker）
   4. 文档层  plugins/*/manifest.yaml + capability.md —— 能力包（display_name/group/entry/config/文档）
-  5. 实况层  Brain `GET /api/v1/capabilities`（--live）或离线快照（--live-json）—— 谁在线、真正广告了什么
 
 产物（写进 --out 指向的仓库，通常是 capability-marketplace 的检出目录）：
 
   catalog/capabilities.json   机器可读全量目录（含 source/summary/capabilities）
-  catalog/capabilities.md     人读总表（按 group 分组 + 「声明未上线 / 线上未声明」两节）
+  catalog/capabilities.md     人读总表（按 group 分组）
   schema/catalog.schema.json  catalog 结构约束（由本脚本生成，避免手写漂移）
   capabilities/<id>.md        每个能力一页（触发语/参数表/不要派给谁/在哪台设备/文档链接）
 
 用法：
 
-  # 生成（本机 Brain 在线时带上实况）
-  python3 mac/scripts/export_capability_catalog.py --out ../home-agent-capabilty-marketplace --live
+  # 生成（只出声明层：集市是「能力展示与技能介绍」，不登记实时状态）
+  python3 mac/scripts/export_capability_catalog.py --out ../home-agent-capabilty-marketplace
 
   # CI：代码改了但目录没更新 → 非零退出（忽略 generated_at/commit 这类易变字段）
   python3 mac/scripts/export_capability_catalog.py --out ../home-agent-capabilty-marketplace --check
@@ -36,13 +35,11 @@ import os
 import re
 import subprocess
 import sys
-import urllib.request
 from pathlib import Path
 from typing import Any
 
 SCHEMA_ID = "home-agent.capability-catalog/v1"
 GENERATED_BY = "mac/scripts/export_capability_catalog.py"
-DEFAULT_LIVE_URL = "http://127.0.0.1:9527/api/v1/capabilities"
 # --check 比对时忽略的易变字段（每次生成都会变，不代表能力变了）
 VOLATILE_KEYS = ("generated_at",)
 
@@ -82,7 +79,11 @@ def _service_constants() -> dict[str, dict[str, Any]]:
 
 
 def _manifest_packages(root: Path) -> list[dict[str, Any]]:
-    """读 plugins/*/manifest.yaml（轻量解析：只用得到 id/service_id/group/entry/config/capabilities）。"""
+    """读 plugins/*/manifest.yaml（轻量解析：id/service_id/group/platforms/entry/config/capabilities）。
+
+    `platforms:` 与 `entry:` 的键就是**适用宿主**（capability 跑在哪：`mac` = Mac Edge、`brain` = 服务端…），
+    是代码层面的事实 —— 集市据此给出「代码认为它该跑在哪」，人工可以再改（集市字段 `hosts`）。
+    """
     packages: list[dict[str, Any]] = []
     plugins = root / "plugins"
     if not plugins.is_dir():
@@ -99,42 +100,29 @@ def _manifest_packages(root: Path) -> list[dict[str, Any]]:
             m = re.search(rf"^{key}:\s*(.+)$", text, re.M)
             if m:
                 pkg[key] = m.group(1).strip().strip('"').strip("'")
-        entry = re.search(r"^\s+mac:\s*(.+)$", text, re.M)
-        if entry:
-            pkg["entry_mac"] = entry.group(1).strip().strip('"').strip("'")
-        for m in re.finditer(r"capability_id:\s*([A-Za-z0-9_.\-]+)", text):
-            cid = m.group(1).strip()
-            if cid not in pkg["capability_ids"]:
-                pkg["capability_ids"].append(cid)
+        pkg["entry"] = {}
+        entry_block = re.search(r"^entry:\s*\n((?:\s{2,}\S.*\n|\s*\n)*)", text, re.M)
+        if entry_block:
+            for m in re.finditer(r"^\s{2}([A-Za-z_][\w]*):\s*(.+)$", entry_block.group(1), re.M):
+                value = m.group(2).strip().strip('"').strip("'")
+                if value.endswith("/"):
+                    continue  # 目录聚合（如 providers/ 一堆实现），不是宿主
+                pkg["entry"][m.group(1).strip()] = value
+        pkg["platforms"] = []
+        plat_block = re.search(r"^platforms:\s*\n((?:\s*-\s*\S.*\n?)+)", text, re.M)
+        if plat_block:
+            pkg["platforms"] = [m.group(1).strip() for m in re.finditer(r"-\s*([\w.\-]+)", plat_block.group(1))]
+        caps_block = re.search(r"^capabilities:\s*\n((?:\s+.*\n|\s*\n)*)", text, re.M)
+        if caps_block:
+            for m in re.finditer(r"^\s+-\s*(?:capability_id:\s*)?([A-Za-z][\w.\-]*)\s*$", caps_block.group(1), re.M):
+                cid = m.group(1).strip()
+                if cid not in pkg["capability_ids"]:
+                    pkg["capability_ids"].append(cid)
         for m in re.finditer(r"^\s+-\s+key:\s*([A-Za-z0-9_]+)", text, re.M):
             if m.group(1) not in pkg["config_keys"]:
                 pkg["config_keys"].append(m.group(1))
         packages.append(pkg)
     return packages
-
-
-def _live_capabilities(url: str, live_json: str) -> tuple[list[dict[str, Any]], str]:
-    """取线上实况（Brain /api/v1/capabilities 或离线快照）。失败返回空列表（目录照样能出）。"""
-    raw = ""
-    if live_json:
-        try:
-            raw = Path(live_json).read_text(encoding="utf-8")
-        except OSError as e:
-            print(f"[warn] 读不到 --live-json {live_json}: {e}", file=sys.stderr)
-            return [], ""
-    elif url:
-        try:
-            with urllib.request.urlopen(url, timeout=5) as resp:  # noqa: S310 - 本机 http
-                raw = resp.read().decode("utf-8", "replace")
-        except Exception as e:  # noqa: BLE001 - 离线也要能导出（实况是加分项）
-            print(f"[warn] 拉不到实况 {url}: {e}（只出定义层）", file=sys.stderr)
-            return [], ""
-    try:
-        data = json.loads(raw)
-    except Exception:  # noqa: BLE001
-        return [], ""
-    items = data.get("capabilities") if isinstance(data, dict) else data
-    return (items or []), (url if not live_json else f"file:{live_json}")
 
 
 def _now_iso() -> str:
@@ -191,13 +179,10 @@ def _blank_layer() -> dict[str, Any]:
 
 
 def _new_entry(cid: str) -> dict[str, Any]:
-    """一条能力。
+    """一条能力（**声明视图**：完全由代码决定，稳定，可 `--check` 比对）。
 
-    **定义层（definition）与实况层（live）分开存**：
-    - definition：由代码（ADS / services 声明 / 能力包）决定 —— 稳定，`--check` 只比它；
-    - live：此刻真正广告出去的契约（谁在线）—— 会变，UI 优先显示它。
-    顶层那几个便捷字段（kind/group/display_name/role…）取「definition 优先、live 兜底」，
-    这样排序/筛选/链接稳定，而 UI 又能从 live 拿到实况覆盖。
+    定义层（definition）来自 ADS / services 声明 / 能力包；顶层那几个便捷字段
+    （kind/group/display_name/role…）是它的投影，供排序/筛选/链接用。
     """
     return {
         "capability_id": cid,
@@ -207,22 +192,20 @@ def _new_entry(cid: str) -> dict[str, Any]:
         "group": "",
         "display_name": "",
         "definition": _blank_layer(),
-        "live": {},
         "declared_by": [],
         "declared_lists": [],
         "packages": [],
         "docs": [],
         "entry": {},
+        "runs_on": [],
         "config_keys": [],
-        "availability": {"has_checker": False, "live": False},
+        "availability": {"has_checker": False},
         "in_ads": False,
-        "in_live": False,
-        "reconcile": {"declared_not_live": False, "live_not_declared": False},
     }
 
 
 def _write_layer(e: dict[str, Any], layer: str, fields: dict[str, Any], source: str) -> None:
-    """把一层来源的字段写进 definition/live；definition 会记来源（sources）。"""
+    """把定义层字段写进 entry["definition"]，并记下来源（sources）。"""
     dst = e.setdefault(layer, {})
     for field in DEFINITION_FIELDS:
         if field not in fields or fields[field] in (None, "", [], {}):
@@ -276,7 +259,7 @@ def _merge_services(
 
 
 def _merge_packages(by_id: dict[str, dict[str, Any]], packages: list[dict[str, Any]]) -> None:
-    """合并 plugins/*/manifest.yaml：能力包、开发者文档、entry、config 旋钮。"""
+    """合并 plugins/*/manifest.yaml：能力包、开发者文档、entry（适用宿主）、config 旋钮。"""
     for pkg in packages:
         for cid in pkg["capability_ids"]:
             e = by_id.setdefault(cid, _new_entry(cid))
@@ -284,8 +267,13 @@ def _merge_packages(by_id: dict[str, dict[str, Any]], packages: list[dict[str, A
                 e["packages"].append(pkg["package"])
             if pkg.get("docs") and pkg["docs"] not in e["docs"]:
                 e["docs"].append(pkg["docs"])
-            if pkg.get("entry_mac"):
-                e["entry"]["mac"] = pkg["entry_mac"]
+            for host, path in (pkg.get("entry") or {}).items():
+                e["entry"][host] = path
+                if host not in e["runs_on"]:
+                    e["runs_on"].append(host)
+            for host in pkg.get("platforms") or []:
+                if host not in e["runs_on"]:
+                    e["runs_on"].append(host)
             for key in pkg["config_keys"]:
                 if key not in e["config_keys"]:
                     e["config_keys"].append(key)
@@ -348,40 +336,15 @@ def _merge_declared_caps(
             _write_layer(e, "definition", {k: cap.get(k) for k in DEFINITION_FIELDS}, f"caps:{const_name}")
 
 
-def _merge_live(by_id: dict[str, dict[str, Any]], live_items: list[dict[str, Any]]) -> None:
-    """合并线上实况：谁在线、此刻真正广告的契约（只写 live 层）。"""
-    for item in live_items:
-        if not isinstance(item, dict):
-            continue
-        cid = str(item.get("capability_id") or "").strip()
-        if not cid:
-            continue
-        e = by_id.setdefault(cid, _new_entry(cid))
-        e["in_live"] = True
-        e["availability"]["live"] = True
-        _write_layer(e, "live", {k: item.get(k) for k in DEFINITION_FIELDS}, "")
-        provider = {
-            "edge_id": str(item.get("edge_id") or ""),
-            "edge_name": str(item.get("edge_name") or ""),
-            "assigned_edge_id": str(item.get("assigned_edge_id") or ""),
-            "service_id": str(item.get("service_id") or ""),
-        }
-        providers = e["live"].setdefault("providers", [])
-        if provider not in providers:
-            providers.append(provider)
-        service_id = provider["service_id"]
-        if service_id and service_id not in e["live"].setdefault("registered_ids", []):
-            e["live"]["registered_ids"].append(service_id)
+def build_catalog() -> dict[str, Any]:
+    """合并四层来源，返回 catalog（除 generated_at 外是纯函数：同输入必得同输出）。
 
-
-
-def build_catalog(*, live_url: str = "", live_json: str = "") -> dict[str, Any]:
-    """合并五层来源，返回 catalog（除 generated_at 外是纯函数：同输入必得同输出）。"""
+    只出**声明层**（由代码决定）：集市是能力展示与技能介绍，不登记实时状态。
+    """
     capability_ads, capability_availability = _import_mac_edge()
     ads: dict[str, dict[str, Any]] = dict(capability_ads.ADS)
     services_raw = _service_constants()
     packages = _manifest_packages(repo_root())
-    live_items, live_source = _live_capabilities(live_url, live_json)
 
     by_id: dict[str, dict[str, Any]] = {}
     _merge_ads(by_id, ads)
@@ -394,41 +357,23 @@ def build_catalog(*, live_url: str = "", live_json: str = "") -> dict[str, Any]:
     for cid in checkers:
         by_id.setdefault(cid, _new_entry(cid))["availability"]["has_checker"] = True
 
-    _merge_live(by_id, live_items)
-
     capabilities: list[dict[str, Any]] = []
     for e in by_id.values():
-        for field in ("declared_by", "declared_lists", "packages", "docs", "config_keys"):
+        for field in ("declared_by", "declared_lists", "packages", "docs", "config_keys", "runs_on"):
             e[field] = sorted(dict.fromkeys(e[field]))
         definition = e.get("definition") or {}
-        live = e.get("live") or {}
         for field in ("typical_triggers", "do_not_dispatch", "decomposes_to"):
             if definition.get(field):
                 definition[field] = sorted(dict.fromkeys(definition[field]))
-        if live.get("providers"):
-            live["providers"] = sorted(
-                live["providers"], key=lambda p: (p.get("edge_name") or "", p.get("service_id") or "")
-            )
-        if live.get("registered_ids"):
-            live["registered_ids"] = sorted(dict.fromkeys(live["registered_ids"]))
         if definition.get("sources"):
             definition["sources"] = sorted(dict.fromkeys(definition["sources"]))
-        # 便捷字段：definition 优先、live 兜底（稳定排序/筛选用）
+        # 便捷字段：以定义层为准（稳定排序/筛选用）
         for field, fallback in (("kind", ""), ("composition", "atomic"), ("role", ""),
                                 ("group", ""), ("display_name", "")):
-            e[field] = str(definition.get(field) or live.get(field) or fallback)
+            e[field] = str(definition.get(field) or fallback)
         if not e["group"]:
             # 都没给 group 时按 id 前缀归属（display.audio.control → display），保证 UI 分组不漏
             e["group"] = cid.split(".", 1)[0] if "." in (cid := e["capability_id"]) else "(未分类)"
-        e["reconcile"] = {
-            "declared_not_live": bool(e["in_ads"] or e["declared_by"]) and not e["in_live"],
-            "live_not_declared": bool(e["in_live"]) and not e["in_ads"],
-            "live_differs": bool(live) and any(
-                live.get(f) != definition.get(f)
-                for f in ("kind", "composition", "role", "planner_recognize", "typical_triggers")
-                if live.get(f) is not None
-            ),
-        }
         capabilities.append(e)
     capabilities.sort(key=lambda x: x["capability_id"])
 
@@ -443,22 +388,13 @@ def build_catalog(*, live_url: str = "", live_json: str = "") -> dict[str, Any]:
         "schema": SCHEMA_ID,
         "generated_by": GENERATED_BY,
         "generated_at": _now_iso(),
-        "source": {
-            "repo": "home-agent-os",
-            "commit": _git_commit(),
-            "edge": "mac_edge",
-            "live_source": live_source,
-            "live_count": len(live_items),
-        },
+        "source": {"repo": "home-agent-os", "commit": _git_commit(), "edge": "mac_edge"},
         "summary": {
             "capabilities": len(capabilities),
             "ads_definitions": len(ads),
             "declared_capabilities": sum(len(s["capabilities"]) for s in services),
             "services": len(services),
             "extensions": len(packages),
-            "live": len(live_items),
-            "declared_not_live": sum(1 for e in capabilities if e["reconcile"]["declared_not_live"]),
-            "live_not_declared": sum(1 for e in capabilities if e["reconcile"]["live_not_declared"]),
             "with_checker": sum(1 for e in capabilities if e["availability"]["has_checker"]),
             "groups": dict(sorted(groups.items())),
             "kinds": dict(sorted(kinds.items())),
@@ -487,8 +423,6 @@ def catalog_schema() -> dict[str, Any]:
                     "repo": {"type": "string"},
                     "commit": {"type": "string"},
                     "edge": {"type": "string"},
-                    "live_source": {"type": "string"},
-                    "live_count": {"type": "integer"},
                 },
             },
             "summary": {"type": "object"},
@@ -518,7 +452,6 @@ def catalog_schema() -> dict[str, Any]:
                         "composition": {"type": "string", "enum": ["atomic", "composite"]},
                         "role": {"type": "string"},
                         "definition": {"type": "object", "description": "代码决定的定义层（稳定）"},
-                        "live": {"type": "object", "description": "此刻广告出去的实况层（含 providers）"},
                         "planner_recognize": {"type": "string"},
                         "typical_triggers": {"type": "array", "items": {"type": "string"}},
                         "do_not_dispatch": {"type": "array", "items": {"type": "string"}},
@@ -532,19 +465,17 @@ def catalog_schema() -> dict[str, Any]:
                         "packages": {"type": "array", "items": {"type": "string"}},
                         "docs": {"type": "array", "items": {"type": "string"}},
                         "entry": {"type": "object"},
+                        "runs_on": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "代码层面的适用宿主（manifest 的 platforms/entry 键，如 mac/brain）",
+                        },
                         "config_keys": {"type": "array", "items": {"type": "string"}},
                         "availability": {
                             "type": "object",
-                            "properties": {
-                                "has_checker": {"type": "boolean"},
-                                "live": {"type": "boolean"},
-                            },
+                            "properties": {"has_checker": {"type": "boolean"}},
                         },
-                        "providers": {"type": "array", "items": {"type": "object"}},
-                        "registered_ids": {"type": "array", "items": {"type": "string"}},
                         "in_ads": {"type": "boolean"},
-                        "in_live": {"type": "boolean"},
-                        "reconcile": {"type": "object"},
                     },
                 },
             },
@@ -570,21 +501,13 @@ def _param_rows(schema: dict[str, Any]) -> list[str]:
 
 
 def effective_view(cap: dict[str, Any]) -> dict[str, Any]:
-    """「此刻真正生效的契约」视图：实况层优先、定义层兜底。
-
-    页面/UI 展示与搜索都用它 —— 用户关心的是「现在规划器看到什么」；
-    定义层仍在 catalog 里（`definition`），`--check` 也只比它。
-    """
+    """展示视图：定义层（声明）投影 + 来源。集市不掺实时状态。"""
     view: dict[str, Any] = {}
     definition = cap.get("definition") or {}
-    live = cap.get("live") or {}
     for field in DEFINITION_FIELDS:
-        value = live.get(field) if live.get(field) not in (None, "", [], {}) else definition.get(field)
+        value = definition.get(field)
         view[field] = value if value is not None else ([] if field.endswith("s") and field != "prefer_when" else "")
     view["sources"] = definition.get("sources") or []
-    view["providers"] = live.get("providers") or []
-    view["live"] = bool(live)
-    view["live_differs"] = bool(cap.get("reconcile", {}).get("live_differs"))
     return view
 
 
@@ -600,14 +523,8 @@ def render_capability_md(cap: dict[str, Any], catalog: dict[str, Any]) -> str:
         f"composition=`{view.get('composition') or '-'}`",
         f"group=`{view.get('group') or '-'}`",
         f"声明=`{'是' if cap.get('in_ads') or cap.get('declared_by') or cap.get('declared_lists') else '否'}`",
-        f"在线=`{'是' if cap.get('in_live') else '否'}`",
+        f"执行前自检=`{'有' if cap.get('availability', {}).get('has_checker') else '无'}`",
     ]
-    if cap.get("reconcile", {}).get("declared_not_live"):
-        flags.append("⚠️ **声明未上线**（多半是可用性门控：设备/依赖/凭证没配）")
-    if cap.get("reconcile", {}).get("live_not_declared"):
-        flags.append("⚠️ **线上未声明**（来自别的 provider，不在 mac ADS 里）")
-    if view.get("live_differs"):
-        flags.append("ℹ️ 实况与定义层不同（下列按实况）")
     lines += [" · ".join(flags), ""]
 
     if view.get("planner_recognize"):
@@ -630,19 +547,8 @@ def render_capability_md(cap: dict[str, Any], catalog: dict[str, Any]) -> str:
     lines += (["| 参数 | 类型 | 必填 | 说明 |", "|---|---|---|---|"] + out_rows) if out_rows else ["（无）"]
     lines += [""]
 
-    providers = view.get("providers") or []
-    lines += ["## 谁提供", ""]
-    if providers:
-        lines += ["| 设备 | edge_id | 服务 |", "|---|---|---|"]
-        for p in providers:
-            lines.append(
-                f"| {_md_escape(p.get('edge_name'))} | `{_md_escape(p.get('edge_id'))}` | "
-                f"`{_md_escape(p.get('service_id'))}` |"
-            )
-    else:
-        lines.append("（当前没有在线节点广告它）")
-    lines += [""]
-
+    if cap.get("runs_on"):
+        lines += ["## 适用宿主（代码事实）", ""] + [f"- `{h}`" for h in cap["runs_on"]] + [""]
     declared = cap.get("declared_by") or []
     if declared:
         lines += ["## 服务声明", ""] + [f"- `{s}`" for s in declared] + [""]
@@ -664,11 +570,6 @@ def render_capability_md(cap: dict[str, Any], catalog: dict[str, Any]) -> str:
         lines += [""]
     if cap.get("config_keys"):
         lines += ["## 相关配置", ""] + [f"- `{k}`" for k in cap["config_keys"]] + [""]
-    lines += ["## 可用性", ""]
-    lines.append(f"- 执行前探测（checker）：{'有' if cap.get('availability', {}).get('has_checker') else '无'}")
-    lines.append(f"- 当前在线：{'是' if cap.get('in_live') else '否'}")
-    if cap.get("availability", {}).get("has_checker") and not cap.get("in_live"):
-        lines.append("- 提示：有 checker 的能力「不在线」通常是探测没通过（设备没连/依赖没装/凭证没配）")
     if view.get("sources"):
         lines += ["", f"- 定义层来源：{'、'.join(f'`{s}`' for s in view['sources'])}"]
     lines += [
@@ -702,9 +603,6 @@ def render_catalog_md(catalog: dict[str, Any]) -> str:
         f"| 规划器广告定义（ADS） | {s['ads_definitions']} |",
         f"| 服务声明（services.py 静态） | {s['declared_capabilities']}（{s['services']} 个 service） |",
         f"| 能力包（plugins/*/manifest.yaml） | {s['extensions']} |",
-        f"| **当前在线**（Brain 注册表） | {s['live']} |",
-        f"| ⚠️ 声明未上线 | {s['declared_not_live']} |",
-        f"| ⚠️ 线上未声明 | {s['live_not_declared']} |",
         f"| 有执行前探测（checker） | {s['with_checker']} |",
         "",
         "### 按 group",
@@ -726,51 +624,16 @@ def render_catalog_md(catalog: dict[str, Any]) -> str:
     for cap in caps:
         by_group.setdefault(cap.get("group") or "(未分类)", []).append(cap)
     for group in sorted(by_group):
-        lines += [f"### `{group}`", "", "| 能力 | kind | 角色 / 设备 | 触发语（示例） | 在线 |", "|---|---|---|---|---|"]
+        lines += [f"### `{group}`", "", "| 能力 | kind | 角色 | 触发语（示例） |", "|---|---|---|---|"]
         for cap in by_group[group]:
-            live = cap.get("live") or {}
-            providers = "、".join(
-                sorted({p.get("edge_name") or "" for p in (live.get("providers") or [])})
-            ) or "-"
             role = cap.get("role") or cap.get("display_name") or ""
             trigger = ((cap.get("definition") or {}).get("typical_triggers") or [""])[0]
             lines.append(
                 f"| [`{cap['capability_id']}`]({_anchor(cap['capability_id'])}) | {cap.get('kind') or '-'} | "
-                f"{_md_escape(role)}｜{_md_escape(providers)} | {_md_escape(trigger)} | "
-                f"{'✅' if cap.get('in_live') else '—'} |"
+                f"{_md_escape(role)} | {_md_escape(trigger)} |"
             )
         lines += [""]
 
-    declared_not_live = [c for c in caps if c.get("reconcile", {}).get("declared_not_live")]
-    live_not_declared = [c for c in caps if c.get("reconcile", {}).get("live_not_declared")]
-    lines += [
-        "## ⚠️ 声明未上线（定义有、此刻没广告）",
-        "",
-        "多半是可用性门控：设备没连 / 依赖没装 / 凭证没配。**不是故障**，但要能一眼看到。",
-        "",
-    ]
-    if declared_not_live:
-        lines += ["| 能力 | kind | 声明方 | 有 checker |", "|---|---|---|---|"]
-        for cap in declared_not_live:
-            lines.append(
-                f"| [`{cap['capability_id']}`]({_anchor(cap['capability_id'])}) | {cap.get('kind') or '-'} | "
-                f"{_md_escape('、'.join(cap.get('declared_by') or ['(ADS)']))} | "
-                f"{'是' if cap.get('availability', {}).get('has_checker') else '否'} |"
-            )
-    else:
-        lines.append("（无）")
-    lines += ["", "## ⚠️ 线上未声明（在跑但不在 mac ADS 里）", ""]
-    if live_not_declared:
-        lines += ["| 能力 | 设备 | 服务 |", "|---|---|---|"]
-        for cap in live_not_declared:
-            providers = cap.get("providers") or [{}]
-            p = providers[0]
-            lines.append(
-                f"| [`{cap['capability_id']}`]({_anchor(cap['capability_id'])}) | "
-                f"{_md_escape(p.get('edge_name'))} | `{_md_escape(p.get('service_id'))}` |"
-            )
-    else:
-        lines.append("（无）")
     lines += ["", "---", "", f"`{catalog['schema']}`", ""]
     return "\n".join(lines)
 
@@ -816,53 +679,12 @@ def write_catalog(catalog: dict[str, Any], out: Path) -> list[str]:
 
 
 def normalize_for_check(catalog: dict[str, Any]) -> dict[str, Any]:
-    """比对用的归一化：丢掉易变字段与「实况相关」字段。
-
-    --check 要在 CI/离线跑，而实况（谁在线、providers）会随机器与时刻变化 —— 那不是「代码漂移」。
-    所以这里只保留「定义/声明/文档/schema」这些由代码决定的部分；纯线上条目也一并剔除。
-    """
+    """比对用的归一化：只丢易变字段（每次生成都会变，不代表能力变了）。"""
     import copy
 
     data = copy.deepcopy(catalog)
     data.pop("generated_at", None)
-    for key in ("commit", "live_source", "live_count"):
-        data.get("source", {}).pop(key, None)
-    for key in ("live", "declared_not_live", "live_not_declared"):
-        data.get("summary", {}).pop(key, None)
-    # 能力集合的差异由下面的 capabilities diff 精确报告，这里不比总数（总数会随实况增减）
-    data.get("summary", {}).pop("capabilities", None)
-
-    kept: list[dict[str, Any]] = []
-    for cap in data.get("capabilities", []):
-        pure_live = (
-            cap.get("in_live")
-            and not cap.get("in_ads")
-            and not cap.get("declared_by")
-            and not cap.get("packages")
-        )
-        if pure_live:
-            continue
-        cap.pop("live", None)  # 实况会随机器/时刻变，不是「代码漂移」
-        cap.pop("in_live", None)
-        # group / display_name 是「展示属性」：有的来自能力包（代码），有的来自注册表（实况）——
-        # 无法离线区分来源，故不参与漂移判定（能力集合与契约仍是硬校验）。
-        cap.pop("group", None)
-        cap.pop("display_name", None)
-        avail = cap.get("availability") or {}
-        avail.pop("live", None)
-        cap["availability"] = avail
-        cap["reconcile"] = {"declared_not_live": False, "live_not_declared": False, "live_differs": False}
-        kept.append(cap)
-    data["capabilities"] = kept
-    # groups/kinds 也是派生量：按「保留下来的条目」重算，避免受纯线上条目影响
-    groups: dict[str, int] = {}
-    kinds: dict[str, int] = {}
-    for cap in kept:
-        groups[cap.get("group") or "(未分类)"] = groups.get(cap.get("group") or "(未分类)", 0) + 1
-        kinds[cap.get("kind") or "(未标注)"] = kinds.get(cap.get("kind") or "(未标注)", 0) + 1
-    summary = data.setdefault("summary", {})
-    summary["groups"] = dict(sorted(groups.items()))
-    summary["kinds"] = dict(sorted(kinds.items()))
+    data.get("source", {}).pop("commit", None)
     return data
 
 
@@ -904,14 +726,10 @@ def check_catalog(catalog: dict[str, Any], out: Path) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="导出 mac edge 能力目录（capability marketplace）")
     parser.add_argument("--out", required=True, help="目标目录（marketplace 仓库检出目录）")
-    parser.add_argument("--live", action="store_true", help="从 Brain 拉线上实况")
-    parser.add_argument("--live-url", default=DEFAULT_LIVE_URL, help=f"Brain 注册表地址（默认 {DEFAULT_LIVE_URL}）")
-    parser.add_argument("--live-json", default="", help="离线实况快照（CI/测试用；给了就不拉网络）")
     parser.add_argument("--check", action="store_true", help="只比对不写文件；有漂移则退出码 1")
     args = parser.parse_args(argv)
 
-    live_url = args.live_url if (args.live or args.live_json) else ""
-    catalog = build_catalog(live_url=live_url, live_json=args.live_json)
+    catalog = build_catalog()
     out = Path(args.out)
 
     if args.check:
@@ -929,8 +747,7 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"[ok] 写 {len(written)} 个文件 → {out}\n"
         f"     能力 {s['capabilities']}（ADS {s['ads_definitions']} / 声明 {s['declared_capabilities']} / "
-        f"能力包 {s['extensions']} / 在线 {s['live']}）；账不平：声明未上线 {s['declared_not_live']}、"
-        f"线上未声明 {s['live_not_declared']}"
+        f"能力包 {s['extensions']} / 有执行前探测 {s['with_checker']}）"
     )
     return 0
 
