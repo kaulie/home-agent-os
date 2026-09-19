@@ -90,7 +90,9 @@ struct DiscoveryDebugLogView: View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("记录探测日志", isOn: $enabled)
                 .font(.subheadline)
-                .onChange(of: enabled) { _, value in
+                // 单参数 onChange 是 iOS 14+ 的写法（工程 deployment target 为 16.0；
+                // iOS 17 的双参数版本在 16.0 下编译不过）。
+                .onChange(of: enabled) { value in
                     DiscoveryDebugLog.shared.isEnabled = value
                 }
             if enabled {
@@ -113,7 +115,7 @@ struct DiscoveryDebugLogView: View {
                             .id("log-bottom")
                     }
                     .frame(minHeight: 160, maxHeight: 360)
-                    .onChange(of: lineCount) { _, _ in
+                    .onChange(of: lineCount) { _ in
                         withAnimation(.easeOut(duration: 0.15)) {
                             proxy.scrollTo("log-bottom", anchor: .bottom)
                         }
