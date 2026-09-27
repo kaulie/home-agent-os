@@ -61,6 +61,8 @@ def _img_server_local_base() -> str:
     img-server it uploads to; that endpoint is reachable regardless of the LAN
     IP. The LAN-facing `public_base` is DHCP-volatile and is never stored with
     the asset, so it must not be the first thing we try here.
+
+    端口同样走发现（端点文件 → mDNS → 8080）：asset-hub 换端口只改它自己一处配置。
     """
     for key in ("BRAIN_IMG_UPLOAD_URL", "PHOTO_UPLOAD_URL"):
         raw = (os.environ.get(key) or "").strip().rstrip("/")
@@ -71,7 +73,12 @@ def _img_server_local_base() -> str:
                     return "%s://%s" % ((parsed.scheme or "http"), parsed.netloc)
             except Exception:
                 pass
-    return "http://127.0.0.1:8080"
+    try:
+        from mdns_service import resolve_img_server_port
+
+        return f"http://127.0.0.1:{int(resolve_img_server_port())}"
+    except Exception:
+        return "http://127.0.0.1:8080"
 
 
 def media_urls(storage: dict[str, Any]) -> list[str]:

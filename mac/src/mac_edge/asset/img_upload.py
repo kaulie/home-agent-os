@@ -20,14 +20,20 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from mac_edge.asset.backends.img_server import default_lan_public_base
+from mac_edge.asset.backends.img_server import (
+    DEFAULT_IMG_SERVER_PORT,
+    default_lan_public_base,
+    img_server_port,
+)
 
 log = logging.getLogger("mac_edge.asset.img_upload")
 
 # Mac uploads to loopback; public_base is the LAN URL other devices fetch.
-DEFAULT_LAN_UPLOAD_URL = "http://127.0.0.1:8080/api/v1/photos/upload"
+# 这两个常量是「默认端口」的老形态（导入期不做发现，见 backends/img_server）。
+# 运行时（upload_endpoints）走发现，端口由 asset-hub 决定。
+DEFAULT_LAN_UPLOAD_URL = f"http://127.0.0.1:{DEFAULT_IMG_SERVER_PORT}/api/v1/photos/upload"
 # Auto-detected LAN IP (no hardcoded home-LAN address); env overrides in upload_endpoints.
-DEFAULT_LAN_PUBLIC_BASE = default_lan_public_base()
+DEFAULT_LAN_PUBLIC_BASE = default_lan_public_base(DEFAULT_IMG_SERVER_PORT)
 DEFAULT_CLOUD_UPLOAD_URL = "http://127.0.0.1:9527/api/v1/photos/upload"
 DEFAULT_CLOUD_PUBLIC_BASE = "http://115.190.153.53:8080"
 STUB_DESTS = frozenset({"gdrive", "dropbox"})
@@ -103,7 +109,7 @@ def upload_dest_from_params(params: dict[str, Any] | None) -> str:
 def upload_endpoints(dest: str) -> tuple[str, str, str]:
     """Return (upload_url, public_base, probe_url)."""
     if dest == "lan":
-        upload = _env("MAC_EDGE_LAN_PHOTO_UPLOAD_URL") or DEFAULT_LAN_UPLOAD_URL
+        upload = _env("MAC_EDGE_LAN_PHOTO_UPLOAD_URL") or f"http://127.0.0.1:{img_server_port()}/api/v1/photos/upload"
         public = _env("MAC_EDGE_LAN_PHOTO_PUBLIC_BASE") or default_lan_public_base()
         parsed = urlparse(upload)
         origin = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else public.rstrip("/")
