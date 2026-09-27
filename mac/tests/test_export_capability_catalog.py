@@ -72,6 +72,31 @@ class ExportCatalogTest(unittest.TestCase):
             real_services.default_services = original  # type: ignore[assignment]
         self.assertEqual(called, [], "导出过程不允许调用 default_services()")
 
+    def test_brain_layer_fills_declaration_gaps(self) -> None:
+        """Brain 侧声明**只补**本机没说的：新能力 / 服务归属 / kind=system → 宿主 brain。"""
+        catalog = self._build()
+        by_id = {c["capability_id"]: c for c in catalog["capabilities"]}
+        # 1) 只在 Brain 侧声明的能力进了目录：算「在 ADS 里」、宿主含 brain、有服务归属
+        route = by_id["map.route.estimate"]
+        self.assertTrue(route["in_ads"])
+        self.assertIn("brain", route["runs_on"])
+        self.assertIn("system.map", route["declared_by"])
+        self.assertTrue(route["definition"]["planner_recognize"])
+        # 2) 本机 ADS 没给服务归属的，用 wire 规格补上
+        self.assertIn("system.asset", by_id["asset.inventory"]["declared_by"])
+        self.assertIn("marshall.willen", by_id["bluetooth.connect"]["declared_by"])
+        # 3) 定义层不覆盖本机 ADS（gap-fill）
+        self.assertIn("ads", by_id["display.audio"]["definition"]["sources"])
+        # 4) mac 侧没声明过的服务进了目录，并标明来源
+        brain_svcs = [s for s in catalog["services"] if s.get("source") == "brain.wire"]
+        self.assertTrue(brain_svcs)
+        self.assertIn("system.map", {s["service_id"] for s in brain_svcs})
+
+    def test_services_have_unique_ids(self) -> None:
+        catalog = self._build()
+        sids = [s["service_id"] for s in catalog["services"]]
+        self.assertEqual(len(sids), len(set(sids)), "服务 id 不许重复（本机 + Brain 合并后）")
+
     def test_deterministic_except_generated_at(self) -> None:
         a, b = self._build(), self._build()
         a.pop("generated_at"), b.pop("generated_at")
