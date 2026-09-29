@@ -168,7 +168,11 @@ class HomeBrainPersistTest(unittest.TestCase):
         self.assertEqual(health.status_code, 200)
         body = health.get_json()
         self.assertTrue(body["ok"])
-        self.assertIn("brain.sqlite3", str(body.get("db") or ""))
+        self.assertEqual(body.get("app"), "brain")
+        self.assertNotIn("db", body)
+        self.assertNotIn("registered", body)
+        self.assertNotIn("jobs", body)
+        self.assertNotIn("pending_intents", body)
 
         missing = client.get("/api/v1/intent/999999")
         self.assertEqual(missing.status_code, 404)
