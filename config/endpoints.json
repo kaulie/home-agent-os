@@ -1,7 +1,7 @@
 {
   "brain": {
     "lan": "http://brain.local:9527",
-    "cloud": "http://115.190.153.53:9527"
+    "cloud": "http://49.234.45.173:9527"
   },
   "mac": {
     "lan_host": "gateway.local",

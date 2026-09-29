@@ -8,7 +8,7 @@ enum BrainEndpoint: Int {
     /// LAN Brain is addressed by its well-known mDNS hostname (`_ha-brain._tcp`),
     /// not a fixed LAN IP (see agent_plans/service_discovery_mdns_migration_v2.md).
     static let defaultHomeIntentURL = "http://brain.local:9527/api/v1/intent"
-    static let cloudIntentURL = "http://115.190.153.53:9527/api/v1/intent"
+    static let cloudIntentURL = "http://49.234.45.173:9527/api/v1/intent"
 
     var intentURL: String {
         switch self {

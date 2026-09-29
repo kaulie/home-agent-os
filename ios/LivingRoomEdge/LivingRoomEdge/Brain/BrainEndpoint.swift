@@ -6,7 +6,7 @@ import Network
 enum BrainEndpoint {
     /// LAN identity (settings). HTTP uses `lanResolvedBaseURL` (IPv4 from mDNS/probe).
     static let defaultLanBase = "http://brain.local:9527"
-    static let defaultCloudBase = "http://115.190.153.53:9527"
+    static let defaultCloudBase = "http://49.234.45.173:9527"
 
     static let defaultLanIntentURL = intentURL(from: defaultLanBase)
     static let defaultCloudIntentURL = intentURL(from: defaultCloudBase)

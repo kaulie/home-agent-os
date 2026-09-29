@@ -4,7 +4,7 @@ import Foundation
 /// LAN identity is `img-server.local`; HTTP uses a discovered IPv4 only.
 enum PhotoUploadDest {
     static let lanIdentityPublic = "http://img-server.local:8080"
-    static let cloudUpload = "http://115.190.153.53:9527/api/v1/photos/upload"
+    static let cloudUpload = "http://49.234.45.173:9527/api/v1/photos/upload"
     static let cloudPublic = "http://115.190.153.53:8080"
 
     private static let resolvedKey = "livingroom.img.lanResolvedBase"
@@ -87,7 +87,7 @@ enum PhotoUploadDest {
         let useCloud = dest == "cloud"
             || (primaryIntentURL.map { wireDest(forIntentURL: $0) == "cloud" } ?? false)
         if useCloud {
-            return (cloudUpload, cloudPublic, "http://115.190.153.53:9527/")
+            return (cloudUpload, cloudPublic, "http://49.234.45.173:9527/")
         }
         let publicBase = lanPublic
         guard !publicBase.isEmpty else {

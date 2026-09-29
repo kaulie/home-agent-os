@@ -12,7 +12,7 @@
 启动 → register + heartbeat → POST /api/v1/intent → 轮询 intent_detail
 ```
 
-- 默认连 **家里 WiFi** Brain（身份 `brain.local`，自动发现 IPv4）；连不上会自动试 **外面**（云 `115.190.153.53:9527`）
+- 默认连 **家里 WiFi** Brain（身份 `brain.local`，自动发现 IPv4）；连不上会自动试 **外面**（云 `49.234.45.173:9527`）
 - 「家长」页用 **家里 / 外面** 切换 Brain，无需手填 URL
 
 ### 直播（P1，仅视频）

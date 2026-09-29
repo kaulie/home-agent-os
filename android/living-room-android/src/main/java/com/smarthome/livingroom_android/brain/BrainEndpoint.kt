@@ -7,7 +7,7 @@ package com.smarthome.livingroom_android.brain
  */
 object BrainEndpoint {
     const val DEFAULT_LAN_BASE = "http://brain.local:9527"
-    const val DEFAULT_CLOUD_BASE = "http://115.190.153.53:9527"
+    const val DEFAULT_CLOUD_BASE = "http://49.234.45.173:9527"
 
     enum class Mode {
         LAN,

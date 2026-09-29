@@ -396,7 +396,7 @@ services:
     display_name: Cloud Brain
     tier: p0
     probe_kind: http_health
-    probe_target: "http://115.190.153.53:9527/health"
+    probe_target: "http://49.234.45.173:9527/health"
   - service_id: agent_bridge
     display_name: agent-bridge
     tier: p0

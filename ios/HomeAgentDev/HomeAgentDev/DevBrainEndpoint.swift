@@ -4,7 +4,7 @@ import Foundation
 enum DevBrainEndpoint {
     /// LAN identity shown in settings. HTTP uses resolved IPv4 (`lastSuccessfulLanHost`).
     static let defaultLanBase = "http://brain.local:9527"
-    static let defaultCloudBase = "http://115.190.153.53:9527"
+    static let defaultCloudBase = "http://49.234.45.173:9527"
 
     private static let lanKey = "homeagent.dev.brain.lanURL"
     private static let cloudKey = "homeagent.dev.brain.cloudURL"
