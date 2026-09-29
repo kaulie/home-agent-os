@@ -14,7 +14,7 @@ Contracts (matches iOS GoProController / AssetHTTPTransport):
     returns newest image bytes from UPLOAD_DIR (by mtime)
 
 App defaults:
-  upload  http://115.190.153.53:9527/api/v1/photos/upload
+  upload  http://49.234.45.173:9527/api/v1/photos/upload
   public  http://115.190.153.53:8080/{saved_as}
 
 curl:

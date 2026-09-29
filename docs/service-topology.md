@@ -20,7 +20,7 @@
 | agent-bridge | 9540 | `GET http://127.0.0.1:9540/health` | `cd agent-bridge && ./run.sh` |
 | 现场 Admin | 8788 | `GET http://127.0.0.1:8788/` | `python3 admin/serve.py`（代理本机 Brain `/api/v1/admin/*`） |
 
-Mac Edge 双 Brain：LAN `http://127.0.0.1:9527` + 云 `http://115.190.153.53:9527`（见 `mac/.env` 的 `MAC_EDGE_BRAIN_URL`）。
+Mac Edge 双 Brain：LAN `http://127.0.0.1:9527` + 云 `http://49.234.45.173:9527`（见 `mac/.env` 的 `MAC_EDGE_BRAIN_URL`）。
 
 识字链路：**character-service 依赖本机 ocr-service :9188**。只起 9189、不起 9188，指字会失败。
 
@@ -51,7 +51,7 @@ cd "$ROOT/mac" && nohup ./run_mac_edge.sh >> data/mac_edge.out 2>&1 &
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| 云 Brain | 云 `:9527` | 不随本机重启；`GET http://115.190.153.53:9527/health` |
+| 云 Brain | 云 `:9527` | 不随本机重启；`GET http://49.234.45.173:9527/health` |
 | pronunciation-service | 9190 | 发音打分 sidecar；`cd pronunciation-service && ./run.sh`。未点名不要当常驻 |
 | Cast Receiver `:9095` | 9095 | Edge 里配了 `MAC_EDGE_CAST_DISPLAY_URL`；独立 Receiver 进程另开 |
 | img-server 旧 home-server | 曾独立 IP 上的 `:8080` | 现随本机 img-server，对外身份 `img-server.local` |

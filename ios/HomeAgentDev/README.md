@@ -58,7 +58,7 @@ xcodebuild test -scheme HomeAgentDev \
 |----------|------|
 | 按网络自动 | 推荐 |
 | 锁定局域网 | 始终走已发现的 LAN Brain IPv4（身份 `brain.local`） |
-| 锁定云端 | 始终 `115.190.153.53:9527`（可改） |
+| 锁定云端 | 始终 `49.234.45.173:9527`（可改） |
 
 - `GET /api/v1/admin/debug/issues`
 - `GET /api/v1/admin/debug/issue/<issue_id>`

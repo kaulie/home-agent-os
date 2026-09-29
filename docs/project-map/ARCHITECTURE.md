@@ -50,7 +50,7 @@ User 看见结果
 | 实例 | 地址权威 | 标识 |
 |------|----------|------|
 | LAN | `config/endpoints.json` → `http://brain.local:9527`（HTTP 用发现到的 IPv4；本机 loopback） | `BRAIN_ORIGIN=lan` |
-| Cloud | `115.190.153.53:9527` | 云路径 `/root/chat-gateway` 暗示 cloud |
+| Cloud | `49.234.45.173:9527` | 云路径 `/root/chat-gateway` 暗示 cloud |
 
 Runtime 可向两个 Brain 分别 register / heartbeat。Heartbeat 属于 **Registration** `(participant_id, domain)`，不属于 Runtime 本身。详见 [docs/architecture/dual-brain-runtime.md](../architecture/dual-brain-runtime.md)。
 

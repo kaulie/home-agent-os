@@ -16,7 +16,7 @@ android {
         versionName = "0.6.0-console"
         buildConfigField("String", "DEFAULT_EDGE_CLIENT_HINT", "\"living-room-android\"")
         buildConfigField("String", "DEFAULT_BRAIN_BASE_URL", "\"http://brain.local:9527\"")
-        buildConfigField("String", "DEFAULT_CLOUD_BRAIN_BASE_URL", "\"http://115.190.153.53:9527\"")
+        buildConfigField("String", "DEFAULT_CLOUD_BRAIN_BASE_URL", "\"http://49.234.45.173:9527\"")
         buildConfigField(
             "String",
             "DEFAULT_COMMANDS_PULL_URL",
