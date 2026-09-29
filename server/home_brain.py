@@ -5024,10 +5024,6 @@ def health():
             "ok": True,
             "app": "brain",
             "brain_origin": instance_intent_origin(),
-            "db": str(brain_db.db_path()),
-            "registered": brain_db.registration_count(),
-            "jobs": brain_db.job_count(),
-            "pending_intents": brain_db.queue_count(),
         }
     )
 
